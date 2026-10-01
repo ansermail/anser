@@ -1,0 +1,42 @@
+[package]
+name = "yanxin"
+version = "0.1.0"
+edition = "2021"
+[lib]
+name = "yanxin_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+[dependencies]
+tauri = { version = "2", features = ["tray-icon"] }
+tauri-plugin-dialog = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+rusqlite = { version = "0.32", features = ["bundled"] }
+uuid = { version = "1", features = ["v4"] }
+chrono = { version = "0.4", features = ["serde"] }
+sha2 = "0.10"
+mailparse = "0.16"
+encoding_rs = "0.8"
+scraper = { version = "0.24", default-features = false }
+imap = "2.4"
+imap-proto = "0.10.2"
+native-tls = "0.2"
+lettre = "0.11"
+keyring = { version = "3", features = ["apple-native"] }
+reqwest = { version = "0.12", features = ["blocking", "json"] }
+base64 = "0.22"
+url = "2"
+open = "5"
+[dev-dependencies]
+tempfile = "3"
+
+# Avoid LLVM's Mach-O strip misalignment on macOS 27.
+# https://github.com/rust-lang/rust/issues/157750
+[profile.release]
+strip = "none"
+[profile.release.build-override]
+strip = "none"
+
+[patch.crates-io]
+imap-proto = { path = "vendor/imap-proto" }

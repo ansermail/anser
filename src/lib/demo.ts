@@ -1,0 +1,143 @@
+import type { Mail, Rule, Snapshot } from "./types";
+import { makeAccount } from "./providers";
+export function makeDemo(): Snapshot {
+  const a = {
+    ...makeAccount("gmail"),
+    id: "demo-work",
+    name: "工作邮箱",
+    email: "alex@example.com",
+    lastSync: new Date().toISOString(),
+  };
+  const b = {
+    ...makeAccount("qq"),
+    id: "demo-personal",
+    name: "个人邮箱",
+    email: "hello@example.net",
+    lastSync: new Date().toISOString(),
+  };
+  const seeds = [
+    [
+      "Lin Chen <lin@example.com>",
+      "新的一周，从一些好想法开始",
+      "嗨，Alex：\n\n周末愉快！整理了一下上周讨论的想法，觉得我们可以从最简单的体验出发。\n\n一个安静的收件箱，一套真正顺手的归类方式，还有随时都能找回的邮件。让每天的工作，少一点忙乱，多一点从容。\n\n这周三下午有空吗？想和你一起看看第一版设计。\n\n期待你的想法。\nLin",
+      "项目协作",
+      false,
+      true,
+    ],
+    [
+      "Notion Team <team@example.org>",
+      "你的工作空间，有了新的可能",
+      "把好的想法放在一起，慢慢变成作品。查看这周的产品更新与精选模板。",
+      "订阅邮件",
+      false,
+      false,
+    ],
+    [
+      "周悦 <zhou@example.com>",
+      "Re: 关于新项目的视觉方向",
+      "收到，墨绿色这个方向很舒服。我们可以保持简洁，让内容本身成为主角。",
+      "项目协作",
+      false,
+      true,
+    ],
+    [
+      "Figma <news@example.org>",
+      "A little inspiration for your next big idea",
+      "A selection of thoughtful design stories from our community. Take a moment to explore.",
+      "订阅邮件",
+      true,
+      false,
+    ],
+    [
+      "财务团队 <finance@example.com>",
+      "9 月服务账单已生成",
+      "本月服务账单已经生成，请在内部系统查看明细。感谢你的支持。",
+      "财务/账单",
+      true,
+      false,
+    ],
+    [
+      "王昊 <wang@example.com>",
+      "周五一起喝杯咖啡？",
+      "最近发现了一家很棒的小店，环境很安静。周五下午一起去坐坐，聊聊最近在做的东西？",
+      "全部存档",
+      true,
+      false,
+    ],
+    [
+      "GitHub <notifications@example.org>",
+      "[design-system] Pull request merged",
+      "Your pull request has been merged. Thank you for contributing to open source.",
+      "项目协作",
+      true,
+      false,
+    ],
+    [
+      "读书通讯 <read@example.org>",
+      "留一点时间，给慢慢发生的事",
+      "本周，我们聊聊专注、工作节奏，以及如何在信息之间找到自己的空间。",
+      "订阅邮件",
+      true,
+      false,
+    ],
+  ] as const;
+  const messages: Mail[] = seeds.map((s, i) => ({
+    id: `demo-${i}`,
+    accountId: i === 5 ? b.id : a.id,
+    accountEmail: i === 5 ? b.email : a.email,
+    sender: s[0],
+    recipients: a.email,
+    subject: s[1],
+    body: s[2],
+    preview: s[2].replaceAll("\n", " ").slice(0, 100),
+    date: new Date(Date.now() - i * 4800000).toISOString(),
+    isRead: s[4],
+    starred: s[5],
+    localFolder: s[3],
+    trashed: false,
+    hasAttachments: false,
+    hash: "demo",
+    size: 8400 + i * 260,
+    savedAt: new Date().toISOString(),
+    sourceFolder: "INBOX",
+  }));
+  const rules: Rule[] = [
+    {
+      id: "rule-demo-1",
+      name: "项目往来，自动归档",
+      accountId: "",
+      enabled: true,
+      mode: "any",
+      conditions: [{ field: "subject", operator: "contains", value: "项目" }],
+      action: "folder",
+      destination: "项目协作",
+      stop: true,
+    },
+    {
+      id: "rule-demo-2",
+      name: "账单留存",
+      accountId: "",
+      enabled: true,
+      mode: "all",
+      conditions: [{ field: "subject", operator: "contains", value: "账单" }],
+      action: "folder",
+      destination: "财务/账单",
+      stop: false,
+    },
+  ];
+  return {
+    accounts: [a, b],
+    messages,
+    rules,
+    folders: ["项目协作", "订阅邮件", "财务/账单"],
+    stats: {
+      total: messages.length,
+      saved: messages.length,
+      unread: 3,
+      bytes: messages.reduce((a, m) => a + m.size, 0),
+    },
+    logs: ["示例数据仅用于体验界面，不会连接邮箱或发送邮件。"],
+    dataDir: "演示数据 · 仅存于当前浏览器",
+    matched: messages.length,
+  };
+}
