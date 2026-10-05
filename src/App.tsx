@@ -10,6 +10,7 @@ import {
   CollapsibleContent,
 } from "./components/ui/collapsible";
 import { Skeleton } from "./components/ui/skeleton";
+import { FolderMappingDialog } from "./components/folder-mapping-dialog";
 import { RemoteFolderList } from "./components/remote-folder-list";
 import { remoteFolderLabel } from "./lib/remote-folders";
 import { coalesceRefresh } from "./lib/refresh-queue";
@@ -187,6 +188,7 @@ export default function App() {
     [search, setSearch] = useState(""),
     [accountDialog, setAccountDialog] = useState(false),
     [editingAccount, setEditingAccount] = useState<Account | null>(null),
+    [mappingAccount, setMappingAccount] = useState<Account | null>(null),
     [contactSeed, setContactSeed] = useState<Address | null>(null),
     [draft, setDraft] = useState<Compose | null>(null),
     [drafts, setDrafts] = useState<Compose[]>([]),
@@ -402,6 +404,7 @@ export default function App() {
           source,
           data.accounts.map((a) => a.email),
           all,
+          data.accounts.find((a) => a.id === accountId)!.email,
         );
         if (!forward) Object.assign(d, replyHeaders(source.mail));
         d.to = forward ? "" : recipients.to;
@@ -1134,6 +1137,13 @@ export default function App() {
                             >
                               编辑账号配置
                             </DropdownMenuItem>
+                            {a.protocol === "imap" && (
+                              <DropdownMenuItem
+                                onClick={() => setMappingAccount(a)}
+                              >
+                                特殊文件夹
+                              </DropdownMenuItem>
+                            )}
                             <DropdownMenuItem
                               onClick={() =>
                                 void call("account_action", {
@@ -1966,6 +1976,11 @@ export default function App() {
           )}
         </SidebarInset>
       </NavigationLayout>
+      <FolderMappingDialog
+        account={mappingAccount}
+        onClose={() => setMappingAccount(null)}
+        onSaved={() => void refresh()}
+      />
       <AccountDialog
         open={accountDialog}
         editing={editingAccount}

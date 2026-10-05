@@ -168,6 +168,7 @@ fn discover_remote_folders<T: std::io::Read + Write>(
                     {
                         let mut folder = RemoteFolder {
                             account_id: account.into(),
+                            detected_roles: None,
                             name: name.into(),
                             display_name: crate::remote::display_name(name),
                             delimiter: delimiter.map(str::to_string),
@@ -643,6 +644,7 @@ fn sync_imap_scope<T: std::io::Read + Write>(
     let mut count = 0;
     let remote_folders = discover_remote_folders(&a.id, session)?;
     store.save_remote_folders(&a.id, &remote_folders)?;
+    let remote_folders = store.remote_folders(Some(&a.id))?;
     let mut folders = remote_folders
         .iter()
         .filter(|folder| folder.selectable)
@@ -1875,6 +1877,7 @@ pub fn folder_list(store: &Store, a: &Account) -> Result<Vec<RemoteFolder>> {
     if a.protocol == "pop3" {
         return Ok(vec![RemoteFolder {
             account_id: a.id.clone(),
+            detected_roles: None,
             name: "INBOX".into(),
             display_name: "收件箱".into(),
             delimiter: None,
@@ -1886,7 +1889,7 @@ pub fn folder_list(store: &Store, a: &Account) -> Result<Vec<RemoteFolder>> {
     let folders = discover_remote_folders(&a.id, &mut session)?;
     session.logout().map_err(err)?;
     store.save_remote_folders(&a.id, &folders)?;
-    Ok(folders)
+    store.remote_folders(Some(&a.id))
 }
 pub fn sync_folder(store: &Store, a: &Account, folder: &str) -> Result<u32> {
     sync_folder_with_updates(store, a, folder, || {})

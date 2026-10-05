@@ -47,7 +47,7 @@ impl Store {
             )
             .map_err(err)?;
         }
-        db.execute_batch("CREATE TABLE IF NOT EXISTS remote_folders(account_id TEXT NOT NULL,name TEXT NOT NULL,data TEXT NOT NULL,PRIMARY KEY(account_id,name)); CREATE TABLE IF NOT EXISTS contacts(id TEXT PRIMARY KEY,name TEXT NOT NULL,email TEXT NOT NULL COLLATE NOCASE UNIQUE); CREATE TABLE IF NOT EXISTS preferences(key TEXT PRIMARY KEY,data TEXT NOT NULL);")
+        db.execute_batch("CREATE TABLE IF NOT EXISTS folder_mappings(account_id TEXT PRIMARY KEY,data TEXT NOT NULL); CREATE TABLE IF NOT EXISTS remote_folders(account_id TEXT NOT NULL,name TEXT NOT NULL,data TEXT NOT NULL,PRIMARY KEY(account_id,name)); CREATE TABLE IF NOT EXISTS contacts(id TEXT PRIMARY KEY,name TEXT NOT NULL,email TEXT NOT NULL COLLATE NOCASE UNIQUE); CREATE TABLE IF NOT EXISTS preferences(key TEXT PRIMARY KEY,data TEXT NOT NULL);")
             .map_err(err)?;
         for (column, definition) in [
             ("error", "TEXT NOT NULL DEFAULT ''"),
@@ -207,17 +207,30 @@ impl Store {
         if source_changed {
             tx.execute("DELETE FROM sources WHERE account_id=?1", [&a.id])
                 .map_err(err)?;
+            tx.execute("DELETE FROM remote_folders WHERE account_id=?1", [&a.id])
+                .map_err(err)?;
+            tx.execute("DELETE FROM folder_mappings WHERE account_id=?1", [&a.id])
+                .map_err(err)?;
         }
         tx.commit().map_err(err)
     }
     pub fn remove_account(&self, id: &str) -> Result<()> {
-        self.db()?.execute("DELETE FROM messages WHERE account_id=?1 AND json_extract(data,'$.savedLocally')=0", [id]).map_err(err)?;
-        self.db()?
-            .execute("DELETE FROM remote_folders WHERE account_id=?1", [id])
+        let mut db = self.db()?;
+        let tx = db
+            .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
             .map_err(err)?;
-        self.db()?
-            .execute("DELETE FROM accounts WHERE id=?1", [id])
+        tx.execute(
+            "DELETE FROM messages WHERE account_id=?1 AND json_extract(data,'$.savedLocally')=0",
+            [id],
+        )
+        .map_err(err)?;
+        tx.execute("DELETE FROM folder_mappings WHERE account_id=?1", [id])
             .map_err(err)?;
+        tx.execute("DELETE FROM remote_folders WHERE account_id=?1", [id])
+            .map_err(err)?;
+        tx.execute("DELETE FROM accounts WHERE id=?1", [id])
+            .map_err(err)?;
+        tx.commit().map_err(err)?;
         self.log("已移除账号，所有本地存档均已保留")
     }
     pub fn rules(&self) -> Result<Vec<Rule>> {

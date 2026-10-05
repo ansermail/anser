@@ -261,10 +261,12 @@ function QuickReply({
     setReady(false);
     setDraft(null);
     if (!account) return;
-    const recipients = replyRecipients(target, [
-      target.mail.accountEmail,
-      ...accounts.map((a) => a.email),
-    ]);
+    const recipients = replyRecipients(
+      target,
+      [target.mail.accountEmail, ...accounts.map((a) => a.email)],
+      false,
+      account.email,
+    );
     void call<Compose[]>("list_drafts")
       .then((list) => {
         if (!live) return;

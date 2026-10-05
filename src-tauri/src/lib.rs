@@ -535,6 +535,27 @@ async fn account_folders(
     .map_err(err)?
 }
 #[tauri::command]
+async fn folder_settings(state: tauri::State<'_, AppState>, id: String) -> Result<FolderSettings> {
+    let store = state.store.clone();
+    tauri::async_runtime::spawn_blocking(move || store.folder_settings(&id))
+        .await
+        .map_err(err)?
+}
+#[tauri::command]
+async fn save_folder_mappings(
+    state: tauri::State<'_, AppState>,
+    app: tauri::AppHandle,
+    id: String,
+    mappings: Vec<FolderMapping>,
+) -> Result<()> {
+    let store = state.store.clone();
+    tauri::async_runtime::spawn_blocking(move || store.save_folder_mappings(&id, &mappings))
+        .await
+        .map_err(err)??;
+    let _ = app.emit("mail-updated", ());
+    Ok(())
+}
+#[tauri::command]
 async fn sync_remote_folder(
     state: tauri::State<'_, AppState>,
     app: tauri::AppHandle,
@@ -848,6 +869,8 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             snapshot,
             account_folders,
+            folder_settings,
+            save_folder_mappings,
             sync_remote_folder,
             mail_detail,
             mail_metadata,

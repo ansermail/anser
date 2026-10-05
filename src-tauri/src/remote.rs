@@ -6,11 +6,19 @@ impl Store {
         let tx = db
             .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
             .map_err(err)?;
+        let mappings = read_mappings(&tx, account)?;
         tx.execute("DELETE FROM remote_folders WHERE account_id=?1", [account])
             .map_err(err)?;
         for folder in folders {
             let mut folder = folder.clone();
             normalize_folder(&mut folder);
+            folder.detected_roles = Some(
+                folder
+                    .detected_roles
+                    .clone()
+                    .unwrap_or_else(|| folder.roles.clone()),
+            );
+            apply_mappings(&mut folder, &mappings);
             tx.execute(
                 "INSERT INTO remote_folders VALUES(?1,?2,?3)",
                 params![
@@ -52,11 +60,91 @@ impl Store {
             .map(|r| {
                 let mut folder: RemoteFolder =
                     serde_json::from_str(&r.map_err(err)?).map_err(err)?;
-                normalize_folder(&mut folder);
+                if folder.detected_roles.is_none() {
+                    normalize_folder(&mut folder);
+                    folder.detected_roles = Some(folder.roles.clone());
+                }
                 Ok(folder)
             })
             .collect();
         rows
+    }
+    pub fn folder_settings(&self, account: &str) -> Result<FolderSettings> {
+        self.account(account)?;
+        Ok(FolderSettings {
+            folders: self.remote_folders(Some(account))?,
+            mappings: read_mappings(&self.db()?, account)?,
+        })
+    }
+    pub fn save_folder_mappings(&self, account: &str, mappings: &[FolderMapping]) -> Result<()> {
+        let mut db = self.db()?;
+        let tx = db
+            .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
+            .map_err(err)?;
+        let data: String = tx
+            .query_row("SELECT data FROM accounts WHERE id=?1", [account], |r| {
+                r.get(0)
+            })
+            .map_err(|_| "账号不存在".to_string())?;
+        let a: Account = serde_json::from_str(&data).map_err(err)?;
+        if a.protocol != "imap" {
+            return Err("POP3 不支持服务器文件夹映射".into());
+        }
+        let mut statement = tx
+            .prepare("SELECT data FROM remote_folders WHERE account_id=?1")
+            .map_err(err)?;
+        let mut folders = statement
+            .query_map([account], |r| r.get::<_, String>(0))
+            .map_err(err)?
+            .map(|row| serde_json::from_str::<RemoteFolder>(&row.map_err(err)?).map_err(err))
+            .collect::<Result<Vec<_>>>()?;
+        drop(statement);
+        let mut roles = Vec::new();
+        let mut destinations = Vec::new();
+        for mapping in mappings {
+            if mapping.role == FolderRole::Inbox {
+                return Err("收件箱由服务器定义，不能重新指定".into());
+            }
+            if roles.contains(&mapping.role) {
+                return Err("同一用途只能设置一次".into());
+            }
+            roles.push(mapping.role);
+            if let Some(name) = &mapping.folder {
+                let folder = folders
+                    .iter()
+                    .find(|f| &f.name == name)
+                    .ok_or("选择的服务器文件夹已不存在，请刷新目录")?;
+                if !folder.selectable {
+                    return Err("该目录不能存放邮件，请选择子文件夹".into());
+                }
+                if folder.name.eq_ignore_ascii_case("INBOX")
+                    || folder.roles.contains(&FolderRole::Inbox)
+                {
+                    return Err("不能将收件箱指定为其他特殊用途".into());
+                }
+                if destinations.contains(name) {
+                    return Err("一个文件夹只能手动指定为一种用途".into());
+                }
+                destinations.push(name.clone());
+            }
+        }
+        tx.execute("INSERT INTO folder_mappings VALUES(?1,?2) ON CONFLICT(account_id) DO UPDATE SET data=excluded.data", params![account, serde_json::to_string(mappings).map_err(err)?]).map_err(err)?;
+        for folder in &mut folders {
+            if folder.detected_roles.is_none() {
+                folder.detected_roles = Some(folder.roles.clone());
+            }
+            apply_mappings(folder, mappings);
+            tx.execute(
+                "UPDATE remote_folders SET data=?3 WHERE account_id=?1 AND name=?2",
+                params![
+                    account,
+                    folder.name,
+                    serde_json::to_string(folder).map_err(err)?
+                ],
+            )
+            .map_err(err)?;
+        }
+        tx.commit().map_err(err)
     }
     pub fn source(&self, id: &str) -> Result<(String, String)> {
         self.db()?.query_row("SELECT folder,remote_id FROM sources WHERE mail_id=?1 AND active=1 ORDER BY folder='INBOX' COLLATE NOCASE DESC LIMIT 1",[id],|r|Ok((r.get(0)?,r.get(1)?))).map_err(|_|"邮件已不在服务器上，且没有本地副本".into())
@@ -133,6 +221,37 @@ impl Store {
     }
 }
 
+fn read_mappings(db: &rusqlite::Connection, account: &str) -> Result<Vec<FolderMapping>> {
+    let data: Option<String> = db
+        .query_row(
+            "SELECT data FROM folder_mappings WHERE account_id=?1",
+            [account],
+            |r| r.get(0),
+        )
+        .optional()
+        .map_err(err)?;
+    data.map(|s| serde_json::from_str(&s).map_err(err))
+        .unwrap_or_else(|| Ok(Vec::new()))
+}
+fn apply_mappings(folder: &mut RemoteFolder, mappings: &[FolderMapping]) {
+    folder.roles = folder
+        .detected_roles
+        .clone()
+        .unwrap_or_else(|| folder.roles.clone());
+    // Explicit destinations override discovery on that folder. Unassigned roles
+    // stay as discovered elsewhere; a missing destination never silently falls back.
+    folder
+        .roles
+        .retain(|role| !mappings.iter().any(|m| &m.role == role));
+    if let Some(mapping) = mappings
+        .iter()
+        .find(|m| m.folder.as_deref() == Some(&folder.name))
+    {
+        folder.roles = vec![mapping.role];
+    }
+    normalize_folder(folder);
+}
+
 // RFC 6154 roles are authoritative. Exact conventional names are a fallback
 // for servers without SPECIAL-USE; never classify by a substring of a user path.
 pub fn folder_roles<'a>(
@@ -190,6 +309,7 @@ pub fn folder_roles<'a>(
 pub fn listed_folder(account: &str, name: &imap::types::Name) -> RemoteFolder {
     let mut folder = RemoteFolder {
         account_id: account.into(),
+        detected_roles: None,
         name: name.name().into(),
         display_name: display_name(name.name()),
         delimiter: name.delimiter().map(str::to_string),
@@ -212,7 +332,8 @@ pub fn listed_folder(account: &str, name: &imap::types::Name) -> RemoteFolder {
     folder
 }
 pub(crate) fn normalize_folder(folder: &mut RemoteFolder) {
-    if folder.roles.is_empty() {
+    folder.display_name = display_name(&folder.name);
+    if folder.roles.is_empty() && folder.detected_roles.is_none() {
         folder.roles = folder_roles(&folder.name, folder.delimiter.as_deref(), []);
     }
     let label = match folder.roles.first() {
@@ -378,6 +499,7 @@ mod folder_tests {
     fn trash_and_junk_are_excluded_by_role_but_all_mail_is_not_an_archive_target() {
         let mut folder = RemoteFolder {
             account_id: "a".into(),
+            detected_roles: None,
             name: "VendorCustom".into(),
             display_name: "VendorCustom".into(),
             delimiter: None,

@@ -56,6 +56,32 @@ describe("reply destinations", () => {
       replyRecipients(d, ["me@example.com", "peer@example.com"], true).to,
     ).toBe("");
   });
+  it("keeps another signed-in account as the direct reply target", () => {
+    const d = detail();
+    d.replyTo = [{ name: "Other account", email: "SECOND@example.com" }];
+    d.to = [{ name: "Receiving account", email: "me@example.com" }];
+    const own = ["second@example.com", "me@example.com"];
+    expect(
+      parseAddresses(replyRecipients(d, own, false, "me@example.com").to).map(
+        (a) => a.email,
+      ),
+    ).toEqual(["SECOND@example.com"]);
+    const all = replyRecipients(d, own, true, "me@example.com");
+    expect(parseAddresses(all.to).map((a) => a.email)).toEqual([
+      "SECOND@example.com",
+    ]);
+    expect(parseAddresses(all.cc).map((a) => a.email)).toEqual([
+      "PEER@example.com",
+      "other@example.com",
+    ]);
+    d.replyTo = [{ name: "Sending account", email: "ME@example.com" }];
+    d.to = [{ name: "Other account", email: "second@example.com" }];
+    expect(
+      parseAddresses(replyRecipients(d, own, false, "me@example.com").to).map(
+        (a) => a.email,
+      ),
+    ).toEqual(["second@example.com"]);
+  });
   it("keeps quoted commas and escaped quotes when completing multiple recipients", () => {
     const a = { name: 'Doe, "Alex"', email: "alex@example.com" };
     const value = formatAddress(a) + ", other@example.com, ";

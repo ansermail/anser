@@ -1368,6 +1368,7 @@ fn server_folder_query_uses_locations_not_local_classification() {
             &a.id,
             &[RemoteFolder {
                 account_id: a.id.clone(),
+                detected_roles: None,
                 name: "Team/Reports".into(),
                 display_name: "Team/Reports".into(),
                 delimiter: Some("/".into()),
@@ -1604,6 +1605,7 @@ fn sent_view_uses_active_special_use_locations_and_preserves_local_sent_copy() {
     let folders = [
         RemoteFolder {
             account_id: a.id.clone(),
+            detected_roles: None,
             name: "Sent Messages".into(),
             display_name: "Sent Messages".into(),
             delimiter: Some("/".into()),
@@ -1612,6 +1614,7 @@ fn sent_view_uses_active_special_use_locations_and_preserves_local_sent_copy() {
         },
         RemoteFolder {
             account_id: a.id.clone(),
+            detected_roles: None,
             name: "Sent".into(),
             display_name: "Sent".into(),
             delimiter: None,
@@ -1644,4 +1647,288 @@ fn sent_view_uses_active_special_use_locations_and_preserves_local_sent_copy() {
     // another special use. No transport is contacted by this test.
     crate::network::send_with(&store, &draft(), |_| Ok(()), |(), _| Ok(())).unwrap();
     assert_eq!(store.snapshot(&q).unwrap().matched, 1);
+}
+
+fn mapping_folder(account: &Account, name: &str, roles: Vec<FolderRole>) -> RemoteFolder {
+    RemoteFolder {
+        account_id: account.id.clone(),
+        name: name.into(),
+        display_name: name.into(),
+        delimiter: Some("/".into()),
+        selectable: true,
+        roles,
+        detected_roles: None,
+    }
+}
+#[test]
+fn custom_folder_mapping_survives_discovery_and_restart_and_reset_restores_original_roles() {
+    let dir = tempfile::tempdir().unwrap();
+    let store = Store::new(dir.path().into()).unwrap();
+    let a = account();
+    store.save_account(&a).unwrap();
+    let folders = vec![
+        mapping_folder(&a, "INBOX", vec![FolderRole::Inbox]),
+        mapping_folder(&a, "Sent Messages", vec![FolderRole::Sent]),
+        mapping_folder(&a, "Work/Out", vec![]),
+        mapping_folder(&a, "Junk", vec![FolderRole::Junk]),
+    ];
+    store.save_remote_folders(&a.id, &folders).unwrap();
+    let mappings = vec![
+        FolderMapping {
+            role: FolderRole::Sent,
+            folder: Some("Work/Out".into()),
+        },
+        FolderMapping {
+            role: FolderRole::Junk,
+            folder: None,
+        },
+    ];
+    store.save_folder_mappings(&a.id, &mappings).unwrap();
+    for _ in 0..2 {
+        store.save_remote_folders(&a.id, &folders).unwrap();
+        let settings = store.folder_settings(&a.id).unwrap();
+        let out = settings
+            .folders
+            .iter()
+            .find(|f| f.name == "Work/Out")
+            .unwrap();
+        assert_eq!(out.roles, vec![FolderRole::Sent]);
+        assert_eq!(out.display_name, "Work/已发送");
+        assert_eq!(out.detected_roles, Some(vec![]));
+        let junk = settings.folders.iter().find(|f| f.name == "Junk").unwrap();
+        assert!(junk.roles.is_empty());
+        assert_eq!(junk.display_name, "Junk");
+        assert!(!crate::remote::excluded_from_auto_sync(junk));
+        assert!(settings
+            .folders
+            .iter()
+            .find(|f| f.name == "Sent Messages")
+            .unwrap()
+            .roles
+            .is_empty());
+    }
+    drop(store);
+    let store = Store::new(dir.path().into()).unwrap();
+    assert_eq!(store.folder_settings(&a.id).unwrap().mappings.len(), 2);
+    store.save_folder_mappings(&a.id, &[]).unwrap();
+    let settings = store.folder_settings(&a.id).unwrap();
+    assert!(settings.mappings.is_empty());
+    assert_eq!(
+        settings
+            .folders
+            .iter()
+            .find(|f| f.name == "Sent Messages")
+            .unwrap()
+            .roles,
+        vec![FolderRole::Sent]
+    );
+    assert_eq!(
+        settings
+            .folders
+            .iter()
+            .find(|f| f.name == "Work/Out")
+            .unwrap()
+            .display_name,
+        "Work/Out"
+    );
+    assert_eq!(
+        settings
+            .folders
+            .iter()
+            .find(|f| f.name == "Junk")
+            .unwrap()
+            .roles,
+        vec![FolderRole::Junk]
+    );
+}
+#[test]
+fn mapping_destinations_override_conflicting_discovery_and_missing_paths_never_fall_back() {
+    let dir = tempfile::tempdir().unwrap();
+    let store = Store::new(dir.path().into()).unwrap();
+    let a = account();
+    store.save_account(&a).unwrap();
+    let folders = vec![
+        mapping_folder(&a, "Sent", vec![FolderRole::Sent]),
+        mapping_folder(&a, "VendorTrash", vec![FolderRole::Trash]),
+    ];
+    store.save_remote_folders(&a.id, &folders).unwrap();
+    let mappings = vec![
+        FolderMapping {
+            role: FolderRole::Archive,
+            folder: Some("Sent".into()),
+        },
+        FolderMapping {
+            role: FolderRole::Trash,
+            folder: Some("VendorTrash".into()),
+        },
+    ];
+    store.save_folder_mappings(&a.id, &mappings).unwrap();
+    assert_eq!(
+        store
+            .remote_folders(Some(&a.id))
+            .unwrap()
+            .iter()
+            .find(|f| f.name == "Sent")
+            .unwrap()
+            .roles,
+        vec![FolderRole::Archive]
+    );
+    store
+        .save_remote_folders(
+            &a.id,
+            &[
+                folders[0].clone(),
+                mapping_folder(&a, "Trash", vec![FolderRole::Trash]),
+            ],
+        )
+        .unwrap();
+    let settings = store.folder_settings(&a.id).unwrap();
+    assert!(settings
+        .folders
+        .iter()
+        .all(|f| !f.roles.contains(&FolderRole::Trash)));
+    assert_eq!(settings.mappings[1].folder.as_deref(), Some("VendorTrash"));
+    assert!(store.save_folder_mappings(&a.id, &mappings).is_err());
+    assert_eq!(store.folder_settings(&a.id).unwrap().mappings.len(), 2);
+}
+#[test]
+fn mapping_rejects_wrong_roles_invalid_or_duplicate_destinations_without_changing_saved_data() {
+    let dir = tempfile::tempdir().unwrap();
+    let store = Store::new(dir.path().into()).unwrap();
+    let a = account();
+    store.save_account(&a).unwrap();
+    let mut parent = mapping_folder(&a, "Parent", vec![]);
+    parent.selectable = false;
+    store
+        .save_remote_folders(
+            &a.id,
+            &[
+                mapping_folder(&a, "INBOX", vec![FolderRole::Inbox]),
+                mapping_folder(&a, "Personal", vec![]),
+                parent,
+            ],
+        )
+        .unwrap();
+    let valid = FolderMapping {
+        role: FolderRole::Sent,
+        folder: Some("Personal".into()),
+    };
+    store
+        .save_folder_mappings(&a.id, std::slice::from_ref(&valid))
+        .unwrap();
+    for invalid in [
+        vec![FolderMapping {
+            role: FolderRole::Inbox,
+            folder: None,
+        }],
+        vec![FolderMapping {
+            role: FolderRole::Sent,
+            folder: Some("INBOX".into()),
+        }],
+        vec![FolderMapping {
+            role: FolderRole::Sent,
+            folder: Some("Parent".into()),
+        }],
+        vec![FolderMapping {
+            role: FolderRole::Sent,
+            folder: Some("unknown".into()),
+        }],
+        vec![valid.clone(), valid.clone()],
+        vec![
+            valid.clone(),
+            FolderMapping {
+                role: FolderRole::Archive,
+                folder: valid.folder.clone(),
+            },
+        ],
+    ] {
+        assert!(store.save_folder_mappings(&a.id, &invalid).is_err());
+        assert_eq!(store.folder_settings(&a.id).unwrap().mappings.len(), 1);
+    }
+    let mut pop = a.clone();
+    pop.id = "pop".into();
+    pop.protocol = "pop3".into();
+    store.save_account(&pop).unwrap();
+    assert!(store.save_folder_mappings(&pop.id, &[]).is_err());
+    assert!(store.save_folder_mappings("removed", &[]).is_err());
+}
+#[test]
+fn sent_view_obeys_manual_mapping_and_mapping_does_not_alter_mail_or_sources() {
+    let dir = tempfile::tempdir().unwrap();
+    let store = Store::new(dir.path().into()).unwrap();
+    let a = account();
+    store.save_account(&a).unwrap();
+    store
+        .save_remote_folders(
+            &a.id,
+            &[
+                mapping_folder(&a, "Sent", vec![FolderRole::Sent]),
+                mapping_folder(&a, "Custom", vec![]),
+            ],
+        )
+        .unwrap();
+    store.ingest(&a, "Sent", "1:1", &raw(), true).unwrap();
+    let other = String::from_utf8(raw())
+        .unwrap()
+        .replace("Project invoice", "Different mail");
+    store
+        .ingest(&a, "Custom", "2:2", other.as_bytes(), false)
+        .unwrap();
+    let before = store.snapshot(&query()).unwrap();
+    store
+        .save_folder_mappings(
+            &a.id,
+            &[FolderMapping {
+                role: FolderRole::Sent,
+                folder: Some("Custom".into()),
+            }],
+        )
+        .unwrap();
+    let sent = store
+        .snapshot(&Query {
+            view: "sent".into(),
+            ..query()
+        })
+        .unwrap();
+    assert_eq!(sent.messages.len(), 1);
+    assert_eq!(sent.messages[0].subject, "Different mail");
+    let after = store.snapshot(&query()).unwrap();
+    assert_eq!(before.stats.total, after.stats.total);
+    assert_eq!(before.stats.saved, after.stats.saved);
+    assert!(store.source_available(&a, "Sent", "1:1").unwrap());
+}
+#[test]
+fn mappings_are_account_scoped_and_clear_when_server_identity_changes() {
+    let dir = tempfile::tempdir().unwrap();
+    let store = Store::new(dir.path().into()).unwrap();
+    let a = account();
+    let mut b = a.clone();
+    b.id = "other".into();
+    store.save_account(&a).unwrap();
+    store.save_account(&b).unwrap();
+    for account in [&a, &b] {
+        store
+            .save_remote_folders(&account.id, &[mapping_folder(account, "Custom", vec![])])
+            .unwrap();
+    }
+    store
+        .save_folder_mappings(
+            &a.id,
+            &[FolderMapping {
+                role: FolderRole::Junk,
+                folder: Some("Custom".into()),
+            }],
+        )
+        .unwrap();
+    assert!(store.remote_folders(Some(&b.id)).unwrap()[0]
+        .roles
+        .is_empty());
+    let mut edited = a.clone();
+    edited.name = "New label".into();
+    store.edit_account_preferences(&edited).unwrap();
+    assert_eq!(store.folder_settings(&a.id).unwrap().mappings.len(), 1);
+    edited.incoming_host = "different.example.org".into();
+    store.edit_account(&edited).unwrap();
+    assert!(store.folder_settings(&a.id).unwrap().mappings.is_empty());
+    assert!(store.remote_folders(Some(&a.id)).unwrap().is_empty());
 }

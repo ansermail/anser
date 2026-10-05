@@ -51,6 +51,7 @@ struct Worker {
     config: String,
     control: Arc<ConnectionControl>,
     thread: JoinHandle<()>,
+    fallback: crate::productivity::SyncSchedule,
 }
 enum EventKind {
     Changed,
@@ -143,6 +144,7 @@ fn spawn_worker(store: Store, account: Account, tx: mpsc::Sender<Event>) -> Work
         config: key,
         control,
         thread: handle,
+        fallback: crate::productivity::SyncSchedule::default(),
     }
 }
 
@@ -151,6 +153,27 @@ struct Pending {
     serial: u64,
     retry_at: Instant,
     failures: u32,
+}
+fn enqueue(pending: &mut HashMap<String, Pending>, id: String, control: Arc<ConnectionControl>) {
+    if control.stopped() {
+        return;
+    }
+    let queued = pending.entry(id).or_insert(Pending {
+        control: control.clone(),
+        serial: 0,
+        retry_at: Instant::now(),
+        failures: 0,
+    });
+    // A new listener generation must not inherit an old listener's backoff.
+    if !Arc::ptr_eq(&queued.control, &control) {
+        *queued = Pending {
+            control,
+            serial: 0,
+            retry_at: Instant::now(),
+            failures: 0,
+        };
+    }
+    queued.serial += 1;
 }
 #[derive(Debug, PartialEq, Eq)]
 enum SyncOutcome {
@@ -223,6 +246,16 @@ pub fn start(store: Store, app: tauri::AppHandle, control: Arc<RealtimeControl>)
                 }
             }
             retired.retain(|thread| !thread.is_finished());
+            // Historical sweeps can take much longer than the configured poll
+            // interval. Poll each inbox here, independently of the sweep gate
+            // and of whether the server actually delivers IDLE notifications.
+            let interval = store.preferences().unwrap_or_default().sync_interval_minutes as i64 * 60;
+            for (id, worker) in &mut workers {
+                if worker.fallback.due(now, interval) {
+                    enqueue(&mut pending, id.clone(), worker.control.clone());
+                    worker.fallback.completed(now);
+                }
+            }
             let finished_ids = jobs
                 .iter()
                 .filter(|(_, job)| job.thread.is_finished())
@@ -253,13 +286,7 @@ pub fn start(store: Store, app: tauri::AppHandle, control: Arc<RealtimeControl>)
                     }
                     match event.kind {
                         EventKind::Changed => {
-                            let queued = pending.entry(event.id).or_insert(Pending {
-                                control: event.control,
-                                serial: 0,
-                                retry_at: Instant::now(),
-                                failures: 0,
-                            });
-                            queued.serial += 1;
+                            enqueue(&mut pending, event.id, event.control);
                         }
                         EventKind::Status(message) => {
                             if let Ok(account) = store.account(&event.id) {
@@ -323,6 +350,32 @@ pub fn start(store: Store, app: tauri::AppHandle, control: Arc<RealtimeControl>)
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn polling_and_push_coalesce_without_losing_retries_or_crossing_accounts() {
+        let mut pending = HashMap::new();
+        let a = Arc::new(ConnectionControl::default());
+        let b = Arc::new(ConnectionControl::default());
+        enqueue(&mut pending, "a".into(), a.clone());
+        let retry = Instant::now() + Duration::from_secs(30);
+        let job = pending.get_mut("a").unwrap();
+        job.retry_at = retry;
+        job.failures = 3;
+        enqueue(&mut pending, "a".into(), a.clone());
+        enqueue(&mut pending, "b".into(), b);
+        assert_eq!(pending.len(), 2);
+        assert_eq!(pending["a"].serial, 2);
+        assert_eq!(pending["a"].retry_at, retry);
+        assert_eq!(pending["a"].failures, 3);
+        assert!(!finish_pending(pending.get_mut("a").unwrap(), 1, SyncOutcome::Finished(true), Instant::now()));
+        a.stop();
+        enqueue(&mut pending, "a".into(), a);
+        assert_eq!(pending["a"].serial, 2);
+        let replacement = Arc::new(ConnectionControl::default());
+        enqueue(&mut pending, "a".into(), replacement.clone());
+        assert!(Arc::ptr_eq(&pending["a"].control, &replacement));
+        assert_eq!(pending["a"].serial, 1);
+        assert_eq!(pending["a"].failures, 0);
+    }
     #[test]
     fn pending_notification_survives_failure_and_notifications_during_sync() {
         let now = Instant::now();

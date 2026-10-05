@@ -307,6 +307,21 @@ pub struct RemoteFolder {
     pub selectable: bool,
     #[serde(default)]
     pub roles: Vec<FolderRole>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub detected_roles: Option<Vec<FolderRole>>,
+}
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FolderMapping {
+    pub role: FolderRole,
+    // None explicitly disables a role; an absent mapping uses discovery.
+    pub folder: Option<String>,
+}
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FolderSettings {
+    pub folders: Vec<RemoteFolder>,
+    pub mappings: Vec<FolderMapping>,
 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]

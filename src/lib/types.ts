@@ -171,14 +171,24 @@ export interface RemoteFolder {
   displayName: string;
   delimiter: string | null;
   selectable: boolean;
-  roles?: (
-    | "inbox"
-    | "sent"
-    | "drafts"
-    | "trash"
-    | "junk"
-    | "archive"
-    | "all"
-    | "flagged"
-  )[];
+  roles?: FolderRole[];
+  detectedRoles?: FolderRole[];
+}
+
+export type FolderRole =
+  | "inbox"
+  | "sent"
+  | "drafts"
+  | "trash"
+  | "junk"
+  | "archive"
+  | "all"
+  | "flagged";
+export interface FolderMapping {
+  role: FolderRole;
+  folder: string | null;
+}
+export interface FolderSettings {
+  folders: RemoteFolder[];
+  mappings: FolderMapping[];
 }

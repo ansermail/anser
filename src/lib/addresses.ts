@@ -51,13 +51,16 @@ export function replyRecipients(
   detail: Detail,
   ownEmails: string[],
   all = false,
+  sendingEmail = ownEmails[0] || "",
 ) {
   const own = new Set(ownEmails.map((e) => e.toLowerCase()));
   const used = new Set<string>();
-  function unique(items: Address[]) {
+  const sending = sendingEmail.toLowerCase();
+  function unique(items: Address[], direct = false) {
     return items.filter((a) => {
       const key = a.email.toLowerCase();
-      if (own.has(key) || used.has(key)) return false;
+      if (used.has(key) || key === sending || (!direct && own.has(key)))
+        return false;
       used.add(key);
       return true;
     });
@@ -66,9 +69,11 @@ export function replyRecipients(
     ? detail.replyTo
     : parseAddresses(detail.mail.sender);
   const originalTo = detail.to ?? parseAddresses(detail.mail.recipients);
-  const to = unique(reply);
+  // Other signed-in accounts may be the explicit reply target. Only remove
+  // the account actually sending the reply here; reply-all extras omit aliases.
+  const to = unique(reply, true);
   // Replying to your own sent message targets its original recipients.
-  if (all || !to.length) to.push(...unique(originalTo));
+  if (all || !to.length) to.push(...unique(originalTo, !all));
   const cc = all ? unique(detail.cc ?? []) : [];
   return {
     to: to.map(formatAddress).join(", "),
