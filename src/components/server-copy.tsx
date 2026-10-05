@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
-import { AlertCircle, Copy, RefreshCw } from "lucide-react";
+import { AlertCircle, Copy, FolderInput, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 import { call, native, isDemo } from "@/lib/api";
 import { coalesceRefresh } from "@/lib/refresh-queue";
@@ -39,12 +39,16 @@ import {
 export function ServerCopyDialog({
   mail,
   initialSource,
+  kind = "copy",
   onClose,
 }: {
   mail: Mail | null;
   initialSource: string;
+  kind?: "copy" | "move";
   onClose: () => void;
 }) {
+  const verb = kind === "move" ? "移动" : "复制";
+  const ActionIcon = kind === "move" ? FolderInput : Copy;
   const [folders, setFolders] = useState<RemoteFolder[]>([]);
   const [sources, setSources] = useState<string[]>([]);
   const [source, setSource] = useState("");
@@ -53,8 +57,8 @@ export function ServerCopyDialog({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const request = useRef(false);
-  const current = useRef(mail?.id);
-  current.current = mail?.id;
+  const current = useRef(`${mail?.id}:${kind}`);
+  current.current = `${mail?.id}:${kind}`;
   useEffect(() => {
     let live = true;
     setError("");
@@ -76,7 +80,7 @@ export function ServerCopyDialog({
           sources.includes(initialSource) ? initialSource : sources[0] || "",
         );
         if (!sources.length)
-          setError("这封邮件没有可信的 IMAP 来源，无法复制到服务器。");
+          setError(`这封邮件没有可信的 IMAP 来源，无法${verb}到服务器。`);
       })
       .catch((e) => {
         if (live) setError(String(e));
@@ -87,7 +91,7 @@ export function ServerCopyDialog({
     return () => {
       live = false;
     };
-  }, [mail?.id, mail?.accountId, initialSource]);
+  }, [mail?.id, mail?.accountId, initialSource, kind]);
   const targets = folders.filter(
     (f) =>
       f.selectable &&
@@ -104,14 +108,19 @@ export function ServerCopyDialog({
     setBusy(true);
     setError("");
     const id = mail.id;
+    const key = `${id}:${kind}`;
     try {
-      await call("queue_server_copy", { id, source, target });
-      if (current.current === id) {
-        toast.success("复制任务已记录，可在设置中查看结果");
+      await call(kind === "move" ? "queue_server_move" : "queue_server_copy", {
+        id,
+        source,
+        target,
+      });
+      if (current.current === key) {
+        toast.success(`${verb}任务已记录，可在设置中查看结果`);
         onClose();
       }
     } catch (e) {
-      if (current.current === id) setError(String(e));
+      if (current.current === key) setError(String(e));
     } finally {
       request.current = false;
       setBusy(false);
@@ -126,14 +135,16 @@ export function ServerCopyDialog({
     >
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>复制到服务器文件夹</DialogTitle>
+          <DialogTitle>{verb}到服务器文件夹</DialogTitle>
           <DialogDescription>
-            {mail?.subject || "（无主题）"}
-            。复制到同一邮箱的目标文件夹，原邮件保留。
+            {mail?.subject || "（无主题）"}。
+            {kind === "move"
+              ? "移动到同一邮箱的目标文件夹，确认后从原目录移除，本地存档保留。"
+              : "复制到同一邮箱的目标文件夹，原邮件保留。"}
           </DialogDescription>
         </DialogHeader>
         {loading ? (
-          <Skeleton className="h-32" aria-label="正在加载可复制目录" />
+          <Skeleton className="h-32" aria-label={`正在加载可${verb}目录`} />
         ) : (
           <FieldGroup>
             <Field>
@@ -186,7 +197,7 @@ export function ServerCopyDialog({
         {error && (
           <Alert variant="destructive">
             <AlertCircle />
-            <AlertTitle>暂时无法复制</AlertTitle>
+            <AlertTitle>暂时无法{verb}</AlertTitle>
             <AlertDescription>{error}</AlertDescription>
           </Alert>
         )}
@@ -203,8 +214,8 @@ export function ServerCopyDialog({
             }
             onClick={() => void submit()}
           >
-            <Copy data-icon="inline-start" />
-            {busy ? "正在记录…" : "复制邮件"}
+            <ActionIcon data-icon="inline-start" />
+            {busy ? "正在记录…" : `${verb}邮件`}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -212,7 +223,9 @@ export function ServerCopyDialog({
   );
 }
 export type DirectoryOperation = {
+  receiptOrigin?: "observed" | null;
   id: string;
+  kind?: "copy" | "move";
   subject: string;
   accountEmail: string;
   folder: string;
@@ -302,7 +315,7 @@ export function DirectoryOperationsPanel() {
       <CardHeader>
         <CardTitle>服务器文件夹操作</CardTitle>
         <CardDescription>
-          复制后核对目标邮件，原邮件保留。结果未确认的任务不会自动重复复制。
+          复制保留原邮件；移动确认后更新两个目录。结果未确认的任务不会自动重发。回执丢失的移动可先刷新目标目录，再只读核对。
         </CardDescription>
         <CardAction>
           <Button
@@ -327,7 +340,9 @@ export function DirectoryOperationsPanel() {
           <Skeleton className="h-16" aria-label="正在加载文件夹操作" />
         )}
         {items?.length === 0 && (
-          <p className="text-sm text-muted-foreground">暂无服务器复制任务。</p>
+          <p className="text-sm text-muted-foreground">
+            暂无服务器文件夹操作。
+          </p>
         )}
         <ul className="flex flex-col gap-4" aria-label="服务器文件夹任务">
           {items?.map((item) => (
@@ -338,14 +353,27 @@ export function DirectoryOperationsPanel() {
               <div className="flex min-w-0 flex-col gap-1">
                 <p className="break-words">{item.subject || "（无主题）"}</p>
                 <p className="text-sm text-muted-foreground">
-                  {item.accountEmail} · {item.folder} → {item.target}
+                  {item.accountEmail} · {item.kind === "move" ? "移动" : "复制"}{" "}
+                  · {item.folder} → {item.target}
                 </p>
+                {item.receiptOrigin === "observed" &&
+                  item.status === "completed" && (
+                    <p className="text-sm text-muted-foreground">
+                      目标全文与原目录只读核查通过
+                    </p>
+                  )}
                 {item.error && (
                   <p className="text-sm text-destructive">{item.error}</p>
                 )}
               </div>
               <div className="flex items-center gap-2">
-                <Badge variant="outline">{statuses[item.status]}</Badge>
+                <Badge variant="outline">
+                  {item.kind === "move" && item.status === "completed"
+                    ? "移动完成"
+                    : item.kind === "move" && item.status === "queued"
+                      ? "待移动"
+                      : statuses[item.status]}
+                </Badge>
                 {item.status === "blocked" && (
                   <Button
                     size="sm"
@@ -356,7 +384,8 @@ export function DirectoryOperationsPanel() {
                     重试
                   </Button>
                 )}
-                {item.status === "confirmed" && (
+                {(item.status === "confirmed" ||
+                  (item.kind === "move" && item.status === "uncertain")) && (
                   <Button
                     size="sm"
                     variant="outline"

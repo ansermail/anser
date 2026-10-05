@@ -40,6 +40,7 @@ import {
   Check,
   CheckCheck,
   Copy,
+  FolderInput as FolderInputIcon,
   ChevronDown,
   ChevronRight,
   Cloud,
@@ -198,6 +199,7 @@ export default function App() {
     [editingAccount, setEditingAccount] = useState<Account | null>(null),
     [mappingAccount, setMappingAccount] = useState<Account | null>(null),
     [copyMail, setCopyMail] = useState<Mail | null>(null),
+    [directoryKind, setDirectoryKind] = useState<"copy" | "move">("copy"),
     [contactSeed, setContactSeed] = useState<Address | null>(null),
     [draft, setDraft] = useState<Compose | null>(null),
     [drafts, setDrafts] = useState<Compose[]>([]),
@@ -1857,9 +1859,32 @@ export default function App() {
                                     a.protocol === "imap",
                                 )
                               }
-                              onClick={() => setCopyMail(detail.mail)}
+                              onClick={() => {
+                                setDirectoryKind("copy");
+                                setCopyMail(detail.mail);
+                              }}
                             >
                               <Copy data-icon="inline-start" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon-sm"
+                              title="移动到服务器文件夹"
+                              aria-label="移动到服务器文件夹"
+                              disabled={
+                                !data.accounts.some(
+                                  (a) =>
+                                    a.id === detail.mail.accountId &&
+                                    a.enabled &&
+                                    a.protocol === "imap",
+                                )
+                              }
+                              onClick={() => {
+                                setDirectoryKind("move");
+                                setCopyMail(detail.mail);
+                              }}
+                            >
+                              <FolderInputIcon data-icon="inline-start" />
                             </Button>
                           </div>
                           <span className="toolbar-divider" />
@@ -2079,6 +2104,7 @@ export default function App() {
       {confirmationDialog}
       <ServerCopyDialog
         mail={copyMail}
+        kind={directoryKind}
         initialSource={query.remoteFolder || "INBOX"}
         onClose={() => setCopyMail(null)}
       />

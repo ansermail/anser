@@ -1,5 +1,5 @@
 //! Non-idempotent directory actions have their own durable journal.
-//! Submitted COPY is never automatically replayed after an interruption.
+//! Submitted COPY/MOVE is never automatically replayed after an interruption.
 use crate::{models::*, operations, store::Store};
 use rusqlite::{params, OptionalExtension};
 use serde::{Deserialize, Serialize};
@@ -19,6 +19,8 @@ pub struct CopyReceipt {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DirectoryOperation {
+    #[serde(default = "copy_kind")]
+    pub kind: String,
     pub id: String,
     pub account_id: String,
     pub account_email: String,
@@ -32,16 +34,37 @@ pub struct DirectoryOperation {
     pub error: String,
     pub content_hash: String,
     pub receipt: Option<CopyReceipt>,
+    #[serde(default)]
+    pub receipt_origin: Option<String>,
+}
+fn copy_kind() -> String {
+    "copy".into()
 }
 pub fn initialize(db: &rusqlite::Connection) -> Result<()> {
+    let legacy: bool = db.query_row("SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type='table' AND name='directory_operations') AND NOT EXISTS(SELECT 1 FROM pragma_table_info('directory_operations') WHERE name='kind')", [], |r| r.get(0)).map_err(err)?;
+    if legacy {
+        // Preserve receipts/statuses from COPY v1; add action to the uniqueness
+        // key so COPY and MOVE to the same target are separate operations.
+        db.execute_batch("BEGIN IMMEDIATE;
+            ALTER TABLE directory_operations RENAME TO directory_operations_v1;
+            DROP INDEX IF EXISTS directory_due;
+            CREATE TABLE directory_operations(
+                id TEXT PRIMARY KEY,account_id TEXT NOT NULL,folder TEXT NOT NULL,remote_id TEXT NOT NULL,
+                target TEXT NOT NULL,kind TEXT NOT NULL DEFAULT 'copy',data TEXT NOT NULL,status TEXT NOT NULL,error TEXT NOT NULL DEFAULT '',
+                content_hash TEXT NOT NULL DEFAULT '',receipt TEXT,next_attempt INTEGER NOT NULL DEFAULT 0,
+                updated_at INTEGER NOT NULL,UNIQUE(account_id,folder,remote_id,target,kind));
+            INSERT INTO directory_operations SELECT id,account_id,folder,remote_id,target,'copy',data,status,error,content_hash,receipt,next_attempt,updated_at FROM directory_operations_v1;
+            DROP TABLE directory_operations_v1;
+            COMMIT;").map_err(|e| { let _=db.execute_batch("ROLLBACK;"); err(e) })?;
+    }
     db.execute_batch("CREATE TABLE IF NOT EXISTS directory_operations(
         id TEXT PRIMARY KEY,account_id TEXT NOT NULL,folder TEXT NOT NULL,remote_id TEXT NOT NULL,
-        target TEXT NOT NULL,data TEXT NOT NULL,status TEXT NOT NULL,error TEXT NOT NULL DEFAULT '',
+        target TEXT NOT NULL,kind TEXT NOT NULL DEFAULT 'copy',data TEXT NOT NULL,status TEXT NOT NULL,error TEXT NOT NULL DEFAULT '',
         content_hash TEXT NOT NULL DEFAULT '',receipt TEXT,next_attempt INTEGER NOT NULL DEFAULT 0,
-        updated_at INTEGER NOT NULL,UNIQUE(account_id,folder,remote_id,target));
+        updated_at INTEGER NOT NULL,UNIQUE(account_id,folder,remote_id,target,kind));
         CREATE INDEX IF NOT EXISTS directory_due ON directory_operations(account_id,status,next_attempt);
         UPDATE directory_operations SET status='queued' WHERE status='preparing';
-        UPDATE directory_operations SET status='uncertain',error='复制请求已提交但确认未保存；请核对目标目录，不会自动重复复制' WHERE status='submitted';
+        UPDATE directory_operations SET status='uncertain',error='文件夹操作已提交但确认未保存；请核对原目录和目标目录，不会自动重发' WHERE status='submitted';
         UPDATE directory_operations SET status='confirmed' WHERE status='verifying';").map_err(err)
 }
 fn decode(row: &rusqlite::Row<'_>) -> rusqlite::Result<DirectoryOperation> {
@@ -62,7 +85,17 @@ fn decode(row: &rusqlite::Row<'_>) -> rusqlite::Result<DirectoryOperation> {
     Ok(op)
 }
 const COLUMNS: &str = "data,status,error,content_hash,receipt";
+fn check_other_move(db: &rusqlite::Connection, op: &DirectoryOperation) -> Result<()> {
+    let moving:bool=db.query_row("SELECT EXISTS(SELECT 1 FROM directory_operations WHERE account_id=?1 AND folder=?2 AND remote_id=?3 AND id!=?4 AND kind='move' AND status NOT IN ('completed','cancelled','blocked'))",params![op.account_id,op.folder,op.remote_id,op.id],|r|r.get(0)).map_err(err)?;
+    if moving {
+        return Err("该服务器来源已有其他移动任务，请先查看现有结果".into());
+    }
+    Ok(())
+}
 fn check(db: &rusqlite::Connection, op: &DirectoryOperation) -> Result<Account> {
+    if !matches!(op.kind.as_str(), "copy" | "move") {
+        return Err("文件夹操作类型无效".into());
+    }
     let data: String = db
         .query_row(
             "SELECT data FROM accounts WHERE id=?1",
@@ -105,11 +138,34 @@ fn check(db: &rusqlite::Connection, op: &DirectoryOperation) -> Result<Account> 
         if !active {
             return Err("原服务器来源已失效，请重新收取后操作".into());
         }
+        if op.kind == "move" {
+            if operations::remote_identity(&op.remote_id)
+                .is_none_or(|(v, _, _)| v.is_none_or(|v| v == 0))
+            {
+                return Err("移动需要可靠的来源 UIDVALIDITY，请重新收取该目录后操作".into());
+            }
+            let pending: bool = db.query_row("SELECT EXISTS(SELECT 1 FROM server_operations WHERE account_id=?1 AND folder=?2 AND remote_id=?3 AND status IN ('queued','running','blocked'))",params![a.id,op.folder,op.remote_id],|r|r.get(0)).map_err(err)?;
+            if pending {
+                return Err("来源邮件的已读或星标尚未同步，请处理完成后再移动".into());
+            }
+        }
     }
     Ok(a)
 }
 impl Store {
     pub fn queue_copy(&self, mail_id: &str, source: &str, target: &str) -> Result<String> {
+        self.queue_directory(mail_id, source, target, "copy")
+    }
+    pub fn queue_move(&self, mail_id: &str, source: &str, target: &str) -> Result<String> {
+        self.queue_directory(mail_id, source, target, "move")
+    }
+    fn queue_directory(
+        &self,
+        mail_id: &str,
+        source: &str,
+        target: &str,
+        kind: &str,
+    ) -> Result<String> {
         if source.eq_ignore_ascii_case(target) {
             return Err("请选择不同的服务器目标目录".into());
         }
@@ -125,6 +181,7 @@ impl Store {
         let remote_id: String = tx.query_row("SELECT remote_id FROM trusted_sources WHERE account_id=?1 AND mail_id=?2 AND folder=?3 AND active=1 ORDER BY remote_id LIMIT 1", params![a.id,mail_id,source], |r| r.get(0)).map_err(|_| "该邮件在所选目录没有可用的服务器来源")?;
         operations::remote_identity(&remote_id).ok_or("仅本地邮件不能复制到服务器")?;
         let op = DirectoryOperation {
+            kind: kind.into(),
             id: uuid::Uuid::new_v4().to_string(),
             account_id: a.id.clone(),
             account_email: a.email.clone(),
@@ -138,9 +195,10 @@ impl Store {
             error: String::new(),
             content_hash: String::new(),
             receipt: None,
+            receipt_origin: None,
         };
         check(&tx, &op)?;
-        let existing: Option<(String,String)> = tx.query_row("SELECT id,status FROM directory_operations WHERE account_id=?1 AND folder=?2 AND remote_id=?3 AND target=?4",params![a.id,source,op.remote_id,target],|r|Ok((r.get(0)?,r.get(1)?))).optional().map_err(err)?;
+        let existing: Option<(String,String)> = tx.query_row("SELECT id,status FROM directory_operations WHERE account_id=?1 AND folder=?2 AND remote_id=?3 AND target=?4 AND kind=?5",params![a.id,source,op.remote_id,target,kind],|r|Ok((r.get(0)?,r.get(1)?))).optional().map_err(err)?;
         if let Some((id, status)) = existing {
             if status == "cancelled" {
                 tx.execute("DELETE FROM directory_operations WHERE id=?1", [id])
@@ -149,7 +207,11 @@ impl Store {
                 return Ok(id);
             }
         }
-        tx.execute("INSERT INTO directory_operations(id,account_id,folder,remote_id,target,data,status,updated_at) VALUES(?1,?2,?3,?4,?5,?6,'queued',?7)",params![op.id,a.id,source,op.remote_id,target,serde_json::to_string(&op).map_err(err)?,chrono::Utc::now().timestamp()]).map_err(err)?;
+        let moving:bool=tx.query_row("SELECT EXISTS(SELECT 1 FROM directory_operations WHERE account_id=?1 AND folder=?2 AND remote_id=?3 AND kind='move' AND status NOT IN ('completed','cancelled','blocked'))",params![a.id,source,op.remote_id],|r|r.get(0)).map_err(err)?;
+        if moving {
+            return Err("该服务器来源已有移动任务，请先查看现有结果".into());
+        }
+        tx.execute("INSERT INTO directory_operations(id,account_id,folder,remote_id,target,kind,data,status,updated_at) VALUES(?1,?2,?3,?4,?5,?6,?7,'queued',?8)",params![op.id,a.id,source,op.remote_id,target,kind,serde_json::to_string(&op).map_err(err)?,chrono::Utc::now().timestamp()]).map_err(err)?;
         tx.commit().map_err(err)?;
         Ok(op.id)
     }
@@ -226,9 +288,41 @@ impl Store {
             ("cancel", "queued" | "blocked") => "cancelled",
             ("retry", "blocked") => {
                 check(&tx, &op)?;
+                check_other_move(&tx, &op)?;
                 "queued"
             }
             ("verify", "confirmed") => "confirmed",
+            ("verify", "uncertain") if op.kind == "move" && !op.content_hash.is_empty() => {
+                // Recovery observes a single trusted target, not a guessed
+                // COPYUID. The worker still verifies full MIME and source UID
+                // absence; this transition never resends MOVE.
+                let mut rows=tx.prepare("SELECT remote_id FROM trusted_sources WHERE account_id=?1 AND folder=?2 AND mail_id=?3 AND active=1").map_err(err)?;
+                let candidates = rows
+                    .query_map(params![op.account_id, op.target, op.mail_id], |r| {
+                        r.get::<_, String>(0)
+                    })
+                    .map_err(err)?
+                    .collect::<std::result::Result<Vec<_>, _>>()
+                    .map_err(err)?;
+                if candidates.len() != 1 {
+                    return Err(
+                        "请先刷新目标目录；必须找到唯一的可信目标副本才能只读核查移动结果".into(),
+                    );
+                }
+                let (validity, uid, _) = operations::remote_identity(&candidates[0])
+                    .ok_or("目标来源没有可靠的服务器编号")?;
+                let receipt = CopyReceipt {
+                    validity: validity
+                        .filter(|v| *v > 0)
+                        .ok_or("目标来源没有可靠的 UIDVALIDITY")?,
+                    uid,
+                };
+                let mut observed = op.clone();
+                observed.status = "confirmed".into();
+                check(&tx, &observed)?;
+                tx.execute("UPDATE directory_operations SET receipt=?2,data=json_set(data,'$.receiptOrigin','observed') WHERE id=?1",params![id,serde_json::to_string(&receipt).map_err(err)?]).map_err(err)?;
+                "confirmed"
+            }
             _ => return Err("此任务不能重发；结果未确认时请先核对目标目录".into()),
         };
         tx.execute("UPDATE directory_operations SET status=?2,error='',next_attempt=0,updated_at=?3 WHERE id=?1",params![id,status,chrono::Utc::now().timestamp()]).map_err(err)?;
@@ -258,7 +352,8 @@ impl Store {
             .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
             .map_err(err)?;
         check(&tx, op)?;
-        if tx.execute("UPDATE directory_operations SET status='submitted',content_hash=?2 WHERE id=?1 AND status='preparing'",params![op.id,hash]).map_err(err)?!=1 {return Err("复制任务状态已变化，停止提交".into());}
+        check_other_move(&tx, op)?;
+        if tx.execute("UPDATE directory_operations SET status='submitted',content_hash=?2 WHERE id=?1 AND status='preparing'",params![op.id,hash]).map_err(err)?!=1 {return Err("文件夹任务状态已变化，停止提交".into());}
         tx.commit().map_err(err)
     }
     pub(crate) fn save_copy_receipt(
@@ -266,11 +361,11 @@ impl Store {
         op: &DirectoryOperation,
         receipt: &CopyReceipt,
     ) -> Result<()> {
-        if self.db()?.execute("UPDATE directory_operations SET status='confirmed',receipt=?2 WHERE id=?1 AND status='submitted'",params![op.id,serde_json::to_string(receipt).map_err(err)?]).map_err(err)?!=1 {return Err("复制确认无法保存，请核对目标目录，不要重复复制".into());}
+        if self.db()?.execute("UPDATE directory_operations SET status='confirmed',receipt=?2 WHERE id=?1 AND status='submitted'",params![op.id,serde_json::to_string(receipt).map_err(err)?]).map_err(err)?!=1 {return Err("文件夹操作回执无法保存，请核对两个目录，不要重复提交".into());}
         Ok(())
     }
     pub(crate) fn complete_copy(&self, op: &DirectoryOperation) -> Result<()> {
-        let receipt = op.receipt.as_ref().ok_or("复制确认缺失")?;
+        let receipt = op.receipt.as_ref().ok_or("文件夹操作确认缺失")?;
         let remote = format!("{}:{}", receipt.validity, receipt.uid);
         let mut db = self.db()?;
         let tx = db
@@ -285,7 +380,7 @@ impl Store {
             )
             .map_err(err)?;
         if !matches!(status.as_str(), "confirmed" | "verifying") {
-            return Err("复制任务状态已变化".into());
+            return Err("文件夹任务状态已变化".into());
         }
         let exists: Option<String> = tx
             .query_row(
@@ -301,6 +396,9 @@ impl Store {
         if tx.execute("INSERT INTO sources(account_id,folder,remote_id,mail_id,active) SELECT ?1,?2,?3,id,1 FROM messages WHERE id=?4 AND account_id=?1 ON CONFLICT(account_id,folder,remote_id) DO UPDATE SET active=1",params![op.account_id,op.target,remote,op.mail_id]).map_err(err)? != 1 {
             return Err("原本地邮件记录已不存在；服务器确认保留，请核对目标目录".into());
         }
+        if op.kind == "move" {
+            tx.execute("UPDATE sources SET active=0 WHERE account_id=?1 AND folder=?2 AND remote_id=?3 AND mail_id=?4",params![op.account_id,op.folder,op.remote_id,op.mail_id]).map_err(err)?;
+        }
         tx.execute(
             "UPDATE directory_operations SET status='completed',error='',updated_at=?2 WHERE id=?1",
             params![op.id, chrono::Utc::now().timestamp()],
@@ -311,7 +409,7 @@ impl Store {
     pub(crate) fn fail_copy(&self, id: &str, reason: &str, definite_rejection: bool) -> Result<()> {
         // A saved receipt can be verified again with read-only commands. A
         // missing receipt after submission cannot be safely resent.
-        self.db()?.execute("UPDATE directory_operations SET status=CASE WHEN status IN ('confirmed','verifying') THEN 'confirmed' WHEN status='submitted' AND ?3=0 THEN 'uncertain' ELSE 'blocked' END,error=?2,next_attempt=?4,updated_at=?5 WHERE id=?1 AND status IN ('preparing','submitted','confirmed','verifying')",params![id,reason,definite_rejection,chrono::Utc::now().timestamp()+60,chrono::Utc::now().timestamp()]).map_err(err)?;
+        self.db()?.execute("UPDATE directory_operations SET status=CASE WHEN status IN ('confirmed','verifying') THEN 'confirmed' WHEN status='submitted' AND (?3=0 OR kind='move') THEN 'uncertain' ELSE 'blocked' END,error=?2,next_attempt=?4,updated_at=?5 WHERE id=?1 AND status IN ('preparing','submitted','confirmed','verifying')",params![id,reason,definite_rejection,chrono::Utc::now().timestamp()+60,chrono::Utc::now().timestamp()]).map_err(err)?;
         Ok(())
     }
     pub(crate) fn due_copies(&self, account: &str) -> Result<Vec<DirectoryOperation>> {
@@ -373,7 +471,7 @@ pub fn start(store: Store, app: tauri::AppHandle) {
                         if !matches!(result, Ok(Ok(()))) {
                             let error = match result {
                                 Ok(Err(e)) => e,
-                                _ => "复制过程已中断，请查看任务记录".into(),
+                                _ => "文件夹操作已中断，请查看任务记录".into(),
                             };
                             let _ = store.fail_copy(&op.id, &error, false);
                         }
@@ -602,5 +700,168 @@ pub(crate) mod tests {
         a.incoming_host = "changed.invalid".into();
         store.save_account(&a).unwrap();
         assert!(store.validate_copy(&op).is_err());
+    }
+    #[test]
+    fn move_waits_for_flags_and_blocks_new_flag_intents_without_losing_local_state() {
+        let (_temp, store, a, id) = fixture();
+        store.change_mail(&id, "star", "true").unwrap();
+        assert!(store
+            .queue_move(&id, "INBOX", "Archive")
+            .unwrap_err()
+            .contains("尚未同步"));
+        let flag = store.due_operations(&a.id).unwrap().remove(0);
+        store.claim_operation(&flag).unwrap();
+        store.finish_operation(&flag, Ok(())).unwrap();
+        let job = store.queue_move(&id, "INBOX", "Archive").unwrap();
+        assert_eq!(store.queue_move(&id, "INBOX", "Archive").unwrap(), job);
+        assert!(store
+            .change_mail(&id, "star", "false")
+            .unwrap_err()
+            .contains("移动尚未确认"));
+        assert!(store.mail(&id).unwrap().starred);
+        assert!(store.due_operations(&a.id).unwrap().is_empty());
+        store.directory_action(&job, "cancel").unwrap();
+        store.change_mail(&id, "star", "false").unwrap();
+        assert!(!store.mail(&id).unwrap().starred);
+    }
+    #[test]
+    fn move_completion_is_atomic_preserves_archives_and_only_retires_the_exact_source() {
+        let (_temp, store, a, id) = fixture();
+        let raw = store.message_raw(&store.mail(&id).unwrap()).unwrap();
+        store.db().unwrap().execute("INSERT INTO sources(account_id,folder,remote_id,mail_id,active) VALUES(?1,'INBOX','7:99',?2,1)",params![a.id,id]).unwrap();
+        let job = store.queue_move(&id, "INBOX", "Archive").unwrap();
+        let op = store.directory_operation(&job).unwrap();
+        store.claim_copy(&op).unwrap();
+        store.submit_copy(&op, "hash").unwrap();
+        store
+            .save_copy_receipt(
+                &op,
+                &CopyReceipt {
+                    validity: 9,
+                    uid: 34,
+                },
+            )
+            .unwrap();
+        let confirmed = store.directory_operation(&job).unwrap();
+        store.db().unwrap().execute_batch("CREATE TRIGGER fail_retire BEFORE UPDATE ON sources WHEN NEW.active=0 BEGIN SELECT RAISE(ABORT,'fixture'); END;").unwrap();
+        assert!(store.complete_copy(&confirmed).is_err());
+        assert!(!store.has_source(&a.id, "Archive", "9:34").unwrap());
+        assert_eq!(store.directory_operation(&job).unwrap().status, "confirmed");
+        store
+            .db()
+            .unwrap()
+            .execute_batch("DROP TRIGGER fail_retire;")
+            .unwrap();
+        store.complete_copy(&confirmed).unwrap();
+        let source_active = |uid: &str| -> bool {
+            store.db().unwrap().query_row("SELECT active FROM sources WHERE account_id=?1 AND folder='INBOX' AND remote_id=?2",params![a.id,uid],|r|r.get(0)).unwrap()
+        };
+        assert!(!source_active("7:12"));
+        assert!(source_active("7:99"));
+        assert!(store.has_source(&a.id, "Archive", "9:34").unwrap());
+        assert_eq!(store.message_raw(&store.mail(&id).unwrap()).unwrap(), raw);
+        assert!(store.mail(&id).unwrap().saved_locally);
+        assert_eq!(store.directory_operation(&job).unwrap().status, "completed");
+        store.change_mail(&id, "star", "true").unwrap();
+        let flags = store.due_operations(&a.id).unwrap();
+        assert!(flags.iter().all(|f| f.remote_id != "7:12"));
+        assert!(flags
+            .iter()
+            .any(|f| f.folder == "Archive" && f.remote_id == "9:34"));
+    }
+    #[test]
+    fn submitted_move_no_is_uncertain_and_online_record_survives_source_scan() {
+        let (temp, store, a, id) = fixture();
+        let job = store.queue_move(&id, "INBOX", "Archive").unwrap();
+        let op = store.directory_operation(&job).unwrap();
+        store.claim_copy(&op).unwrap();
+        store.submit_copy(&op, "hash").unwrap();
+        store
+            .fail_copy(&job, "NO can partially succeed", true)
+            .unwrap();
+        assert_eq!(store.directory_operation(&job).unwrap().status, "uncertain");
+        assert!(store.directory_action(&job, "retry").is_err());
+        store.db().unwrap().execute("UPDATE messages SET data=json_set(data,'$.savedLocally',json('false')) WHERE id=?1",[&id]).unwrap();
+        store.reconcile_folder(&a.id, "INBOX", &[]).unwrap();
+        assert!(store.mail(&id).is_ok());
+        drop(store);
+        let store = Store::new(temp.path().into()).unwrap();
+        assert_eq!(store.directory_operation(&job).unwrap().status, "uncertain");
+        assert!(store.due_copies(&a.id).unwrap().is_empty());
+    }
+    #[test]
+    fn legacy_copy_migration_preserves_receipts_and_action_uniqueness() {
+        let (_temp, store, _a, id) = fixture();
+        let job = store.queue_copy(&id, "INBOX", "Archive").unwrap();
+        let db = store.db().unwrap();
+        db.execute_batch("ALTER TABLE directory_operations RENAME TO new_operations;
+            DROP INDEX directory_due;
+            CREATE TABLE directory_operations(id TEXT PRIMARY KEY,account_id TEXT NOT NULL,folder TEXT NOT NULL,remote_id TEXT NOT NULL,target TEXT NOT NULL,data TEXT NOT NULL,status TEXT NOT NULL,error TEXT NOT NULL DEFAULT '',content_hash TEXT NOT NULL DEFAULT '',receipt TEXT,next_attempt INTEGER NOT NULL DEFAULT 0,updated_at INTEGER NOT NULL,UNIQUE(account_id,folder,remote_id,target));
+            INSERT INTO directory_operations SELECT id,account_id,folder,remote_id,target,json_remove(data,'$.kind'),'completed','', 'hash', '{\"validity\":9,\"uid\":34}',0,updated_at FROM new_operations;
+            DROP TABLE new_operations;").unwrap();
+        initialize(&db).unwrap();
+        initialize(&db).unwrap();
+        let copy = store.directory_operation(&job).unwrap();
+        assert_eq!(copy.kind, "copy");
+        assert_eq!(copy.status, "completed");
+        assert_eq!(copy.receipt.unwrap().uid, 34);
+        let moved = store.queue_move(&id, "INBOX", "Archive").unwrap();
+        assert_ne!(moved, job);
+        assert_eq!(store.directory_operation(&moved).unwrap().kind, "move");
+    }
+    #[test]
+    fn uncertain_move_can_only_observe_a_unique_trusted_target_and_never_resubmit() {
+        let (_temp, store, a, id) = fixture();
+        let job = store.queue_move(&id, "INBOX", "Archive").unwrap();
+        let op = store.directory_operation(&job).unwrap();
+        store.claim_copy(&op).unwrap();
+        store.submit_copy(&op, "full-hash").unwrap();
+        store.fail_copy(&job, "mapping lost", false).unwrap();
+        assert!(store
+            .directory_action(&job, "verify")
+            .unwrap_err()
+            .contains("唯一"));
+        store
+            .db()
+            .unwrap()
+            .execute(
+                "INSERT INTO sources VALUES(?1,'Archive','9:34',?2,1)",
+                params![a.id, id],
+            )
+            .unwrap();
+        store
+            .db()
+            .unwrap()
+            .execute(
+                "INSERT INTO sources VALUES(?1,'Archive','9:35',?2,1)",
+                params![a.id, id],
+            )
+            .unwrap();
+        assert!(store.directory_action(&job, "verify").is_err());
+        store
+            .db()
+            .unwrap()
+            .execute(
+                "UPDATE sources SET active=0 WHERE folder='Archive' AND remote_id='9:35'",
+                [],
+            )
+            .unwrap();
+        store
+            .isolate_folder(&a, "Archive", "bad", &Default::default())
+            .unwrap();
+        assert!(store.directory_action(&job, "verify").is_err());
+        store.restore_folder_trust(&a, "Archive").unwrap();
+        store
+            .db()
+            .unwrap()
+            .execute("UPDATE sources SET active=0 WHERE folder='INBOX'", [])
+            .unwrap();
+        store.directory_action(&job, "verify").unwrap();
+        let observed = store.directory_operation(&job).unwrap();
+        assert_eq!(observed.status, "confirmed");
+        assert_eq!(observed.receipt_origin.as_deref(), Some("observed"));
+        assert_eq!(observed.receipt.unwrap().uid, 34);
+        assert_eq!(store.due_copies(&a.id).unwrap()[0].status, "confirmed");
+        assert!(store.directory_action(&job, "retry").is_err());
     }
 }

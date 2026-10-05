@@ -485,7 +485,7 @@ impl Store {
             )
             .map_err(err)?;
         }
-        tx.execute("DELETE FROM messages WHERE account_id=?1 AND json_extract(data,'$.savedLocally')=0 AND NOT EXISTS(SELECT 1 FROM sources WHERE mail_id=messages.id AND active=1)", [account]).map_err(err)?;
+        tx.execute("DELETE FROM messages WHERE account_id=?1 AND json_extract(data,'$.savedLocally')=0 AND NOT EXISTS(SELECT 1 FROM sources WHERE mail_id=messages.id AND active=1) AND NOT EXISTS(SELECT 1 FROM directory_operations d WHERE d.account_id=messages.account_id AND json_extract(d.data,'$.mailId')=messages.id AND d.status NOT IN ('completed','cancelled'))", [account]).map_err(err)?;
         tx.commit().map_err(err)
     }
     pub fn preview_rule(&self, rule: &Rule) -> Result<Vec<String>> {

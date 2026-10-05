@@ -3215,6 +3215,89 @@ fn copy_receipt(
     }
     Err("复制完成确认缺失；请核对目标目录，不会自动重复复制".into())
 }
+// RFC 6851 recommends untagged COPYUID before EXPUNGE. Sequence numbers
+// cannot prove which UID disappeared; source absence is verified separately.
+fn move_receipt(
+    capture: &CopyCapture,
+    uid: u32,
+    target_validity: u32,
+) -> Result<crate::directory_operations::CopyReceipt> {
+    use imap_proto::{Response, Status};
+    if capture.overflow {
+        return Err("移动确认响应过大，请核对原目录和目标目录，不会自动重发".into());
+    }
+    let command = std::str::from_utf8(&capture.output).map_err(err)?;
+    let tag = command
+        .split_whitespace()
+        .next()
+        .ok_or("移动命令标识缺失")?;
+    let mut remaining = capture.input.as_slice();
+    let mut receipt: Option<crate::directory_operations::CopyReceipt> = None;
+    let mut completed = false;
+    while !remaining.is_empty() {
+        let (rest, response) =
+            imap_proto::parse_response(remaining).map_err(|_| "移动确认响应无效或未完整传输")?;
+        remaining = rest;
+        let info = match response {
+            Response::Data {
+                status: Status::Ok,
+                information,
+                ..
+            } => information,
+            Response::Done {
+                tag: actual,
+                status,
+                information,
+                ..
+            } if actual.as_bytes() == tag.as_bytes() => {
+                if !matches!(status, Status::Ok | Status::No | Status::Bad) {
+                    return Err("移动响应状态无效".into());
+                }
+                completed = true;
+                information
+            }
+            _ => None,
+        };
+        let Some(code) = info
+            .and_then(|s| s.strip_prefix('['))
+            .and_then(|s| s.split_once(']').map(|(v, _)| v))
+        else {
+            continue;
+        };
+        let fields: Vec<_> = code.split_whitespace().collect();
+        if fields
+            .first()
+            .is_none_or(|s| !s.eq_ignore_ascii_case("COPYUID"))
+        {
+            continue;
+        }
+        let one = |s: &str| -> Option<u32> {
+            let (a, b) = s.split_once(':').unwrap_or((s, s));
+            if a != b {
+                return None;
+            }
+            a.parse().ok().filter(|n| *n > 0)
+        };
+        if fields.len() != 4
+            || one(fields[1]) != Some(target_validity)
+            || one(fields[2]) != Some(uid)
+        {
+            return Err(format!("移动回执标识不匹配：预期目录 UIDVALIDITY={target_validity}、来源 UID={uid}；返回目录 UIDVALIDITY={:?}、来源 UID={:?}。请核对两个目录",fields.get(1).and_then(|s|one(s)),fields.get(2).and_then(|s|one(s))));
+        }
+        let next = crate::directory_operations::CopyReceipt {
+            validity: target_validity,
+            uid: one(fields[3]).ok_or("移动目标邮件编号无效")?,
+        };
+        if receipt.as_ref().is_some_and(|r| r.uid != next.uid) {
+            return Err("移动返回了相互矛盾的目标编号，请核对两个目录".into());
+        }
+        receipt = Some(next);
+    }
+    if !completed {
+        return Err("移动完成响应缺失，请核对两个目录，不会自动重发".into());
+    }
+    receipt.ok_or("移动未返回可靠的 COPYUID，请核对两个目录，不会自动重发".into())
+}
 pub(crate) fn apply_copy(
     store: &Store,
     op: &crate::directory_operations::DirectoryOperation,
@@ -3226,7 +3309,7 @@ pub(crate) fn apply_copy(
         inner,
         capture: capture.clone(),
     })?;
-    // Dropping the socket never removes the source. No CLOSE/EXPUNGE/STORE.
+    // No CLOSE/EXPUNGE/STORE fallback. MOVE is a single UID-scoped command.
     apply_copy_session(store, op, &mut session, &capture)
 }
 fn verify_copy_session<T: std::io::Read + Write>(
@@ -3234,10 +3317,10 @@ fn verify_copy_session<T: std::io::Read + Write>(
     op: &crate::directory_operations::DirectoryOperation,
     session: &mut imap::Session<T>,
 ) -> Result<()> {
-    let receipt = op.receipt.as_ref().ok_or("复制确认缺失")?;
+    let receipt = op.receipt.as_ref().ok_or("文件夹操作确认缺失")?;
     let mailbox = examine_verified(session, &op.target)?;
     if mailbox.uid_validity != Some(receipt.validity) {
-        return Err("复制目标目录的邮件标识已变化，保留确认记录，请重新收取核对".into());
+        return Err("目标目录的邮件标识已变化，保留确认记录，请重新收取核对".into());
     }
     let messages = session
         .uid_fetch(receipt.uid.to_string(), "(UID BODY.PEEK[])")
@@ -3246,9 +3329,26 @@ fn verify_copy_session<T: std::io::Read + Write>(
         .iter()
         .find(|m| m.uid == Some(receipt.uid))
         .and_then(|m| m.body())
-        .ok_or("已接受复制，但尚未读取到目标邮件；稍后只读核对")?;
+        .ok_or("已保存回执，但尚未读取到目标邮件；稍后只读核对")?;
     if archive::digest(raw) != op.content_hash {
-        return Err("复制目标内容与原邮件不一致；保留确认记录，请重新核对".into());
+        return Err("目标内容与原邮件不一致；保留确认记录，请重新核对".into());
+    }
+    drop(messages);
+    if op.kind == "move" {
+        let (validity, uid, _) =
+            crate::operations::remote_identity(&op.remote_id).ok_or("移动来源标识缺失")?;
+        let source = examine_verified(session, &op.folder)?;
+        if validity.is_none() || source.uid_validity != validity {
+            return Err("移动后原目录的 UIDVALIDITY 已变化，无法确认原编号已移除；保留回执".into());
+        }
+        // UID FETCH may legally return no FETCH data when the UID is absent.
+        // Verify only this UID; unrelated EXPUNGE sequence numbers are ignored.
+        let remaining = session.uid_fetch(uid.to_string(), "(UID)").map_err(err)?;
+        if !remaining.is_empty() {
+            return Err(
+                "目标全文已确认，但原邮件仍存在或原目录响应异常；稍后只读核对，不会重发移动".into(),
+            );
+        }
     }
     store.complete_copy(op)
 }
@@ -3263,19 +3363,22 @@ fn apply_copy_session<T: std::io::Read + Write>(
     }
     let caps = session.capabilities().map_err(err)?;
     if !caps.has_str("UIDPLUS") && !caps.has_str("IMAP4rev2") {
-        return Err("服务器未提供 UIDPLUS，当前版本无法可靠确认复制结果；尚未提交复制".into());
+        return Err("服务器未提供 UIDPLUS，无法可靠确认文件夹操作；尚未提交".into());
+    }
+    if op.kind == "move" && !caps.has_str("MOVE") && !caps.has_str("IMAP4rev2") {
+        return Err("服务器未提供 MOVE 能力，尚未移动；当前版本不执行复制后删除的替代操作".into());
     }
     drop(caps);
     let target = examine_verified(session, &op.target)?;
     let target_validity = mailbox_uid_validity(session, &op.target, &target)?
         .filter(|n| *n > 0)
-        .ok_or("目标目录没有可靠的 UIDVALIDITY；尚未提交复制")?;
+        .ok_or("目标目录没有可靠的 UIDVALIDITY；尚未提交")?;
     let (validity, uid, hash) =
         crate::operations::remote_identity(&op.remote_id).ok_or("来源邮件编号无效")?;
     // This is the last selection before COPY; no STATUS command intervenes.
     let source = session.select(&op.folder).map_err(err)?;
     if validity.is_some_and(|v| source.uid_validity != Some(v)) {
-        return Err("来源目录的邮件标识已变化；尚未提交复制".into());
+        return Err("来源目录的邮件标识已变化；尚未提交".into());
     }
     let messages = session
         .uid_fetch(uid.to_string(), "(UID BODY.PEEK[])")
@@ -3284,7 +3387,7 @@ fn apply_copy_session<T: std::io::Read + Write>(
         .iter()
         .find(|m| m.uid == Some(uid))
         .and_then(|m| m.body())
-        .ok_or("原服务器邮件已不存在；尚未提交复制")?;
+        .ok_or("原服务器邮件已不存在；尚未提交")?;
     let content_hash = archive::digest(raw);
     drop(messages);
     if let Some(expected) = hash {
@@ -3298,7 +3401,7 @@ fn apply_copy_session<T: std::io::Read + Write>(
                 .and_then(|m| m.header())
                 .is_none_or(|h| archive::digest(h) != expected)
             {
-                return Err("来源邮件内容不一致；尚未提交复制".into());
+                return Err("来源邮件内容不一致；尚未提交".into());
             }
         }
     }
@@ -3308,8 +3411,23 @@ fn apply_copy_session<T: std::io::Read + Write>(
         ..Default::default()
     };
     let target = op.target.replace('\\', "\\\\").replace('"', "\\\"");
-    let result = session.run_command_and_read_response(format!("UID COPY {uid} \"{target}\""));
+    let verb = if op.kind == "move" { "MOVE" } else { "COPY" };
+    let result = session.run_command_and_read_response(format!("UID {verb} {uid} \"{target}\""));
     capture.lock().map_err(err)?.enabled = false;
+    if op.kind == "move" {
+        // MOVE can partially succeed even with NO. A saved mapping permits
+        // read-only verification, never automatic replay of the command.
+        if result
+            .as_ref()
+            .is_err_and(|e| !matches!(e, imap::error::Error::No(_) | imap::error::Error::Bad(_)))
+        {
+            return Err("移动已提交但连接中断，请核对两个目录，不会自动重发".into());
+        }
+        let receipt = move_receipt(&*capture.lock().map_err(err)?, uid, target_validity)?;
+        store.save_copy_receipt(op, &receipt)?;
+        let current = store.directory_operation(&op.id)?;
+        return verify_copy_session(store, &current, session);
+    }
     match result {
         Err(e @ (imap::error::Error::No(_) | imap::error::Error::Bad(_))) => {
             let reason = format!("服务器明确拒绝复制：{e}；原邮件保留");
@@ -3528,5 +3646,185 @@ mod copy_tests {
             assert_eq!(store.directory_operation(&job).unwrap().status, "preparing");
             assert!(!String::from_utf8_lossy(&written.lock().unwrap()).contains("UID COPY"));
         }
+    }
+    fn move_replies(reply: &str, source_remaining: bool) -> Vec<Vec<u8>> {
+        let mut script = replies(reply, &crate::tests::raw());
+        script.push(b"* 0 EXISTS\r\n* OK [UIDVALIDITY 7] valid\r\na9 OK examined\r\n".to_vec());
+        script.push(if source_remaining {
+            b"* 1 FETCH (UID 12)\r\na10 OK fetched\r\n".to_vec()
+        } else {
+            b"a10 OK fetched\r\n".to_vec()
+        });
+        script
+    }
+    #[test]
+    fn move_untagged_receipt_and_expunge_require_exact_mapping_and_completion() {
+        for (input, valid) in [
+            (
+                "* OK [COPYUID 9 12 34]\r\n* 77 EXPUNGE\r\na6 OK moved\r\n",
+                true,
+            ),
+            ("a6 OK [COPYUID 9 12 34] moved\r\n", true),
+            ("* OK [COPYUID 9 12 34]\r\na6 NO partially moved\r\n", true),
+            ("* OK [COPYUID 9 12 34]\r\na7 OK unrelated\r\n", false),
+            (
+                "* OK [COPYUID 9 12 34]\r\na6 OK [COPYUID 9 12 35]\r\n",
+                false,
+            ),
+            ("* OK [COPYUID 9 13 34]\r\na6 OK moved\r\n", false),
+            ("* OK [COPYUID 10 12 34]\r\na6 OK moved\r\n", false),
+            ("* OK [COPYUID 9 12 34:35]\r\na6 OK moved\r\n", false),
+            ("* 1 EXPUNGE\r\na6 OK moved\r\n", false),
+            ("* OK [COPYUID 9 12 34]\r\na6 OK trunc", false),
+        ] {
+            let capture = CopyCapture {
+                input: input.as_bytes().to_vec(),
+                output: b"a6 UID MOVE 12 \"Archive\"\r\n".to_vec(),
+                ..Default::default()
+            };
+            assert_eq!(move_receipt(&capture, 12, 9).is_ok(), valid, "{input}");
+        }
+    }
+    #[test]
+    fn move_requires_full_target_and_source_absence_without_delete_fallback() {
+        for remaining in [false, true] {
+            let (_temp, store, a, id) = crate::directory_operations::tests::fixture();
+            let job = store.queue_move(&id, "INBOX", "Archive").unwrap();
+            let op = store.directory_operation(&job).unwrap();
+            store.claim_copy(&op).unwrap();
+            let (mut session, capture, written) = session(move_replies(
+                "* OK [COPYUID 9 12 34]\r\n* 99 EXPUNGE\r\na6 OK moved\r\n",
+                remaining,
+            ));
+            let result = apply_copy_session(&store, &op, &mut session, &capture);
+            assert_eq!(result.is_ok(), !remaining);
+            if let Err(error) = result {
+                store.fail_copy(&job, &error, false).unwrap();
+            }
+            assert_eq!(
+                store.directory_operation(&job).unwrap().status,
+                if remaining { "confirmed" } else { "completed" }
+            );
+            let active:bool=store.db().unwrap().query_row("SELECT active FROM sources WHERE account_id=?1 AND folder='INBOX' AND remote_id='7:12'",[&a.id],|r|r.get(0)).unwrap();
+            assert_eq!(active, remaining);
+            let commands = String::from_utf8(written.lock().unwrap().clone()).unwrap();
+            assert_eq!(commands.matches("UID MOVE").count(), 1);
+            assert!(
+                !commands.contains("UID COPY")
+                    && !commands.contains("STORE")
+                    && !commands.contains("EXPUNGE")
+                    && !commands.contains("CLOSE")
+            );
+        }
+    }
+    #[test]
+    fn move_no_or_disconnect_without_mapping_never_retries_and_missing_move_is_preflight() {
+        for response in ["a6 NO rejected\r\n", "", "a6 OK moved without mapping\r\n"] {
+            let (_temp, store, a, id) = crate::directory_operations::tests::fixture();
+            let job = store.queue_move(&id, "INBOX", "Archive").unwrap();
+            let op = store.directory_operation(&job).unwrap();
+            store.claim_copy(&op).unwrap();
+            let (mut session, capture, _) = session(move_replies(response, false));
+            let e = apply_copy_session(&store, &op, &mut session, &capture).unwrap_err();
+            store.fail_copy(&job, &e, false).unwrap();
+            assert_eq!(store.directory_operation(&job).unwrap().status, "uncertain");
+            assert!(store.due_copies(&a.id).unwrap().is_empty());
+        }
+        let (_temp, store, _a, id) = crate::directory_operations::tests::fixture();
+        let job = store.queue_move(&id, "INBOX", "Archive").unwrap();
+        let op = store.directory_operation(&job).unwrap();
+        store.claim_copy(&op).unwrap();
+        let mut script = move_replies("", false);
+        script[1] = b"* CAPABILITY IMAP4rev1 UIDPLUS\r\na2 OK caps\r\n".to_vec();
+        let (mut session, capture, written) = session(script);
+        assert!(apply_copy_session(&store, &op, &mut session, &capture)
+            .unwrap_err()
+            .contains("MOVE 能力"));
+        assert_eq!(store.directory_operation(&job).unwrap().status, "preparing");
+        assert!(!String::from_utf8_lossy(&written.lock().unwrap()).contains("UID MOVE"));
+    }
+    #[test]
+    fn move_receipt_with_no_recovers_readonly_and_changed_source_namespace_stays_unconfirmed() {
+        let (_temp, store, _a, id) = crate::directory_operations::tests::fixture();
+        let job = store.queue_move(&id, "INBOX", "Archive").unwrap();
+        let op = store.directory_operation(&job).unwrap();
+        store.claim_copy(&op).unwrap();
+        let (mut first, capture, _) = session(move_replies(
+            "* OK [COPYUID 9 12 34]\r\na6 NO partial\r\n",
+            true,
+        ));
+        let error = apply_copy_session(&store, &op, &mut first, &capture).unwrap_err();
+        store.fail_copy(&job, &error, false).unwrap();
+        for validity in [8, 7] {
+            let op = store.directory_operation(&job).unwrap();
+            assert_eq!(op.status, "confirmed");
+            store.claim_copy(&op).unwrap();
+            let (mut second, capture, written) = session(vec![
+                b"a1 OK login\r\n".to_vec(),
+                b"* 1 EXISTS\r\n* OK [UIDVALIDITY 9] valid\r\na2 OK examined\r\n".to_vec(),
+                fetch("a3", 34, &crate::tests::raw()),
+                format!("* 0 EXISTS\r\n* OK [UIDVALIDITY {validity}] valid\r\na4 OK examined\r\n")
+                    .into_bytes(),
+                b"a5 OK fetched\r\n".to_vec(),
+            ]);
+            let result = apply_copy_session(&store, &op, &mut second, &capture);
+            assert_eq!(result.is_ok(), validity == 7);
+            if let Err(error) = result {
+                store.fail_copy(&job, &error, false).unwrap();
+            }
+            let commands = String::from_utf8(written.lock().unwrap().clone()).unwrap();
+            assert!(
+                !commands.contains("MOVE")
+                    && !commands.contains("COPY")
+                    && !commands.contains("STORE")
+                    && !commands.contains("SELECT ")
+            );
+        }
+        assert_eq!(store.directory_operation(&job).unwrap().status, "completed");
+    }
+    #[test]
+    fn lost_move_mapping_observation_verifies_content_and_absence_with_no_mutation() {
+        let (_temp, store, a, id) = crate::directory_operations::tests::fixture();
+        let job = store.queue_move(&id, "INBOX", "Archive").unwrap();
+        let op = store.directory_operation(&job).unwrap();
+        store.claim_copy(&op).unwrap();
+        store
+            .submit_copy(&op, &archive::digest(&crate::tests::raw()))
+            .unwrap();
+        store.fail_copy(&job, "bad receipt", false).unwrap();
+        store
+            .db()
+            .unwrap()
+            .execute(
+                "INSERT INTO sources VALUES(?1,'Archive','9:34',?2,1)",
+                rusqlite::params![a.id, id],
+            )
+            .unwrap();
+        store.directory_action(&job, "verify").unwrap();
+        for raw in [b"wrong target".as_slice(), crate::tests::raw().as_slice()] {
+            let op = store.directory_operation(&job).unwrap();
+            store.claim_copy(&op).unwrap();
+            let (mut session, capture, written) = session(vec![
+                b"a1 OK login\r\n".to_vec(),
+                b"* 1 EXISTS\r\n* OK [UIDVALIDITY 9] valid\r\na2 OK examined\r\n".to_vec(),
+                fetch("a3", 34, raw),
+                b"* 0 EXISTS\r\n* OK [UIDVALIDITY 7] valid\r\na4 OK examined\r\n".to_vec(),
+                b"a5 OK fetched\r\n".to_vec(),
+            ]);
+            let result = apply_copy_session(&store, &op, &mut session, &capture);
+            assert_eq!(result.is_ok(), raw == crate::tests::raw().as_slice());
+            if let Err(error) = result {
+                store.fail_copy(&job, &error, false).unwrap();
+            }
+            let commands = String::from_utf8(written.lock().unwrap().clone()).unwrap();
+            assert!(
+                !commands.contains("MOVE")
+                    && !commands.contains("COPY")
+                    && !commands.contains("STORE")
+                    && !commands.contains("EXPUNGE")
+                    && !commands.contains("CLOSE")
+            );
+        }
+        assert_eq!(store.directory_operation(&job).unwrap().status, "completed");
     }
 }

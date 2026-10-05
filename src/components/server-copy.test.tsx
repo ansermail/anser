@@ -57,6 +57,7 @@ beforeEach(() => {
       return structuredClone(items) as never;
     if (
       command === "queue_server_copy" ||
+      command === "queue_server_move" ||
       command === "directory_operation_action"
     )
       return "task-id" as never;
@@ -223,5 +224,44 @@ describe("directory task feedback", () => {
     await act(async () => button("刷新").click());
     expect(host.textContent).toContain("账号配置已变化");
     expect(button("重试").disabled).toBe(false);
+  });
+  it("queues MOVE through the shared shadcn form and explains source removal", async () => {
+    await act(async () =>
+      root.render(
+        <ServerCopyDialog
+          mail={mail}
+          kind="move"
+          initialSource="Archive"
+          onClose={close}
+        />,
+      ),
+    );
+    expect(document.body.textContent).toContain(
+      "确认后从原目录移除，本地存档保留",
+    );
+    await open("copy-target");
+    await choose("收件箱");
+    await act(async () => button("移动邮件").click());
+    expect(api.call).toHaveBeenCalledWith("queue_server_move", {
+      id: mail.id,
+      source: "Archive",
+      target: "INBOX",
+    });
+    expect(api.call).not.toHaveBeenCalledWith(
+      "queue_server_copy",
+      expect.anything(),
+    );
+    expect(close).toHaveBeenCalledTimes(1);
+  });
+  it("distinguishes MOVE and COPY and only offers read-only checking for uncertain MOVE", async () => {
+    items[0].kind = "move";
+    items[4].kind = "move";
+    await act(async () => root.render(<DirectoryOperationsPanel />));
+    const rows = host.querySelectorAll("li");
+    expect(rows[0].textContent).toContain("移动");
+    expect(rows[0].querySelectorAll("button")).toHaveLength(1);
+    expect(rows[0].textContent).toContain("只读核对");
+    expect(rows[0].textContent).not.toContain("重试");
+    expect(rows[4].textContent).toContain("移动完成");
   });
 });

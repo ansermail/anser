@@ -100,6 +100,18 @@ async fn queue_server_copy(
         .map_err(err)?
 }
 #[tauri::command]
+async fn queue_server_move(
+    state: tauri::State<'_, AppState>,
+    id: String,
+    source: String,
+    target: String,
+) -> Result<String> {
+    let store = state.store.clone();
+    tauri::async_runtime::spawn_blocking(move || store.queue_move(&id, &source, &target))
+        .await
+        .map_err(err)?
+}
+#[tauri::command]
 async fn directory_operations(
     state: tauri::State<'_, AppState>,
 ) -> Result<Vec<directory_operations::DirectoryOperation>> {
@@ -968,6 +980,7 @@ pub fn run() {
             folder_health,
             copy_sources,
             queue_server_copy,
+            queue_server_move,
             directory_operations,
             directory_operation_action,
             probe_remote_folder,

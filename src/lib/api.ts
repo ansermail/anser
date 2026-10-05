@@ -295,8 +295,9 @@ export async function call<T = void>(
         ].filter(Boolean);
         break;
       case "queue_server_copy":
+      case "queue_server_move":
       case "directory_operation_action":
-        throw new Error("演示模式不执行服务器复制，请在真实桌面预览中测试");
+        throw new Error("演示模式不执行服务器文件夹操作，请在真实桌面预览中测试");
       case "server_operations":
         result = { pending: 0, blocked: 0, completed: 0, items: [] };
         break;
