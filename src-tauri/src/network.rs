@@ -382,6 +382,68 @@ pub fn test(a: &Account, s: &Secret) -> Result<()> {
     }
     Ok(())
 }
+// A tagged OK alone is not a successful mailbox selection. Some servers
+// acknowledge a hierarchy container without the required EXISTS response; the
+// library otherwise returns a default Mailbox and subsequent commands can read
+// the previously selected directory. Keep presence distinct from EXISTS 0.
+const INCONSISTENT_SELECTION: &str =
+    "服务器报告该文件夹为空，但又返回邮件 UID，目录响应相互矛盾；已停止读取，原来源与本地存档保留";
+const MISSING_SELECTION: &str =
+    "服务器未返回该文件夹的邮件数量，无法确认目录已打开；已停止读取，原来源与本地存档保留";
+fn examine_verified<T: std::io::Read + Write>(
+    session: &mut imap::Session<T>,
+    folder: &str,
+) -> Result<imap::types::Mailbox> {
+    use imap_proto::{MailboxDatum, Response, ResponseCode};
+    if folder.bytes().any(|b| matches!(b, b'\r' | b'\n' | 0)) {
+        return Err("文件夹名称无效".into());
+    }
+    let quoted = folder.replace('\\', "\\\\").replace('"', "\\\"");
+    let response = session
+        .run_command_and_read_response(format!("EXAMINE \"{quoted}\""))
+        .map_err(err)?;
+    let mut remaining = response.as_slice();
+    let mut mailbox = imap::types::Mailbox::default();
+    let mut exists = false;
+    while !remaining.is_empty() {
+        let (rest, parsed) = imap_proto::parse_response(remaining)
+            .map_err(|_| "打开文件夹的响应无效或未完整传输".to_string())?;
+        remaining = rest;
+        match parsed {
+            Response::MailboxData(MailboxDatum::Exists(n)) => {
+                mailbox.exists = n;
+                exists = true;
+            }
+            Response::MailboxData(MailboxDatum::Recent(n)) => mailbox.recent = n,
+            Response::MailboxData(MailboxDatum::Flags(flags)) => mailbox.flags.extend(
+                flags
+                    .into_iter()
+                    .map(String::from)
+                    .map(imap::types::Flag::from),
+            ),
+            Response::Data {
+                code: Some(code), ..
+            } => match code {
+                ResponseCode::UidValidity(v) => mailbox.uid_validity = Some(v),
+                ResponseCode::UidNext(v) => mailbox.uid_next = Some(v),
+                ResponseCode::Unseen(v) => mailbox.unseen = Some(v),
+                ResponseCode::PermanentFlags(flags) => mailbox.permanent_flags.extend(
+                    flags
+                        .into_iter()
+                        .map(String::from)
+                        .map(imap::types::Flag::from),
+                ),
+                _ => {}
+            },
+            _ => {}
+        }
+    }
+    if !exists {
+        return Err(MISSING_SELECTION.into());
+    }
+    Ok(mailbox)
+}
+
 fn mailbox_uid_validity<T: std::io::Read + Write>(
     session: &mut imap::Session<T>,
     folder: &str,
@@ -429,9 +491,8 @@ fn mailbox_uid_validity<T: std::io::Read + Write>(
     // Some servers clear the selected mailbox when STATUS is issued for it.
     // Restore read-only selection before SEARCH/FETCH. Never use CLOSE (which
     // can expunge messages), and reject a namespace rollover between queries.
-    let reopened = session
-        .examine(folder)
-        .map_err(|e| format!("重新打开文件夹失败：{e}"))?;
+    let reopened =
+        examine_verified(session, folder).map_err(|e| format!("重新打开文件夹失败：{e}"))?;
     if let Some(current) = reopened.uid_validity.filter(|v| *v != 0) {
         if validity.is_some_and(|previous| previous != current) {
             return Err("文件夹在查询期间已重建，请重新收取".into());
@@ -618,6 +679,38 @@ fn parse_full_fetch(response: &[u8], uid: u32) -> Result<(&[u8], Option<u32>, bo
     Ok((body.ok_or("服务器未返回完整邮件内容")?, size, read))
 }
 
+// UID and FLAGS must occur together in the same FETCH. Missing FLAGS is not
+// evidence that either flag was cleared; unsolicited/out-of-set rows are ignored
+// by the caller, and malformed responses are rejected before any store update.
+fn remote_flags(response: &[u8]) -> Result<Vec<(u32, bool, bool)>> {
+    use imap_proto::{AttributeValue, Response};
+    let mut remaining = response;
+    let mut rows = Vec::new();
+    while !remaining.is_empty() {
+        let (rest, parsed) = imap_proto::parse_response(remaining)
+            .map_err(|_| "服务器标记响应无效或未完整传输".to_string())?;
+        remaining = rest;
+        if let Response::Fetch(_, attributes) = parsed {
+            let uid = attributes.iter().find_map(|a| match a {
+                AttributeValue::Uid(v) if *v > 0 => Some(*v),
+                _ => None,
+            });
+            let flags = attributes.iter().find_map(|a| match a {
+                AttributeValue::Flags(v) => Some(v),
+                _ => None,
+            });
+            if let (Some(uid), Some(flags)) = (uid, flags) {
+                rows.push((
+                    uid,
+                    flags.iter().any(|f| f.eq_ignore_ascii_case("\\Seen")),
+                    flags.iter().any(|f| f.eq_ignore_ascii_case("\\Flagged")),
+                ));
+            }
+        }
+    }
+    Ok(rows)
+}
+
 #[cfg(test)]
 fn sync_imap<T: std::io::Read + Write>(
     store: &Store,
@@ -642,6 +735,7 @@ fn sync_imap_scope<T: std::io::Read + Write>(
     only: Option<&str>,
 ) -> Result<u32> {
     let mut count = 0;
+    let mut selection_errors = Vec::new();
     let remote_folders = discover_remote_folders(&a.id, session)?;
     store.save_remote_folders(&a.id, &remote_folders)?;
     let remote_folders = store.remote_folders(Some(&a.id))?;
@@ -660,13 +754,26 @@ fn sync_imap_scope<T: std::io::Read + Write>(
         let _folder_guard = folder_gate.lock().map_err(err)?;
         let mut stage = "打开文件夹".to_string();
         let mut sync_folder = || -> Result<()> {
-            let mailbox = session.examine(&folder).map_err(err)?;
+            let mailbox = examine_verified(session, &folder)?;
             stage = "查询邮件 UID".into();
             let mut ids = session
                 .uid_search("ALL")
                 .map_err(err)?
                 .into_iter()
                 .collect::<Vec<_>>();
+            // SEARCH may include a newer unsolicited EXISTS when mail arrived
+            // after EXAMINE. Otherwise an empty mailbox returning UIDs cannot
+            // safely identify this directory (observed on Tencent/QQ containers).
+            let mut exists = mailbox.exists;
+            for response in session.unsolicited_responses.try_iter() {
+                if let imap::types::UnsolicitedResponse::Exists(n) = response {
+                    exists = n;
+                }
+            }
+            if exists == 0 && !ids.is_empty() {
+                store.log(&format!("文件夹「{folder}」目录诊断：EXAMINE/EXISTS=0，UID SEARCH={} 项；未执行 FETCH，也未更新来源",ids.len()))?;
+                return Err(INCONSISTENT_SELECTION.into());
+            }
             // Empty mailboxes need no UID namespace. Tencent returns STATUS
             // () here, which older IMAP parsers cannot consume safely.
             if ids.is_empty() {
@@ -676,8 +783,39 @@ fn sync_imap_scope<T: std::io::Read + Write>(
             let validity = mailbox_uid_validity(session, &folder, &mailbox)?;
             if validity.is_none() {
                 store.log(&format!(
-                    "文件夹「{folder}」未提供 UIDVALIDITY，使用完整内容核对与去重（每次重新下载）"
+                    "文件夹「{folder}」未提供 UIDVALIDITY，使用完整内容核对与去重（每次重新下载）；只读打开响应：EXISTS={}，FLAGS={} 项，UID SEARCH={} 项",
+                    mailbox.exists, mailbox.flags.len(), ids.len()
                 ))?;
+            }
+            let mut cached_flags = Vec::new();
+            if let Some(validity) = validity {
+                let cached = store.cached_flag_uids(a, &folder, validity)?;
+                let cached = ids
+                    .iter()
+                    .copied()
+                    .filter(|uid| cached.contains(uid))
+                    .collect::<Vec<_>>();
+                for chunk in cached.chunks(100) {
+                    stage = "回读已读与星标状态".into();
+                    let current = store.account(&a.id)?;
+                    if !current.enabled || !current.same_connection(a) {
+                        return Err("账号已暂停或连接配置已修改，停止旧收取任务".into());
+                    }
+                    let set = chunk
+                        .iter()
+                        .map(u32::to_string)
+                        .collect::<Vec<_>>()
+                        .join(",");
+                    let fetched = session
+                        .run_command_and_read_response(format!("UID FETCH {set} (UID FLAGS)"))
+                        .map_err(err)?;
+                    let flags = remote_flags(&fetched)?
+                        .into_iter()
+                        .filter(|(uid, _, _)| chunk.contains(uid))
+                        .map(|(uid, read, star)| (format!("{validity}:{uid}"), read, star))
+                        .collect::<Vec<_>>();
+                    cached_flags.extend(flags);
+                }
             }
             // Repair previously downloaded messages that had no Date header.
             // Batch requests avoid one network round trip per old message.
@@ -774,11 +912,27 @@ fn sync_imap_scope<T: std::io::Read + Write>(
                 }
                 let remote = stable_remote
                     .unwrap_or_else(|| format!("content:{uid}:{}", archive::digest(raw)));
-                if store
-                    .ingest(&latest, &folder, &remote, raw, read)
-                    .map_err(|e| format!("UID {uid}：{e}"))?
-                {
+                let flags = remote_flags(&fetched)?
+                    .into_iter()
+                    .find(|(v, _, _)| *v == uid);
+                let star = flags.is_some_and(|(_, _, star)| star);
+                let read = flags.map_or(read, |(_, read, _)| read);
+                // Only this verified MIME/header identity is eligible. New mail
+                // receives initial flags before rules; existing mail merges after
+                // its source has been (re)published, still under the folder gate.
+                let is_new = store
+                    .ingest_with_flags(&latest, &folder, &remote, raw, read, star)
+                    .map_err(|e| format!("UID {uid}：{e}"))?;
+                if is_new {
                     count += 1;
+                    updated();
+                } else if flags.is_some()
+                    && store.merge_remote_flags(
+                        &latest,
+                        &folder,
+                        &[(remote.clone(), read, star)],
+                    )? > 0
+                {
                     updated();
                 }
                 if !full {
@@ -796,14 +950,38 @@ fn sync_imap_scope<T: std::io::Read + Write>(
             if !current.enabled || !current.same_connection(a) {
                 return Err("账号已暂停或连接配置已修改，停止旧收取任务".into());
             }
-            store.reconcile_folder(&a.id, &folder, &remote_ids)
+            store.reconcile_folder(&a.id, &folder, &remote_ids)?;
+            for chunk in cached_flags.chunks(100) {
+                if store.merge_remote_flags(a, &folder, chunk)? > 0 {
+                    updated();
+                }
+            }
+            Ok(())
         };
         let result = catch_unwind(AssertUnwindSafe(&mut sync_folder)).unwrap_or_else(|_| {
             Err(format!(
                 "{stage}时，邮件协议库处理响应异常；已下载的本地存档已保留"
             ))
         });
+        if only.is_none()
+            && result
+                .as_ref()
+                .is_err_and(|e| e == MISSING_SELECTION || e == INCONSISTENT_SELECTION)
+        {
+            // This tagged OK response was fully consumed. Opening the next
+            // folder is safe; transport/parse failures still abandon the socket.
+            let message = format!("文件夹「{folder}」{stage}失败：{}", result.unwrap_err());
+            store.log(&message)?;
+            selection_errors.push(message);
+            continue;
+        }
         result.map_err(|e| format!("文件夹「{folder}」{stage}失败：{e}"))?;
+    }
+    if !selection_errors.is_empty() {
+        return Err(format!(
+            "{}；其余文件夹已继续检查，本次新增 {count} 封邮件",
+            selection_errors.join("；")
+        ));
     }
     Ok(count)
 }
@@ -1521,6 +1699,123 @@ mod tests {
         (result, written)
     }
     #[test]
+    fn missing_selection_metadata_cannot_publish_stale_folder_sources() {
+        let temp = tempfile::tempdir().unwrap();
+        let store = Store::new(temp.path().into()).unwrap();
+        let account = crate::tests::account();
+        store.save_account(&account).unwrap();
+        store
+            .ingest(&account, "Parent", "7:12", &crate::tests::raw(), false)
+            .unwrap();
+        let commands = Arc::new(Mutex::new(Vec::new()));
+        let stream=ImapTranscript {
+            responses:Cursor::new(b"a1 OK Login\r\n* CAPABILITY IMAP4rev1\r\na2 OK Capabilities\r\n* LIST () \"/\" \"INBOX\"\r\n* LIST () \"/\" \"Parent\"\r\n* LIST () \"/\" \"Z-Archive\"\r\na3 OK Listed\r\n* 0 EXISTS\r\na4 OK [READ-ONLY] Opened\r\n* SEARCH\r\na5 OK Searched\r\na6 OK Opened\r\n* 0 EXISTS\r\na7 OK [READ-ONLY] Opened\r\n* SEARCH\r\na8 OK Searched\r\n".to_vec()), commands:commands.clone(),
+        };
+        let mut session = imap::Client::new(stream)
+            .login("test", "fixture-only")
+            .unwrap();
+        assert!(sync_imap(&store, &account, &mut session)
+            .unwrap_err()
+            .contains("无法确认目录已打开"));
+        assert!(store.has_source(&account.id, "Parent", "7:12").unwrap());
+        assert_eq!(
+            store.snapshot(&crate::tests::query()).unwrap().stats.saved,
+            1
+        );
+        let written = String::from_utf8(commands.lock().unwrap().clone()).unwrap();
+        assert_eq!(written.matches("UID SEARCH ALL").count(), 2);
+        assert!(written.contains("EXAMINE \"Z-Archive\""));
+        assert!(
+            !written.contains("FETCH") && !written.contains("STORE") && !written.contains("CLOSE")
+        );
+    }
+
+    #[test]
+    fn zero_exists_with_uids_is_rejected_but_a_new_unsolicited_exists_is_accepted() {
+        for arrived in [false, true] {
+            let temp = tempfile::tempdir().unwrap();
+            let store = Store::new(temp.path().into()).unwrap();
+            let account = crate::tests::account();
+            store.save_account(&account).unwrap();
+            let commands = Arc::new(Mutex::new(Vec::new()));
+            let mut responses=b"a1 OK Login\r\n* CAPABILITY IMAP4rev1\r\na2 OK Capabilities\r\n* LIST () \"/\" \"INBOX\"\r\na3 OK Listed\r\n* 0 EXISTS\r\n* OK [UIDVALIDITY 7] Valid\r\na4 OK [READ-ONLY] Opened\r\n".to_vec();
+            if arrived {
+                responses.extend_from_slice(b"* 1 EXISTS\r\n");
+            }
+            responses.extend_from_slice(b"* SEARCH 12\r\na5 OK Searched\r\n");
+            let raw = crate::tests::raw();
+            responses.extend(
+                format!("* 1 FETCH (UID 12 FLAGS () BODY[] {{{}}}\r\n", raw.len()).as_bytes(),
+            );
+            responses.extend(&raw);
+            responses.extend_from_slice(b")\r\na6 OK Fetched\r\n");
+            let mut session = imap::Client::new(ImapTranscript {
+                responses: Cursor::new(responses),
+                commands: commands.clone(),
+            })
+            .login("test", "fixture-only")
+            .unwrap();
+            let result = sync_imap(&store, &account, &mut session);
+            if arrived {
+                assert_eq!(result.unwrap(), 1);
+            } else {
+                assert!(result.unwrap_err().contains("目录响应相互矛盾"));
+            }
+            let written = String::from_utf8(commands.lock().unwrap().clone()).unwrap();
+            assert_eq!(written.contains("UID FETCH"), arrived);
+            assert_eq!(
+                store.has_source(&account.id, "INBOX", "7:12").unwrap(),
+                arrived
+            );
+        }
+    }
+
+    #[test]
+    fn incoming_flags_require_uid_and_flags_and_reject_truncation() {
+        let response = b"* 1 FETCH (UID 7 FLAGS (\\Seen \\Flagged custom))\r\n* 2 FETCH (UID 8 FLAGS ())\r\n* 3 FETCH (FLAGS (\\Seen))\r\n* 4 FETCH (UID 9 RFC822.SIZE 10)\r\n";
+        assert_eq!(
+            remote_flags(response).unwrap(),
+            vec![(7, true, true), (8, false, false)]
+        );
+        assert!(remote_flags(b"* 1 FETCH (UID 7 FLAGS (\\Seen)\r\n").is_err());
+    }
+
+    #[test]
+    fn cached_incoming_flags_change_without_body_download_or_write_back() {
+        let temp = tempfile::tempdir().unwrap();
+        let store = Store::new(temp.path().into()).unwrap();
+        let account = crate::tests::account();
+        store.save_account(&account).unwrap();
+        store
+            .ingest(&account, "INBOX", "7:12", &crate::tests::raw(), false)
+            .unwrap();
+        let commands = Arc::new(Mutex::new(Vec::new()));
+        let stream = ImapTranscript {
+            responses: Cursor::new(b"a1 OK Login\r\n* CAPABILITY IMAP4rev1\r\na2 OK Capabilities\r\n* LIST () \"/\" \"INBOX\"\r\na3 OK Listed\r\n* 1 EXISTS\r\n* OK [UIDVALIDITY 7] Valid\r\na4 OK [READ-ONLY] Opened\r\n* SEARCH 12\r\na5 OK Searched\r\n* 1 FETCH (UID 12 FLAGS (\\Seen \\Flagged))\r\n* 2 FETCH (UID 99 FLAGS ())\r\na6 OK Fetched\r\n".to_vec()),
+            commands: commands.clone(),
+        };
+        let mut session = imap::Client::new(stream)
+            .login("test", "fixture-only")
+            .unwrap();
+        let updated = std::cell::Cell::new(0);
+        assert_eq!(
+            sync_imap_with_updates(&store, &account, &mut session, &|| updated
+                .set(updated.get() + 1))
+            .unwrap(),
+            0
+        );
+        assert_eq!(updated.get(), 1);
+        let mail = &store.snapshot(&crate::tests::query()).unwrap().messages[0];
+        assert!(mail.is_read && mail.starred);
+        assert_eq!(store.server_operations().unwrap().pending, 0);
+        let written = String::from_utf8(commands.lock().unwrap().clone()).unwrap();
+        assert!(written.contains("UID FETCH 12 (UID FLAGS)"));
+        assert!(
+            !written.contains("BODY") && !written.contains("STORE") && !written.contains("EXPUNGE")
+        );
+    }
+
+    #[test]
     fn special_use_discovery_requests_all_folders_and_maps_authoritative_attributes() {
         let (folders, commands) = discovery_round(b"a1 OK Login\r\n* CAPABILITY IMAP4rev1 SPECIAL-USE\r\na2 OK Capabilities\r\n* LIST (\\Sent) \"/\" \"History\"\r\n* LIST (\\Noselect) \"/\" \"Projects\"\r\n* LIST () \"/\" \"Projects/Sent\"\r\n* LIST (\\All) \"/\" \"[Gmail]/All Mail\"\r\na3 OK Listed\r\n");
         let folders = folders.unwrap();
@@ -1608,6 +1903,29 @@ mod tests {
                 .as_bytes(),
             );
             tag += 1;
+        }
+        let effective_validity = validity.filter(|v| *v != 0).or_else(|| {
+            status_response
+                .split("UIDVALIDITY ")
+                .nth(1)?
+                .split(')')
+                .next()?
+                .parse::<u32>()
+                .ok()
+                .filter(|v| *v != 0)
+        });
+        if let (Some(uid), Some(validity)) = (uid, effective_validity) {
+            if store
+                .cached_flag_uids(&crate::tests::account(), "INBOX", validity)
+                .unwrap()
+                .contains(&uid)
+            {
+                tag += 1;
+                responses.extend_from_slice(
+                    format!("* 1 FETCH (UID {uid} FLAGS ())\r\na{tag} OK FLAGS fetched\r\n")
+                        .as_bytes(),
+                );
+            }
         }
         if let (Some(uid), Some(raw)) = (uid, raw) {
             tag += 1;
@@ -1796,7 +2114,8 @@ mod tests {
         assert!(commands.contains("STATUS \"INBOX\" (UIDVALIDITY)"));
         let (result, commands) = imap_round(&store, None, status, Some(7), None);
         assert_eq!(result.unwrap(), 0);
-        assert!(!commands.contains("UID FETCH"));
+        assert!(commands.contains("UID FETCH 7 (UID FLAGS)"));
+        assert!(!commands.contains("BODY.PEEK"));
     }
 
     #[test]
@@ -2080,7 +2399,7 @@ pub fn read_remote(store: &Store, a: &Account, mail: &Mail) -> Result<Vec<u8>> {
     let secret = auth::credentials(a)?;
     let raw = if a.protocol == "imap" {
         let mut session = imap_session(a, &secret)?;
-        let mailbox = session.examine(&folder).map_err(err)?;
+        let mailbox = examine_verified(&mut session, &folder)?;
         let mut pieces = remote.split(':');
         let first = pieces.next().ok_or("服务器邮件标识无效")?;
         let uid = pieces

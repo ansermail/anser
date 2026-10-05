@@ -310,6 +310,8 @@ pub fn parse(
         date,
         is_read: false,
         starred: false,
+        local_read_override: None,
+        local_star_override: None,
         local_folder: "全部存档".into(),
         trashed: false,
         has_attachments: !attachments.is_empty(),

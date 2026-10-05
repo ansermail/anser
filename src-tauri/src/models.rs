@@ -96,6 +96,10 @@ pub struct Mail {
     pub date: String,
     pub is_read: bool,
     pub starred: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub local_read_override: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub local_star_override: Option<bool>,
     pub local_folder: String,
     pub trashed: bool,
     pub has_attachments: bool,

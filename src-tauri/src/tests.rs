@@ -1932,3 +1932,212 @@ fn mappings_are_account_scoped_and_clear_when_server_identity_changes() {
     assert!(store.folder_settings(&a.id).unwrap().mappings.is_empty());
     assert!(store.remote_folders(Some(&a.id)).unwrap().is_empty());
 }
+
+#[test]
+fn server_flags_merge_atomically_without_replaying_or_losing_local_content() {
+    let temp = tempfile::tempdir().unwrap();
+    let s = Store::new(temp.path().into()).unwrap();
+    let a = account();
+    s.save_account(&a).unwrap();
+    s.ingest(&a, "INBOX", "7:12", &raw(), false).unwrap();
+    let id = s.snapshot(&query()).unwrap().messages[0].id.clone();
+    let mut before = s.mail(&id).unwrap();
+    before.local_folder = "归类".into();
+    before.trashed = true;
+    s.update_mail(&before).unwrap();
+    let observation = vec![("7:12".into(), true, true)];
+    assert_eq!(s.merge_remote_flags(&a, "INBOX", &observation).unwrap(), 1);
+    assert_eq!(s.merge_remote_flags(&a, "INBOX", &observation).unwrap(), 0);
+    let after = s.mail(&id).unwrap();
+    assert!(after.is_read && after.starred && after.trashed);
+    assert_eq!(after.hash, before.hash);
+    assert_eq!(after.body, before.body);
+    assert_eq!(after.local_folder, before.local_folder);
+    assert_eq!(archive::read_raw(&s.root, &after.hash).unwrap(), raw());
+    assert_eq!(s.server_operations().unwrap().pending, 0);
+    assert_eq!(s.cached_flag_uids(&a, "INBOX", 7).unwrap().len(), 1);
+    assert!(s.cached_flag_uids(&a, "INBOX", 8).unwrap().is_empty());
+    let flags = [("7:12".into(), false, false)];
+    assert_eq!(s.merge_remote_flags(&a, "INBOX", &flags).unwrap(), 1);
+    let after = s.mail(&id).unwrap();
+    assert!(!after.is_read && !after.starred);
+}
+
+#[test]
+fn server_flags_protect_each_unfinished_intent_and_accept_later_external_changes() {
+    use crate::operations::Failure;
+    for status in ["queued", "running", "blocked", "completed"] {
+        let temp = tempfile::tempdir().unwrap();
+        let s = Store::new(temp.path().into()).unwrap();
+        let a = account();
+        s.save_account(&a).unwrap();
+        s.ingest(&a, "INBOX", "7:12", &raw(), false).unwrap();
+        let id = s.snapshot(&query()).unwrap().messages[0].id.clone();
+        s.change_mail(&id, "read", "true").unwrap();
+        let op = s.due_operations(&a.id).unwrap().remove(0);
+        if status != "queued" {
+            s.claim_operation(&op).unwrap();
+        }
+        if status == "blocked" {
+            s.finish_operation(&op, Err(Failure::Blocked("rejected".into())))
+                .unwrap();
+        }
+        if status == "completed" {
+            s.finish_operation(&op, Ok(())).unwrap();
+        }
+        s.merge_remote_flags(&a, "INBOX", &[("7:12".into(), false, true)])
+            .unwrap();
+        let m = s.mail(&id).unwrap();
+        assert_eq!(m.is_read, status != "completed", "{status}");
+        assert!(m.starred);
+        // A protected read observation with unchanged star causes no write/cache churn.
+        assert_eq!(
+            s.merge_remote_flags(&a, "INBOX", &[("7:12".into(), false, true)])
+                .unwrap(),
+            0
+        );
+        s.change_mail(&id, "star", "false").unwrap();
+        s.merge_remote_flags(&a, "INBOX", &[("7:12".into(), true, true)])
+            .unwrap();
+        assert!(!s.mail(&id).unwrap().starred);
+    }
+}
+
+#[test]
+fn server_flags_ignore_other_copies_accounts_and_stale_connection_observations() {
+    let temp = tempfile::tempdir().unwrap();
+    let s = Store::new(temp.path().into()).unwrap();
+    let a = account();
+    s.save_account(&a).unwrap();
+    s.ingest(&a, "Other", "7:13", &raw(), false).unwrap();
+    s.ingest(&a, "INBOX", "7:12", &raw(), false).unwrap();
+    let id = s.snapshot(&query()).unwrap().messages[0].id.clone();
+    let mut b = a.clone();
+    b.id = "other-account".into();
+    s.save_account(&b).unwrap();
+    s.ingest(&b, "INBOX", "7:12", &raw(), false).unwrap();
+    assert_eq!(
+        s.merge_remote_flags(&a, "Other", &[("7:13".into(), true, true)])
+            .unwrap(),
+        0
+    );
+    assert_eq!(
+        s.merge_remote_flags(&a, "INBOX", &[("8:12".into(), true, true)])
+            .unwrap(),
+        0
+    );
+    assert_eq!(
+        s.merge_remote_flags(&a, "INBOX", &[("7:12".into(), true, true)])
+            .unwrap(),
+        1
+    );
+    assert!(s.mail(&id).unwrap().starred);
+    assert!(
+        !s.snapshot(&query())
+            .unwrap()
+            .messages
+            .iter()
+            .find(|m| m.account_id == b.id)
+            .unwrap()
+            .starred
+    );
+    let mut edited = a.clone();
+    edited.enabled = false;
+    s.save_account(&edited).unwrap();
+    assert_eq!(
+        s.merge_remote_flags(&a, "INBOX", &[("7:12".into(), false, false)])
+            .unwrap(),
+        0
+    );
+    edited.enabled = true;
+    edited.incoming_host = "changed.example.com".into();
+    s.save_account(&edited).unwrap();
+    assert_eq!(
+        s.merge_remote_flags(&a, "INBOX", &[("7:12".into(), false, false)])
+            .unwrap(),
+        0
+    );
+    s.save_account(&a).unwrap();
+    s.reconcile_folder(&a.id, "INBOX", &[]).unwrap();
+    assert_eq!(
+        s.merge_remote_flags(&a, "INBOX", &[("7:12".into(), false, false)])
+            .unwrap(),
+        0
+    );
+    assert_eq!(
+        s.merge_remote_flags(&a, "Other", &[("7:13".into(), false, false)])
+            .unwrap(),
+        1
+    );
+    assert!(!s.mail(&id).unwrap().starred);
+}
+
+#[test]
+fn server_flag_batch_rolls_back_on_database_failure_and_initial_star_is_preserved() {
+    let temp = tempfile::tempdir().unwrap();
+    let s = Store::new(temp.path().into()).unwrap();
+    let a = account();
+    s.save_account(&a).unwrap();
+    s.ingest_with_flags(&a, "INBOX", "7:12", &raw(), false, true)
+        .unwrap();
+    let initial = s.snapshot(&query()).unwrap().messages[0].clone();
+    assert!(initial.starred);
+    let second = String::from_utf8(raw())
+        .unwrap()
+        .replace("Project invoice", "Second invoice");
+    s.ingest(&a, "INBOX", "7:13", second.as_bytes(), false)
+        .unwrap();
+    s.db().unwrap().execute_batch("CREATE TRIGGER reject_second BEFORE UPDATE ON messages WHEN json_extract(OLD.data,'$.subject')='Second invoice' BEGIN SELECT RAISE(ABORT,'fixture failure'); END;").unwrap();
+    assert!(s
+        .merge_remote_flags(
+            &a,
+            "INBOX",
+            &[("7:12".into(), true, false), ("7:13".into(), true, true)]
+        )
+        .is_err());
+    let m = s.mail(&initial.id).unwrap();
+    assert!(!m.is_read && m.starred);
+}
+
+#[test]
+fn local_rule_flags_survive_refresh_upgrade_and_restart_until_explicit_user_change() {
+    let temp = tempfile::tempdir().unwrap();
+    let s = Store::new(temp.path().into()).unwrap();
+    let mut a = account();
+    a.save_locally = false;
+    s.save_account(&a).unwrap();
+    s.save_rules(&[
+        rule("read-rule", "read", false),
+        rule("star-rule", "star", false),
+    ])
+    .unwrap();
+    s.ingest_with_flags(&a, "INBOX", "7:12", &raw(), false, false)
+        .unwrap();
+    let mut all = query();
+    all.view = "all".into();
+    let id = s.snapshot(&all).unwrap().messages[0].id.clone();
+    let observation = [("7:12".into(), false, false)];
+    assert_eq!(s.merge_remote_flags(&a, "INBOX", &observation).unwrap(), 0);
+    a.save_locally = true;
+    s.save_account(&a).unwrap();
+    s.ingest_with_flags(&a, "INBOX", "7:12", &raw(), false, false)
+        .unwrap();
+    let s = Store::new(temp.path().into()).unwrap();
+    assert_eq!(s.merge_remote_flags(&a, "INBOX", &observation).unwrap(), 0);
+    let m = s.mail(&id).unwrap();
+    assert!(m.is_read && m.starred && m.saved_locally);
+    assert_eq!(m.local_read_override, Some(true));
+    assert_eq!(m.local_star_override, Some(true));
+    assert_eq!(s.server_operations().unwrap().pending, 0);
+    s.change_mail(&id, "read", "false").unwrap();
+    let m = s.mail(&id).unwrap();
+    assert_eq!(m.local_read_override, None);
+    assert_eq!(m.local_star_override, Some(true));
+    let op = s.due_operations(&a.id).unwrap().remove(0);
+    s.claim_operation(&op).unwrap();
+    s.finish_operation(&op, Ok(())).unwrap();
+    s.merge_remote_flags(&a, "INBOX", &[("7:12".into(), true, false)])
+        .unwrap();
+    let m = s.mail(&id).unwrap();
+    assert!(m.is_read && m.starred);
+}

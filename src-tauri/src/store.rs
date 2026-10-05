@@ -296,6 +296,17 @@ impl Store {
         raw: &[u8],
         read: bool,
     ) -> Result<bool> {
+        self.ingest_with_flags(a, folder, remote, raw, read, false)
+    }
+    pub(crate) fn ingest_with_flags(
+        &self,
+        a: &Account,
+        folder: &str,
+        remote: &str,
+        raw: &[u8],
+        read: bool,
+        starred: bool,
+    ) -> Result<bool> {
         let _archive = self.archive_gate.read().map_err(err)?;
         // A cleanup can disable retention while a FETCH is in flight. Do not
         // republish an old request as a local archive after it finishes.
@@ -351,6 +362,8 @@ impl Store {
             if save && !old.saved_locally {
                 mail.is_read = old.is_read;
                 mail.starred = old.starred;
+                mail.local_read_override = old.local_read_override;
+                mail.local_star_override = old.local_star_override;
                 mail.trashed = old.trashed;
                 mail.local_folder = old.local_folder;
                 mail.server_date = old.server_date;
@@ -374,12 +387,15 @@ impl Store {
                     mail.id = old.id;
                     mail.is_read = old.is_read;
                     mail.starred = old.starred;
+                    mail.local_read_override = old.local_read_override;
+                    mail.local_star_override = old.local_star_override;
                     mail.trashed = old.trashed;
                     mail.local_folder = old.local_folder;
                     mail.server_date = old.server_date;
                 }
             } else {
                 mail.is_read = read;
+                mail.starred = starred;
             }
             mail.saved_locally = save;
             if !save {
@@ -407,9 +423,18 @@ impl Store {
             if rules::matches(&r, &m) {
                 match r.action.as_str() {
                     "folder" => m.local_folder = r.destination.clone(),
-                    "read" => m.is_read = true,
-                    "unread" => m.is_read = false,
-                    "star" => m.starred = true,
+                    "read" => {
+                        m.is_read = true;
+                        m.local_read_override = Some(true);
+                    }
+                    "unread" => {
+                        m.is_read = false;
+                        m.local_read_override = Some(false);
+                    }
+                    "star" => {
+                        m.starred = true;
+                        m.local_star_override = Some(true);
+                    }
                     "trash" => m.trashed = true,
                     _ => return Err("未知动作".into()),
                 };

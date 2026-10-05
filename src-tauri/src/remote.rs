@@ -155,6 +155,89 @@ impl Store {
             .and_then(|s| serde_json::from_str::<Mail>(&s).ok())
             .is_some_and(|m| !a.save_locally || m.saved_locally))
     }
+    pub(crate) fn cached_flag_uids(
+        &self,
+        account: &Account,
+        folder: &str,
+        validity: u32,
+    ) -> Result<std::collections::HashSet<u32>> {
+        let db = self.db()?;
+        let mut stmt = db.prepare("SELECT s.remote_id FROM sources s JOIN message_listing m ON m.id=s.mail_id AND m.account_id=s.account_id WHERE s.account_id=?1 AND s.folder=?2 AND (?3=0 OR json_extract(m.data,'$.savedLocally')=1)").map_err(err)?;
+        let rows = stmt
+            .query_map(params![account.id, folder, account.save_locally], |r| {
+                r.get::<_, String>(0)
+            })
+            .map_err(err)?;
+        let mut uids = std::collections::HashSet::new();
+        for row in rows {
+            if let Some((Some(v), uid, None)) =
+                crate::operations::remote_identity(&row.map_err(err)?)
+            {
+                if v == validity {
+                    uids.insert(uid);
+                }
+            }
+        }
+        Ok(uids)
+    }
+    /// Merge observations without enqueueing a write back to the server. A
+    /// single canonical active location controls flags on a deduplicated mail:
+    /// INBOX first, then its original location, then a deterministic fallback.
+    pub(crate) fn merge_remote_flags(
+        &self,
+        account: &Account,
+        folder: &str,
+        flags: &[(String, bool, bool)],
+    ) -> Result<usize> {
+        let mut db = self.db()?;
+        let tx = db
+            .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
+            .map_err(err)?;
+        let current: Option<String> = tx
+            .query_row(
+                "SELECT data FROM accounts WHERE id=?1",
+                [&account.id],
+                |r| r.get(0),
+            )
+            .optional()
+            .map_err(err)?;
+        let Some(current) = current else {
+            return Ok(0);
+        };
+        let current: Account = serde_json::from_str(&current).map_err(err)?;
+        let identity = crate::operations::identity(account);
+        if !current.enabled
+            || current.protocol != "imap"
+            || crate::operations::identity(&current) != identity
+        {
+            return Ok(0);
+        }
+        let mut changed = 0;
+        let mut stmt = tx.prepare("WITH observed AS (SELECT m.id,json_set(data,
+                '$.isRead',CASE WHEN json_extract(m.data,'$.localReadOverride') IS NOT NULL OR EXISTS(SELECT 1 FROM server_operations o WHERE o.account_id=?1 AND o.folder=?2 AND o.remote_id=?3 AND json_extract(o.data,'$.mailId')=m.id AND o.action='read' AND o.status IN ('queued','running','blocked') AND json_extract(o.data,'$.identity')=?6 AND json_extract(o.data,'$.value')=json_extract(m.data,'$.isRead')) THEN json(CASE json_extract(m.data,'$.isRead') WHEN 1 THEN 'true' ELSE 'false' END) ELSE json(?4) END,
+                '$.starred',CASE WHEN json_extract(m.data,'$.localStarOverride') IS NOT NULL OR EXISTS(SELECT 1 FROM server_operations o WHERE o.account_id=?1 AND o.folder=?2 AND o.remote_id=?3 AND json_extract(o.data,'$.mailId')=m.id AND o.action='star' AND o.status IN ('queued','running','blocked') AND json_extract(o.data,'$.identity')=?6 AND json_extract(o.data,'$.value')=json_extract(m.data,'$.starred')) THEN json(CASE json_extract(m.data,'$.starred') WHEN 1 THEN 'true' ELSE 'false' END) ELSE json(?5) END) AS next_data
+                FROM sources target JOIN messages m ON m.id=target.mail_id AND m.account_id=target.account_id WHERE target.account_id=?1 AND target.folder=?2 AND target.remote_id=?3 AND target.active=1
+                AND ?2=(SELECT s.folder FROM sources s JOIN message_listing origin ON origin.id=s.mail_id WHERE s.account_id=?1 AND s.mail_id=m.id AND s.active=1 ORDER BY s.folder='INBOX' COLLATE NOCASE DESC,s.folder=json_extract(origin.data,'$.sourceFolder') DESC,s.folder COLLATE NOCASE,s.folder LIMIT 1))
+                UPDATE messages SET data=(SELECT next_data FROM observed WHERE observed.id=messages.id) WHERE id IN (SELECT observed.id FROM observed JOIN messages original ON original.id=observed.id WHERE observed.next_data!=original.data)").map_err(err)?;
+        for (remote, read, star) in flags {
+            // Pending, running and rejected writes protect each flag separately.
+            // Completed writes don't suppress later changes from other clients.
+            // Only an intention for this exact current account/source applies.
+            changed += stmt
+                .execute(params![
+                    account.id,
+                    folder,
+                    remote,
+                    read.to_string(),
+                    star.to_string(),
+                    identity
+                ])
+                .map_err(err)?;
+        }
+        drop(stmt);
+        tx.commit().map_err(err)?;
+        Ok(changed)
+    }
     pub fn unknown_dates(&self, account: &str, folder: &str) -> Result<Vec<String>> {
         let db = self.db()?;
         let mut q=db.prepare("SELECT s.remote_id FROM sources s JOIN message_listing m ON m.id=s.mail_id WHERE s.account_id=?1 AND s.folder=?2 AND s.active=1 AND json_extract(m.data,'$.date')=''").map_err(err)?;

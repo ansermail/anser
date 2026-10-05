@@ -109,8 +109,14 @@ impl Store {
         for data in rows {
             let mut mail: Mail = serde_json::from_str(&data).map_err(err)?;
             match action {
-                "read" => mail.is_read = value == "true",
-                "star" => mail.starred = value == "true",
+                "read" => {
+                    mail.is_read = value == "true";
+                    mail.local_read_override = None;
+                }
+                "star" => {
+                    mail.starred = value == "true";
+                    mail.local_star_override = None;
+                }
                 "trash" => mail.trashed = value == "true",
                 "folder" if !value.trim().is_empty() => mail.local_folder = value.into(),
                 _ => return Err("无效动作或空文件夹名称".into()),
