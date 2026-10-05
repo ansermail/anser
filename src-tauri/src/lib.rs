@@ -3,6 +3,7 @@ mod archive_deletion;
 mod attachment_preview;
 mod auth;
 mod conversation;
+mod directory_operations;
 mod folder_health;
 mod idle;
 mod models;
@@ -76,6 +77,45 @@ async fn folder_health(
 ) -> Result<Vec<folder_health::FolderHealth>> {
     let store = state.store.clone();
     tauri::async_runtime::spawn_blocking(move || store.folder_health())
+        .await
+        .map_err(err)?
+}
+#[tauri::command]
+async fn copy_sources(state: tauri::State<'_, AppState>, id: String) -> Result<Vec<String>> {
+    let store = state.store.clone();
+    tauri::async_runtime::spawn_blocking(move || store.copy_sources(&id))
+        .await
+        .map_err(err)?
+}
+#[tauri::command]
+async fn queue_server_copy(
+    state: tauri::State<'_, AppState>,
+    id: String,
+    source: String,
+    target: String,
+) -> Result<String> {
+    let store = state.store.clone();
+    tauri::async_runtime::spawn_blocking(move || store.queue_copy(&id, &source, &target))
+        .await
+        .map_err(err)?
+}
+#[tauri::command]
+async fn directory_operations(
+    state: tauri::State<'_, AppState>,
+) -> Result<Vec<directory_operations::DirectoryOperation>> {
+    let store = state.store.clone();
+    tauri::async_runtime::spawn_blocking(move || store.directory_operations())
+        .await
+        .map_err(err)?
+}
+#[tauri::command]
+async fn directory_operation_action(
+    state: tauri::State<'_, AppState>,
+    id: String,
+    action: String,
+) -> Result<()> {
+    let store = state.store.clone();
+    tauri::async_runtime::spawn_blocking(move || store.directory_action(&id, &action))
         .await
         .map_err(err)?
 }
@@ -835,6 +875,7 @@ pub fn run() {
             });
             realtime::start(store.clone(), app.handle().clone(), realtime);
             operations::start(store.clone(), app.handle().clone());
+            directory_operations::start(store.clone(), app.handle().clone());
             let menu = tauri::menu::Menu::default(app.handle())?;
             app.set_menu(menu)?;
             tauri::tray::TrayIconBuilder::new()
@@ -925,6 +966,10 @@ pub fn run() {
             mail_conversation,
             update_mail,
             folder_health,
+            copy_sources,
+            queue_server_copy,
+            directory_operations,
+            directory_operation_action,
             probe_remote_folder,
             server_operations,
             retry_server_operation,

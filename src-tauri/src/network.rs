@@ -3109,3 +3109,424 @@ fn apply_flag_session<T: std::io::Read + Write>(
     }
     Ok(())
 }
+
+// imap 2.4 consumes the tagged completion (including COPYUID). Capture only
+// this command's bounded response in memory; never record credentials or MIME.
+#[derive(Default, Debug)]
+struct CopyCapture {
+    enabled: bool,
+    input: Vec<u8>,
+    output: Vec<u8>,
+    overflow: bool,
+}
+#[derive(Debug)]
+struct CopyStream<T> {
+    inner: T,
+    capture: Arc<Mutex<CopyCapture>>,
+}
+impl<T: std::io::Read> std::io::Read for CopyStream<T> {
+    fn read(&mut self, buffer: &mut [u8]) -> std::io::Result<usize> {
+        let n = self.inner.read(buffer)?;
+        if let Ok(mut capture) = self.capture.lock() {
+            if capture.enabled {
+                if capture.input.len() + n <= 65536 {
+                    capture.input.extend_from_slice(&buffer[..n]);
+                } else {
+                    capture.overflow = true;
+                }
+            }
+        }
+        Ok(n)
+    }
+}
+impl<T: Write> Write for CopyStream<T> {
+    fn write(&mut self, buffer: &[u8]) -> std::io::Result<usize> {
+        let n = self.inner.write(buffer)?;
+        if let Ok(mut capture) = self.capture.lock() {
+            if capture.enabled {
+                if capture.output.len() + n <= 8192 {
+                    capture.output.extend_from_slice(&buffer[..n]);
+                } else {
+                    capture.overflow = true;
+                }
+            }
+        }
+        Ok(n)
+    }
+    fn flush(&mut self) -> std::io::Result<()> {
+        self.inner.flush()
+    }
+}
+fn copy_receipt(
+    capture: &CopyCapture,
+    uid: u32,
+    target_validity: u32,
+) -> Result<crate::directory_operations::CopyReceipt> {
+    use imap_proto::{Response, Status};
+    if capture.overflow {
+        return Err("复制确认响应过大，结果未确认；请核对目标目录".into());
+    }
+    let command = std::str::from_utf8(&capture.output).map_err(err)?;
+    let tag = command
+        .split_whitespace()
+        .next()
+        .ok_or("复制命令标识缺失")?;
+    let mut remaining = capture.input.as_slice();
+    while !remaining.is_empty() {
+        let (rest, response) =
+            imap_proto::parse_response(remaining).map_err(|_| "复制确认响应无效或未完整传输")?;
+        remaining = rest;
+        if let Response::Done {
+            tag: actual,
+            status: Status::Ok,
+            information: Some(info),
+            ..
+        } = response
+        {
+            if actual.as_bytes() != tag.as_bytes() {
+                continue;
+            }
+            let code = info
+                .strip_prefix('[')
+                .and_then(|s| s.split_once(']').map(|(v, _)| v))
+                .ok_or("服务器已接受复制，但未返回 COPYUID；请核对目标目录，不会自动重复复制")?;
+            let fields: Vec<_> = code.split_whitespace().collect();
+            let one_uid = |s: &str| -> Option<u32> {
+                if let Some((a, b)) = s.split_once(':') {
+                    if a != b {
+                        return None;
+                    }
+                    return a.parse().ok().filter(|n| *n > 0);
+                }
+                s.parse().ok().filter(|n| *n > 0)
+            };
+            if fields.len() != 4
+                || !fields[0].eq_ignore_ascii_case("COPYUID")
+                || one_uid(fields[1]) != Some(target_validity)
+                || one_uid(fields[2]) != Some(uid)
+            {
+                return Err("复制确认的来源或目标邮件标识不匹配；请核对目标目录".into());
+            }
+            return Ok(crate::directory_operations::CopyReceipt {
+                validity: target_validity,
+                uid: one_uid(fields[3]).ok_or("复制目标邮件编号无效")?,
+            });
+        }
+    }
+    Err("复制完成确认缺失；请核对目标目录，不会自动重复复制".into())
+}
+pub(crate) fn apply_copy(
+    store: &Store,
+    op: &crate::directory_operations::DirectoryOperation,
+) -> Result<()> {
+    let account = store.validate_copy(op)?;
+    let secret = auth::credentials(&account)?;
+    let capture = Arc::new(Mutex::new(CopyCapture::default()));
+    let mut session = imap_session_using(&account, &secret, None, |inner| CopyStream {
+        inner,
+        capture: capture.clone(),
+    })?;
+    // Dropping the socket never removes the source. No CLOSE/EXPUNGE/STORE.
+    apply_copy_session(store, op, &mut session, &capture)
+}
+fn verify_copy_session<T: std::io::Read + Write>(
+    store: &Store,
+    op: &crate::directory_operations::DirectoryOperation,
+    session: &mut imap::Session<T>,
+) -> Result<()> {
+    let receipt = op.receipt.as_ref().ok_or("复制确认缺失")?;
+    let mailbox = examine_verified(session, &op.target)?;
+    if mailbox.uid_validity != Some(receipt.validity) {
+        return Err("复制目标目录的邮件标识已变化，保留确认记录，请重新收取核对".into());
+    }
+    let messages = session
+        .uid_fetch(receipt.uid.to_string(), "(UID BODY.PEEK[])")
+        .map_err(err)?;
+    let raw = messages
+        .iter()
+        .find(|m| m.uid == Some(receipt.uid))
+        .and_then(|m| m.body())
+        .ok_or("已接受复制，但尚未读取到目标邮件；稍后只读核对")?;
+    if archive::digest(raw) != op.content_hash {
+        return Err("复制目标内容与原邮件不一致；保留确认记录，请重新核对".into());
+    }
+    store.complete_copy(op)
+}
+fn apply_copy_session<T: std::io::Read + Write>(
+    store: &Store,
+    op: &crate::directory_operations::DirectoryOperation,
+    session: &mut imap::Session<T>,
+    capture: &Arc<Mutex<CopyCapture>>,
+) -> Result<()> {
+    if op.receipt.is_some() {
+        return verify_copy_session(store, op, session);
+    }
+    let caps = session.capabilities().map_err(err)?;
+    if !caps.has_str("UIDPLUS") && !caps.has_str("IMAP4rev2") {
+        return Err("服务器未提供 UIDPLUS，当前版本无法可靠确认复制结果；尚未提交复制".into());
+    }
+    drop(caps);
+    let target = examine_verified(session, &op.target)?;
+    let target_validity = mailbox_uid_validity(session, &op.target, &target)?
+        .filter(|n| *n > 0)
+        .ok_or("目标目录没有可靠的 UIDVALIDITY；尚未提交复制")?;
+    let (validity, uid, hash) =
+        crate::operations::remote_identity(&op.remote_id).ok_or("来源邮件编号无效")?;
+    // This is the last selection before COPY; no STATUS command intervenes.
+    let source = session.select(&op.folder).map_err(err)?;
+    if validity.is_some_and(|v| source.uid_validity != Some(v)) {
+        return Err("来源目录的邮件标识已变化；尚未提交复制".into());
+    }
+    let messages = session
+        .uid_fetch(uid.to_string(), "(UID BODY.PEEK[])")
+        .map_err(err)?;
+    let raw = messages
+        .iter()
+        .find(|m| m.uid == Some(uid))
+        .and_then(|m| m.body())
+        .ok_or("原服务器邮件已不存在；尚未提交复制")?;
+    let content_hash = archive::digest(raw);
+    drop(messages);
+    if let Some(expected) = hash {
+        if expected != content_hash {
+            let headers = session
+                .uid_fetch(uid.to_string(), "(UID BODY.PEEK[HEADER])")
+                .map_err(err)?;
+            if headers
+                .iter()
+                .find(|m| m.uid == Some(uid))
+                .and_then(|m| m.header())
+                .is_none_or(|h| archive::digest(h) != expected)
+            {
+                return Err("来源邮件内容不一致；尚未提交复制".into());
+            }
+        }
+    }
+    store.submit_copy(op, &content_hash)?;
+    *capture.lock().map_err(err)? = CopyCapture {
+        enabled: true,
+        ..Default::default()
+    };
+    let target = op.target.replace('\\', "\\\\").replace('"', "\\\"");
+    let result = session.run_command_and_read_response(format!("UID COPY {uid} \"{target}\""));
+    capture.lock().map_err(err)?.enabled = false;
+    match result {
+        Err(e @ (imap::error::Error::No(_) | imap::error::Error::Bad(_))) => {
+            let reason = format!("服务器明确拒绝复制：{e}；原邮件保留");
+            store.fail_copy(&op.id, &reason, true)?;
+            return Err(reason);
+        }
+        Err(_) => return Err("复制请求已提交，但连接中断；结果未确认，不会自动重复复制".into()),
+        Ok(_) => {}
+    }
+    let receipt = copy_receipt(&*capture.lock().map_err(err)?, uid, target_validity)?;
+    store.save_copy_receipt(op, &receipt)?;
+    let current = store.directory_operation(&op.id)?;
+    verify_copy_session(store, &current, session)
+}
+
+#[cfg(test)]
+mod copy_tests {
+    use super::*;
+    use std::{
+        collections::VecDeque,
+        io::{Cursor, Read},
+    };
+    #[derive(Debug)]
+    struct Script {
+        replies: VecDeque<Vec<u8>>,
+        current: Cursor<Vec<u8>>,
+        pending: Vec<u8>,
+        written: Arc<Mutex<Vec<u8>>>,
+    }
+    impl Read for Script {
+        fn read(&mut self, buffer: &mut [u8]) -> std::io::Result<usize> {
+            self.current.read(buffer)
+        }
+    }
+    impl Write for Script {
+        fn write(&mut self, buffer: &[u8]) -> std::io::Result<usize> {
+            self.written.lock().unwrap().extend_from_slice(buffer);
+            self.pending.extend_from_slice(buffer);
+            if self.pending.ends_with(b"\r\n") {
+                self.current = Cursor::new(self.replies.pop_front().unwrap_or_default());
+                self.pending.clear();
+            }
+            Ok(buffer.len())
+        }
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
+    fn session(
+        replies: Vec<Vec<u8>>,
+    ) -> (
+        imap::Session<CopyStream<Script>>,
+        Arc<Mutex<CopyCapture>>,
+        Arc<Mutex<Vec<u8>>>,
+    ) {
+        let capture = Arc::new(Mutex::new(CopyCapture::default()));
+        let written = Arc::new(Mutex::new(Vec::new()));
+        let script = Script {
+            replies: replies.into(),
+            current: Cursor::new(Vec::new()),
+            pending: Vec::new(),
+            written: written.clone(),
+        };
+        let client = imap::Client::new(CopyStream {
+            inner: script,
+            capture: capture.clone(),
+        });
+        (
+            client.login("fixture", "not-a-real-password").unwrap(),
+            capture,
+            written,
+        )
+    }
+    fn fetch(tag: &str, uid: u32, raw: &[u8]) -> Vec<u8> {
+        let mut bytes = format!("* 1 FETCH (UID {uid} BODY[] {{{}}}\r\n", raw.len()).into_bytes();
+        bytes.extend(raw);
+        bytes.extend(format!(")\r\n{tag} OK fetched\r\n").as_bytes());
+        bytes
+    }
+    fn replies(copy: &str, target_raw: &[u8]) -> Vec<Vec<u8>> {
+        vec![
+            b"a1 OK login\r\n".to_vec(),
+            b"* CAPABILITY IMAP4rev1 UIDPLUS MOVE\r\na2 OK caps\r\n".to_vec(),
+            b"* 0 EXISTS\r\n* OK [UIDVALIDITY 9] valid\r\na3 OK examined\r\n".to_vec(),
+            b"* 1 EXISTS\r\n* OK [UIDVALIDITY 7] valid\r\na4 OK selected\r\n".to_vec(),
+            fetch("a5", 12, &crate::tests::raw()),
+            copy.as_bytes().to_vec(),
+            b"* 1 EXISTS\r\n* OK [UIDVALIDITY 9] valid\r\na7 OK examined\r\n".to_vec(),
+            fetch("a8", 34, target_raw),
+        ]
+    }
+    #[test]
+    fn copyuid_is_bound_to_exact_tag_source_and_target_not_unilateral_messages() {
+        for (input, valid) in [
+            (
+                "* OK [COPYUID 9 12 999] unrelated\r\na6 OK [COPYUID 9 12 34] copied\r\n",
+                true,
+            ),
+            ("a6 OK [copyuid 9 12:12 34:34] copied\r\n", true),
+            ("a6 OK [COPYUID 9 13 34] copied\r\n", false),
+            ("a6 OK [COPYUID 10 12 34] copied\r\n", false),
+            ("a6 OK [COPYUID 9 12 0] copied\r\n", false),
+            ("a6 OK [COPYUID 9 12 34:35] copied\r\n", false),
+            ("a6 OK copied without receipt\r\n", false),
+            ("a6 OK [COPYUID 9 12 34] trunc", false),
+        ] {
+            let capture = CopyCapture {
+                input: input.as_bytes().to_vec(),
+                output: b"a6 UID COPY 12 \"Archive\"\r\n".to_vec(),
+                ..Default::default()
+            };
+            assert_eq!(copy_receipt(&capture, 12, 9).is_ok(), valid, "{input}");
+        }
+    }
+    #[test]
+    fn copy_preserves_source_and_requires_receipt_and_matching_target_bytes() {
+        let (_temp, store, a, id) = crate::directory_operations::tests::fixture();
+        let job = store.queue_copy(&id, "INBOX", "Archive").unwrap();
+        let op = store.directory_operation(&job).unwrap();
+        store.claim_copy(&op).unwrap();
+        let (mut session, capture, written) = session(replies(
+            "a6 OK [COPYUID 9 12 34] copied\r\n",
+            &crate::tests::raw(),
+        ));
+        apply_copy_session(&store, &op, &mut session, &capture).unwrap();
+        assert_eq!(store.directory_operation(&job).unwrap().status, "completed");
+        assert!(store.has_source(&a.id, "INBOX", "7:12").unwrap());
+        assert!(store.has_source(&a.id, "Archive", "9:34").unwrap());
+        let commands = String::from_utf8(written.lock().unwrap().clone()).unwrap();
+        assert_eq!(commands.matches("UID COPY").count(), 1);
+        assert!(commands.contains("UID COPY 12 \"Archive\""));
+        assert!(
+            !commands.contains("STORE")
+                && !commands.contains("EXPUNGE")
+                && !commands.contains("CLOSE")
+                && !commands.contains("UID MOVE")
+        );
+        let capture = capture.lock().unwrap();
+        assert!(!String::from_utf8_lossy(&capture.input).contains("Content-Type"));
+    }
+    #[test]
+    fn submitted_disconnect_missing_or_wrong_receipt_never_requeues_copy() {
+        for reply in [
+            "",
+            "a6 OK copied\r\n",
+            "a6 OK [COPYUID 99 12 34] wrong\r\n",
+            "a6 NO permission denied\r\n",
+        ] {
+            let (_temp, store, a, id) = crate::directory_operations::tests::fixture();
+            let job = store.queue_copy(&id, "INBOX", "Archive").unwrap();
+            let op = store.directory_operation(&job).unwrap();
+            store.claim_copy(&op).unwrap();
+            let (mut session, capture, written) = session(replies(reply, &crate::tests::raw()));
+            let error = apply_copy_session(&store, &op, &mut session, &capture).unwrap_err();
+            store.fail_copy(&job, &error, false).unwrap();
+            let status = store.directory_operation(&job).unwrap().status;
+            assert_eq!(
+                status,
+                if reply.contains(" NO ") {
+                    "blocked"
+                } else {
+                    "uncertain"
+                }
+            );
+            assert!(store.due_copies(&a.id).unwrap().is_empty());
+            let commands = String::from_utf8(written.lock().unwrap().clone()).unwrap();
+            assert_eq!(commands.matches("UID COPY").count(), 1);
+        }
+    }
+    #[test]
+    fn saved_receipt_recovers_by_readonly_verification_without_a_second_copy() {
+        let (_temp, store, a, id) = crate::directory_operations::tests::fixture();
+        let job = store.queue_copy(&id, "INBOX", "Archive").unwrap();
+        let op = store.directory_operation(&job).unwrap();
+        store.claim_copy(&op).unwrap();
+        let (mut first, capture, _) = session(replies(
+            "a6 OK [COPYUID 9 12 34] copied\r\n",
+            b"wrong content",
+        ));
+        let error = apply_copy_session(&store, &op, &mut first, &capture).unwrap_err();
+        store.fail_copy(&job, &error, false).unwrap();
+        let confirmed = store.directory_operation(&job).unwrap();
+        assert_eq!(confirmed.status, "confirmed");
+        assert!(!store.has_source(&a.id, "Archive", "9:34").unwrap());
+        store.claim_copy(&confirmed).unwrap();
+        let (mut second, capture, written) = session(vec![
+            b"a1 OK login\r\n".to_vec(),
+            b"* 1 EXISTS\r\n* OK [UIDVALIDITY 9] valid\r\na2 OK examined\r\n".to_vec(),
+            fetch("a3", 34, &crate::tests::raw()),
+        ]);
+        apply_copy_session(&store, &confirmed, &mut second, &capture).unwrap();
+        assert_eq!(store.directory_operation(&job).unwrap().status, "completed");
+        let commands = String::from_utf8(written.lock().unwrap().clone()).unwrap();
+        assert!(
+            !commands.contains("COPY")
+                && !commands.contains("SELECT ")
+                && !commands.contains("STORE")
+        );
+    }
+    #[test]
+    fn missing_uidplus_and_changed_source_validity_are_rejected_before_submission() {
+        for no_capability in [true, false] {
+            let (_temp, store, _a, id) = crate::directory_operations::tests::fixture();
+            let job = store.queue_copy(&id, "INBOX", "Archive").unwrap();
+            let op = store.directory_operation(&job).unwrap();
+            store.claim_copy(&op).unwrap();
+            let mut script = replies("a6 OK [COPYUID 9 12 34] copied\r\n", &crate::tests::raw());
+            if no_capability {
+                script[1] = b"* CAPABILITY IMAP4rev1\r\na2 OK caps\r\n".to_vec();
+            } else {
+                script[3] =
+                    b"* 1 EXISTS\r\n* OK [UIDVALIDITY 8] changed\r\na4 OK selected\r\n".to_vec();
+            }
+            let (mut session, capture, written) = session(script);
+            assert!(apply_copy_session(&store, &op, &mut session, &capture).is_err());
+            assert_eq!(store.directory_operation(&job).unwrap().status, "preparing");
+            assert!(!String::from_utf8_lossy(&written.lock().unwrap()).contains("UID COPY"));
+        }
+    }
+}

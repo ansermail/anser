@@ -13,6 +13,10 @@ import { Skeleton } from "./components/ui/skeleton";
 import { FolderHealthPanel } from "./components/folder-health";
 import { Alert, AlertTitle, AlertDescription } from "./components/ui/alert";
 import { ServerOperations } from "./components/server-operations";
+import {
+  ServerCopyDialog,
+  DirectoryOperationsPanel,
+} from "./components/server-copy";
 import { FolderMappingDialog } from "./components/folder-mapping-dialog";
 import { RemoteFolderList } from "./components/remote-folder-list";
 import { remoteFolderLabel } from "./lib/remote-folders";
@@ -35,6 +39,7 @@ import {
   ArrowRight,
   Check,
   CheckCheck,
+  Copy,
   ChevronDown,
   ChevronRight,
   Cloud,
@@ -192,6 +197,7 @@ export default function App() {
     [accountDialog, setAccountDialog] = useState(false),
     [editingAccount, setEditingAccount] = useState<Account | null>(null),
     [mappingAccount, setMappingAccount] = useState<Account | null>(null),
+    [copyMail, setCopyMail] = useState<Mail | null>(null),
     [contactSeed, setContactSeed] = useState<Address | null>(null),
     [draft, setDraft] = useState<Compose | null>(null),
     [drafts, setDrafts] = useState<Compose[]>([]),
@@ -1258,8 +1264,11 @@ export default function App() {
                 <p className="storage-path">{data.dataDir}</p>
               </Card>
               <StorageTools />
-              <ServerOperations />
-              <FolderHealthPanel />
+              <div className="flex flex-col gap-6">
+                <ServerOperations />
+                <FolderHealthPanel />
+                <DirectoryOperationsPanel />
+              </div>
               <div className="info-strip">
                 <Info size={17} />
                 <span>
@@ -1835,6 +1844,23 @@ export default function App() {
                               <ArrowRight size={15} />
                               <span className="action-label">转发</span>
                             </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon-sm"
+                              title="复制到服务器文件夹"
+                              aria-label="复制到服务器文件夹"
+                              disabled={
+                                !data.accounts.some(
+                                  (a) =>
+                                    a.id === detail.mail.accountId &&
+                                    a.enabled &&
+                                    a.protocol === "imap",
+                                )
+                              }
+                              onClick={() => setCopyMail(detail.mail)}
+                            >
+                              <Copy data-icon="inline-start" />
+                            </Button>
                           </div>
                           <span className="toolbar-divider" />
                           <Button
@@ -2051,6 +2077,11 @@ export default function App() {
         </DialogContent>
       </Dialog>
       {confirmationDialog}
+      <ServerCopyDialog
+        mail={copyMail}
+        initialSource={query.remoteFolder || "INBOX"}
+        onClose={() => setCopyMail(null)}
+      />
     </SidebarProvider>
   );
 }

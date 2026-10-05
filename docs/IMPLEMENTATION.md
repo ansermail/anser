@@ -399,3 +399,16 @@ prepareCompose 生成独立的 deliveryBody/deliveryHtml，保留可编辑 body/
 真实开发预览 17:45 分别检查 QQ 与腾讯企业邮“其他文件夹”根目录，独立会话都报告 0 EXISTS 后拒绝 UID SEARCH；中文日志正确。因此根路径仍不可靠，不声明服务端写入兼容已修复。9242 条元数据与 5460 封完整存档、腾讯 532/267、QQ 6223/3424 的来源/活动数量保持不变。仅共享 mailId 的可信替代来源分别 2/12 条，其余旧在线来源恢复仍待 SYNC-01A3B。原生根目录显示隔离/0 对话，子目录可展开，QQ E 与企业邮 B 均从有效 INBOX 在线读取正文成功；B 当前显示 1 封回复，本轮不声称完整回复链归属已恢复。本阶段无新增发信、删除或账号配置变化。
 
 验证：138 项 Rust、94 项前端、11 项脚本测试通过，UI 检查/TypeScript/生产构建通过。补充协议拒绝与可靠空目录恢复保护、隔离任务旧确认/重启/精确恢复、事务回滚、在线条目会话缓存恢复、核查错误跨刷新保留、隔离目录不自动重试。既有大分包警告仍存在。预览保持运行，PID/日志及下一步持久 COPY/结果不明保护入口见 DEVELOPMENT_STATUS.md 最新检查点；移动/复制、原在线来源恢复与首版其他待办尚未完成。
+
+
+## 服务器 COPY 持久任务与设置间距（2026-10-05 20:40）
+
+完成 SYNC-01B1。`directory_operations.rs` 单独保存非幂等任务，提交前持久记录 submitted，复制回执保存后只读核验目标全文，再原子关联来源。重启仅恢复未提交预检和已确认只读核验；submitted 无回执进入 uncertain，不自动重复 COPY。相同来源/目标去重；取消只在提交前或明确失败，确认丢失不能重试。备份排除任务，来源和 MIME 保留。
+
+`network.rs` 先发现 UIDPLUS/IMAP4rev2，验证可信来源、身份、UIDVALIDITY/内容散列以及目标目录。在 imap 2.4 丢弃 tagged completion 的限制下，用 COPY 期间限定的有界内存包装读取 COPYUID，校验命令 tag、源 UID 和目标 UIDVALIDITY；目标完整 BODY.PEEK[] SHA-256 一致后才更新来源。断线与缺回执保留结果不明；明确拒绝可手动重试；已保存回执只读恢复，不发送第二次 COPY。流程没有 MOVE、STORE Deleted、EXPUNGE 或 CLOSE。协议依据：[RFC 4315 COPYUID](https://www.rfc-editor.org/rfc/rfc4315.html#section-3)、[RFC 9051 COPY](https://www.rfc-editor.org/rfc/rfc9051.html#section-6.4.4)。
+
+阅读工具栏的复制弹层和设置记录组合现有 shadcn 组件，过滤不可选择/隔离/当前来源目录；显示中文名称但保留原始命令路径。设置的三个服务器卡片之间增加 24px 间距，目录核查按钮与说明增加 8px，原生预览核验通过。
+
+真实原生 COPY：QQ 联调 E 从收件箱复制到邮件归档，确认 1582296105:1703；企业邮回复 B 从收件箱复制到已发送，确认 1587179777:58；均核对目标全文后 completed，原来源/已读/星标/本地 metadata hash 保持，两份测试副本保留。没有新发 SMTP、移动、清理或使用重启补收充当 IDLE 验收。9244 元数据/5460 完整存档和原 root 来源计数复制前后相同。
+
+149 项 Rust、101 项前端、11 项开发脚本及 UI 检查/TypeScript/构建通过；既有大分包警告仍在。下一步 SYNC-01B2 MOVE 与源/目标关联冲突，不盲目用 EXPUNGE/CLOSE；旧异常来源准确恢复、服务端已发送上传、规则远端动作及其余首版待办未完成。后续检查点见 DEVELOPMENT_STATUS.md。

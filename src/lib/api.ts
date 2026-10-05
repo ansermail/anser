@@ -286,8 +286,17 @@ export async function call<T = void>(
         break;
       }
       case "folder_health":
+      case "directory_operations":
         result = [];
         break;
+      case "copy_sources":
+        result = [
+          demo.messages.find((m) => m.id === args.id)?.sourceFolder,
+        ].filter(Boolean);
+        break;
+      case "queue_server_copy":
+      case "directory_operation_action":
+        throw new Error("演示模式不执行服务器复制，请在真实桌面预览中测试");
       case "server_operations":
         result = { pending: 0, blocked: 0, completed: 0, items: [] };
         break;
@@ -499,6 +508,8 @@ export async function call<T = void>(
         "list_outbox",
         "server_operations",
         "folder_health",
+        "directory_operations",
+        "copy_sources",
       ].includes(command)
     )
       localStorage.setItem(key, JSON.stringify(demo));

@@ -158,7 +158,7 @@ export function FolderHealthPanel() {
                         : "目录响应已恢复，请重新收取此目录以核对旧来源。"}
                   </p>
                 )}
-                <div className="flex flex-wrap items-center gap-3">
+                <div className="mt-2 flex flex-wrap items-center gap-3">
                   <Button
                     variant="outline"
                     size="sm"
