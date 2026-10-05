@@ -1345,6 +1345,168 @@ mod tests {
         }
     }
 
+    fn flag_round(
+        responses: &[u8],
+        remote: &str,
+        action: &str,
+        value: bool,
+    ) -> (std::result::Result<(), crate::operations::Failure>, String) {
+        let commands = Arc::new(Mutex::new(Vec::new()));
+        let stream = ImapTranscript {
+            responses: Cursor::new(responses.to_vec()),
+            commands: commands.clone(),
+        };
+        let mut session = imap::Client::new(stream)
+            .login("fixture", "fixture-only")
+            .unwrap();
+        let op = crate::operations::Operation {
+            id: "fixture".into(),
+            account_id: "fixture".into(),
+            account_email: "fixture@example.com".into(),
+            mail_id: "fixture".into(),
+            subject: "fixture".into(),
+            folder: "INBOX".into(),
+            remote_id: remote.into(),
+            action: action.into(),
+            value,
+            identity: String::new(),
+            revision: 1,
+            status: "queued".into(),
+            attempts: 0,
+            error: String::new(),
+            updated_at: 0,
+        };
+        let result = apply_flag_session(&mut session, &op);
+        let written = String::from_utf8(commands.lock().unwrap().clone()).unwrap();
+        (result, written)
+    }
+    const FLAG_SELECT: &str = "a1 OK Login\r\n* 1 EXISTS\r\n* OK [UIDVALIDITY 7] valid\r\na2 OK [READ-WRITE] Selected\r\n";
+    #[test]
+    fn flag_store_is_uid_scoped_additive_and_confirmed_without_expunge() {
+        for (action, name, value, initial, final_flags) in [
+            ("read", "\\Seen", true, "\\Flagged", "\\Seen \\Flagged"),
+            ("star", "\\Flagged", false, "\\Seen \\Flagged", "\\Seen"),
+        ] {
+            let text=format!("{FLAG_SELECT}* 1 FETCH (UID 12 FLAGS ({initial}))\r\na3 OK Fetch\r\na4 OK Stored\r\n* 1 FETCH (UID 12 FLAGS ({final_flags}))\r\na5 OK Confirmed\r\n");
+            let (result, written) = flag_round(text.as_bytes(), "7:12", action, value);
+            assert!(result.is_ok());
+            assert!(written.contains("a2 SELECT \"INBOX\""));
+            assert!(written.contains(&format!(
+                "UID STORE 12 {}FLAGS.SILENT ({name})",
+                if value { "+" } else { "-" }
+            )));
+            assert_eq!(written.matches("UID FETCH 12 (UID FLAGS)").count(), 2);
+            assert!(!written.contains("CLOSE"));
+            assert!(!written.contains("EXPUNGE"));
+            assert!(!written.contains("STATUS"));
+        }
+    }
+    #[test]
+    fn flags_already_matching_are_safe_after_an_uncertain_write() {
+        let text = format!("{FLAG_SELECT}* 1 FETCH (UID 12 FLAGS (\\Seen))\r\na3 OK Fetch\r\n");
+        let (result, written) = flag_round(text.as_bytes(), "7:12", "read", true);
+        assert!(result.is_ok());
+        assert!(!written.contains("STORE"));
+    }
+    #[test]
+    fn namespace_rollover_absent_namespace_and_missing_uid_never_write() {
+        for text in [
+            FLAG_SELECT.replace("UIDVALIDITY 7", "UIDVALIDITY 8"),
+            FLAG_SELECT.replace("* OK [UIDVALIDITY 7] valid\r\n", ""),
+            format!("{FLAG_SELECT}a3 OK No mail\r\n"),
+        ] {
+            let (result, written) = flag_round(text.as_bytes(), "7:12", "read", true);
+            assert!(matches!(
+                result,
+                Err(crate::operations::Failure::Blocked(_))
+            ));
+            assert!(!written.contains("STORE"));
+        }
+    }
+    #[test]
+    fn denied_flags_ignored_store_and_dropped_response_do_not_report_success() {
+        let before = format!("{FLAG_SELECT}* 1 FETCH (UID 12 FLAGS ())\r\na3 OK Fetch\r\n");
+        for (tail, retry) in [
+            ("a4 NO readonly\r\n", false),
+            (
+                "a4 OK Stored\r\n* 1 FETCH (UID 12 FLAGS ())\r\na5 OK Ignored\r\n",
+                false,
+            ),
+            ("", true),
+        ] {
+            let (result, _) =
+                flag_round(format!("{before}{tail}").as_bytes(), "7:12", "read", true);
+            assert!(matches!(result, Err(crate::operations::Failure::Retry(_))) == retry);
+            assert!(result.is_err());
+        }
+        let denied =
+            FLAG_SELECT.replace("a2 OK", "* OK [PERMANENTFLAGS (\\Flagged)] flags\r\na2 OK");
+        let (result, written) = flag_round(denied.as_bytes(), "7:12", "read", true);
+        assert!(result.is_err());
+        assert!(!written.contains("STORE"));
+    }
+    #[test]
+    fn content_namespaces_verify_original_mime_before_modifying_flags() {
+        let mime = b"Subject: fixture\r\n\r\nOriginal body";
+        let hash = archive::digest(mime);
+        let mut responses = FLAG_SELECT.as_bytes().to_vec();
+        responses.extend_from_slice(
+            format!("* 1 FETCH (UID 12 BODY[] {{{}}}\r\n", mime.len()).as_bytes(),
+        );
+        responses.extend_from_slice(mime);
+        responses.extend_from_slice(b")\r\na3 OK Original\r\n* 1 FETCH (UID 12 FLAGS ())\r\na4 OK Fetch\r\na5 OK Stored\r\n* 1 FETCH (UID 12 FLAGS (\\Seen))\r\na6 OK Confirmed\r\n");
+        let (result, written) = flag_round(&responses, &format!("content:12:{hash}"), "read", true);
+        assert!(result.is_ok());
+        assert!(written.find("BODY.PEEK[]").unwrap() < written.find("STORE").unwrap());
+        let wrong_hash = archive::digest(b"other mail");
+        let end = responses
+            .windows(b"* 1 FETCH (UID 12 FLAGS".len())
+            .position(|w| w == b"* 1 FETCH (UID 12 FLAGS")
+            .unwrap();
+        responses.truncate(end);
+        responses
+            .extend_from_slice(b"* 1 FETCH (UID 12 BODY[HEADER] {0}\r\n)\r\na4 OK Headers\r\n");
+        let (result, written) = flag_round(
+            &responses,
+            &format!("content:12:{wrong_hash}"),
+            "read",
+            true,
+        );
+        assert!(matches!(
+            result,
+            Err(crate::operations::Failure::Blocked(_))
+        ));
+        assert!(!written.contains("STORE"));
+    }
+
+    #[test]
+    fn online_content_identity_can_match_headers_without_matching_the_full_body() {
+        let header = b"Subject: fixture\r\n\r\n";
+        let raw = b"Subject: fixture\r\n\r\nOriginal body";
+        let mut responses = FLAG_SELECT.as_bytes().to_vec();
+        responses.extend_from_slice(
+            format!("* 1 FETCH (UID 12 BODY[] {{{}}}\r\n", raw.len()).as_bytes(),
+        );
+        responses.extend_from_slice(raw);
+        responses.extend_from_slice(
+            format!(
+                ")\r\na3 OK Original\r\n* 1 FETCH (UID 12 BODY[HEADER] {{{}}}\r\n",
+                header.len()
+            )
+            .as_bytes(),
+        );
+        responses.extend_from_slice(header);
+        responses.extend_from_slice(b")\r\na4 OK Headers\r\n* 1 FETCH (UID 12 FLAGS ())\r\na5 OK Fetch\r\na6 OK Stored\r\n* 1 FETCH (UID 12 FLAGS (\\Flagged))\r\na7 OK Confirmed\r\n");
+        let (result, written) = flag_round(
+            &responses,
+            &format!("content:12:{}", archive::digest(header)),
+            "star",
+            true,
+        );
+        assert!(result.is_ok());
+        assert!(written.contains("BODY.PEEK[HEADER]"));
+        assert!(written.contains("+FLAGS.SILENT (\\Flagged)"));
+    }
     fn discovery_round(responses: &[u8]) -> (Result<Vec<RemoteFolder>>, String) {
         let commands = Arc::new(Mutex::new(Vec::new()));
         let stream = ImapTranscript {
@@ -2217,4 +2379,130 @@ mod diagnostic_tests {
             assert!(!response_outline(data).contains("private"));
         }
     }
+}
+
+pub(crate) fn apply_server_flag(
+    a: &Account,
+    op: &crate::operations::Operation,
+) -> std::result::Result<(), crate::operations::Failure> {
+    use crate::operations::Failure;
+    let secret = auth::credentials(a).map_err(Failure::Retry)?;
+    let mut session = imap_session(a, &secret).map_err(Failure::Retry)?;
+    let result = apply_flag_session(&mut session, op);
+    // Dropping the connection does not expunge. Never issue CLOSE/EXPUNGE.
+    drop(session);
+    result
+}
+fn flag_error(stage: &str, e: imap::error::Error) -> crate::operations::Failure {
+    use crate::operations::Failure;
+    match e {
+        imap::error::Error::No(_) | imap::error::Error::Bad(_) => {
+            if e.to_string()
+                .to_ascii_lowercase()
+                .contains("need to select first")
+            {
+                Failure::Blocked(format!(
+                    "{stage}失败：服务器未保持该文件夹的选择状态，无法同步此目录。本地状态已保留"
+                ))
+            } else {
+                Failure::Blocked(format!("{stage}失败，服务器拒绝状态同步：{e}"))
+            }
+        }
+        _ => Failure::Retry(format!("{stage}连接失败，将自动重试：{e}")),
+    }
+}
+fn apply_flag_session<T: std::io::Read + Write>(
+    session: &mut imap::Session<T>,
+    op: &crate::operations::Operation,
+) -> std::result::Result<(), crate::operations::Failure> {
+    use crate::operations::{remote_identity, Failure};
+    use imap::types::Flag;
+    let blocked = |s: &str| Failure::Blocked(s.into());
+    let (validity, uid, content_hash) =
+        remote_identity(&op.remote_id).ok_or_else(|| blocked("服务器邮件标识无效，请重新收取"))?;
+    let flag = match op.action.as_str() {
+        "read" => Flag::Seen,
+        "star" => Flag::Flagged,
+        _ => return Err(blocked("不支持的服务器动作")),
+    };
+    // SELECT is deliberately the last mailbox selection before STORE. STATUS
+    // may deselect on Tencent servers, so don't use the read-only recovery helper.
+    let mailbox = session
+        .select(&op.folder)
+        .map_err(|e| flag_error("打开文件夹", e))?;
+    if let Some(expected) = validity {
+        if mailbox.uid_validity != Some(expected) {
+            return Err(blocked(
+                "服务器文件夹的邮件标识已变化或无法确认，请重新收取后再操作",
+            ));
+        }
+    }
+    if !mailbox.permanent_flags.is_empty() && !mailbox.permanent_flags.contains(&flag) {
+        return Err(blocked("该服务器文件夹不允许永久修改此状态"));
+    }
+    let uid = uid.to_string();
+    if let Some(expected_hash) = content_hash {
+        // For servers without UIDVALIDITY, content identities are checked in
+        // this selected session. Support both archived MIME and online headers.
+        let raw = session
+            .uid_fetch(&uid, "(UID BODY.PEEK[])")
+            .map_err(|e| flag_error("核对完整邮件", e))?;
+        let message = raw
+            .iter()
+            .find(|m| m.uid.map(|u| u.to_string()) == Some(uid.clone()))
+            .ok_or_else(|| blocked("原邮件已从服务器移除，本地存档保留"))?;
+        let body = message
+            .body()
+            .ok_or_else(|| blocked("服务器未返回可验证的原邮件"))?;
+        let full_matches = archive::digest(body) == expected_hash;
+        drop(raw);
+        if !full_matches {
+            let headers = session
+                .uid_fetch(&uid, "(UID BODY.PEEK[HEADER])")
+                .map_err(|e| flag_error("核对邮件头", e))?;
+            let message = headers
+                .iter()
+                .find(|m| m.uid.map(|u| u.to_string()) == Some(uid.clone()))
+                .ok_or_else(|| blocked("原邮件已从服务器移除，本地存档保留"))?;
+            if message
+                .header()
+                .is_none_or(|h| archive::digest(h) != expected_hash)
+            {
+                return Err(blocked(
+                    "服务器邮件内容与本地来源不一致，请重新收取后再操作",
+                ));
+            }
+        }
+    }
+    let before = session
+        .uid_fetch(&uid, "(UID FLAGS)")
+        .map_err(|e| flag_error("读取邮件状态", e))?;
+    let message = before
+        .iter()
+        .find(|m| m.uid.map(|u| u.to_string()) == Some(uid.clone()))
+        .ok_or_else(|| blocked("原邮件已从服务器移除，本地存档保留"))?;
+    if message.flags().contains(&flag) == op.value {
+        return Ok(());
+    }
+    drop(before);
+    let name = if op.action == "read" {
+        "\\Seen"
+    } else {
+        "\\Flagged"
+    };
+    let direction = if op.value { "+" } else { "-" };
+    session
+        .uid_store(&uid, format!("{direction}FLAGS.SILENT ({name})"))
+        .map_err(|e| flag_error("提交邮件状态", e))?;
+    let after = session
+        .uid_fetch(&uid, "(UID FLAGS)")
+        .map_err(|e| flag_error("确认邮件状态", e))?;
+    let message = after
+        .iter()
+        .find(|m| m.uid.map(|u| u.to_string()) == Some(uid.clone()))
+        .ok_or_else(|| blocked("同步期间原邮件已移除，本地存档保留"))?;
+    if message.flags().contains(&flag) != op.value {
+        return Err(blocked("服务器未保存状态修改，可能为只读文件夹"));
+    }
+    Ok(())
 }

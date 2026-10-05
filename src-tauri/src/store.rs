@@ -93,6 +93,7 @@ impl Store {
                 UPDATE conversation_revision SET version=version+1;
             END;
             COMMIT;").map_err(err)?;
+        crate::operations::initialize(&db)?;
         s.migrate_folder_roles()?;
         s.recover_archive_deletion()?;
         s.refresh_archive_metadata()?;
@@ -193,7 +194,11 @@ impl Store {
             || old.username != a.username;
         let mut next = a.clone();
         next.enabled = old.enabled;
-        next.last_sync = if source_changed { None } else { old.last_sync };
+        next.last_sync = if source_changed {
+            None
+        } else {
+            old.last_sync.clone()
+        };
         next.error = None;
         let mut db = self.db()?;
         let tx = db
@@ -204,6 +209,9 @@ impl Store {
             params![a.id, serde_json::to_string(&next).map_err(err)?],
         )
         .map_err(err)?;
+        if crate::operations::identity(&old) != crate::operations::identity(a) {
+            tx.execute("UPDATE server_operations SET status='blocked',revision=revision+1,error='账号连接配置已变化，请重新收取后再操作' WHERE account_id=?1 AND status!='completed'", [&a.id]).map_err(err)?;
+        }
         if source_changed {
             tx.execute("DELETE FROM sources WHERE account_id=?1", [&a.id])
                 .map_err(err)?;
@@ -228,6 +236,7 @@ impl Store {
             .map_err(err)?;
         tx.execute("DELETE FROM remote_folders WHERE account_id=?1", [id])
             .map_err(err)?;
+        tx.execute("UPDATE server_operations SET status='blocked',revision=revision+1,error='账号已移除，本地存档保留' WHERE account_id=?1 AND status!='completed'", [id]).map_err(err)?;
         tx.execute("DELETE FROM accounts WHERE id=?1", [id])
             .map_err(err)?;
         tx.commit().map_err(err)?;
@@ -699,7 +708,7 @@ impl Store {
             )?;
         }
         drop(stmt);
-        snap.execute_batch("DELETE FROM accounts; DELETE FROM drafts; DELETE FROM outbox; DELETE FROM logs; VACUUM;").map_err(err)?;
+        snap.execute_batch("DELETE FROM accounts; DELETE FROM drafts; DELETE FROM outbox; DELETE FROM logs; DELETE FROM server_operations; VACUUM;").map_err(err)?;
         archive::atomic_write(
             &folder.join("manifest.json"),
             br#"{"format":"mail-desktop-archive","version":1}"#,

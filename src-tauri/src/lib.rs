@@ -7,6 +7,7 @@ mod idle;
 mod models;
 mod network;
 mod notifications;
+mod operations;
 mod productivity;
 mod realtime;
 mod remote;
@@ -65,6 +66,22 @@ async fn update_mail(
 ) -> Result<()> {
     let store = state.store.clone();
     tauri::async_runtime::spawn_blocking(move || store.change_mail(&id, &action, &value))
+        .await
+        .map_err(err)?
+}
+#[tauri::command]
+async fn server_operations(
+    state: tauri::State<'_, AppState>,
+) -> Result<operations::OperationSnapshot> {
+    let store = state.store.clone();
+    tauri::async_runtime::spawn_blocking(move || store.server_operations())
+        .await
+        .map_err(err)?
+}
+#[tauri::command]
+async fn retry_server_operation(state: tauri::State<'_, AppState>, id: String) -> Result<()> {
+    let store = state.store.clone();
+    tauri::async_runtime::spawn_blocking(move || store.retry_server_operation(&id))
         .await
         .map_err(err)?
 }
@@ -787,6 +804,7 @@ pub fn run() {
                 realtime: realtime.clone(),
             });
             realtime::start(store.clone(), app.handle().clone(), realtime);
+            operations::start(store.clone(), app.handle().clone());
             let menu = tauri::menu::Menu::default(app.handle())?;
             app.set_menu(menu)?;
             tauri::tray::TrayIconBuilder::new()
@@ -876,6 +894,8 @@ pub fn run() {
             mail_metadata,
             mail_conversation,
             update_mail,
+            server_operations,
+            retry_server_operation,
             save_rules,
             preview_rule,
             run_rules,

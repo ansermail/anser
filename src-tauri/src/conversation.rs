@@ -95,6 +95,9 @@ pub fn summaries(messages: Vec<Mail>, index: &Index) -> Vec<Mail> {
 }
 impl Store {
     pub fn change_mail(&self, id: &str, action: &str, value: &str) -> Result<()> {
+        if matches!(action, "read" | "star" | "trash") && !matches!(value, "true" | "false") {
+            return Err("无效状态值".into());
+        }
         let selected = self.mail(id)?;
         let mut db = self.db()?;
         let tx = db
@@ -112,6 +115,7 @@ impl Store {
                 "folder" if !value.trim().is_empty() => mail.local_folder = value.into(),
                 _ => return Err("无效动作或空文件夹名称".into()),
             }
+            crate::operations::enqueue(&tx, &mail, action, value == "true")?;
             tx.execute(
                 "UPDATE messages SET data=?2 WHERE id=?1",
                 rusqlite::params![mail.id, serde_json::to_string(&mail).map_err(err)?],

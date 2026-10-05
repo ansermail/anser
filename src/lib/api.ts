@@ -285,6 +285,9 @@ export async function call<T = void>(
         ] satisfies Address[];
         break;
       }
+      case "server_operations":
+        result = { pending: 0, blocked: 0, completed: 0, items: [] };
+        break;
       case "list_outbox":
         result = JSON.parse(localStorage.getItem(key + "-outbox") || "[]");
         break;
@@ -491,6 +494,7 @@ export async function call<T = void>(
         "list_contacts",
         "get_preferences",
         "list_outbox",
+        "server_operations",
       ].includes(command)
     )
       localStorage.setItem(key, JSON.stringify(demo));

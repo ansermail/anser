@@ -10,6 +10,7 @@ import {
   CollapsibleContent,
 } from "./components/ui/collapsible";
 import { Skeleton } from "./components/ui/skeleton";
+import { ServerOperations } from "./components/server-operations";
 import { FolderMappingDialog } from "./components/folder-mapping-dialog";
 import { RemoteFolderList } from "./components/remote-folder-list";
 import { remoteFolderLabel } from "./lib/remote-folders";
@@ -531,7 +532,7 @@ export default function App() {
       for (const id of ids) await updateMail(id, action, value);
       await refresh();
       setChecked([]);
-      toast.success("已更新本地邮件", {
+      toast.success("已更新邮件", {
         action: {
           label: "撤销",
           onClick: () => {
@@ -1249,6 +1250,7 @@ export default function App() {
                 <p className="storage-path">{data.dataDir}</p>
               </Card>
               <StorageTools />
+              <ServerOperations />
               <div className="info-strip">
                 <Info size={17} />
                 <span>
@@ -1700,9 +1702,7 @@ export default function App() {
                               variant="ghost"
                               size="icon-sm"
                               title={
-                                detail.mail.isRead
-                                  ? "标记本地未读"
-                                  : "标记本地已读"
+                                detail.mail.isRead ? "标记未读" : "标记已读"
                               }
                               onClick={() =>
                                 void mutate(

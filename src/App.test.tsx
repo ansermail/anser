@@ -569,7 +569,7 @@ describe("reading unread mail within its current category", () => {
       expect(host.querySelectorAll("button.mail-row-main")).toHaveLength(
         before - 1,
       );
-      expect(host.querySelector('button[title="标记本地未读"]')).not.toBeNull();
+      expect(host.querySelector('button[title="标记未读"]')).not.toBeNull();
       const title = host.querySelector(".list-heading h1")?.textContent;
       await click(filter("全部"));
       expect(host.querySelector(".list-heading h1")?.textContent).toBe(title);
@@ -590,7 +590,7 @@ describe("reading unread mail within its current category", () => {
     expect(host.querySelector(".message-heading h1")?.textContent).toBe(
       lastSubject,
     );
-    await click(host.querySelector('button[title="标记本地未读"]'));
+    await click(host.querySelector('button[title="标记未读"]'));
     expect(host.querySelectorAll("button.mail-row-main")).toHaveLength(1);
     expect(host.querySelector(".message-heading h1")?.textContent).toBe(
       lastSubject,
