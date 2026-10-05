@@ -1373,6 +1373,7 @@ fn server_folder_query_uses_locations_not_local_classification() {
                 display_name: "Team/Reports".into(),
                 delimiter: Some("/".into()),
                 selectable: true,
+                sync_error: None,
                 roles: vec![],
             }],
         )
@@ -1610,6 +1611,7 @@ fn sent_view_uses_active_special_use_locations_and_preserves_local_sent_copy() {
             display_name: "Sent Messages".into(),
             delimiter: Some("/".into()),
             selectable: true,
+            sync_error: None,
             roles: vec![FolderRole::Sent],
         },
         RemoteFolder {
@@ -1619,6 +1621,7 @@ fn sent_view_uses_active_special_use_locations_and_preserves_local_sent_copy() {
             display_name: "Sent".into(),
             delimiter: None,
             selectable: true,
+            sync_error: None,
             roles: vec![FolderRole::Archive],
         },
     ];
@@ -1656,6 +1659,7 @@ fn mapping_folder(account: &Account, name: &str, roles: Vec<FolderRole>) -> Remo
         display_name: name.into(),
         delimiter: Some("/".into()),
         selectable: true,
+        sync_error: None,
         roles,
         detected_roles: None,
     }

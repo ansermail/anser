@@ -413,6 +413,45 @@ describe("reading unread mail within its current category", () => {
     expect(host.querySelector(".list-heading h1")?.textContent).toBe("收件箱");
     expect(host.querySelectorAll(".mail-row-main").length).toBeGreaterThan(0);
   });
+  it("opens an isolated directory explanation without automatically retrying its server selection", async () => {
+    const seed = await snapshot(localQuery);
+    const folder = {
+      accountId: seed.accounts[0].id,
+      name: "Unsafe",
+      displayName: "异常目录",
+      delimiter: "/",
+      selectable: true,
+      roles: [],
+      syncError: "服务器响应不可靠",
+    };
+    await act(async () => root.unmount());
+    leaveDemo();
+    vi.spyOn(api, "snapshot").mockResolvedValue({
+      ...seed,
+      messages: [],
+      remoteFolders: [folder],
+    });
+    const commands = vi
+      .spyOn(api, "call")
+      .mockImplementation(
+        async <T,>(command: string): Promise<T> =>
+          (command === "account_folders" ? [folder] : []) as T,
+      );
+    root = createRoot(host);
+    await act(async () => root.render(<App />));
+    await click(
+      host.querySelector('button[aria-label="展开 工作邮箱 的服务器文件夹"]'),
+    );
+    await click(
+      [...host.querySelectorAll(".remote-folder-list button")].find((button) =>
+        button.textContent?.includes("异常目录"),
+      ) ?? null,
+    );
+    expect(host.textContent).toContain("目录来源已隔离");
+    expect(
+      commands.mock.calls.some(([command]) => command === "sync_remote_folder"),
+    ).toBe(false);
+  });
   it("blocks native context menus on blank areas and inputs without stopping custom handlers", () => {
     const input = host.querySelector('input[aria-label="搜索邮件"]')!;
     const custom = vi.fn();

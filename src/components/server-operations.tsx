@@ -23,7 +23,8 @@ export type ServerOperation = {
   folder: string;
   action: "read" | "star";
   value: boolean;
-  status: "queued" | "running" | "completed" | "blocked" | "paused";
+  status:
+    "queued" | "running" | "completed" | "blocked" | "paused" | "isolated";
   attempts: number;
   error: string;
 };
@@ -31,6 +32,7 @@ export type OperationSnapshot = {
   pending: number;
   blocked: number;
   completed: number;
+  isolated?: number;
   items: ServerOperation[];
 };
 const states = {
@@ -39,6 +41,7 @@ const states = {
   completed: "已同步",
   blocked: "需要处理",
   paused: "账号已暂停",
+  isolated: "来源已隔离",
 };
 export function ServerOperations() {
   const [data, setData] = useState<OperationSnapshot | null>(null);
@@ -127,6 +130,9 @@ export function ServerOperations() {
                 需要处理 {data.blocked}
               </Badge>
               <Badge variant="outline">已同步 {data.completed}</Badge>
+              {!!data.isolated && (
+                <Badge variant="secondary">来源已隔离 {data.isolated}</Badge>
+              )}
             </div>
             {data.items.length ? (
               <ul className="flex flex-col gap-4" aria-label="服务器同步任务">

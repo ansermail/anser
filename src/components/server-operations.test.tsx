@@ -85,6 +85,19 @@ describe("server operation feedback", () => {
     expect(host.textContent).toContain("标记未读");
     expect(host.textContent).toContain("加星标");
   });
+  it("shows isolated sources without offering an unsafe retry", async () => {
+    fixture.isolated = 1;
+    fixture.blocked = 0;
+    fixture.items[0].status = "isolated";
+    fixture.items[0].error = "目录来源已隔离";
+    await render();
+    expect(host.textContent).toContain("来源已隔离 1");
+    expect(
+      [...host.querySelectorAll("button")].some(
+        (b) => b.textContent === "重试",
+      ),
+    ).toBe(false);
+  });
   it("retries exactly the selected task then fetches its new state", async () => {
     await render();
     const button = [...host.querySelectorAll("button")].find(

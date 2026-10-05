@@ -309,6 +309,8 @@ pub struct RemoteFolder {
     pub display_name: String,
     pub delimiter: Option<String>,
     pub selectable: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sync_error: Option<String>,
     #[serde(default)]
     pub roles: Vec<FolderRole>,
     #[serde(default, skip_serializing_if = "Option::is_none")]

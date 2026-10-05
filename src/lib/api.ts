@@ -285,6 +285,9 @@ export async function call<T = void>(
         ] satisfies Address[];
         break;
       }
+      case "folder_health":
+        result = [];
+        break;
       case "server_operations":
         result = { pending: 0, blocked: 0, completed: 0, items: [] };
         break;
@@ -495,6 +498,7 @@ export async function call<T = void>(
         "get_preferences",
         "list_outbox",
         "server_operations",
+        "folder_health",
       ].includes(command)
     )
       localStorage.setItem(key, JSON.stringify(demo));

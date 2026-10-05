@@ -148,7 +148,7 @@ impl Store {
         }
         // A read transaction pins both the revision and link metadata to the
         // same snapshot while new messages continue to arrive in WAL mode.
-        let mut query = tx.prepare("SELECT json_object('id',id,'accountId',account_id,'messageId',COALESCE(json_extract(data,'$.messageId'),''),'inReplyTo',json(COALESCE(json_extract(data,'$.inReplyTo'),'[]')),'references',json(COALESCE(json_extract(data,'$.references'),'[]')),'trashed',json(CASE WHEN json_extract(data,'$.trashed') THEN 'true' ELSE 'false' END)) FROM message_listing").map_err(err)?;
+        let mut query = tx.prepare("SELECT json_object('id',id,'accountId',account_id,'messageId',COALESCE(json_extract(data,'$.messageId'),''),'inReplyTo',json(COALESCE(json_extract(data,'$.inReplyTo'),'[]')),'references',json(COALESCE(json_extract(data,'$.references'),'[]')),'trashed',json(CASE WHEN json_extract(data,'$.trashed') THEN 'true' ELSE 'false' END)) FROM readable_listing").map_err(err)?;
         let links = query
             .query_map([], |r| r.get::<_, String>(0))
             .map_err(err)?
@@ -161,7 +161,10 @@ impl Store {
     pub fn conversation(&self, id: &str) -> Result<Vec<Mail>> {
         let selected = self.mail(id)?;
         let index = self.conversation_index(&selected.account_id)?;
-        let group = &index.roots[id];
+        let group = index
+            .roots
+            .get(id)
+            .ok_or("这封邮件的服务器来源尚未通过核查，请重新收取真实文件夹后再打开")?;
         let db = self.db()?;
         // Fetch bodies only for this thread, using the primary-key index.
         let mut query = db

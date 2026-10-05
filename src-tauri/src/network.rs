@@ -169,6 +169,7 @@ fn discover_remote_folders<T: std::io::Read + Write>(
                         let mut folder = RemoteFolder {
                             account_id: account.into(),
                             detected_roles: None,
+                            sync_error: None,
                             name: name.into(),
                             display_name: crate::remote::display_name(name),
                             delimiter: delimiter.map(str::to_string),
@@ -388,6 +389,14 @@ pub fn test(a: &Account, s: &Secret) -> Result<()> {
 // the previously selected directory. Keep presence distinct from EXISTS 0.
 const INCONSISTENT_SELECTION: &str =
     "服务器报告该文件夹为空，但又返回邮件 UID，目录响应相互矛盾；已停止读取，原来源与本地存档保留";
+const UNVERIFIED_EMPTY_SELECTION: &str =
+    "目录先前响应异常，本次空目录响应仍缺少 UIDVALIDITY，无法核对旧来源；继续隔离并保留本地存档";
+fn unreliable_selection(e: &str) -> bool {
+    matches!(
+        e,
+        MISSING_SELECTION | INCONSISTENT_SELECTION | UNVERIFIED_EMPTY_SELECTION
+    )
+}
 const MISSING_SELECTION: &str =
     "服务器未返回该文件夹的邮件数量，无法确认目录已打开；已停止读取，原来源与本地存档保留";
 fn examine_verified<T: std::io::Read + Write>(
@@ -753,6 +762,7 @@ fn sync_imap_scope<T: std::io::Read + Write>(
         let folder_gate = crate::sync_control::folder_gate(&store.root, &a.id, &folder)?;
         let _folder_guard = folder_gate.lock().map_err(err)?;
         let mut stage = "打开文件夹".to_string();
+        let mut evidence = crate::folder_health::SelectionEvidence::default();
         let mut sync_folder = || -> Result<()> {
             let mailbox = examine_verified(session, &folder)?;
             stage = "查询邮件 UID".into();
@@ -770,6 +780,8 @@ fn sync_imap_scope<T: std::io::Read + Write>(
                     exists = n;
                 }
             }
+            evidence.exists = Some(exists);
+            evidence.uid_count = Some(ids.len());
             if exists == 0 && !ids.is_empty() {
                 store.log(&format!("文件夹「{folder}」目录诊断：EXAMINE/EXISTS=0，UID SEARCH={} 项；未执行 FETCH，也未更新来源",ids.len()))?;
                 return Err(INCONSISTENT_SELECTION.into());
@@ -777,7 +789,13 @@ fn sync_imap_scope<T: std::io::Read + Write>(
             // Empty mailboxes need no UID namespace. Tencent returns STATUS
             // () here, which older IMAP parsers cannot consume safely.
             if ids.is_empty() {
-                return store.reconcile_folder(&a.id, &folder, &[]);
+                if mailbox.uid_validity.filter(|v| *v > 0).is_none()
+                    && store.folder_isolated_reason(&a.id, &folder)?.is_some()
+                {
+                    return Err(UNVERIFIED_EMPTY_SELECTION.into());
+                }
+                store.reconcile_folder(&a.id, &folder, &[])?;
+                return store.restore_folder_trust(a, &folder);
             }
             stage = "查询 UIDVALIDITY".into();
             let validity = mailbox_uid_validity(session, &folder, &mailbox)?;
@@ -935,6 +953,9 @@ fn sync_imap_scope<T: std::io::Read + Write>(
                 {
                     updated();
                 }
+                if flags.is_some() {
+                    cached_flags.push((remote.clone(), read, star));
+                }
                 if !full {
                     let attachments = header_attachments(&fetched, uid)?;
                     store.set_remote_metadata(&a.id, &folder, &remote, size, attachments)?;
@@ -951,6 +972,7 @@ fn sync_imap_scope<T: std::io::Read + Write>(
                 return Err("账号已暂停或连接配置已修改，停止旧收取任务".into());
             }
             store.reconcile_folder(&a.id, &folder, &remote_ids)?;
+            store.restore_folder_trust(a, &folder)?;
             for chunk in cached_flags.chunks(100) {
                 if store.merge_remote_flags(a, &folder, chunk)? > 0 {
                     updated();
@@ -963,11 +985,13 @@ fn sync_imap_scope<T: std::io::Read + Write>(
                 "{stage}时，邮件协议库处理响应异常；已下载的本地存档已保留"
             ))
         });
-        if only.is_none()
-            && result
-                .as_ref()
-                .is_err_and(|e| e == MISSING_SELECTION || e == INCONSISTENT_SELECTION)
-        {
+        if let Err(reason) = &result {
+            if unreliable_selection(reason) {
+                store.isolate_folder(a, &folder, reason, &evidence)?;
+                updated();
+            }
+        }
+        if only.is_none() && result.as_ref().is_err_and(|e| unreliable_selection(e)) {
             // This tagged OK response was fully consumed. Opening the next
             // folder is safe; transport/parse failures still abandon the socket.
             let message = format!("文件夹「{folder}」{stage}失败：{}", result.unwrap_err());
@@ -1771,6 +1795,136 @@ mod tests {
     }
 
     #[test]
+    fn independent_selection_probe_reads_only_and_rejects_empty_search_leakage() {
+        for (events, expected_reason, expected_count) in [
+            ("* SEARCH 12 13\r\na3 OK Searched\r\n", true, 2),
+            (
+                "* 2 EXISTS\r\n* SEARCH 12 13\r\na3 OK Searched\r\n",
+                false,
+                2,
+            ),
+            ("* SEARCH\r\na3 OK Searched\r\n", false, 0),
+        ] {
+            let commands = Arc::new(Mutex::new(Vec::new()));
+            let response =
+                format!("a1 OK Login\r\n* 0 EXISTS\r\na2 OK [READ-ONLY] Opened\r\n{events}");
+            let stream = ImapTranscript {
+                responses: Cursor::new(response.into_bytes()),
+                commands: commands.clone(),
+            };
+            let mut session = imap::Client::new(stream)
+                .login("test", "fixture-only")
+                .unwrap();
+            let (evidence, ids, reason) = inspect_selection(&mut session, "Container").unwrap();
+            assert_eq!(reason.is_some(), expected_reason);
+            assert_eq!(ids.len(), expected_count);
+            assert_eq!(evidence.uid_count, Some(expected_count));
+            let written = String::from_utf8(commands.lock().unwrap().clone()).unwrap();
+            assert!(written.contains("EXAMINE \"Container\""));
+            assert!(written.contains("UID SEARCH ALL"));
+            for forbidden in [" FETCH ", " STORE ", "COPY", " MOVE ", "EXPUNGE", "CLOSE"] {
+                assert!(!written.contains(forbidden));
+            }
+        }
+    }
+
+    #[test]
+    fn fresh_selection_rejections_keep_quarantine_without_fetch_or_writes() {
+        for response in [
+            "a1 OK Login\r\n* 0 EXISTS\r\na2 OK [READ-ONLY] Opened\r\na3 NO Need to SELECT first!\r\n",
+            "a1 OK Login\r\na2 NO Folder not exist!\r\n",
+        ] {
+            let commands=Arc::new(Mutex::new(Vec::new()));let stream=ImapTranscript{responses:Cursor::new(response.as_bytes().to_vec()),commands:commands.clone()};
+            let mut session=imap::Client::new(stream).login("test","fixture-only").unwrap();let (evidence,ids,reason)=inspect_selection(&mut session,"Container").unwrap();
+            assert!(ids.is_empty());assert!(evidence.uid_count.is_none());assert!(reason.unwrap().contains("本地存档保留"));
+            let written=String::from_utf8(commands.lock().unwrap().clone()).unwrap();for forbidden in ["FETCH","STORE","COPY","MOVE","EXPUNGE"] {assert!(!written.contains(forbidden));}
+        }
+    }
+
+    #[test]
+    fn recovered_directory_refetches_identity_before_resuming_current_intents() {
+        let temp = tempfile::tempdir().unwrap();
+        let store = Store::new(temp.path().into()).unwrap();
+        let a = crate::tests::account();
+        store.save_account(&a).unwrap();
+        let raw = crate::tests::raw();
+        store.ingest(&a, "INBOX", "7:12", &raw, false).unwrap();
+        let id = store.snapshot(&crate::tests::query()).unwrap().messages[0]
+            .id
+            .clone();
+        store.change_mail(&id, "read", "true").unwrap();
+        store.change_mail(&id, "star", "true").unwrap();
+        store
+            .isolate_folder(&a, "INBOX", "fixture quarantine", &Default::default())
+            .unwrap();
+        assert!(!store.source_available(&a, "INBOX", "7:12").unwrap());
+        assert!(store.cached_flag_uids(&a, "INBOX", 7).unwrap().is_empty());
+        let mut response=b"a1 OK Login\r\n* CAPABILITY IMAP4rev1\r\na2 OK Capabilities\r\n* LIST () \"/\" \"INBOX\"\r\na3 OK Listed\r\n* 1 EXISTS\r\n* OK [UIDVALIDITY 7] Valid\r\na4 OK [READ-ONLY] Opened\r\n* SEARCH 12\r\na5 OK Searched\r\n".to_vec();
+        response.extend_from_slice(
+            format!(
+                "* 1 FETCH (UID 12 FLAGS () RFC822.SIZE {} BODY[] {{{}}}\r\n",
+                raw.len(),
+                raw.len()
+            )
+            .as_bytes(),
+        );
+        response.extend_from_slice(&raw);
+        response.extend_from_slice(b")\r\na6 OK Fetched\r\n");
+        let commands = Arc::new(Mutex::new(Vec::new()));
+        let stream = ImapTranscript {
+            responses: Cursor::new(response),
+            commands: commands.clone(),
+        };
+        let mut session = imap::Client::new(stream)
+            .login("test", "fixture-only")
+            .unwrap();
+        sync_imap(&store, &a, &mut session).unwrap();
+        assert!(store.folder_health().unwrap().is_empty());
+        let mail = store.mail(&id).unwrap();
+        assert!(mail.is_read && mail.starred);
+        assert_eq!(store.server_operations().unwrap().pending, 2);
+        let written = String::from_utf8(commands.lock().unwrap().clone()).unwrap();
+        assert!(written.contains("BODY.PEEK[]"));
+        assert!(!written.contains(" STORE "));
+    }
+
+    #[test]
+    fn an_unproven_empty_selection_cannot_erase_old_quarantined_locations() {
+        for validity in [None, Some(7)] {
+            let temp = tempfile::tempdir().unwrap();
+            let store = Store::new(temp.path().into()).unwrap();
+            let a = crate::tests::account();
+            store.save_account(&a).unwrap();
+            store
+                .ingest(&a, "Container", "7:12", &crate::tests::raw(), false)
+                .unwrap();
+            store
+                .isolate_folder(&a, "Container", "fixture quarantine", &Default::default())
+                .unwrap();
+            let prefix="a1 OK Login\r\n* CAPABILITY IMAP4rev1\r\na2 OK Capabilities\r\n* LIST () \"/\" \"Container\"\r\na3 OK Listed\r\n* 0 EXISTS\r\n";
+            let namespace = validity
+                .map(|v| format!("* OK [UIDVALIDITY {v}] Valid\r\n"))
+                .unwrap_or_default();
+            let stream=ImapTranscript{responses:Cursor::new(format!("{prefix}{namespace}a4 OK [READ-ONLY] Opened\r\n* SEARCH\r\na5 OK Searched\r\n").into_bytes()),commands:Arc::new(Mutex::new(Vec::new()))};
+            let mut session = imap::Client::new(stream)
+                .login("test", "fixture-only")
+                .unwrap();
+            let result = sync_imap(&store, &a, &mut session);
+            assert_eq!(result.is_ok(), validity.is_some());
+            assert_eq!(
+                store.folder_health().unwrap().is_empty(),
+                validity.is_some()
+            );
+            let active:bool=store.db().unwrap().query_row("SELECT active FROM sources WHERE account_id=?1 AND folder='Container' AND remote_id='7:12'",[&a.id],|r|r.get(0)).unwrap();
+            assert_eq!(active, validity.is_none());
+            assert_eq!(
+                store.snapshot(&crate::tests::query()).unwrap().stats.saved,
+                1
+            );
+        }
+    }
+
+    #[test]
     fn incoming_flags_require_uid_and_flags_and_reject_truncation() {
         let response = b"* 1 FETCH (UID 7 FLAGS (\\Seen \\Flagged custom))\r\n* 2 FETCH (UID 8 FLAGS ())\r\n* 3 FETCH (FLAGS (\\Seen))\r\n* 4 FETCH (UID 9 RFC822.SIZE 10)\r\n";
         assert_eq!(
@@ -2363,6 +2517,7 @@ pub fn folder_list(store: &Store, a: &Account) -> Result<Vec<RemoteFolder>> {
             display_name: "收件箱".into(),
             delimiter: None,
             selectable: true,
+            sync_error: None,
             roles: vec![FolderRole::Inbox],
         }]);
     }
@@ -2393,6 +2548,135 @@ pub fn sync_folder_with_updates(
         let _ = session.logout();
     }
     result
+}
+/// Inspect a cached directory in a fresh read-only connection. Comparing UID
+/// sets with a second fresh INBOX connection diagnoses selection leakage, but
+/// overlapping UIDs alone never prove identical messages or authorize removal.
+fn inspect_selection<T: std::io::Read + Write>(
+    session: &mut imap::Session<T>,
+    folder: &str,
+) -> Result<(
+    crate::folder_health::SelectionEvidence,
+    std::collections::HashSet<u32>,
+    Option<String>,
+)> {
+    let mailbox = match examine_verified(session, folder) {
+        Ok(m) => m,
+        Err(e) if e == MISSING_SELECTION => {
+            return Ok((Default::default(), Default::default(), Some(e)))
+        }
+        Err(e)
+            if e.starts_with("No Response:")
+                && (e.to_ascii_lowercase().contains("select")
+                    || e.to_ascii_lowercase().contains("folder not exist")) =>
+        {
+            return Ok((
+                Default::default(),
+                Default::default(),
+                Some("服务器拒绝打开此目录；旧来源暂停使用，本地存档保留".into()),
+            ));
+        }
+        Err(e) => return Err(e),
+    };
+    let ids = match session.uid_search("ALL") {
+        Ok(ids) => ids,
+        Err(imap::error::Error::No(message))
+            if message.to_ascii_lowercase().contains("select")
+                || message.to_ascii_lowercase().contains("folder not exist") =>
+        {
+            return Ok((
+                crate::folder_health::SelectionEvidence {
+                    exists: Some(mailbox.exists),
+                    uid_count: None,
+                    inbox_uid_overlap: None,
+                },
+                Default::default(),
+                Some(
+                    "服务器未真正打开该目录，拒绝读取邮件编号；旧来源暂停使用，本地存档保留".into(),
+                ),
+            ));
+        }
+        Err(e) => return Err(err(e)),
+    };
+    let mut exists = mailbox.exists;
+    for event in session.unsolicited_responses.try_iter() {
+        if let imap::types::UnsolicitedResponse::Exists(n) = event {
+            exists = n;
+        }
+    }
+    let evidence = crate::folder_health::SelectionEvidence {
+        exists: Some(exists),
+        uid_count: Some(ids.len()),
+        inbox_uid_overlap: None,
+    };
+    let reason = (exists == 0 && !ids.is_empty()).then(|| INCONSISTENT_SELECTION.to_string());
+    Ok((evidence, ids, reason))
+}
+pub fn probe_folder(
+    store: &Store,
+    a: &Account,
+    folder: &str,
+) -> Result<crate::folder_health::SelectionEvidence> {
+    if !a.enabled || a.protocol != "imap" {
+        return Err("请启用 IMAP 账号后重新核查".into());
+    }
+    let known = store
+        .remote_folders(Some(&a.id))?
+        .into_iter()
+        .any(|f| f.name == folder && f.selectable);
+    if !known {
+        return Err("文件夹已不存在或不能存放邮件，请刷新目录".into());
+    }
+    let gate = crate::sync_control::folder_gate(&store.root, &a.id, folder)?;
+    let _guard = gate
+        .try_lock()
+        .map_err(|_| "此目录正在收取，请稍后重新核查")?;
+    let secret = auth::credentials(a)?;
+    let mut session = imap_session(a, &secret)?;
+    let (mut evidence, ids, reason) = inspect_selection(&mut session, folder)?;
+    let _ = session.logout();
+    if !folder.eq_ignore_ascii_case("INBOX") && evidence.uid_count.is_some() {
+        let inbox_gate = crate::sync_control::folder_gate(&store.root, &a.id, "INBOX")?;
+        // Never block realtime delivery to run a diagnostic.
+        if let Ok(_inbox_guard) = inbox_gate.try_lock() {
+            if let Ok(mut inbox) = imap_session(a, &secret) {
+                if let Ok((_, inbox_ids, reason)) = inspect_selection(&mut inbox, "INBOX") {
+                    if reason.is_none() {
+                        evidence.inbox_uid_overlap = Some(ids.intersection(&inbox_ids).count());
+                    }
+                    let _ = inbox.logout();
+                }
+            }
+        };
+    }
+    let current = store.account(&a.id)?;
+    if !current.enabled || !current.same_connection(a) {
+        return Err("账号已暂停或连接配置已修改，核查结果已忽略".into());
+    }
+    if let Some(reason) = reason {
+        store.isolate_folder(a, folder, &reason, &evidence)?;
+    } else if store.folder_isolated_reason(&a.id, folder)?.is_some() {
+        store.isolate_folder(
+            a,
+            folder,
+            "只读核查已通过，等待完整收取核对旧来源；本地存档保留",
+            &evidence,
+        )?;
+    }
+    let summary = match (evidence.exists, evidence.uid_count) {
+        (Some(count), Some(uids)) => format!(
+            "服务器报告 {count} 封邮件，返回 {uids} 个邮件编号；{}",
+            if count == 0 && uids > 0 {
+                "目录响应矛盾，继续隔离"
+            } else {
+                "旧来源须经完整收取核对"
+            }
+        ),
+        (Some(count), None) => format!("服务器报告 {count} 封邮件，但拒绝查询邮件编号；继续隔离"),
+        _ => "服务器未提供可靠的目录信息；继续隔离".into(),
+    };
+    store.log(&format!("文件夹「{folder}」独立只读核查：{summary}"))?;
+    Ok(evidence)
 }
 pub fn read_remote(store: &Store, a: &Account, mail: &Mail) -> Result<Vec<u8>> {
     let (folder, remote) = store.source(&mail.id)?;

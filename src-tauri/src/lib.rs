@@ -3,6 +3,7 @@ mod archive_deletion;
 mod attachment_preview;
 mod auth;
 mod conversation;
+mod folder_health;
 mod idle;
 mod models;
 mod network;
@@ -68,6 +69,35 @@ async fn update_mail(
     tauri::async_runtime::spawn_blocking(move || store.change_mail(&id, &action, &value))
         .await
         .map_err(err)?
+}
+#[tauri::command]
+async fn folder_health(
+    state: tauri::State<'_, AppState>,
+) -> Result<Vec<folder_health::FolderHealth>> {
+    let store = state.store.clone();
+    tauri::async_runtime::spawn_blocking(move || store.folder_health())
+        .await
+        .map_err(err)?
+}
+#[tauri::command]
+async fn probe_remote_folder(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, AppState>,
+    account_id: String,
+    folder: String,
+) -> Result<folder_health::SelectionEvidence> {
+    let store = state.store.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let result = network::probe_folder(&store, &store.account(&account_id)?, &folder);
+        if let Err(e) = &result {
+            let _ = store.log(&format!("文件夹「{folder}」独立只读核查失败：{e}"));
+        }
+        let _ = app.emit("server-operations-updated", ());
+        let _ = app.emit("mail-updated", ());
+        result
+    })
+    .await
+    .map_err(err)?
 }
 #[tauri::command]
 async fn server_operations(
@@ -894,6 +924,8 @@ pub fn run() {
             mail_metadata,
             mail_conversation,
             update_mail,
+            folder_health,
+            probe_remote_folder,
             server_operations,
             retry_server_operation,
             save_rules,

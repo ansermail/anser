@@ -10,6 +10,8 @@ import {
   CollapsibleContent,
 } from "./components/ui/collapsible";
 import { Skeleton } from "./components/ui/skeleton";
+import { FolderHealthPanel } from "./components/folder-health";
+import { Alert, AlertTitle, AlertDescription } from "./components/ui/alert";
 import { ServerOperations } from "./components/server-operations";
 import { FolderMappingDialog } from "./components/folder-mapping-dialog";
 import { RemoteFolderList } from "./components/remote-folder-list";
@@ -750,7 +752,13 @@ export default function App() {
   }
   async function openRemoteFolder(accountId: string, folder: string) {
     navigate("remote", accountId, "", folder);
-    if (demo) return;
+    if (
+      demo ||
+      serverFolders.find(
+        (item) => item.accountId === accountId && item.name === folder,
+      )?.syncError
+    )
+      return;
     try {
       await call("sync_remote_folder", { id: accountId, folder });
       await refresh();
@@ -1251,6 +1259,7 @@ export default function App() {
               </Card>
               <StorageTools />
               <ServerOperations />
+              <FolderHealthPanel />
               <div className="info-strip">
                 <Info size={17} />
                 <span>
@@ -1377,6 +1386,19 @@ export default function App() {
                       />
                     </Button>
                   </div>
+                  {serverFolders.find(
+                    (f) =>
+                      f.accountId === query.accountId &&
+                      f.name === query.remoteFolder,
+                  )?.syncError && (
+                    <Alert className="mx-4 w-auto">
+                      <AlertCircle />
+                      <AlertTitle>目录来源已隔离</AlertTitle>
+                      <AlertDescription>
+                        此目录的服务器响应不可靠。旧来源已暂停使用，本地存档仍可在“本地存档”中查看。请到设置与账号重新核查。
+                      </AlertDescription>
+                    </Alert>
+                  )}
                   <div className="search-box">
                     <Search size={16} />
                     <Input

@@ -60,6 +60,8 @@ impl Store {
             .map(|r| {
                 let mut folder: RemoteFolder =
                     serde_json::from_str(&r.map_err(err)?).map_err(err)?;
+                folder.sync_error =
+                    self.folder_isolated_reason(&folder.account_id, &folder.name)?;
                 if folder.detected_roles.is_none() {
                     normalize_folder(&mut folder);
                     folder.detected_roles = Some(folder.roles.clone());
@@ -114,7 +116,7 @@ impl Store {
                     .iter()
                     .find(|f| &f.name == name)
                     .ok_or("选择的服务器文件夹已不存在，请刷新目录")?;
-                if !folder.selectable {
+                if !folder.selectable || self.folder_isolated_reason(account, name)?.is_some() {
                     return Err("该目录不能存放邮件，请选择子文件夹".into());
                 }
                 if folder.name.eq_ignore_ascii_case("INBOX")
@@ -147,10 +149,21 @@ impl Store {
         tx.commit().map_err(err)
     }
     pub fn source(&self, id: &str) -> Result<(String, String)> {
-        self.db()?.query_row("SELECT folder,remote_id FROM sources WHERE mail_id=?1 AND active=1 ORDER BY folder='INBOX' COLLATE NOCASE DESC LIMIT 1",[id],|r|Ok((r.get(0)?,r.get(1)?))).map_err(|_|"邮件已不在服务器上，且没有本地副本".into())
+        let db = self.db()?;
+        let source=db.query_row("SELECT folder,remote_id FROM trusted_sources WHERE mail_id=?1 AND active=1 ORDER BY folder='INBOX' COLLATE NOCASE DESC LIMIT 1",[id],|r|Ok((r.get(0)?,r.get(1)?))).optional().map_err(err)?;
+        if let Some(source) = source {
+            return Ok(source);
+        }
+        let isolated:bool=db.query_row("SELECT EXISTS(SELECT 1 FROM sources s JOIN folder_health h ON h.account_id=s.account_id AND h.folder=s.folder WHERE s.mail_id=?1 AND s.active=1)",[id],|r|r.get(0)).map_err(err)?;
+        Err(if isolated {
+            "这封邮件的服务器来源尚未通过核查，请重新收取真实文件夹后再打开"
+        } else {
+            "邮件已不在服务器上，且没有本地副本"
+        }
+        .into())
     }
     pub fn source_available(&self, a: &Account, folder: &str, remote: &str) -> Result<bool> {
-        let data: Option<String> = self.db()?.query_row("SELECT m.data FROM sources s JOIN message_listing m ON m.id=s.mail_id WHERE s.account_id=?1 AND s.folder=?2 AND s.remote_id=?3",params![a.id,folder,remote],|r|r.get(0)).optional().map_err(err)?;
+        let data: Option<String> = self.db()?.query_row("SELECT m.data FROM sources s JOIN message_listing m ON m.id=s.mail_id WHERE s.account_id=?1 AND s.folder=?2 AND s.remote_id=?3 AND NOT EXISTS(SELECT 1 FROM folder_health h WHERE h.account_id=s.account_id AND h.folder=s.folder)",params![a.id,folder,remote],|r|r.get(0)).optional().map_err(err)?;
         Ok(data
             .and_then(|s| serde_json::from_str::<Mail>(&s).ok())
             .is_some_and(|m| !a.save_locally || m.saved_locally))
@@ -161,6 +174,9 @@ impl Store {
         folder: &str,
         validity: u32,
     ) -> Result<std::collections::HashSet<u32>> {
+        if self.folder_isolated_reason(&account.id, folder)?.is_some() {
+            return Ok(Default::default());
+        }
         let db = self.db()?;
         let mut stmt = db.prepare("SELECT s.remote_id FROM sources s JOIN message_listing m ON m.id=s.mail_id AND m.account_id=s.account_id WHERE s.account_id=?1 AND s.folder=?2 AND (?3=0 OR json_extract(m.data,'$.savedLocally')=1)").map_err(err)?;
         let rows = stmt
@@ -216,8 +232,8 @@ impl Store {
         let mut stmt = tx.prepare("WITH observed AS (SELECT m.id,json_set(data,
                 '$.isRead',CASE WHEN json_extract(m.data,'$.localReadOverride') IS NOT NULL OR EXISTS(SELECT 1 FROM server_operations o WHERE o.account_id=?1 AND o.folder=?2 AND o.remote_id=?3 AND json_extract(o.data,'$.mailId')=m.id AND o.action='read' AND o.status IN ('queued','running','blocked') AND json_extract(o.data,'$.identity')=?6 AND json_extract(o.data,'$.value')=json_extract(m.data,'$.isRead')) THEN json(CASE json_extract(m.data,'$.isRead') WHEN 1 THEN 'true' ELSE 'false' END) ELSE json(?4) END,
                 '$.starred',CASE WHEN json_extract(m.data,'$.localStarOverride') IS NOT NULL OR EXISTS(SELECT 1 FROM server_operations o WHERE o.account_id=?1 AND o.folder=?2 AND o.remote_id=?3 AND json_extract(o.data,'$.mailId')=m.id AND o.action='star' AND o.status IN ('queued','running','blocked') AND json_extract(o.data,'$.identity')=?6 AND json_extract(o.data,'$.value')=json_extract(m.data,'$.starred')) THEN json(CASE json_extract(m.data,'$.starred') WHEN 1 THEN 'true' ELSE 'false' END) ELSE json(?5) END) AS next_data
-                FROM sources target JOIN messages m ON m.id=target.mail_id AND m.account_id=target.account_id WHERE target.account_id=?1 AND target.folder=?2 AND target.remote_id=?3 AND target.active=1
-                AND ?2=(SELECT s.folder FROM sources s JOIN message_listing origin ON origin.id=s.mail_id WHERE s.account_id=?1 AND s.mail_id=m.id AND s.active=1 ORDER BY s.folder='INBOX' COLLATE NOCASE DESC,s.folder=json_extract(origin.data,'$.sourceFolder') DESC,s.folder COLLATE NOCASE,s.folder LIMIT 1))
+                FROM trusted_sources target JOIN messages m ON m.id=target.mail_id AND m.account_id=target.account_id WHERE target.account_id=?1 AND target.folder=?2 AND target.remote_id=?3 AND target.active=1
+                AND ?2=(SELECT s.folder FROM trusted_sources s JOIN message_listing origin ON origin.id=s.mail_id WHERE s.account_id=?1 AND s.mail_id=m.id AND s.active=1 ORDER BY s.folder='INBOX' COLLATE NOCASE DESC,s.folder=json_extract(origin.data,'$.sourceFolder') DESC,s.folder COLLATE NOCASE,s.folder LIMIT 1))
                 UPDATE messages SET data=(SELECT next_data FROM observed WHERE observed.id=messages.id) WHERE id IN (SELECT observed.id FROM observed JOIN messages original ON original.id=observed.id WHERE observed.next_data!=original.data)").map_err(err)?;
         for (remote, read, star) in flags {
             // Pending, running and rejected writes protect each flag separately.
@@ -393,6 +409,7 @@ pub fn listed_folder(account: &str, name: &imap::types::Name) -> RemoteFolder {
     let mut folder = RemoteFolder {
         account_id: account.into(),
         detected_roles: None,
+        sync_error: None,
         name: name.name().into(),
         display_name: display_name(name.name()),
         delimiter: name.delimiter().map(str::to_string),
@@ -587,6 +604,7 @@ mod folder_tests {
             display_name: "VendorCustom".into(),
             delimiter: None,
             selectable: true,
+            sync_error: None,
             roles: vec![FolderRole::Trash],
         };
         assert!(excluded_from_auto_sync(&folder));

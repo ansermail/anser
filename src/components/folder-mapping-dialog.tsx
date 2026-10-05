@@ -101,6 +101,7 @@ export function FolderMappingDialog({
     settings?.folders.filter(
       (f) =>
         f.selectable &&
+        !f.syncError &&
         !f.roles?.includes("inbox") &&
         f.name.toUpperCase() !== "INBOX",
     ) || [];

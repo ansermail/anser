@@ -34,6 +34,7 @@ pub struct OperationSnapshot {
     pub pending: usize,
     pub blocked: usize,
     pub completed: usize,
+    pub isolated: usize,
     pub items: Vec<Operation>,
 }
 pub enum Failure {
@@ -103,7 +104,7 @@ pub fn enqueue(tx: &Transaction<'_>, mail: &Mail, action: &str, value: bool) -> 
     }
     let sources = tx
         .prepare(
-            "SELECT folder,remote_id FROM sources WHERE account_id=?1 AND mail_id=?2 AND active=1",
+            "SELECT folder,remote_id FROM trusted_sources WHERE account_id=?1 AND mail_id=?2 AND active=1",
         )
         .map_err(err)?
         .query_map(params![a.id, mail.id], |r| {
@@ -159,8 +160,8 @@ const COLUMNS: &str = "data,id,revision,status,attempts,error,updated_at";
 impl Store {
     pub fn server_operations(&self) -> Result<OperationSnapshot> {
         let db = self.db()?;
-        let (pending, blocked, completed) = db.query_row("SELECT COALESCE(SUM(status IN ('queued','running')),0),COALESCE(SUM(status='blocked'),0),COALESCE(SUM(status='completed'),0) FROM server_operations", [], |r| Ok((r.get(0)?,r.get(1)?,r.get(2)?))).map_err(err)?;
-        let mut stmt = db.prepare(&format!("SELECT {COLUMNS} FROM server_operations ORDER BY CASE status WHEN 'blocked' THEN 0 WHEN 'running' THEN 1 WHEN 'queued' THEN 2 ELSE 3 END,updated_at DESC LIMIT 50")).map_err(err)?;
+        let (pending, blocked, completed, isolated) = db.query_row("SELECT COALESCE(SUM(status IN ('queued','running')),0),COALESCE(SUM(status='blocked'),0),COALESCE(SUM(status='completed'),0),COALESCE(SUM(status='isolated'),0) FROM server_operations", [], |r| Ok((r.get(0)?,r.get(1)?,r.get(2)?,r.get(3)?))).map_err(err)?;
+        let mut stmt = db.prepare(&format!("SELECT {COLUMNS} FROM server_operations ORDER BY CASE status WHEN 'blocked' THEN 0 WHEN 'running' THEN 1 WHEN 'queued' THEN 2 WHEN 'isolated' THEN 3 ELSE 4 END,updated_at DESC LIMIT 50")).map_err(err)?;
         let mut items = stmt
             .query_map([], decode)
             .map_err(err)?
@@ -178,6 +179,7 @@ impl Store {
             pending,
             blocked,
             completed,
+            isolated,
             items,
         })
     }
@@ -240,6 +242,14 @@ impl Store {
         }
         if a.protocol != "imap" || identity(&a) != op.identity {
             return Err(blocked("账号连接配置已变化，请重新收取后再操作"));
+        }
+        if let Some(reason) = self
+            .folder_isolated_reason(&op.account_id, &op.folder)
+            .map_err(Failure::Retry)?
+        {
+            return Err(blocked(&format!(
+                "目录来源已隔离，请先在设置中重新核查：{reason}"
+            )));
         }
         let active: bool = self.db().map_err(Failure::Retry)?.query_row("SELECT EXISTS(SELECT 1 FROM sources JOIN messages ON messages.id=sources.mail_id WHERE sources.account_id=?1 AND sources.folder=?2 AND remote_id=?3 AND mail_id=?4 AND active=1 AND messages.account_id=?1)", params![op.account_id,op.folder,op.remote_id,op.mail_id], |r| r.get(0)).map_err(|e| Failure::Retry(err(e)))?;
         if !active {

@@ -94,6 +94,7 @@ impl Store {
             END;
             COMMIT;").map_err(err)?;
         crate::operations::initialize(&db)?;
+        crate::folder_health::initialize(&db)?;
         s.migrate_folder_roles()?;
         s.recover_archive_deletion()?;
         s.refresh_archive_metadata()?;
@@ -210,9 +211,20 @@ impl Store {
         )
         .map_err(err)?;
         if crate::operations::identity(&old) != crate::operations::identity(a) {
+            tx.execute("UPDATE folder_health SET identity=?2,reason='账号配置已修改，旧来源须经完整收取重新核对' WHERE account_id=?1", params![a.id,crate::operations::identity(a)]).map_err(err)?;
             tx.execute("UPDATE server_operations SET status='blocked',revision=revision+1,error='账号连接配置已变化，请重新收取后再操作' WHERE account_id=?1 AND status!='completed'", [&a.id]).map_err(err)?;
         }
         if source_changed {
+            let removed = tx
+                .execute("DELETE FROM folder_health WHERE account_id=?1", [&a.id])
+                .map_err(err)?;
+            if removed > 0 {
+                tx.execute(
+                    "UPDATE conversation_revision SET version=version+1 WHERE id=1",
+                    [],
+                )
+                .map_err(err)?;
+            }
             tx.execute("DELETE FROM sources WHERE account_id=?1", [&a.id])
                 .map_err(err)?;
             tx.execute("DELETE FROM remote_folders WHERE account_id=?1", [&a.id])
@@ -232,6 +244,8 @@ impl Store {
             [id],
         )
         .map_err(err)?;
+        tx.execute("DELETE FROM folder_health WHERE account_id=?1", [id])
+            .map_err(err)?;
         tx.execute("DELETE FROM folder_mappings WHERE account_id=?1", [id])
             .map_err(err)?;
         tx.execute("DELETE FROM remote_folders WHERE account_id=?1", [id])
@@ -518,8 +532,8 @@ impl Store {
     }
     pub fn snapshot(&self, q: &Query) -> Result<Snapshot> {
         let db = self.db()?;
-        let where_sql="(?1='' OR account_id=?1) AND (?2='' OR instr(lower(CASE ?8 WHEN 'subject' THEN json_extract(data,'$.subject') WHEN 'sender' THEN json_extract(data,'$.sender') WHEN 'recipients' THEN json_extract(data,'$.recipients') WHEN 'body' THEN (SELECT json_extract(original.data,'$.body') FROM messages original WHERE original.id=listing.id) ELSE json_extract(data,'$.subject') || ' ' || json_extract(data,'$.sender') || ' ' || json_extract(data,'$.recipients') || ' ' || (SELECT json_extract(original.data,'$.body') FROM messages original WHERE original.id=listing.id) END), lower(?2))>0) AND (?3='' OR json_extract(data,'$.localFolder')=?3) AND CASE ?4 WHEN 'trash' THEN json_extract(data,'$.trashed')=1 ELSE json_extract(data,'$.trashed')=0 END AND CASE ?4 WHEN 'all' THEN EXISTS(SELECT 1 FROM sources s JOIN accounts a ON a.id=s.account_id WHERE s.mail_id=listing.id AND s.folder='INBOX' COLLATE NOCASE AND s.active=1) WHEN 'unread' THEN json_extract(data,'$.isRead')=0 WHEN 'starred' THEN json_extract(data,'$.starred')=1 WHEN 'sent' THEN (EXISTS(SELECT 1 FROM sources s JOIN remote_folders f ON f.account_id=s.account_id AND f.name=s.folder WHERE s.mail_id=listing.id AND s.active=1 AND EXISTS(SELECT 1 FROM json_each(f.data,'$.roles') WHERE value='sent')) OR (json_extract(data,'$.sourceFolder')='Sent' AND (NOT EXISTS(SELECT 1 FROM remote_folders f WHERE f.account_id=listing.account_id AND f.name='Sent') OR EXISTS(SELECT 1 FROM sources s JOIN outbox o ON o.id=s.remote_id WHERE s.mail_id=listing.id AND s.folder='Sent' AND o.status='sent')))) ELSE 1 END AND (?5=0 OR json_extract(data,'$.isRead')=0) AND (?6=0 OR json_extract(data,'$.starred')=1) AND (?7=0 OR json_extract(data,'$.hasAttachments')=1) AND (?9='' OR EXISTS(SELECT 1 FROM sources s WHERE s.mail_id=listing.id AND s.account_id=listing.account_id AND s.folder=?9 AND s.active=1)) AND (?4!='local' OR COALESCE(json_extract(data,'$.savedLocally'),1)=1)";
-        let mut st=db.prepare(&format!("SELECT data FROM message_listing listing WHERE {where_sql} ORDER BY json_extract(data,'$.date') DESC")).map_err(err)?;
+        let where_sql="(?1='' OR account_id=?1) AND (?2='' OR instr(lower(CASE ?8 WHEN 'subject' THEN json_extract(data,'$.subject') WHEN 'sender' THEN json_extract(data,'$.sender') WHEN 'recipients' THEN json_extract(data,'$.recipients') WHEN 'body' THEN (SELECT json_extract(original.data,'$.body') FROM messages original WHERE original.id=listing.id) ELSE json_extract(data,'$.subject') || ' ' || json_extract(data,'$.sender') || ' ' || json_extract(data,'$.recipients') || ' ' || (SELECT json_extract(original.data,'$.body') FROM messages original WHERE original.id=listing.id) END), lower(?2))>0) AND (?3='' OR json_extract(data,'$.localFolder')=?3) AND CASE ?4 WHEN 'trash' THEN json_extract(data,'$.trashed')=1 ELSE json_extract(data,'$.trashed')=0 END AND CASE ?4 WHEN 'all' THEN EXISTS(SELECT 1 FROM trusted_sources s JOIN accounts a ON a.id=s.account_id WHERE s.mail_id=listing.id AND s.folder='INBOX' COLLATE NOCASE AND s.active=1) WHEN 'unread' THEN json_extract(data,'$.isRead')=0 WHEN 'starred' THEN json_extract(data,'$.starred')=1 WHEN 'sent' THEN (EXISTS(SELECT 1 FROM trusted_sources s JOIN remote_folders f ON f.account_id=s.account_id AND f.name=s.folder WHERE s.mail_id=listing.id AND s.active=1 AND EXISTS(SELECT 1 FROM json_each(f.data,'$.roles') WHERE value='sent')) OR (json_extract(data,'$.sourceFolder')='Sent' AND (NOT EXISTS(SELECT 1 FROM remote_folders f WHERE f.account_id=listing.account_id AND f.name='Sent') OR EXISTS(SELECT 1 FROM trusted_sources s JOIN outbox o ON o.id=s.remote_id WHERE s.mail_id=listing.id AND s.folder='Sent' AND o.status='sent')))) ELSE 1 END AND (?5=0 OR json_extract(data,'$.isRead')=0) AND (?6=0 OR json_extract(data,'$.starred')=1) AND (?7=0 OR json_extract(data,'$.hasAttachments')=1) AND (?9='' OR EXISTS(SELECT 1 FROM trusted_sources s WHERE s.mail_id=listing.id AND s.account_id=listing.account_id AND s.folder=?9 AND s.active=1)) AND (?4!='local' OR COALESCE(json_extract(data,'$.savedLocally'),1)=1)";
+        let mut st=db.prepare(&format!("SELECT data FROM readable_listing listing WHERE {where_sql} ORDER BY json_extract(data,'$.date') DESC")).map_err(err)?;
         let rows = st
             .query_map(
                 params![
@@ -733,7 +747,7 @@ impl Store {
             )?;
         }
         drop(stmt);
-        snap.execute_batch("DELETE FROM accounts; DELETE FROM drafts; DELETE FROM outbox; DELETE FROM logs; DELETE FROM server_operations; VACUUM;").map_err(err)?;
+        snap.execute_batch("DELETE FROM accounts; DELETE FROM drafts; DELETE FROM outbox; DELETE FROM logs; DELETE FROM server_operations; DELETE FROM folder_health; VACUUM;").map_err(err)?;
         archive::atomic_write(
             &folder.join("manifest.json"),
             br#"{"format":"mail-desktop-archive","version":1}"#,

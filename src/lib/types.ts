@@ -171,6 +171,7 @@ export interface RemoteFolder {
   displayName: string;
   delimiter: string | null;
   selectable: boolean;
+  syncError?: string;
   roles?: FolderRole[];
   detectedRoles?: FolderRole[];
 }

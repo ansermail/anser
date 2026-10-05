@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   Archive,
+  AlertCircle,
   ChevronRight,
   FileText,
   Folder,
@@ -96,7 +97,7 @@ function FolderBranch({
         variant="ghost"
         size="sm"
         className={`nav-item folder-item ${node.folder?.name === selected ? "active" : ""}`}
-        title={node.folder?.displayName || node.label}
+        title={node.folder?.syncError || node.folder?.displayName || node.label}
         aria-current={node.folder?.name === selected ? "page" : undefined}
         onClick={() =>
           node.folder?.selectable
@@ -107,6 +108,12 @@ function FolderBranch({
       >
         <Icon data-icon="inline-start" />
         <span>{node.label}</span>
+        {node.folder?.syncError && (
+          <AlertCircle
+            className="text-destructive"
+            aria-label="目录来源已隔离"
+          />
+        )}
       </Button>
     </div>
   );
