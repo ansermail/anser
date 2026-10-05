@@ -49,7 +49,7 @@ impl Store {
     pub fn archive_health(&self) -> Result<ArchiveHealth> {
         let db = self.db()?;
         let mut q = db
-            .prepare("SELECT data FROM messages ORDER BY rowid")
+            .prepare("SELECT data FROM messages WHERE COALESCE(json_extract(data,'$.savedLocally'),1)=1 ORDER BY rowid")
             .map_err(err)?;
         let mut checked = 0;
         let mut healthy = 0;
@@ -62,7 +62,7 @@ impl Store {
                 let mut parts = Vec::new();
                 archive::leaves(&parsed, &mut parts);
                 for part in parts {
-                    part.get_body_raw().map_err(err)?;
+                    archive::decoded_bytes(part)?;
                 }
                 Ok(())
             }) {
@@ -117,7 +117,7 @@ impl Store {
         let mut addresses = BTreeMap::<String, (Address, u32)>::new();
         let db = self.db()?;
         let mut query = db
-            .prepare("SELECT data FROM messages ORDER BY rowid DESC LIMIT 1000")
+            .prepare("SELECT data FROM message_listing ORDER BY rowid DESC LIMIT 1000")
             .map_err(err)?;
         for row in query
             .query_map([], |r| r.get::<_, String>(0))
@@ -153,7 +153,7 @@ impl Store {
     }
     pub fn outbox(&self) -> Result<Vec<OutboxRecord>> {
         let db = self.db()?;
-        let mut query = db.prepare("SELECT id,status,data,error,updated_at,raw FROM outbox ORDER BY rowid DESC LIMIT 100").map_err(err)?;
+        let mut query = db.prepare("SELECT id,status,data,error,updated_at,raw,scheduled_at FROM outbox ORDER BY CASE WHEN status IN ('scheduled','overdue','paused') THEN 0 ELSE 1 END,scheduled_at, rowid DESC LIMIT 100").map_err(err)?;
         let rows = query
             .query_map([], |r| {
                 Ok((
@@ -163,12 +163,13 @@ impl Store {
                     r.get::<_, String>(3)?,
                     r.get::<_, String>(4)?,
                     r.get::<_, Vec<u8>>(5)?,
+                    r.get::<_, String>(6)?,
                 ))
             })
             .map_err(err)?;
         let mut out = Vec::new();
         for row in rows {
-            let (id, status, data, error, updated_at, raw) = row.map_err(err)?;
+            let (id, status, data, error, updated_at, raw, scheduled_at) = row.map_err(err)?;
             let draft: Compose = serde_json::from_str(&data).map_err(err)?;
             let hash = archive::digest(&raw);
             let exists: bool = db
@@ -186,16 +187,19 @@ impl Store {
                 error,
                 updated_at,
                 archived,
+                scheduled_at,
             });
         }
         Ok(out)
     }
     pub fn outbox_draft(&self, id: &str, confirm_duplicate: bool) -> Result<Compose> {
         let db = self.db()?;
-        let (status, data): (String, String) = db
-            .query_row("SELECT status,data FROM outbox WHERE id=?1", [id], |r| {
-                Ok((r.get(0)?, r.get(1)?))
-            })
+        let (status, data, raw): (String, String, Vec<u8>) = db
+            .query_row(
+                "SELECT status,data,raw FROM outbox WHERE id=?1",
+                [id],
+                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+            )
             .map_err(err)?;
         if status != "failed" && status != "uncertain" {
             return Err("这条发送记录不能重新发送".into());
@@ -203,9 +207,12 @@ impl Store {
         if status == "uncertain" && !confirm_duplicate {
             return Err("请先检查服务端已发送文件夹，并确认仍要准备重发".into());
         }
-        let mut draft: Compose = serde_json::from_str(&data).map_err(err)?;
-        draft.id = uuid::Uuid::new_v4().to_string();
-        self.account(&draft.account_id)?;
+        self.account(
+            &serde_json::from_str::<Compose>(&data)
+                .map_err(err)?
+                .account_id,
+        )?;
+        let draft = self.recover_outbox_draft(&data, &raw)?;
         self.save_draft(&draft)?;
         // Preparing a draft never sends it; retain the original protected record.
         Ok(draft)

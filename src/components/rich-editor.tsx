@@ -1,4 +1,14 @@
-import { useEffect } from "react";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from "./ui/dialog";
+import { FieldGroup, Field, FieldLabel, FieldError } from "./ui/field";
+import { Input } from "./ui/input";
+import { useEffect, useState } from "react";
 import { EditorContent, useEditor, useEditorState } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import {
@@ -26,6 +36,12 @@ export function RichEditor({
   disabled: boolean;
   onChange: (body: string, html: string) => void;
 }) {
+  const [linkDialog, setLinkDialog] = useState<{
+    from: number;
+    to: number;
+  } | null>(null);
+  const [href, setHref] = useState("");
+  const [linkError, setLinkError] = useState("");
   const editor = useEditor({
     extensions: [
       StarterKit.configure({
@@ -106,17 +122,12 @@ export function RichEditor({
       icon: Link,
       active: state?.link,
       run: () => {
-        const href = window.prompt(
-          "链接地址（https://…）",
-          editor.getAttributes("link").href || "https://",
-        );
-        if (href === null) return;
-        if (!href.trim()) {
-          editor.chain().focus().extendMarkRange("link").unsetLink().run();
-          return;
-        }
-        if (!/^(https?:\/\/|mailto:)/i.test(href)) return;
-        editor.chain().focus().extendMarkRange("link").setLink({ href }).run();
+        setHref(editor.getAttributes("link").href || "https://");
+        setLinkError("");
+        setLinkDialog({
+          from: editor.state.selection.from,
+          to: editor.state.selection.to,
+        });
       },
     },
     {
@@ -146,6 +157,84 @@ export function RichEditor({
         ))}
       </div>
       <EditorContent editor={editor} />
+      <Dialog
+        open={!!linkDialog}
+        onOpenChange={(open) => {
+          if (!open) setLinkDialog(null);
+        }}
+      >
+        <DialogContent
+          onCloseAutoFocus={(e) => {
+            e.preventDefault();
+            editor.commands.focus();
+          }}
+        >
+          <DialogHeader>
+            <DialogTitle>插入链接</DialogTitle>
+            <DialogDescription>
+              支持网页和邮箱地址。留空可移除当前链接。
+            </DialogDescription>
+          </DialogHeader>
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              const url = href.trim();
+              if (url) {
+                try {
+                  if (
+                    !["http:", "https:", "mailto:"].includes(
+                      new URL(url).protocol,
+                    )
+                  )
+                    throw new Error();
+                } catch {
+                  setLinkError("请输入有效的 http、https 或 mailto 链接");
+                  return;
+                }
+              }
+              if (!linkDialog || disabled) return;
+              const chain = editor
+                .chain()
+                .focus()
+                .setTextSelection(linkDialog)
+                .extendMarkRange("link");
+              if (url) chain.setLink({ href: url }).run();
+              else chain.unsetLink().run();
+              setLinkDialog(null);
+            }}
+          >
+            <FieldGroup>
+              <Field data-invalid={!!linkError}>
+                <FieldLabel htmlFor="rich-link-url">链接地址</FieldLabel>
+                <Input
+                  id="rich-link-url"
+                  autoFocus
+                  value={href}
+                  aria-invalid={!!linkError}
+                  disabled={disabled}
+                  onChange={(e) => {
+                    setHref(e.target.value);
+                    setLinkError("");
+                  }}
+                />
+                {linkError && <FieldError>{linkError}</FieldError>}
+              </Field>
+              <DialogFooter>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setLinkDialog(null)}
+                >
+                  取消
+                </Button>
+                <Button type="submit" disabled={disabled}>
+                  保存链接
+                </Button>
+              </DialogFooter>
+            </FieldGroup>
+          </form>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

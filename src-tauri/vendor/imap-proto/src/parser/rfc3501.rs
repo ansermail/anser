@@ -177,6 +177,7 @@ named!(capability_data<Vec<Capability>>, map_res!(
     do_parse!(
         tag_no_case!("CAPABILITY") >>
         capabilities: many0!(preceded!(char!(' '), capability)) >>
+        take_while!(|c| c == b' ') >>
         (capabilities)
     ),
     ensure_capabilities_contains_imap4rev

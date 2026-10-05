@@ -79,6 +79,10 @@ named!(body_ext_mpart<BodyExtMPart>, do_parse!(
 ));
 
 named!(body_encoding<ContentEncoding>, alt!(
+    // Tencent returns NIL when a MIME part has no transfer-encoding header.
+    // Treat only this absent value as MIME's default identity encoding (RFC
+    // 2045 section 6.1); keep quoted encodings and literal framing unchanged.
+    map!(nil, |_| ContentEncoding::SevenBit) |
     delimited!(char!('"'), alt!(
         map!(tag_no_case!("7BIT"), |_| ContentEncoding::SevenBit) |
         map!(tag_no_case!("8BIT"), |_| ContentEncoding::EightBit) |
@@ -100,10 +104,22 @@ named!(body_param<BodyParams>, alt!(
     map!(parenthesized_nonempty_list!(do_parse!(
         key: string_utf8 >>
         tag!(" ") >>
-        val: string_utf8 >>
+        val: map_res!(string, |bytes| body_param_text(key, bytes)) >>
         ((key, val))
     )), Option::from)
 ));
+
+// Some servers emit legacy non-UTF8 filename bytes in BODYSTRUCTURE.
+// The borrowed API cannot represent these names as &str. Retain the parameter
+// key with an unavailable value; callers get the real filename from raw MIME.
+// Do not relax types, encodings, boundaries, or string/literal framing.
+fn body_param_text<'a>(key: &str, bytes: &'a [u8]) -> Result<&'a str, std::str::Utf8Error> {
+    match std::str::from_utf8(bytes) {
+        Ok(value) => Ok(value),
+        Err(_) if key.eq_ignore_ascii_case("filename") || key.eq_ignore_ascii_case("name") => Ok(""),
+        Err(error) => Err(error),
+    }
+}
 
 named!(body_extension<BodyExtension>, alt!(
     map!(number, |n| BodyExtension::Num(n)) |

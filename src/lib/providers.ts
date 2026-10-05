@@ -108,6 +108,7 @@ export function makeAccount(provider = "custom"): Account {
     auth: p.oauth ? "oauth" : "password",
     oauthClientId: "",
     enabled: true,
+    saveLocally: true,
     lastSync: null,
     error: null,
   };

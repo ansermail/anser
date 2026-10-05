@@ -1,3 +1,4 @@
+import { useConfirmation } from "@/hooks/use-confirmation";
 import { useEffect, useState } from "react";
 import { Plus, Search, UserRound, Pencil, Trash2, Mail } from "lucide-react";
 import { call } from "@/lib/api";
@@ -22,6 +23,7 @@ export function ContactsPanel({
   initial: Address | null;
   onCompose: (address: Address) => void;
 }) {
+  const { askConfirmation, confirmationDialog } = useConfirmation();
   const [contacts, setContacts] = useState<Contact[]>([]),
     [search, setSearch] = useState("");
   const [editing, setEditing] = useState<Contact | null>(
@@ -116,8 +118,15 @@ export function ContactsPanel({
               variant="ghost"
               size="icon-sm"
               title="删除联系人"
-              onClick={() => {
-                if (window.confirm(`删除联系人 ${c.name || c.email}？`))
+              onClick={async () => {
+                if (
+                  await askConfirmation({
+                    title: "删除联系人？",
+                    description: `删除 ${c.name || c.email} 的本地联系人记录。邮件及历史往来不受影响。`,
+                    action: "删除联系人",
+                    destructive: true,
+                  })
+                )
                   void call("delete_contact", { id: c.id })
                     .then(refresh)
                     .catch((e) => toast.error(String(e)));
@@ -192,6 +201,7 @@ export function ContactsPanel({
           )}
         </DialogContent>
       </Dialog>
+      {confirmationDialog}
     </section>
   );
 }

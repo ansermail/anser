@@ -1,4 +1,319 @@
 use crate::{archive, models::*, rules, store::Store};
+
+#[test]
+fn activity_displays_decoded_folders_in_existing_and_new_logs_without_changing_wire_names() {
+    let temp = tempfile::tempdir().unwrap();
+    let store = Store::new(temp.path().to_path_buf()).unwrap();
+    let message = "文件夹「&UXZO1mWHTvZZOQ-」UID 2：RFC822.SIZE 为 5340，完整响应为 5342 字节；按完整响应保存";
+    let mut a = account();
+    a.error = Some("文件夹「&UXZO1mWHTvZZOQ-」：Connection Lost".into());
+    store.save_account(&a).unwrap();
+    // Existing records are stored in their original diagnostic form.
+    store
+        .db()
+        .unwrap()
+        .execute(
+            "INSERT INTO logs(time,message) VALUES('10-03 21:30',?1)",
+            [message],
+        )
+        .unwrap();
+    store.log("文件夹「INBOX」：Connection Lost").unwrap();
+    let snapshot = store.snapshot(&query()).unwrap();
+    assert_eq!(
+        snapshot.accounts[0].error.as_deref(),
+        Some("文件夹「其他文件夹」：Connection Lost")
+    );
+    assert_eq!(store.account(&a.id).unwrap().error, a.error);
+    assert!(snapshot
+        .logs
+        .iter()
+        .any(|line| line.contains("文件夹「其他文件夹」UID 2：RFC822.SIZE 为 5340")));
+    assert!(snapshot
+        .logs
+        .iter()
+        .any(|line| line.contains("文件夹「收件箱」：Connection Lost")));
+    let original: String = store
+        .db()
+        .unwrap()
+        .query_row("SELECT message FROM logs WHERE id=1", [], |r| r.get(0))
+        .unwrap();
+    assert_eq!(original, message);
+    assert_eq!(
+        crate::remote::display_activity("文件夹「其他/&ZeVnLIqe-」和文件夹「R&-D」"),
+        "文件夹「其他/日本語」和文件夹「R&D」"
+    );
+    for unchanged in [
+        "普通日志 &ZeVnLIqe-",
+        "文件夹「&bad-」",
+        "文件夹「未结束",
+        "文件夹「中文目录」",
+    ] {
+        assert_eq!(crate::remote::display_activity(unchanged), unchanged);
+    }
+}
+
+#[test]
+fn local_account_preferences_save_during_sync_and_are_not_overwritten_by_sync_status() {
+    let temp = tempfile::tempdir().unwrap();
+    let store = Store::new(temp.path().to_path_buf()).unwrap();
+    let mut original = account();
+    original.error = Some("previous server error".into());
+    store.save_account(&original).unwrap();
+    store
+        .ingest(&original, "INBOX", "existing", &raw(), false)
+        .unwrap();
+    let gate = std::sync::Mutex::new(());
+    let _sync = gate.lock().unwrap();
+    let mut edited = original.clone();
+    edited.name = "在线邮箱".into();
+    edited.save_locally = false;
+    // Preferences preserve server errors, sync status and original archives.
+    store.edit_account_preferences(&edited).unwrap();
+    assert_eq!(store.account(&edited.id).unwrap().error, original.error);
+    let mut completed = original.clone();
+    completed.last_sync = Some("2026-10-03T21:00:00+08:00".into());
+    completed.error = None;
+    store.save_sync_status(&completed).unwrap();
+    let current = store.account(&edited.id).unwrap();
+    assert!(!current.save_locally);
+    assert_eq!(current.name, "在线邮箱");
+    assert_eq!(current.last_sync, completed.last_sync);
+    assert_eq!(current.error, None);
+    let next = String::from_utf8(raw())
+        .unwrap()
+        .replace("Project invoice", "Online invoice");
+    store
+        .ingest(&current, "INBOX", "new", next.as_bytes(), false)
+        .unwrap();
+    let snap = store.snapshot(&query()).unwrap();
+    assert_eq!(snap.stats.saved, 1);
+    let all = store
+        .snapshot(&Query {
+            view: "all".into(),
+            ..query()
+        })
+        .unwrap();
+    assert!(all
+        .messages
+        .iter()
+        .any(|m| m.subject == "Online invoice" && !m.saved_locally));
+    let mut invalid = current.clone();
+    invalid.smtp_host = "different.example.com".into();
+    assert!(store.edit_account_preferences(&invalid).is_err());
+    assert_eq!(
+        store.account(&current.id).unwrap().smtp_host,
+        current.smtp_host
+    );
+}
+
+#[test]
+fn smtp_submission_is_independent_of_receiving_and_cannot_repeat_a_confirmed_send() {
+    let temp = tempfile::tempdir().unwrap();
+    let store = Store::new(temp.path().to_path_buf()).unwrap();
+    store.save_account(&account()).unwrap();
+    let draft = draft();
+    store.save_draft(&draft).unwrap();
+    let receiving = std::sync::Mutex::new(());
+    let _receiving = receiving.lock().unwrap();
+    let sending = std::sync::Mutex::new(());
+    let submitted = std::cell::Cell::new(0);
+    crate::with_send_gate(&sending, || {
+        crate::network::send_with(
+            &store,
+            &draft,
+            |account| {
+                assert_eq!(account.email, "test@example.com");
+                Ok(())
+            },
+            |(), message| {
+                assert_eq!(store.outbox().unwrap()[0].status, "sending");
+                let parsed = mailparse::parse_mail(&message.formatted()).is_ok();
+                assert!(parsed);
+                submitted.set(submitted.get() + 1);
+                Ok(())
+            },
+        )
+    })
+    .unwrap();
+    assert_eq!(submitted.get(), 1);
+    assert_eq!(store.outbox().unwrap()[0].status, "sent");
+    assert!(store.drafts().unwrap().is_empty());
+    assert_eq!(store.snapshot(&query()).unwrap().stats.saved, 1);
+    assert!(
+        crate::with_send_gate(&sending, || crate::network::send_with(
+            &store,
+            &draft,
+            |_| panic!("must not reconnect for a previously submitted mail"),
+            |(): (), _| panic!("must not submit twice"),
+        ))
+        .is_err()
+    );
+    assert_eq!(submitted.get(), 1);
+}
+
+#[test]
+fn only_an_active_send_blocks_another_send_and_leaves_the_draft_intact() {
+    let temp = tempfile::tempdir().unwrap();
+    let store = Store::new(temp.path().to_path_buf()).unwrap();
+    store.save_account(&account()).unwrap();
+    let draft = draft();
+    store.save_draft(&draft).unwrap();
+    let gate = std::sync::Mutex::new(());
+    let guard = gate.lock().unwrap();
+    let result = crate::with_send_gate(&gate, || {
+        crate::network::send_with(
+            &store,
+            &draft,
+            |_| panic!("busy send must not touch credentials"),
+            |(): (), _| panic!("busy send must not submit"),
+        )
+    });
+    assert!(result.unwrap_err().contains("已有邮件正在发送"));
+    assert_eq!(store.drafts().unwrap()[0].id, draft.id);
+    assert!(store.outbox().unwrap().is_empty());
+    drop(guard);
+    assert!(crate::with_send_gate(&gate, || Ok(())).is_ok());
+}
+
+#[test]
+fn independent_sends_keep_failed_and_uncertain_results_protected() {
+    for status in ["failed", "uncertain"] {
+        let temp = tempfile::tempdir().unwrap();
+        let store = Store::new(temp.path().to_path_buf()).unwrap();
+        store.save_account(&account()).unwrap();
+        let draft = draft();
+        let sending = std::sync::Mutex::new(());
+        let result = crate::with_send_gate(&sending, || {
+            crate::network::send_with(
+                &store,
+                &draft,
+                |_| Ok(()),
+                |(), _| Err((status, "模拟 SMTP 故障".into())),
+            )
+        });
+        assert!(result.is_err());
+        assert_eq!(store.outbox().unwrap()[0].status, status);
+        assert_eq!(store.drafts().unwrap()[0].id, draft.id);
+        assert!(crate::network::send_with(
+            &store,
+            &draft,
+            |_| Ok(()),
+            |(), _| panic!("no automatic retry")
+        )
+        .is_err());
+        assert!(crate::notifications::receipt(&store, &draft, &result).status == status);
+    }
+}
+
+#[test]
+fn attachment_preview_keeps_names_and_bytes_isolated_from_archive() {
+    let temp = tempfile::tempdir().unwrap();
+    let cache = temp.path().join("preview");
+    let raw = raw();
+    let path = crate::attachment_preview::prepare(&cache, &raw, &account(), 1).unwrap();
+    assert_eq!(path.file_name().unwrap(), "invoice.txt");
+    assert_eq!(std::fs::read(&path).unwrap(), b"invoice content");
+    assert_eq!(
+        crate::attachment_preview::prepare(&cache, &raw, &account(), 1).unwrap(),
+        path
+    );
+    std::fs::write(&path, b"edited in viewer").unwrap();
+    crate::attachment_preview::prepare(&cache, &raw, &account(), 1).unwrap();
+    assert_eq!(std::fs::read(&path).unwrap(), b"invoice content");
+    assert!(!temp.path().join("archive").exists());
+    assert!(crate::attachment_preview::prepare(&cache, &raw, &account(), 0).is_err());
+    assert!(crate::attachment_preview::prepare(&cache, &raw, &account(), 999).is_err());
+    let hostile = String::from_utf8(raw.clone())
+        .unwrap()
+        .replace("invoice.txt", "../../invoice.txt");
+    let safe =
+        crate::attachment_preview::prepare(&cache, hostile.as_bytes(), &account(), 1).unwrap();
+    assert_eq!(safe.parent().unwrap().parent().unwrap(), cache);
+    assert_eq!(std::fs::read(&safe).unwrap(), b"invoice content");
+    assert_ne!(path.parent(), safe.parent());
+    let damaged = String::from_utf8(raw)
+        .unwrap()
+        .replace("aW52b2ljZSBjb250ZW50", "aW52!b2ljZSBjb250ZW50");
+    assert!(crate::attachment_preview::prepare(&cache, damaged.as_bytes(), &account(), 1).is_err());
+}
+
+#[test]
+fn preview_does_not_launch_programs_and_only_prunes_owned_expired_cache() {
+    let temp = tempfile::tempdir().unwrap();
+    let cache = temp.path().join("preview");
+    let raw = String::from_utf8(raw())
+        .unwrap()
+        .replace("invoice.txt", "invoice.command");
+    assert!(
+        crate::attachment_preview::prepare(&cache, raw.as_bytes(), &account(), 1)
+            .unwrap_err()
+            .contains("不支持直接预览")
+    );
+    let raw = raw
+        .replace("invoice.command", "invoice.txt")
+        .replace("aW52b2ljZSBjb250ZW50", "IyEvYmluL3NoCg==");
+    assert!(crate::attachment_preview::prepare(&cache, raw.as_bytes(), &account(), 1).is_err());
+    let path = crate::attachment_preview::prepare(&cache, &self::raw(), &account(), 1).unwrap();
+    let keep = cache.join("other-data");
+    std::fs::create_dir(&keep).unwrap();
+    crate::attachment_preview::prune(&cache, std::time::SystemTime::now());
+    assert!(path.exists());
+    crate::attachment_preview::prune(
+        &cache,
+        std::time::SystemTime::now() + std::time::Duration::from_secs(8 * 86400),
+    );
+    assert!(!path.exists());
+    assert!(keep.exists());
+}
+
+#[test]
+fn concurrent_receiving_and_read_actions_do_not_upgrade_stale_snapshots() {
+    let temp = tempfile::tempdir().unwrap();
+    let store = Store::new(temp.path().to_path_buf()).unwrap();
+    let account = account();
+    store.save_account(&account).unwrap();
+    store
+        .ingest(&account, "INBOX", "seed", &raw(), false)
+        .unwrap();
+    let id = store.snapshot(&query()).unwrap().messages[0].id.clone();
+    // A reader may keep an old WAL snapshot while writers continue to commit.
+    let mut db = store.db().unwrap();
+    let reader = db.transaction().unwrap();
+    let _: String = reader
+        .query_row("SELECT data FROM messages WHERE id=?1", [&id], |r| r.get(0))
+        .unwrap();
+    let barrier = std::sync::Arc::new(std::sync::Barrier::new(3));
+    std::thread::scope(|scope| {
+        for action in ["read", "star"] {
+            let store = store.clone();
+            let id = id.clone();
+            let barrier = barrier.clone();
+            scope.spawn(move || {
+                barrier.wait();
+                for _ in 0..100 {
+                    store.change_mail(&id, action, "true").unwrap();
+                }
+            });
+        }
+        let store = store.clone();
+        let account = account.clone();
+        scope.spawn(move || {
+            barrier.wait();
+            for n in 0..100 {
+                let raw = String::from_utf8(raw())
+                    .unwrap()
+                    .replace("Project invoice", &format!("Concurrent invoice {n}"));
+                store
+                    .ingest(&account, "INBOX", &n.to_string(), raw.as_bytes(), false)
+                    .unwrap();
+            }
+        });
+    });
+    reader.commit().unwrap();
+    let mail = store.mail(&id).unwrap();
+    assert!(mail.is_read && mail.starred);
+    assert_eq!(store.snapshot(&query()).unwrap().stats.total, 101);
+}
 pub(super) fn account() -> Account {
     Account {
         id: "test-account".into(),
@@ -17,6 +332,7 @@ pub(super) fn account() -> Account {
         auth: "password".into(),
         oauth_client_id: "".into(),
         enabled: true,
+        save_locally: true,
         last_sync: None,
         error: None,
     }
@@ -31,6 +347,7 @@ pub(super) fn query() -> Query {
         folder: "".into(),
         search: "".into(),
         limit: 100,
+        remote_folder: String::new(),
         unread_only: false,
         starred_only: false,
         attachments_only: false,
@@ -439,7 +756,7 @@ fn older_snapshot_queries_default_to_all_read_states() {
     assert!(!serde_json::from_value::<Query>(value).unwrap().unread_only);
 }
 
-fn draft() -> Compose {
+pub(super) fn draft() -> Compose {
     Compose {
         id: "draft-1".into(),
         account_id: account().id,
@@ -449,7 +766,15 @@ fn draft() -> Compose {
         subject: "Formatted note".into(),
         body: "Hello Alex".into(),
         html: "<p>Hello <strong>Alex</strong></p>".into(),
+        format: "rich".into(),
+        source: String::new(),
         attachments: vec![],
+        quote: None,
+        in_reply_to: String::new(),
+        reply_anchor_id: String::new(),
+        references: vec![],
+        delivery_body: None,
+        delivery_html: None,
     }
 }
 #[test]
@@ -472,6 +797,49 @@ fn rich_mime_preserves_plain_alternative_and_bcc_only_in_envelope() {
     let mut bad = draft();
     bad.to = "invalid".into();
     assert!(crate::network::build_message(&account(), &bad).is_err());
+}
+#[test]
+fn quoted_delivery_keeps_html_and_embedded_images_in_mime() {
+    let mut d = draft();
+    d.delivery_body = Some("New reply\nOriginal text".into());
+    d.delivery_html = Some("<html><head><style>.report{color:red}</style></head><body class=\"report\"><p>New reply</p><table><tr><td>Original text</td></tr></table><img src=\"data:image/png;base64,aGVsbG8=\"><img src=\"data:image/png;base64,aGVsbG8=\"></body></html>".into());
+    let raw = crate::network::build_message(&account(), &d)
+        .unwrap()
+        .formatted();
+    let parsed = mailparse::parse_mail(&raw).unwrap();
+    let mut parts = vec![];
+    archive::leaves(&parsed, &mut parts);
+    let html_part = parts
+        .iter()
+        .find(|p| p.ctype.mimetype == "text/html")
+        .unwrap()
+        .get_body()
+        .unwrap();
+    assert!(html_part.contains("<table>"));
+    assert!(html_part.contains(".report{color:red}"));
+    assert!(html_part.contains("cid:yanxin-"));
+    assert!(!html_part.contains("data:image/"));
+    let images: Vec<_> = parts
+        .iter()
+        .filter(|p| p.ctype.mimetype == "image/png")
+        .collect();
+    assert_eq!(images.len(), 1);
+    assert_eq!(images[0].get_body_raw().unwrap(), b"hello");
+    assert!(parts.iter().any(
+        |p| p.ctype.mimetype == "text/plain" && p.get_body().unwrap().contains("Original text")
+    ));
+    let (_, archived_html, attachments) = archive::parse(&raw, &account(), "Sent").unwrap();
+    assert!(archived_html.contains("data:image/png;base64,aGVsbG8="));
+    assert!(attachments.is_empty());
+    // Excluded quotes use the fresh delivery fields, never stale HTML.
+    d.delivery_body = Some("New reply".into());
+    d.delivery_html = Some(String::new());
+    let raw = crate::network::build_message(&account(), &d)
+        .unwrap()
+        .formatted();
+    let (_, html, _) = archive::parse(&raw, &account(), "Sent").unwrap();
+    assert!(html.is_empty());
+    assert!(!String::from_utf8_lossy(&raw).contains("Original text"));
 }
 #[test]
 fn reply_headers_parse_groups_and_reply_to_without_bcc() {
@@ -694,6 +1062,7 @@ fn configurable_sync_interval_and_wakeup_are_persistent_and_keep_busy_catchup_pe
     assert_eq!(s.preferences().unwrap().sync_interval_minutes, 5);
     s.save_preferences(&Preferences {
         sync_interval_minutes: 15,
+        ..Default::default()
     })
     .unwrap();
     assert_eq!(
@@ -706,7 +1075,8 @@ fn configurable_sync_interval_and_wakeup_are_persistent_and_keep_busy_catchup_pe
     );
     assert!(s
         .save_preferences(&Preferences {
-            sync_interval_minutes: 0
+            sync_interval_minutes: 0,
+            ..Default::default()
         })
         .is_err());
     let mut schedule = crate::productivity::SyncSchedule::default();
@@ -723,4 +1093,555 @@ fn configurable_sync_interval_and_wakeup_are_persistent_and_keep_busy_catchup_pe
     assert!(schedule.due(410, 60)); // shorter user-selected interval takes effect
     schedule.completed(420);
     assert!(schedule.due(400, 900)); // clock adjustment
+}
+
+#[test]
+fn conversation_combines_inbox_and_sent_with_scope_pagination_and_old_archive_upgrade() {
+    let dir = tempfile::tempdir().unwrap();
+    let store = Store::new(dir.path().into()).unwrap();
+    let a = account();
+    store.save_account(&a).unwrap();
+    let original = b"From: alice@example.com\r\nTo: test@example.com\r\nSubject: Plan\r\nMessage-ID: <root@example.com>\r\nDate: Thu, 1 Oct 2026 08:00:00 +0800\r\n\r\nOriginal";
+    let reply = b"From: test@example.com\r\nTo: alice@example.com\r\nSubject: Re: Plan\r\nMessage-ID: <reply@example.com>\r\nIn-Reply-To: <root@example.com>\r\nReferences: <root@example.com>\r\nDate: Thu, 1 Oct 2026 09:00:00 +0800\r\nContent-Type: text/html\r\n\r\n<table><tr><td>Reply</td></tr></table>";
+    let recent = b"From: alice@example.com\r\nTo: test@example.com\r\nSubject: Re: Plan\r\nMessage-ID: <recent@example.com>\r\nIn-Reply-To: <reply@example.com>\r\nReferences: <root@example.com> <reply@example.com>\r\nDate: Thu, 1 Oct 2026 10:00:00 +0800\r\n\r\nLatest";
+    store.ingest(&a, "INBOX", "1", original, false).unwrap();
+    store.ingest(&a, "Sent", "2", reply, true).unwrap();
+    store.ingest(&a, "INBOX", "3", recent, false).unwrap();
+    let mut q = query();
+    q.limit = 1;
+    let snapshot = store.snapshot(&q).unwrap();
+    assert_eq!(snapshot.matched, 1);
+    assert_eq!(snapshot.messages.len(), 1);
+    assert_eq!(snapshot.messages[0].conversation_count, 3);
+    let turns = store.conversation(&snapshot.messages[0].id).unwrap();
+    assert_eq!(
+        turns.iter().map(|m| m.body.as_str()).collect::<Vec<_>>(),
+        vec!["Original", "Reply", "Latest"]
+    );
+    assert!(store.detail(&turns[1].id).unwrap().html.contains("<table>"));
+    q.view = "all".into();
+    q.unread_only = true;
+    assert_eq!(
+        store.snapshot(&q).unwrap().messages[0].conversation_count,
+        3
+    );
+    // Upgrade original JSON without touching read/star/local folder identity.
+    let mut old = turns[0].clone();
+    old.message_id.clear();
+    old.references.clear();
+    old.is_read = true;
+    old.starred = true;
+    old.local_folder = "Keep".into();
+    store.update_mail(&old).unwrap();
+    store
+        .db()
+        .unwrap()
+        .execute(
+            "UPDATE messages SET parser_version=1 WHERE id=?1",
+            [&old.id],
+        )
+        .unwrap();
+    let store = Store::new(dir.path().into()).unwrap();
+    let upgraded = store.mail(&old.id).unwrap();
+    assert_eq!(upgraded.message_id, "<root@example.com>");
+    assert!(upgraded.is_read && upgraded.starred);
+    assert_eq!(upgraded.local_folder, "Keep");
+    assert_eq!(upgraded.hash, old.hash);
+    assert_eq!(store.conversation(&old.id).unwrap().len(), 3);
+    let mut trashed = turns[1].clone();
+    trashed.trashed = true;
+    store.update_mail(&trashed).unwrap();
+    assert_eq!(store.conversation(&old.id).unwrap().len(), 2);
+    assert_eq!(store.conversation(&trashed.id).unwrap().len(), 1);
+}
+#[test]
+fn outgoing_reply_has_rfc_thread_headers_without_quoting_and_rejects_header_injection() {
+    use mailparse::MailHeaderMap;
+    let mut d = draft();
+    d.in_reply_to = "<parent@example.com>".into();
+    d.references = vec!["<root@example.com>".into()];
+    let raw = crate::network::build_message(&account(), &d)
+        .unwrap()
+        .formatted();
+    let parsed = mailparse::parse_mail(&raw).unwrap();
+    assert_eq!(
+        parsed.headers.get_first_value("In-Reply-To").unwrap(),
+        "<parent@example.com>"
+    );
+    assert_eq!(
+        parsed.headers.get_first_value("References").unwrap(),
+        "<root@example.com> <parent@example.com>"
+    );
+    assert!(parsed.headers.get_first_value("Message-ID").is_some());
+    d.in_reply_to = "<parent@example.com>\r\nBcc: injected@example.com".into();
+    assert!(crate::network::build_message(&account(), &d).is_err());
+}
+
+#[test]
+fn sent_duplicate_copies_share_local_actions_without_crossing_accounts_or_changing_mime() {
+    let dir = tempfile::tempdir().unwrap();
+    let store = Store::new(dir.path().into()).unwrap();
+    let a = account();
+    let original=b"From: test@example.com\r\nTo: alice@example.com\r\nSubject: Note\r\nMessage-ID: <same@example.com>\r\n\r\nBody";
+    let copy=b"From: test@example.com\r\nTo: alice@example.com\r\nSubject: Note\r\nMessage-ID: <same@example.com>\r\nX-Server: copied\r\n\r\nBody";
+    store.ingest(&a, "Sent", "1", original, false).unwrap();
+    store.ingest(&a, "Sent", "2", copy, false).unwrap();
+    let mut foreign = a.clone();
+    foreign.id = "foreign".into();
+    store
+        .ingest(&foreign, "Sent", "1", original, false)
+        .unwrap();
+    let snapshot = store.snapshot(&query()).unwrap();
+    let mail = snapshot
+        .messages
+        .iter()
+        .find(|m| m.account_id == a.id)
+        .unwrap();
+    assert_eq!(mail.conversation_count, 1);
+    store.change_mail(&mail.id, "read", "true").unwrap();
+    store.change_mail(&mail.id, "star", "true").unwrap();
+    let db = store.db().unwrap();
+    let rows = db
+        .prepare("SELECT data FROM messages WHERE account_id=?1")
+        .unwrap()
+        .query_map([&a.id], |r| r.get::<_, String>(0))
+        .unwrap()
+        .collect::<std::result::Result<Vec<_>, _>>()
+        .unwrap();
+    for data in rows {
+        let m: Mail = serde_json::from_str(&data).unwrap();
+        assert!(m.is_read && m.starred);
+        archive::read_raw(&store.root, &m.hash).unwrap();
+    }
+    let mail = store
+        .snapshot(&query())
+        .unwrap()
+        .messages
+        .into_iter()
+        .find(|m| m.account_id == foreign.id)
+        .unwrap();
+    assert!(!mail.is_read && !mail.starred);
+}
+
+#[test]
+fn large_mailbox_lists_only_metadata_and_caches_thread_links() {
+    use std::{sync::Arc, time::Instant};
+    let dir = tempfile::tempdir().unwrap();
+    let store = Store::new(dir.path().into()).unwrap();
+    let a = account();
+    store.save_account(&a).unwrap();
+    let mut mail = archive::parse(&raw(), &a, "INBOX").unwrap().0;
+    mail.body = format!("{} body-search-marker", "Long body ".repeat(800));
+    let mut db = store.db().unwrap();
+    let tx = db.transaction().unwrap();
+    for i in 0..10_000 {
+        mail.id = format!("fixture-{i:05}");
+        mail.hash = format!("hash-{i}");
+        mail.message_id = format!("<fixture-{i}@example.com>");
+        tx.execute(
+            "INSERT INTO messages(id,account_id,hash,data,parser_version) VALUES(?1,?2,?3,?4,2)",
+            rusqlite::params![
+                mail.id,
+                a.id,
+                mail.hash,
+                serde_json::to_string(&mail).unwrap()
+            ],
+        )
+        .unwrap();
+        tx.execute(
+            "INSERT INTO sources VALUES(?1,'INBOX',?2,?2,1)",
+            rusqlite::params![a.id, mail.id],
+        )
+        .unwrap();
+    }
+    tx.commit().unwrap();
+    let mut q = query();
+    q.view = "all".into();
+    q.limit = 200;
+    let start = Instant::now();
+    let snapshot = store.snapshot(&q).unwrap();
+    let elapsed = start.elapsed();
+    assert_eq!(snapshot.matched, 10_000);
+    assert_eq!(snapshot.messages.len(), 200);
+    assert!(snapshot.messages.iter().all(|m| m.body.is_empty()));
+    assert!(serde_json::to_vec(&snapshot).unwrap().len() < 500_000);
+    let graph = store.conversation_index("").unwrap();
+    assert!(Arc::ptr_eq(
+        &graph,
+        &store.clone().conversation_index(&a.id).unwrap()
+    ));
+    store
+        .change_mail(&snapshot.messages[0].id, "trash", "true")
+        .unwrap();
+    assert!(!Arc::ptr_eq(&graph, &store.conversation_index("").unwrap()));
+    q.search = "body-search-marker".into();
+    q.search_field = "body".into();
+    assert_eq!(store.snapshot(&q).unwrap().matched, 9_999);
+    // Long bodies remain intact; a list projection must never overwrite archives.
+    assert!(store
+        .mail(&snapshot.messages[0].id)
+        .unwrap()
+        .body
+        .contains("body-search-marker"));
+    eprintln!(
+        "10,000-mail inbox snapshot: {elapsed:?}, payload: {} bytes",
+        serde_json::to_vec(&snapshot).unwrap().len()
+    );
+    assert!(
+        elapsed.as_secs() < 5,
+        "indexed metadata listing unexpectedly slow: {elapsed:?}"
+    );
+}
+
+#[test]
+fn online_mail_has_no_mime_archive_and_can_be_upgraded_without_losing_identity() {
+    let dir = tempfile::tempdir().unwrap();
+    let store = Store::new(dir.path().into()).unwrap();
+    let mut a = account();
+    a.save_locally = false;
+    store.save_account(&a).unwrap();
+    let raw = raw();
+    assert!(store.ingest(&a, "INBOX", "7:12", &raw, false).unwrap());
+    let mut q = query();
+    q.view = "all".into();
+    let s = store.snapshot(&q).unwrap();
+    let mail = store.mail(&s.messages[0].id).unwrap();
+    assert!(!mail.saved_locally);
+    assert!(mail.body.is_empty());
+    assert!(archive::read_raw(dir.path(), &mail.hash).is_err());
+    assert_eq!(s.stats.saved, 0);
+    assert_eq!(s.stats.bytes, 0);
+    assert!(store.snapshot(&query()).unwrap().messages.is_empty());
+    assert_eq!(store.archive_health().unwrap().checked, 0);
+    let backup_dir = tempfile::tempdir().unwrap();
+    let backup = store.backup(backup_dir.path()).unwrap();
+    assert_eq!(
+        std::fs::read_dir(std::path::Path::new(&backup).join("archive"))
+            .unwrap()
+            .count(),
+        0
+    );
+    store.change_mail(&mail.id, "star", "true").unwrap();
+    a.save_locally = true;
+    store.save_account(&a).unwrap();
+    assert!(!store.source_available(&a, "INBOX", "7:12").unwrap());
+    store.ingest(&a, "INBOX", "7:12", &raw, false).unwrap();
+    // Same bytes still need an upgrade when the original only had metadata.
+    let upgraded = store.mail(&mail.id).unwrap();
+    assert!(upgraded.saved_locally);
+    assert!(upgraded.starred);
+    assert!(!upgraded.body.is_empty());
+    assert_eq!(store.detail(&mail.id).unwrap().attachments.len(), 1);
+    store.reconcile_folder(&a.id, "INBOX", &[]).unwrap();
+    assert_eq!(store.snapshot(&query()).unwrap().messages.len(), 1);
+}
+
+#[test]
+fn online_metadata_is_removed_when_server_mail_disappears_but_archives_remain() {
+    let dir = tempfile::tempdir().unwrap();
+    let store = Store::new(dir.path().into()).unwrap();
+    let mut a = account();
+    store.save_account(&a).unwrap();
+    store.ingest(&a, "INBOX", "7:1", &raw(), false).unwrap();
+    a.save_locally = false;
+    let other = String::from_utf8(raw())
+        .unwrap()
+        .replace("Project invoice", "Online only");
+    store
+        .ingest(&a, "INBOX", "7:2", other.as_bytes(), false)
+        .unwrap();
+    store.reconcile_folder(&a.id, "INBOX", &[]).unwrap();
+    assert_eq!(store.snapshot(&query()).unwrap().stats.total, 1);
+}
+
+#[test]
+fn server_folder_query_uses_locations_not_local_classification() {
+    let dir = tempfile::tempdir().unwrap();
+    let store = Store::new(dir.path().into()).unwrap();
+    let a = account();
+    store.save_account(&a).unwrap();
+    store
+        .ingest(&a, "Team/Reports", "7:1", &raw(), false)
+        .unwrap();
+    store
+        .save_remote_folders(
+            &a.id,
+            &[RemoteFolder {
+                account_id: a.id.clone(),
+                name: "Team/Reports".into(),
+                display_name: "Team/Reports".into(),
+                delimiter: Some("/".into()),
+                selectable: true,
+                roles: vec![],
+            }],
+        )
+        .unwrap();
+    let mut q = query();
+    q.view = "remote".into();
+    q.account_id = a.id.clone();
+    q.remote_folder = "Team/Reports".into();
+    let snapshot = store.snapshot(&q).unwrap();
+    assert_eq!(snapshot.messages.len(), 1);
+    assert_eq!(snapshot.remote_folders.len(), 1);
+    q.remote_folder = "INBOX".into();
+    assert!(store.snapshot(&q).unwrap().messages.is_empty());
+    assert_eq!(crate::remote::display_name("&ZeVnLIqe-"), "日本語");
+}
+
+#[test]
+fn absent_or_invalid_date_never_uses_download_time_and_server_date_repairs_old_metadata() {
+    let dir = tempfile::tempdir().unwrap();
+    let store = Store::new(dir.path().into()).unwrap();
+    let a = account();
+    store.save_account(&a).unwrap();
+    let raw=b"From: Alice <alice@example.com>\r\nTo: test@example.com\r\nSubject: Old mail\r\nContent-Type: text/plain\r\n\r\nOld content";
+    let parsed = archive::parse(raw, &a, "INBOX").unwrap().0;
+    assert!(parsed.date.is_empty());
+    store.ingest(&a, "INBOX", "7:1", raw, false).unwrap();
+    let id = store.snapshot(&query()).unwrap().messages[0].id.clone();
+    let hash = store.mail(&id).unwrap().hash;
+    // Model the old fallback without altering original archived bytes.
+    let mut old = store.mail(&id).unwrap();
+    old.date = old.saved_at.clone();
+    store.update_mail(&old).unwrap();
+    store
+        .db()
+        .unwrap()
+        .execute("UPDATE messages SET parser_version=2", [])
+        .unwrap();
+    drop(store);
+    let store = Store::new(dir.path().into()).unwrap();
+    assert!(store.mail(&id).unwrap().date.is_empty());
+    store
+        .set_server_date(&a.id, "INBOX", "7:1", "2021-03-29T17:48:00+08:00")
+        .unwrap();
+    assert!(store.mail(&id).unwrap().date.starts_with("2021-03-29"));
+    assert_eq!(store.mail(&id).unwrap().hash, hash);
+    assert_eq!(archive::read_raw(dir.path(), &hash).unwrap(), raw);
+    let traced=b"From: a@example.com\r\nDate: invalid\r\nReceived: from server; Mon, 29 Mar 2021 17:48:00 +0800\r\n\r\nHello";
+    assert!(archive::parse(traced, &a, "INBOX")
+        .unwrap()
+        .0
+        .date
+        .starts_with("2021-03-29"));
+}
+
+#[test]
+fn malformed_base64_part_keeps_original_and_does_not_block_other_mail() {
+    let raw = b"From: sender@example.com\r\nTo: me@example.com\r\nSubject: broken attachment\r\nContent-Type: multipart/mixed; boundary=parts\r\n\r\n--parts\r\nContent-Type: text/html; charset=utf-8\r\n\r\n<p>valid body</p>\r\n--parts\r\nContent-Type: application/pdf\r\nContent-Disposition: attachment; filename=broken.pdf\r\nContent-Transfer-Encoding: base64\r\n\r\naGVs!bG8=\r\n--parts--\r\n";
+    let dir = tempfile::tempdir().unwrap();
+    let store = Store::new(dir.path().into()).unwrap();
+    let account = account();
+    store.save_account(&account).unwrap();
+    assert!(store
+        .ingest(&account, "INBOX", "broken", raw, false)
+        .unwrap());
+    let snapshot = store.snapshot(&query()).unwrap();
+    let detail = store.detail(&snapshot.messages[0].id).unwrap();
+    assert!(detail.html.contains("valid body"));
+    assert!(!detail.mail.parse_warnings.is_empty());
+    assert!(!detail.attachments[0].error.is_empty());
+    assert_eq!(
+        archive::read_raw(&store.root, &detail.mail.hash).unwrap(),
+        raw
+    );
+    assert!(archive::attachment(raw, detail.attachments[0].index).is_err());
+    assert!(store
+        .ingest(&account, "INBOX", "next", &self::raw(), false)
+        .unwrap());
+    assert_eq!(store.snapshot(&query()).unwrap().stats.total, 2);
+    assert_eq!(store.archive_health().unwrap().problems.len(), 1);
+}
+#[test]
+fn base64_known_variants_decode_without_discarding_invalid_symbols() {
+    for (encoded, expected) in [
+        ("aGVsbG8", b"hello".as_slice()),
+        ("-_8=", b"\xfb\xff".as_slice()),
+    ] {
+        let raw=format!("Content-Type: application/octet-stream\r\nContent-Transfer-Encoding: base64\r\n\r\n{encoded}");
+        let parsed = mailparse::parse_mail(raw.as_bytes()).unwrap();
+        assert_eq!(archive::decoded_bytes(&parsed).unwrap(), expected);
+    }
+    let (_,html,_) = archive::parse(b"Content-Type: multipart/alternative; boundary=b\r\n\r\n--b\r\nContent-Type: text/plain\r\nContent-Transfer-Encoding: base64\r\n\r\n!!!!\r\n--b\r\nContent-Type: text/html\r\n\r\n<p>usable</p>\r\n--b--",&account(),"INBOX").unwrap();
+    assert!(html.contains("usable"));
+}
+#[test]
+fn notifications_skip_history_read_sent_duplicates_and_preserve_preferences() {
+    let dir = tempfile::tempdir().unwrap();
+    let store = Store::new(dir.path().into()).unwrap();
+    let mut a = account();
+    store.save_account(&a).unwrap();
+    let checkpoint = crate::notifications::checkpoint(&store);
+    let recent = format!(
+        "From: other@example.com\r\nSubject: recent\r\nDate: {}\r\n\r\nnew",
+        chrono::Utc::now().to_rfc2822()
+    );
+    store
+        .ingest(&a, "INBOX", "new", recent.as_bytes(), false)
+        .unwrap();
+    assert!(
+        crate::notifications::incoming(&store, &a, checkpoint, chrono::Utc::now())
+            .unwrap()
+            .is_empty()
+    );
+    a.last_sync = Some(chrono::Utc::now().to_rfc3339());
+    assert_eq!(
+        crate::notifications::incoming(&store, &a, checkpoint, chrono::Utc::now())
+            .unwrap()
+            .len(),
+        1
+    );
+    store
+        .ingest(&a, "INBOX", "duplicate", recent.as_bytes(), false)
+        .unwrap();
+    let sent = recent.replace("Subject: recent", "Subject: sent");
+    store
+        .ingest(&a, "Sent", "sent", sent.as_bytes(), false)
+        .unwrap();
+    let old = recent
+        .replace(&chrono::Utc::now().format("%Y").to_string(), "2021")
+        .replace("Subject: recent", "Subject: old");
+    store
+        .ingest(&a, "INBOX", "old", old.as_bytes(), false)
+        .unwrap();
+    assert_eq!(
+        crate::notifications::incoming(&store, &a, checkpoint, chrono::Utc::now())
+            .unwrap()
+            .len(),
+        1
+    );
+    let mut prefs = store.preferences().unwrap();
+    prefs.new_mail_notifications = false;
+    store.save_preferences(&prefs).unwrap();
+    assert!(!store.preferences().unwrap().new_mail_notifications);
+    assert!(store.preferences().unwrap().send_result_notifications);
+    let legacy: Preferences = serde_json::from_str(r#"{"syncIntervalMinutes":5}"#).unwrap();
+    assert!(legacy.new_mail_notifications);
+    let id = store
+        .snapshot(&query())
+        .unwrap()
+        .messages
+        .iter()
+        .find(|m| m.subject == "recent")
+        .unwrap()
+        .id
+        .clone();
+    store.change_mail(&id, "read", "true").unwrap();
+    assert!(
+        crate::notifications::incoming(&store, &a, checkpoint, chrono::Utc::now())
+            .unwrap()
+            .is_empty()
+    );
+}
+#[test]
+fn send_receipts_distinguish_smtp_acceptance_failure_and_ambiguity() {
+    let dir = tempfile::tempdir().unwrap();
+    let store = Store::new(dir.path().into()).unwrap();
+    let draft = draft();
+    assert_eq!(
+        crate::notifications::receipt(&store, &draft, &Err("连接失败".into())).status,
+        "failed"
+    );
+    for (status, label) in [
+        ("sent", "sent"),
+        ("uncertain", "uncertain"),
+        ("sending", "uncertain"),
+        ("failed", "failed"),
+    ] {
+        store
+            .db()
+            .unwrap()
+            .execute(
+                "INSERT OR REPLACE INTO outbox(id,status,data,raw) VALUES(?1,?2,?3,?4)",
+                rusqlite::params![
+                    draft.id,
+                    status,
+                    serde_json::to_string(&draft).unwrap(),
+                    b"raw".as_slice()
+                ],
+            )
+            .unwrap();
+        let receipt = crate::notifications::receipt(&store, &draft, &Err("连接中断".into()));
+        assert_eq!(receipt.status, label);
+        if status == "sent" {
+            assert!(receipt.message.contains("服务器已接受"));
+        }
+    }
+}
+
+#[test]
+fn mail_navigation_routes_only_valid_web_and_mailto_links() {
+    for target in [
+        "https://example.com/path?x=1&y=2",
+        "http://example.com",
+        "mailto:team@example.com?subject=hello",
+    ] {
+        let mut routed = url::Url::parse("https://yanxin-mail-link.invalid/open").unwrap();
+        routed.query_pairs_mut().append_pair("url", target);
+        assert_eq!(
+            crate::mail_navigation_target(&routed),
+            Some(url::Url::parse(target).unwrap().to_string())
+        );
+    }
+    for routed in [
+        "https://yanxin-mail-link.invalid/open?url=file%3A%2F%2F%2Ftmp%2Fprivate",
+        "https://yanxin-mail-link.invalid/open?url=javascript%3Aalert%281%29",
+        "https://yanxin-mail-link.invalid/open?url=relative",
+        "https://other.invalid/open?url=https%3A%2F%2Fexample.com",
+        "https://example.com/?url=https%3A%2F%2Fexample.com",
+        "https://yanxin-mail-link.invalid/open",
+    ] {
+        assert!(crate::mail_navigation_target(&url::Url::parse(routed).unwrap()).is_none());
+    }
+}
+
+#[test]
+fn sent_view_uses_active_special_use_locations_and_preserves_local_sent_copy() {
+    let dir = tempfile::tempdir().unwrap();
+    let store = Store::new(dir.path().into()).unwrap();
+    let a = account();
+    store.save_account(&a).unwrap();
+    let folders = [
+        RemoteFolder {
+            account_id: a.id.clone(),
+            name: "Sent Messages".into(),
+            display_name: "Sent Messages".into(),
+            delimiter: Some("/".into()),
+            selectable: true,
+            roles: vec![FolderRole::Sent],
+        },
+        RemoteFolder {
+            account_id: a.id.clone(),
+            name: "Sent".into(),
+            display_name: "Sent".into(),
+            delimiter: None,
+            selectable: true,
+            roles: vec![FolderRole::Archive],
+        },
+    ];
+    store.save_remote_folders(&a.id, &folders).unwrap();
+    // The same MIME is first encountered in another location. The sent view
+    // must use active sources, rather than whichever sourceFolder was stored first.
+    store.ingest(&a, "INBOX", "7:1", &raw(), true).unwrap();
+    store
+        .ingest(&a, "Sent Messages", "8:5", &raw(), true)
+        .unwrap();
+    let q = Query {
+        view: "sent".into(),
+        ..query()
+    };
+    assert_eq!(store.snapshot(&q).unwrap().matched, 1);
+    store.reconcile_folder(&a.id, "Sent Messages", &[]).unwrap();
+    assert_eq!(store.snapshot(&q).unwrap().matched, 0);
+    let other = String::from_utf8(raw())
+        .unwrap()
+        .replace("Project invoice", "Not sent");
+    store
+        .ingest(&a, "Sent", "9:8", other.as_bytes(), true)
+        .unwrap();
+    assert_eq!(store.snapshot(&q).unwrap().matched, 0);
+    // A confirmed SMTP submission is still visible if a server labels Sent as
+    // another special use. No transport is contacted by this test.
+    crate::network::send_with(&store, &draft(), |_| Ok(()), |(), _| Ok(())).unwrap();
+    assert_eq!(store.snapshot(&q).unwrap().matched, 1);
 }

@@ -1,3 +1,4 @@
+import { useConfirmation } from "@/hooks/use-confirmation";
 import { useEffect, useState } from "react";
 import {
   RefreshCw,
@@ -5,28 +6,38 @@ import {
   AlertCircle,
   CheckCircle2,
   LoaderCircle,
+  Clock3,
 } from "lucide-react";
 import type { Compose, OutboxRecord } from "@/lib/types";
 import { call } from "@/lib/api";
 import { Button } from "./ui/button";
 import { SidebarTrigger } from "./ui/sidebar";
 import { toast } from "sonner";
+import { localDateTime, scheduledIso } from "@/lib/schedule-time";
+import { SchedulePicker } from "./schedule-picker";
 
 const labels = {
   sending: "发送中",
-  sent: "SMTP 已确认",
-  failed: "服务器拒绝",
+  sent: "发送成功 · SMTP 已确认",
+  failed: "发送失败",
   uncertain: "结果未确认",
+  scheduled: "待定时发送",
+  overdue: "已错过时间",
+  paused: "计划已暂停",
+  cancelled: "计划已取消",
 };
 export function OutboxPanel({
   onDraft,
 }: {
   onDraft: (draft: Compose) => void;
 }) {
+  const { askConfirmation, confirmationDialog } = useConfirmation();
   const [records, setRecords] = useState<OutboxRecord[]>([]),
     [busy, setBusy] = useState(""),
     [loading, setLoading] = useState(true),
     [failure, setFailure] = useState("");
+  const [editing, setEditing] = useState(""),
+    [time, setTime] = useState(localDateTime);
   async function refresh() {
     try {
       setRecords(await call<OutboxRecord[]>("list_outbox"));
@@ -39,14 +50,52 @@ export function OutboxPanel({
   }
   useEffect(() => {
     void refresh();
+    const timer = setInterval(() => void refresh(), 10000);
+    return () => clearInterval(timer);
   }, []);
+  async function cancel(r: OutboxRecord) {
+    setBusy(r.id);
+    try {
+      const draft = await call<Compose>("cancel_schedule", { id: r.id });
+      await refresh();
+      toast.success("计划已取消，正文与附件已恢复为草稿");
+      onDraft(draft);
+    } catch (e) {
+      toast.error(String(e));
+    } finally {
+      setBusy("");
+    }
+  }
+  async function reschedule(id: string, selectedTime = time) {
+    let scheduledAt: string;
+    try {
+      scheduledAt = scheduledIso(selectedTime);
+    } catch (e) {
+      toast.error(String(e));
+      return;
+    }
+    setBusy(id);
+    try {
+      await call("reschedule_mail", { id, scheduledAt });
+      setEditing("");
+      await refresh();
+      toast.success("发送时间已更新");
+    } catch (e) {
+      toast.error(String(e));
+    } finally {
+      setBusy("");
+    }
+  }
   async function retry(record: OutboxRecord) {
     const uncertain = record.status === "uncertain";
     if (
       uncertain &&
-      !window.confirm(
-        "此邮件可能已送达。请先检查服务端已发送文件夹；继续会创建一封可编辑草稿，重复发送可能产生重复邮件。仍要准备重发吗？",
-      )
+      !(await askConfirmation({
+        title: "准备重发结果未确认的邮件？",
+        description:
+          "此邮件可能已送达。请先检查服务端已发送文件夹；继续会创建一封可编辑草稿，重复发送可能产生重复邮件。",
+        action: "创建重发草稿",
+      }))
     )
       return;
     setBusy(record.id);
@@ -83,7 +132,7 @@ export function OutboxPanel({
             <SidebarTrigger />
             <h1>发送记录</h1>
           </div>
-          <p>查看 SMTP 确认结果与本地副本</p>
+          <p>查看发送成功、失败和结果未确认的回执</p>
         </div>
         <Button variant="outline" onClick={() => void refresh()}>
           <RefreshCw size={15} />
@@ -94,7 +143,11 @@ export function OutboxPanel({
         {records.map((r) => (
           <article key={r.id} className="outbox-card">
             <span className={`outbox-status ${r.status}`}>
-              {r.status === "sent" ? (
+              {["scheduled", "overdue", "paused", "cancelled"].includes(
+                r.status,
+              ) ? (
+                <Clock3 size={17} />
+              ) : r.status === "sent" ? (
                 <CheckCircle2 size={17} />
               ) : r.status === "sending" ? (
                 <LoaderCircle size={17} className="animate-spin" />
@@ -106,6 +159,15 @@ export function OutboxPanel({
             <h3>{r.draft.subject || "（无主题）"}</h3>
             <p className="outbox-recipient">收件人：{r.draft.to}</p>
             <small>
+              {r.scheduledAt && (
+                <>
+                  计划时间：
+                  {new Date(r.scheduledAt).toLocaleString("zh-CN", {
+                    hour12: false,
+                  })}{" "}
+                  ·{" "}
+                </>
+              )}
               {r.updatedAt
                 ? new Date(r.updatedAt).toLocaleString("zh-CN", {
                     hour12: false,
@@ -122,12 +184,45 @@ export function OutboxPanel({
             )}
             {r.status === "sent" && (
               <p className="outbox-hint">
+                发送服务器已接受，尚不代表收件人已收到。{" "}
                 {r.archived
                   ? "本地已发送副本已保存"
                   : "本地副本尚未归档，原始邮件仍保存在发送记录中"}
               </p>
             )}
             <div className="outbox-actions">
+              {["scheduled", "overdue", "paused"].includes(r.status) && (
+                <>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={!!busy}
+                    onClick={() => {
+                      setEditing(r.id);
+                      setTime(
+                        localDateTime(
+                          new Date(
+                            Math.max(
+                              Date.now() + 3600000,
+                              new Date(r.scheduledAt || "").getTime() || 0,
+                            ),
+                          ),
+                        ),
+                      );
+                    }}
+                  >
+                    修改时间
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={!!busy}
+                    onClick={() => void cancel(r)}
+                  >
+                    取消计划并编辑
+                  </Button>
+                </>
+              )}
               {(r.status === "failed" || r.status === "uncertain") && (
                 <Button
                   variant="outline"
@@ -149,6 +244,15 @@ export function OutboxPanel({
                 </Button>
               )}
             </div>
+            {editing === r.id && (
+              <SchedulePicker
+                value={time}
+                onChange={setTime}
+                onConfirm={(time) => void reschedule(r.id, time)}
+                onCancel={() => setEditing("")}
+                busy={!!busy}
+              />
+            )}
           </article>
         ))}
         {!records.length && (
@@ -165,6 +269,7 @@ export function OutboxPanel({
           </div>
         )}
       </div>
+      {confirmationDialog}
     </section>
   );
 }

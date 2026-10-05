@@ -1,8 +1,10 @@
+import { Switch } from "./ui/switch";
+import { Checkbox } from "./ui/checkbox";
+import { SelectField, SelectOption } from "@/components/ui/select-field";
 import { useEffect, useState } from "react";
 import {
   ArrowLeft,
   ArrowRight,
-  Check,
   ChevronDown,
   KeyRound,
   LoaderCircle,
@@ -71,26 +73,28 @@ export function AccountDialog({
     setBusy(true);
     setError("");
     try {
-      await call(editing ? "edit_account" : "connect_account", {
-        account: {
-          ...account,
-          username: account.username || account.email,
-          name: account.name || account.email,
+      const result = await call<string>(
+        editing ? "edit_account" : "connect_account",
+        {
+          account: {
+            ...account,
+            username: account.username || account.email,
+            name: account.name || account.email,
+          },
+          password,
+          smtpPassword,
+          reauthorize,
+          smtpUseIncoming,
         },
-        password,
-        smtpPassword,
-        reauthorize,
-        smtpUseIncoming,
-      });
+      );
       setPassword("");
       setSmtpPassword("");
       onDone();
       onOpenChange(false);
       setAccount(null);
       toast.success(
-        editing
-          ? "账号配置已更新，收发服务器验证通过"
-          : "邮箱已连接，收发服务器验证通过",
+        result ||
+          (editing ? "账号设置已保存" : "邮箱已连接，收发服务器验证通过"),
       );
     } catch (e) {
       setError(String(e));
@@ -98,6 +102,30 @@ export function AccountDialog({
       setBusy(false);
     }
   }
+  const needsValidation =
+    !editing ||
+    !account ||
+    !!password ||
+    !!smtpPassword ||
+    reauthorize ||
+    smtpUseIncoming ||
+    (
+      [
+        "email",
+        "provider",
+        "protocol",
+        "incomingHost",
+        "incomingPort",
+        "incomingTls",
+        "smtpHost",
+        "smtpPort",
+        "smtpTls",
+        "username",
+        "smtpUsername",
+        "auth",
+        "oauthClientId",
+      ] as const
+    ).some((key) => account[key] !== editing[key]);
   return (
     <Dialog open={open} onOpenChange={close}>
       <DialogContent
@@ -119,7 +147,7 @@ export function AccountDialog({
           </DialogTitle>
           <DialogDescription>
             {account
-              ? "连接收发服务器，完整邮件将自动保存到这台 Mac。"
+              ? "配置邮箱服务器与本地留存方式。"
               : "无论工作还是生活，在一个安静的空间里处理邮件。"}
           </DialogDescription>
         </DialogHeader>
@@ -127,7 +155,8 @@ export function AccountDialog({
           <>
             <div className="providers">
               {providers.map((p) => (
-                <button
+                <Button
+                  variant="ghost"
                   key={p.id}
                   className="provider"
                   onClick={() => {
@@ -140,7 +169,7 @@ export function AccountDialog({
                   </span>
                   <strong>{p.name}</strong>
                   <ArrowRight size={15} />
-                </button>
+                </Button>
               ))}
             </div>
             <div className="privacy-note">
@@ -157,7 +186,8 @@ export function AccountDialog({
             className="account-form"
           >
             {!editing && (
-              <button
+              <Button
+                variant="ghost"
                 type="button"
                 className="text-link"
                 onClick={() => setAccount(null)}
@@ -165,7 +195,7 @@ export function AccountDialog({
               >
                 <ArrowLeft size={14} />
                 选择其他邮箱
-              </button>
+              </Button>
             )}
             <fieldset disabled={busy}>
               <div className="field">
@@ -237,16 +267,16 @@ export function AccountDialog({
                 </div>
               )}
               {editing && account.auth === "oauth" && (
-                <label className="check-line">
-                  <input
-                    type="checkbox"
+                <Label className="check-line">
+                  <Checkbox
                     checked={reauthorize}
-                    onChange={(e) => setReauthorize(e.target.checked)}
+                    onCheckedChange={(value) => setReauthorize(value === true)}
                   />
                   重新进行浏览器授权
-                </label>
+                </Label>
               )}
-              <button
+              <Button
+                variant="ghost"
                 className="advanced-toggle"
                 type="button"
                 onClick={() => setAdvanced(!advanced)}
@@ -256,16 +286,16 @@ export function AccountDialog({
                   size={15}
                   className={advanced ? "rotate-180" : ""}
                 />
-              </button>
+              </Button>
               {advanced && (
                 <div className="advanced-fields">
                   <div className="field-row">
                     <div className="field">
                       <Label>收件协议</Label>
-                      <select
+                      <SelectField
                         value={account.protocol}
-                        onChange={(e) => {
-                          const protocol = e.target.value as "imap" | "pop3";
+                        onValueChange={(value) => {
+                          const protocol = value as "imap" | "pop3";
                           const p =
                             providers.find((p) => p.id === account.provider) ??
                             providers.find((p) => p.id === "custom")!;
@@ -287,23 +317,31 @@ export function AccountDialog({
                           });
                         }}
                       >
-                        <option value="imap">IMAP（同步邮箱）</option>
-                        <option value="pop3">POP3（下载邮件）</option>
-                      </select>
+                        <SelectOption value="imap">
+                          IMAP（同步邮箱）
+                        </SelectOption>
+                        <SelectOption value="pop3">
+                          POP3（下载邮件）
+                        </SelectOption>
+                      </SelectField>
                     </div>
                     <div className="field">
                       <Label>认证方式</Label>
-                      <select
+                      <SelectField
                         value={account.auth}
-                        onChange={(e) =>
-                          update({ auth: e.target.value as Account["auth"] })
+                        onValueChange={(value) =>
+                          update({ auth: value as Account["auth"] })
                         }
                       >
-                        <option value="password">密码 / 授权码</option>
+                        <SelectOption value="password">
+                          密码 / 授权码
+                        </SelectOption>
                         {["gmail", "outlook", "microsoft365"].includes(
                           account.provider,
-                        ) && <option value="oauth">OAuth 2.0</option>}
-                      </select>
+                        ) && (
+                          <SelectOption value="oauth">OAuth 2.0</SelectOption>
+                        )}
+                      </SelectField>
                     </div>
                   </div>
                   <ServerFields
@@ -340,16 +378,15 @@ export function AccountDialog({
                         onChange={(e) => setSmtpPassword(e.target.value)}
                       />
                       {editing && (
-                        <label className="check-line">
-                          <input
-                            type="checkbox"
+                        <Label className="check-line">
+                          <Checkbox
                             checked={smtpUseIncoming}
-                            onChange={(e) =>
-                              setSmtpUseIncoming(e.target.checked)
+                            onCheckedChange={(value) =>
+                              setSmtpUseIncoming(value === true)
                             }
                           />
                           SMTP 使用收件密码 / 授权码
-                        </label>
+                        </Label>
                       )}
                     </div>
                   ) : (
@@ -368,10 +405,19 @@ export function AccountDialog({
               )}
             </fieldset>
             <div className="archive-promise">
-              <Check size={16} />
+              <Switch
+                id="save-locally"
+                checked={account.saveLocally !== false}
+                disabled={busy}
+                onCheckedChange={(value) => update({ saveLocally: value })}
+              />
               <div>
-                自动完整保存到本地
-                <small>服务器删除邮件后，已保存的正文与附件仍然保留。</small>
+                <Label htmlFor="save-locally">收到的邮件保存在本地</Label>
+                <small>
+                  {account.saveLocally !== false
+                    ? "保存完整正文与附件，服务器删除后仍可阅读。"
+                    : "仅保存列表信息，打开正文时从服务器加载。已有存档保留。"}
+                </small>
               </div>
             </div>
             {error && (
@@ -382,9 +428,13 @@ export function AccountDialog({
             <Button className="w-full" type="submit" disabled={busy}>
               {busy ? <LoaderCircle className="animate-spin" /> : <KeyRound />}
               {busy
-                ? "正在验证连接…"
+                ? needsValidation
+                  ? "正在验证连接…"
+                  : "正在保存设置…"
                 : editing
-                  ? "验证并保存配置"
+                  ? needsValidation
+                    ? "验证并保存配置"
+                    : "保存设置"
                   : account.auth === "oauth"
                     ? "授权并连接"
                     : "验证并连接邮箱"}
@@ -431,13 +481,13 @@ function ServerFields({
       </div>
       <div className="field">
         <Label>加密</Label>
-        <select
+        <SelectField
           value={account[tls]}
-          onChange={(e) => update({ [tls]: e.target.value })}
+          onValueChange={(value) => update({ [tls]: value })}
         >
-          <option value="tls">TLS</option>
-          <option value="starttls">STARTTLS</option>
-        </select>
+          <SelectOption value="tls">TLS</SelectOption>
+          <SelectOption value="starttls">STARTTLS</SelectOption>
+        </SelectField>
       </div>
     </div>
   );

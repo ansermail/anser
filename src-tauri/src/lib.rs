@@ -1,10 +1,19 @@
 mod archive;
+mod archive_deletion;
+mod attachment_preview;
 mod auth;
+mod conversation;
+mod idle;
 mod models;
 mod network;
+mod notifications;
 mod productivity;
+mod realtime;
+mod remote;
 mod rules;
+mod scheduling;
 mod store;
+mod sync_control;
 use models::*;
 use std::{
     path::Path,
@@ -12,13 +21,26 @@ use std::{
 };
 use store::Store;
 use tauri::{Emitter, Manager};
+use tauri_plugin_autostart::ManagerExt;
 struct AppState {
     store: Store,
     gate: Arc<Mutex<()>>,
+    send_gate: Arc<Mutex<()>>,
+    realtime: Arc<realtime::RealtimeControl>,
 }
 #[tauri::command]
-fn snapshot(state: tauri::State<AppState>, query: Query) -> Result<Snapshot> {
-    state.store.snapshot(&query)
+async fn snapshot(state: tauri::State<'_, AppState>, query: Query) -> Result<Snapshot> {
+    let store = state.store.clone();
+    tauri::async_runtime::spawn_blocking(move || store.snapshot(&query))
+        .await
+        .map_err(err)?
+}
+#[tauri::command]
+async fn mail_metadata(state: tauri::State<'_, AppState>, id: String) -> Result<Mail> {
+    let store = state.store.clone();
+    tauri::async_runtime::spawn_blocking(move || store.mail_metadata(&id))
+        .await
+        .map_err(err)?
 }
 #[tauri::command]
 async fn mail_detail(state: tauri::State<'_, AppState>, id: String) -> Result<Detail> {
@@ -28,26 +50,23 @@ async fn mail_detail(state: tauri::State<'_, AppState>, id: String) -> Result<De
         .map_err(err)?
 }
 #[tauri::command]
-fn update_mail(
-    state: tauri::State<AppState>,
+async fn mail_conversation(state: tauri::State<'_, AppState>, id: String) -> Result<Vec<Mail>> {
+    let store = state.store.clone();
+    tauri::async_runtime::spawn_blocking(move || store.conversation(&id))
+        .await
+        .map_err(err)?
+}
+#[tauri::command]
+async fn update_mail(
+    state: tauri::State<'_, AppState>,
     id: String,
     action: String,
     value: String,
 ) -> Result<()> {
-    let mut m = state.store.mail(&id)?;
-    match action.as_str() {
-        "read" => m.is_read = value == "true",
-        "star" => m.starred = value == "true",
-        "trash" => m.trashed = value == "true",
-        "folder" => {
-            if value.trim().is_empty() {
-                return Err("文件夹名称不能为空".into());
-            }
-            m.local_folder = value;
-        }
-        _ => return Err("无效动作".into()),
-    };
-    state.store.update_mail(&m)
+    let store = state.store.clone();
+    tauri::async_runtime::spawn_blocking(move || store.change_mail(&id, &action, &value))
+        .await
+        .map_err(err)?
 }
 #[tauri::command]
 fn save_rules(state: tauri::State<AppState>, rules: Vec<Rule>) -> Result<()> {
@@ -77,8 +96,13 @@ async fn connect_account(
 ) -> Result<()> {
     let store = state.store.clone();
     let gate = state.gate.clone();
+    let send_gate = state.send_gate.clone();
+    let realtime = state.realtime.clone();
     tauri::async_runtime::spawn_blocking(move || {
         let _guard = gate.try_lock().map_err(|_| "正在处理邮件，请稍后重试")?;
+        let _sending = send_gate
+            .try_lock()
+            .map_err(|_| "正在发送邮件，请稍后修改账号")?;
         account.validate()?;
         let secret = if account.auth == "oauth" {
             auth::authorize(&account)?
@@ -96,6 +120,7 @@ async fn connect_account(
         auth::save(&account.id, &secret)?;
         account.error = None;
         store.save_account(&account)?;
+        realtime.restart();
         store.log(&format!("账号 {} 已通过收发连接测试", account.email))
     })
     .await
@@ -109,12 +134,33 @@ async fn edit_account(
     smtp_password: String,
     reauthorize: bool,
     smtp_use_incoming: bool,
-) -> Result<()> {
+) -> Result<String> {
     let store = state.store.clone();
     let gate = state.gate.clone();
+    let send_gate = state.send_gate.clone();
+    let realtime = state.realtime.clone();
     tauri::async_runtime::spawn_blocking(move || {
-        let _guard = gate.try_lock().map_err(|_| "正在处理邮件，请稍后重试")?;
         let old = store.account(&account.id)?;
+        if password.is_empty()
+            && smtp_password.is_empty()
+            && !reauthorize
+            && !smtp_use_incoming
+            && old.same_connection(&account)
+        {
+            store.edit_account_preferences(&account)?;
+            store.log(&format!("账号 {} 本地留存与名称设置已保存", account.email))?;
+            return Ok("账号设置已保存".into());
+        }
+        let _guard = gate
+            .try_lock()
+            .map_err(|_| "正在收取邮件，暂时不能更改服务器连接配置")?;
+        let inbox_gate = sync_control::folder_gate(&store.root, &account.id, "INBOX")?;
+        let _inbox = inbox_gate
+            .try_lock()
+            .map_err(|_| "正在收取邮件，暂时不能更改服务器连接配置")?;
+        let _sending = send_gate
+            .try_lock()
+            .map_err(|_| "正在发送邮件，请稍后修改账号")?;
         account.validate()?;
         if old.email != account.email {
             return Err("修改邮箱地址请添加新账号".into());
@@ -157,7 +203,9 @@ async fn edit_account(
         network::test(&account, &secret)?;
         auth::save(&account.id, &secret)?;
         store.edit_account(&account)?;
-        store.log(&format!("账号 {} 配置已更新，收发验证通过", account.email))
+        realtime.restart();
+        store.log(&format!("账号 {} 配置已更新，收发验证通过", account.email))?;
+        Ok("账号配置已更新，收发服务器验证通过".into())
     })
     .await
     .map_err(err)?
@@ -204,13 +252,9 @@ fn retry_outbox(
 #[tauri::command]
 async fn archive_outbox(state: tauri::State<'_, AppState>, id: String) -> Result<()> {
     let store = state.store.clone();
-    let gate = state.gate.clone();
-    tauri::async_runtime::spawn_blocking(move || {
-        let _guard = gate.try_lock().map_err(|_| "正在处理邮件，请稍后重试")?;
-        store.archive_outbox(&id)
-    })
-    .await
-    .map_err(err)?
+    tauri::async_runtime::spawn_blocking(move || store.archive_outbox(&id))
+        .await
+        .map_err(err)?
 }
 #[tauri::command]
 fn get_preferences(state: tauri::State<AppState>) -> Result<Preferences> {
@@ -219,6 +263,38 @@ fn get_preferences(state: tauri::State<AppState>) -> Result<Preferences> {
 #[tauri::command]
 fn save_preferences(state: tauri::State<AppState>, preferences: Preferences) -> Result<()> {
     state.store.save_preferences(&preferences)
+}
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct DesktopSettings {
+    auto_start: bool,
+    auto_start_available: bool,
+}
+#[tauri::command]
+fn desktop_settings(app: tauri::AppHandle) -> Result<DesktopSettings> {
+    Ok(DesktopSettings {
+        auto_start: app.autolaunch().is_enabled().map_err(err)?,
+        auto_start_available: !tauri::is_dev(),
+    })
+}
+#[tauri::command]
+fn set_auto_start(app: tauri::AppHandle, enabled: bool) -> Result<()> {
+    if enabled && tauri::is_dev() {
+        return Err("开发预览依赖前端服务，请在正式应用中开启开机自启".into());
+    }
+    if enabled {
+        app.autolaunch().enable().map_err(err)
+    } else {
+        app.autolaunch().disable().map_err(err)
+    }
+}
+#[tauri::command]
+fn test_notification(app: tauri::AppHandle) -> Result<()> {
+    notifications::show(
+        &app,
+        "雁信 · 通知测试",
+        "系统通知已接入。收到新邮件和发送结果会在这里提示。",
+    )
 }
 #[tauri::command]
 async fn archive_health(state: tauri::State<'_, AppState>) -> Result<ArchiveHealth> {
@@ -233,6 +309,14 @@ fn account_action(state: tauri::State<AppState>, id: String, remove: bool) -> Re
         .gate
         .try_lock()
         .map_err(|_| "正在处理邮件，请稍后重试")?;
+    let inbox_gate = sync_control::folder_gate(&state.store.root, &id, "INBOX")?;
+    let _inbox = inbox_gate
+        .try_lock()
+        .map_err(|_| "正在收取该账号邮件，请稍后修改账号")?;
+    let _sending = state
+        .send_gate
+        .try_lock()
+        .map_err(|_| "正在发送邮件，请稍后修改账号")?;
     if remove {
         state.store.remove_account(&id)?;
         auth::remove(&id);
@@ -241,27 +325,78 @@ fn account_action(state: tauri::State<AppState>, id: String, remove: bool) -> Re
         a.enabled = !a.enabled;
         state.store.save_account(&a)?;
     }
+    state.realtime.restart();
     Ok(())
+}
+fn sync_one(store: &Store, app: &tauri::AppHandle, account: Account) -> Result<u32> {
+    sync_one_scope(store, app, account, false)
+}
+fn sync_inbox(store: &Store, app: &tauri::AppHandle, account: Account) -> Result<u32> {
+    sync_one_scope(store, app, account, true)
+}
+fn sync_one_scope(
+    store: &Store,
+    app: &tauri::AppHandle,
+    mut account: Account,
+    inbox_only: bool,
+) -> Result<u32> {
+    let _ = app.emit("sync-progress", format!("正在收取 {}", account.email));
+    let checkpoint = std::cell::Cell::new(notifications::checkpoint(store));
+    let prior = account.clone();
+    let last_update = std::cell::Cell::new(None);
+    let updated = || {
+        let now = std::time::Instant::now();
+        if last_update
+            .get()
+            .is_none_or(|last: std::time::Instant| now.duration_since(last).as_millis() >= 1000)
+        {
+            last_update.set(Some(now));
+            notifications::received(store, app, &prior, checkpoint.get());
+            checkpoint.set(notifications::checkpoint(store));
+            let _ = app.emit("mail-updated", ());
+        }
+    };
+    let result = if inbox_only {
+        network::sync_folder_with_updates(store, &account, "INBOX", updated)
+    } else {
+        network::sync_with_updates(store, &account, updated)
+    };
+    let scope = if inbox_only {
+        "收件箱收取"
+    } else {
+        "全部文件夹收取"
+    };
+    match &result {
+        Ok(count) => {
+            account.last_sync = Some(chrono::Utc::now().to_rfc3339());
+            account.error = None;
+            let _ = store.log(&format!(
+                "{} {}完成，新增 {} 封邮件",
+                account.email, scope, count
+            ));
+        }
+        Err(error) => {
+            account.error = Some(error.clone());
+            let _ = store.log(&format!("{} {}失败：{}", account.email, scope, error));
+        }
+    }
+    store.save_sync_status(&account)?;
+    notifications::received(store, app, &prior, checkpoint.get());
+    let _ = app.emit("mail-updated", ());
+    result
 }
 fn sync_all(store: &Store, app: &tauri::AppHandle) -> Result<u32> {
     let mut count = 0;
     let mut errors = Vec::new();
-    for mut a in store.accounts()?.into_iter().filter(|a| a.enabled) {
-        let _ = app.emit("sync-progress", format!("正在收取 {}", a.email));
-        match network::sync(store, &a) {
+    for a in store.accounts()?.into_iter().filter(|a| a.enabled) {
+        match sync_one(store, app, a.clone()) {
             Ok(n) => {
                 count += n;
-                a.last_sync = Some(chrono::Utc::now().to_rfc3339());
-                a.error = None;
-                let _ = store.log(&format!("{} 收取完成，新增 {} 封本地存档", a.email, n));
             }
             Err(e) => {
-                a.error = Some(e.clone());
                 errors.push(format!("{}：{}", a.email, e));
-                let _ = store.log(&format!("{} 收取失败：{}", a.email, e));
             }
         }
-        store.save_account(&a)?;
     }
     let _ = app.emit("mail-updated", ());
     if errors.is_empty() {
@@ -273,12 +408,43 @@ fn sync_all(store: &Store, app: &tauri::AppHandle) -> Result<u32> {
 #[tauri::command]
 async fn sync_mail(state: tauri::State<'_, AppState>, app: tauri::AppHandle) -> Result<u32> {
     let store = state.store.clone();
-    let gate = state.gate.clone();
     tauri::async_runtime::spawn_blocking(move || {
-        let _guard = gate
-            .try_lock()
-            .map_err(|_| "已有任务正在执行，请稍后重试")?;
-        sync_all(&store, &app)
+        // Explicit refresh checks inboxes first. Historical folders continue
+        // through the background sweep and their individual refresh action.
+        let accounts = store
+            .accounts()?
+            .into_iter()
+            .filter(|a| a.enabled)
+            .collect::<Vec<_>>();
+        std::thread::scope(|scope| {
+            let jobs = accounts
+                .into_iter()
+                .map(|account| {
+                    let store = &store;
+                    let app = &app;
+                    scope.spawn(move || {
+                        let email = account.email.clone();
+                        sync_inbox(store, app, account).map_err(|e| format!("{email}：{e}"))
+                    })
+                })
+                .collect::<Vec<_>>();
+            let mut count = 0;
+            let mut errors = Vec::new();
+            for job in jobs {
+                match job
+                    .join()
+                    .unwrap_or_else(|_| Err("收取任务异常结束".into()))
+                {
+                    Ok(n) => count += n,
+                    Err(e) => errors.push(e),
+                }
+            }
+            if errors.is_empty() {
+                Ok(count)
+            } else {
+                Err(format!("已保存 {count} 封；{}", errors.join("；")))
+            }
+        })
     })
     .await
     .map_err(err)?
@@ -300,39 +466,152 @@ fn delete_draft(state: tauri::State<AppState>, id: String) -> Result<()> {
         .map_err(err)?;
     Ok(())
 }
+// SMTP work has its own guard. Long IMAP downloads must never occupy it.
+fn with_send_gate<T>(gate: &Mutex<()>, send: impl FnOnce() -> Result<T>) -> Result<T> {
+    let _guard = gate
+        .try_lock()
+        .map_err(|_| "已有邮件正在发送，请稍后重试，草稿已保留")?;
+    send()
+}
 #[tauri::command]
-async fn send_mail(state: tauri::State<'_, AppState>, draft: Compose) -> Result<String> {
+async fn send_mail(
+    state: tauri::State<'_, AppState>,
+    app: tauri::AppHandle,
+    draft: Compose,
+) -> Result<String> {
     let store = state.store.clone();
-    let gate = state.gate.clone();
+    let send_gate = state.send_gate.clone();
     tauri::async_runtime::spawn_blocking(move || {
-        let _guard = gate
-            .try_lock()
-            .map_err(|_| "正在处理邮件，请稍后重试，草稿已保留")?;
-        network::send(&store, &draft)
+        let result = with_send_gate(&send_gate, || network::send(&store, &draft));
+        notifications::sent(&store, &app, &draft, &result, false);
+        let _ = app.emit("mail-updated", ());
+        result
     })
     .await
     .map_err(err)?
 }
 #[tauri::command]
-fn export_mail(state: tauri::State<AppState>, id: String, path: String) -> Result<()> {
-    let m = state.store.mail(&id)?;
-    archive::atomic_write(
-        Path::new(&path),
-        &archive::read_raw(&state.store.root, &m.hash)?,
-    )
+async fn schedule_mail(
+    state: tauri::State<'_, AppState>,
+    draft: Compose,
+    scheduled_at: String,
+) -> Result<()> {
+    let store = state.store.clone();
+    tauri::async_runtime::spawn_blocking(move || network::schedule(&store, &draft, &scheduled_at))
+        .await
+        .map_err(err)?
 }
 #[tauri::command]
-fn save_attachment(
-    state: tauri::State<AppState>,
+async fn cancel_schedule(state: tauri::State<'_, AppState>, id: String) -> Result<Compose> {
+    let store = state.store.clone();
+    tauri::async_runtime::spawn_blocking(move || store.cancel_schedule(&id))
+        .await
+        .map_err(err)?
+}
+#[tauri::command]
+async fn reschedule_mail(
+    state: tauri::State<'_, AppState>,
+    id: String,
+    scheduled_at: String,
+) -> Result<()> {
+    let store = state.store.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        store.reschedule_mail(&id, &scheduled_at, chrono::Utc::now())
+    })
+    .await
+    .map_err(err)?
+}
+#[tauri::command]
+async fn account_folders(
+    state: tauri::State<'_, AppState>,
+    id: String,
+) -> Result<Vec<RemoteFolder>> {
+    let store = state.store.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let a = store.account(&id)?;
+        network::folder_list(&store, &a)
+    })
+    .await
+    .map_err(err)?
+}
+#[tauri::command]
+async fn sync_remote_folder(
+    state: tauri::State<'_, AppState>,
+    app: tauri::AppHandle,
+    id: String,
+    folder: String,
+) -> Result<u32> {
+    let store = state.store.clone();
+    let gate = state.gate.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        // Keep account connection changes/removal mutually exclusive with
+        // historical folder work. INBOX uses its independent folder guard.
+        let _history = if folder.eq_ignore_ascii_case("INBOX") {
+            None
+        } else {
+            Some(gate.lock().map_err(err)?)
+        };
+        let a = store.account(&id)?;
+        if !a.enabled {
+            return Err("账号已暂停，请先启用".into());
+        }
+        let checkpoint = notifications::checkpoint(&store);
+        let result = network::sync_folder(&store, &a, &folder);
+        notifications::received(&store, &app, &a, checkpoint);
+        let _ = app.emit("mail-updated", ());
+        result
+    })
+    .await
+    .map_err(err)?
+}
+#[tauri::command]
+async fn export_mail(state: tauri::State<'_, AppState>, id: String, path: String) -> Result<()> {
+    let store = state.store.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        archive::atomic_write(Path::new(&path), &store.message_raw(&store.mail(&id)?)?)
+    })
+    .await
+    .map_err(err)?
+}
+#[tauri::command]
+async fn save_attachment(
+    state: tauri::State<'_, AppState>,
     id: String,
     index: usize,
     path: String,
 ) -> Result<()> {
-    let m = state.store.mail(&id)?;
-    archive::atomic_write(
-        Path::new(&path),
-        &archive::attachment(&archive::read_raw(&state.store.root, &m.hash)?, index)?,
-    )
+    let store = state.store.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        archive::atomic_write(
+            Path::new(&path),
+            &archive::attachment(&store.message_raw(&store.mail(&id)?)?, index)?,
+        )
+    })
+    .await
+    .map_err(err)?
+}
+#[tauri::command]
+async fn preview_attachment(
+    state: tauri::State<'_, AppState>,
+    app: tauri::AppHandle,
+    id: String,
+    index: usize,
+) -> Result<()> {
+    let store = state.store.clone();
+    let cache = app
+        .path()
+        .app_cache_dir()
+        .map_err(err)?
+        .join("attachment-previews");
+    tauri::async_runtime::spawn_blocking(move || {
+        let mail = store.mail(&id)?;
+        let raw = store.message_raw(&mail)?;
+        let path =
+            attachment_preview::prepare(&cache, &raw, &store.account_for_mail(&mail), index)?;
+        open::that(path).map_err(|e| format!("无法打开附件，请确认已安装对应应用：{e}"))
+    })
+    .await
+    .map_err(err)?
 }
 #[tauri::command]
 async fn backup_archive(state: tauri::State<'_, AppState>, path: String) -> Result<String> {
@@ -341,6 +620,39 @@ async fn backup_archive(state: tauri::State<'_, AppState>, path: String) -> Resu
     tauri::async_runtime::spawn_blocking(move || {
         let _guard = gate.try_lock().map_err(|_| "正在处理邮件，请稍后重试")?;
         store.backup(Path::new(&path))
+    })
+    .await
+    .map_err(err)?
+}
+#[tauri::command]
+async fn archive_deletion_preview(
+    state: tauri::State<'_, AppState>,
+    account_id: String,
+) -> Result<archive_deletion::DeletionPreview> {
+    let store = state.store.clone();
+    tauri::async_runtime::spawn_blocking(move || store.archive_deletion_preview(&account_id))
+        .await
+        .map_err(err)?
+}
+#[tauri::command]
+async fn delete_local_archives(
+    state: tauri::State<'_, AppState>,
+    app: tauri::AppHandle,
+    account_id: String,
+    stop_saving: bool,
+    expected_count: usize,
+    expected_token: String,
+) -> Result<archive_deletion::DeletionResult> {
+    let store = state.store.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let result = store.delete_local_archives(
+            &account_id,
+            stop_saving,
+            expected_count,
+            &expected_token,
+        )?;
+        let _ = app.emit("mail-updated", ());
+        Ok(result)
     })
     .await
     .map_err(err)?
@@ -371,6 +683,21 @@ fn web_link(url: &str) -> Result<url::Url> {
 fn open_mail_link(url: String) -> Result<()> {
     open::that(web_link(&url)?.as_str()).map_err(err)
 }
+fn mail_navigation_target(url: &url::Url) -> Option<String> {
+    if url.scheme() != "https"
+        || url.host_str() != Some("yanxin-mail-link.invalid")
+        || url.path() != "/open"
+    {
+        return None;
+    }
+    let target = url.query_pairs().find(|(key, _)| key == "url")?.1;
+    let parsed = url::Url::parse(&target).ok()?;
+    match parsed.scheme() {
+        "http" | "https" if parsed.host_str().is_some() => Some(parsed.to_string()),
+        "mailto" => Some(parsed.to_string()),
+        _ => None,
+    }
+}
 fn show_main_window(app: &tauri::AppHandle) {
     #[cfg(target_os = "macos")]
     let _ = app.show();
@@ -380,16 +707,65 @@ fn show_main_window(app: &tauri::AppHandle) {
         let _ = window.set_focus();
     }
 }
+fn window_state_flags() -> tauri_plugin_window_state::StateFlags {
+    use tauri_plugin_window_state::StateFlags;
+    // Hidden/minimized state must not prevent Dock reopen or normal launch.
+    // Fullscreen is a separate macOS Space; preserve zoom/maximized only.
+    StateFlags::SIZE | StateFlags::POSITION | StateFlags::MAXIMIZED
+}
 pub fn run() {
     tauri::Builder::default()
+        .plugin(
+            tauri::plugin::Builder::<tauri::Wry, ()>::new("mail-links")
+                .on_navigation(|webview, url| {
+                    if url.host_str() == Some("yanxin-mail-link.invalid") {
+                        if let Some(target) = mail_navigation_target(url) {
+                            let _ = webview.emit("mail-link-open", target);
+                        }
+                        return false;
+                    }
+                    true
+                })
+                .build(),
+        )
+        .plugin(tauri_plugin_single_instance::init(|app, _, _| {
+            show_main_window(app)
+        }))
         .plugin(tauri_plugin_dialog::init())
+        .plugin(
+            tauri_plugin_window_state::Builder::default()
+                .with_state_flags(window_state_flags())
+                .with_filter(|label| label == "main")
+                .build(),
+        )
+        .plugin(tauri_plugin_notification::init())
+        .plugin(
+            tauri_plugin_autostart::Builder::new()
+                .app_name("雁信")
+                .args(["--autostart"])
+                .build(),
+        )
         .setup(|app| {
+            // The standard plugin uses Terminal in dev mode. This preview already
+            // runs inside a real .app bundle, so retain Yanxin's own identity.
+            #[cfg(target_os = "macos")]
+            let _ = notify_rust::set_application(&app.config().identifier);
+            if std::env::args().any(|arg| arg == "--autostart") {
+                if let Some(window) = app.get_webview_window("main") {
+                    let _ = window.hide();
+                }
+            }
             let store = Store::new(app.path().app_data_dir()?).map_err(std::io::Error::other)?;
             let gate = Arc::new(Mutex::new(()));
+            let send_gate = Arc::new(Mutex::new(()));
+            let realtime = Arc::new(realtime::RealtimeControl::default());
             app.manage(AppState {
                 store: store.clone(),
                 gate: gate.clone(),
+                send_gate: send_gate.clone(),
+                realtime: realtime.clone(),
             });
+            realtime::start(store.clone(), app.handle().clone(), realtime);
             let menu = tauri::menu::Menu::default(app.handle())?;
             app.set_menu(menu)?;
             tauri::tray::TrayIconBuilder::new()
@@ -410,6 +786,34 @@ pub fn run() {
                 })
                 .build(app)?;
             let handle = app.handle().clone();
+            let scheduled_store = store.clone();
+            let scheduled_gate = send_gate.clone();
+            let scheduled_handle = handle.clone();
+            std::thread::spawn(move || loop {
+                if let Ok(_guard) = scheduled_gate.try_lock() {
+                    match scheduled_store.claim_scheduled(chrono::Utc::now()) {
+                        Ok(Some(mail)) => {
+                            let draft = mail.draft.clone();
+                            let result = network::send_scheduled(&scheduled_store, mail);
+                            notifications::sent(
+                                &scheduled_store,
+                                &scheduled_handle,
+                                &draft,
+                                &result,
+                                true,
+                            );
+                            let _ = scheduled_store
+                                .log(&format!("定时发送：{}", result.unwrap_or_else(|e| e)));
+                            let _ = scheduled_handle.emit("mail-updated", ());
+                        }
+                        Ok(None) => {}
+                        Err(e) => {
+                            let _ = scheduled_store.log(&format!("定时发送检查失败：{e}"));
+                        }
+                    }
+                }
+                std::thread::sleep(std::time::Duration::from_secs(1));
+            });
             std::thread::spawn(move || {
                 let mut schedule = productivity::SyncSchedule::default();
                 loop {
@@ -435,13 +839,19 @@ pub fn run() {
             if window.label() == "main" {
                 if let tauri::WindowEvent::CloseRequested { api, .. } = event {
                     api.prevent_close();
+                    use tauri_plugin_window_state::AppHandleExt;
+                    let _ = window.app_handle().save_window_state(window_state_flags());
                     let _ = window.hide();
                 }
             }
         })
         .invoke_handler(tauri::generate_handler![
             snapshot,
+            account_folders,
+            sync_remote_folder,
             mail_detail,
+            mail_metadata,
+            mail_conversation,
             update_mail,
             save_rules,
             preview_rule,
@@ -457,6 +867,9 @@ pub fn run() {
             archive_outbox,
             get_preferences,
             save_preferences,
+            desktop_settings,
+            set_auto_start,
+            test_notification,
             archive_health,
             account_action,
             sync_mail,
@@ -464,9 +877,15 @@ pub fn run() {
             list_drafts,
             delete_draft,
             send_mail,
+            schedule_mail,
+            cancel_schedule,
+            reschedule_mail,
             export_mail,
             save_attachment,
+            preview_attachment,
             backup_archive,
+            archive_deletion_preview,
+            delete_local_archives,
             restore_archive,
             open_data_folder,
             open_mail_link

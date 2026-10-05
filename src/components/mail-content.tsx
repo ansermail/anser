@@ -1,13 +1,21 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { LoaderCircle } from "lucide-react";
-import { mailLink, safeMailHtml } from "../lib/mail-html";
+import { isTauri } from "@tauri-apps/api/core";
+import { MailBodySkeleton } from "./mail-skeleton";
+import { disableNativeContextMenu } from "../lib/context-menu";
+import {
+  interceptMailLinks,
+  isMailDocument,
+  safeMailHtml,
+} from "../lib/mail-html";
 import { mailDocumentHeight } from "../lib/mail-layout";
 
 export function MailContent({
   html,
   onOpenLink,
+  title = "邮件正文",
 }: {
   html: string;
+  title?: string;
   onOpenLink: (href: string) => void;
 }) {
   const frame = useRef<HTMLIFrameElement>(null);
@@ -15,7 +23,11 @@ export function MailContent({
   const initialized = useRef<Document | null>(null);
   const [ready, setReady] = useState(false);
   const [pendingImages, setPendingImages] = useState(0);
-  const srcDoc = useMemo(() => safeMailHtml(html), [html]);
+  const content = useMemo(() => {
+    const id = crypto.randomUUID();
+    return { id, srcDoc: safeMailHtml(html, id, isTauri()) };
+  }, [html]);
+  const srcDoc = content.srcDoc;
   const open = useRef(onOpenLink);
   open.current = onOpenLink;
   useEffect(() => {
@@ -27,7 +39,12 @@ export function MailContent({
     let pending = 0;
     const waitForDocument = () => {
       const doc = frame.current?.contentDocument;
-      if (doc?.URL === "about:srcdoc" && doc.readyState !== "loading") loaded();
+      if (
+        doc &&
+        isMailDocument(doc, content.id) &&
+        doc.readyState !== "loading"
+      )
+        loaded();
       else pending = requestAnimationFrame(waitForDocument);
     };
     pending = requestAnimationFrame(waitForDocument);
@@ -42,7 +59,7 @@ export function MailContent({
     if (
       !iframe ||
       !doc?.body ||
-      doc.URL !== "about:srcdoc" ||
+      !isMailDocument(doc, content.id) ||
       initialized.current === doc
     )
       return;
@@ -72,16 +89,6 @@ export function MailContent({
       cancelAnimationFrame(pendingResize);
       pendingResize = requestAnimationFrame(resize);
     };
-    const clicked = (event: MouseEvent) => {
-      const target = event.target as Element | null;
-      const anchor = target?.closest?.("a");
-      if (!anchor) return;
-      const href = anchor.getAttribute("href") ?? "";
-      if (href.startsWith("#")) return;
-      event.preventDefault();
-      const url = mailLink(href);
-      if (url) open.current(url.href);
-    };
     const observer = new ResizeObserver(scheduleResize);
     observer.observe(doc.body);
     observer.observe(iframe);
@@ -92,7 +99,8 @@ export function MailContent({
       attributes: true,
       characterData: true,
     });
-    doc.addEventListener("click", clicked);
+    const restoreContextMenu = disableNativeContextMenu(doc);
+    const restoreLinks = interceptMailLinks(doc, (href) => open.current(href));
     doc.addEventListener("load", scheduleResize, true);
     doc.addEventListener("error", scheduleResize, true);
     resize();
@@ -102,7 +110,8 @@ export function MailContent({
       cancelAnimationFrame(pendingResize);
       observer.disconnect();
       mutations.disconnect();
-      doc.removeEventListener("click", clicked);
+      restoreContextMenu();
+      restoreLinks();
       doc.removeEventListener("load", scheduleResize, true);
       doc.removeEventListener("error", scheduleResize, true);
     };
@@ -112,16 +121,11 @@ export function MailContent({
       className="mail-html-container"
       aria-busy={!ready || pendingImages > 0}
     >
-      {(!ready || pendingImages > 0) && (
-        <div className="mail-html-loading" role="status">
-          <LoaderCircle size={16} className="animate-spin" />
-          {ready ? "正在加载图片…" : "正在加载正文…"}
-        </div>
-      )}
+      {(!ready || pendingImages > 0) && <MailBodySkeleton images={ready} />}
       <iframe
         ref={frame}
         className="mail-html"
-        title="邮件正文"
+        title={title}
         sandbox="allow-same-origin"
         referrerPolicy="no-referrer"
         srcDoc={srcDoc}

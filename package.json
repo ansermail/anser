@@ -5,14 +5,16 @@
   "type": "module",
   "scripts": {
     "dev": "vite --host 127.0.0.1",
-    "build": "tsc -b && vite build",
+    "build": "npm run check:ui && tsc -b && vite build",
     "preview": "vite preview --host 127.0.0.1",
     "tauri": "tauri",
     "desktop": "node scripts/desktop.mjs",
     "desktop:build": "tauri build --bundles app",
     "test": "vitest run",
     "check": "tsc -b && cargo check --manifest-path src-tauri/Cargo.toml",
-    "test:rust": "cargo test --manifest-path src-tauri/Cargo.toml"
+    "test:rust": "cargo test --manifest-path src-tauri/Cargo.toml",
+    "test:desktop": "node --test scripts/*.node-test.mjs",
+    "check:ui": "node scripts/check-ui.mjs"
   },
   "dependencies": {
     "@tauri-apps/api": "^2",
@@ -22,12 +24,17 @@
     "@tiptap/starter-kit": "^3.31.3",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
+    "cmdk": "^1.1.1",
     "cn": "^0.4.0",
+    "date-fns": "^4.4.0",
     "dompurify": "^3.2.0",
     "lucide-react": "^0.468.0",
+    "marked": "^18.0.14",
     "radix-ui": "^1.4.0",
     "react": "^19.1.0",
+    "react-day-picker": "^10.0.2",
     "react-dom": "^19.1.0",
+    "react-resizable-panels": "^4.14.1",
     "sonner": "^2.0.0",
     "tailwind-merge": "^3.3.0"
   },

@@ -3,8 +3,10 @@ use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::{
+    collections::HashMap,
     io::{Read, Write},
     net::TcpListener,
+    sync::{Arc, Mutex, OnceLock},
     time::{Duration, Instant},
 };
 #[derive(Clone, Default, Serialize, Deserialize)]
@@ -87,7 +89,21 @@ fn exchange(a: &Account, mut fields: Vec<(&str, String)>) -> Result<Secret> {
         ..Default::default()
     })
 }
+// Sync, SMTP and online reading may refresh the same OAuth token concurrently.
+// Hold only a per-account credential lock, never the long-running sync guard.
+fn credential_gate(id: &str) -> Result<Arc<Mutex<()>>> {
+    static GATES: OnceLock<Mutex<HashMap<String, Arc<Mutex<()>>>>> = OnceLock::new();
+    Ok(GATES
+        .get_or_init(Default::default)
+        .lock()
+        .map_err(err)?
+        .entry(id.to_owned())
+        .or_default()
+        .clone())
+}
 pub fn credentials(a: &Account) -> Result<Secret> {
+    let gate = credential_gate(&a.id)?;
+    let _guard = gate.lock().map_err(err)?;
     let mut s = load(&a.id)?;
     if a.auth == "oauth" && s.expires_at < chrono::Utc::now().timestamp() + 60 {
         if s.refresh_token.is_empty() {

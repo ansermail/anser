@@ -1,3 +1,4 @@
+import { SelectField, SelectOption } from "@/components/ui/select-field";
 import { useState } from "react";
 import {
   Plus,
@@ -254,59 +255,56 @@ export function RulesPanel({
               <div className="field-row">
                 <div className="field">
                   <Label>适用账号</Label>
-                  <select
+                  <SelectField
                     value={editing.accountId}
-                    onChange={(e) =>
-                      setEditing({ ...editing, accountId: e.target.value })
+                    onValueChange={(value) =>
+                      setEditing({ ...editing, accountId: value })
                     }
                   >
-                    <option value="">全部账号</option>
+                    <SelectOption value="">全部账号</SelectOption>
                     {data.accounts.map((a) => (
-                      <option key={a.id} value={a.id}>
+                      <SelectOption key={a.id} value={a.id}>
                         {a.email}
-                      </option>
+                      </SelectOption>
                     ))}
-                  </select>
+                  </SelectField>
                 </div>
                 <div className="field">
                   <Label>匹配方式</Label>
-                  <select
+                  <SelectField
                     value={editing.mode}
-                    onChange={(e) =>
+                    onValueChange={(value) =>
                       setEditing({
                         ...editing,
-                        mode: e.target.value as "all" | "any",
+                        mode: value as "all" | "any",
                       })
                     }
                   >
-                    <option value="all">满足全部条件</option>
-                    <option value="any">满足任一条件</option>
-                  </select>
+                    <SelectOption value="all">满足全部条件</SelectOption>
+                    <SelectOption value="any">满足任一条件</SelectOption>
+                  </SelectField>
                 </div>
               </div>
               <div className="conditions">
                 {editing.conditions.map((c, i) => (
                   <div className="condition" key={i}>
-                    <select
+                    <SelectField
                       aria-label="条件字段"
                       value={c.field}
-                      onChange={(e) =>
+                      onValueChange={(value) =>
                         setEditing({
                           ...editing,
                           conditions: editing.conditions.map((x, j) =>
                             j === i
                               ? {
-                                  field: e.target.value,
+                                  field: value,
                                   operator:
-                                    e.target.value === "date"
+                                    value === "date"
                                       ? "after"
-                                      : e.target.value === "attachment"
+                                      : value === "attachment"
                                         ? "equals"
                                         : "contains",
-                                  value:
-                                    e.target.value === "attachment"
-                                      ? "true"
-                                      : "",
+                                  value: value === "attachment" ? "true" : "",
                                 }
                               : x,
                           ),
@@ -314,19 +312,19 @@ export function RulesPanel({
                       }
                     >
                       {Object.entries(fields).map(([k, v]) => (
-                        <option key={k} value={k}>
+                        <SelectOption key={k} value={k}>
                           {v}
-                        </option>
+                        </SelectOption>
                       ))}
-                    </select>
-                    <select
+                    </SelectField>
+                    <SelectField
                       aria-label="条件比较"
                       value={c.operator}
-                      onChange={(e) =>
+                      onValueChange={(value) =>
                         setEditing({
                           ...editing,
                           conditions: editing.conditions.map((x, j) =>
-                            j === i ? { ...x, operator: e.target.value } : x,
+                            j === i ? { ...x, operator: value } : x,
                           ),
                         })
                       }
@@ -344,11 +342,11 @@ export function RulesPanel({
                               ["notContains", "不包含"],
                             ]
                       ).map(([k, v]) => (
-                        <option key={k} value={k}>
+                        <SelectOption key={k} value={k}>
                           {v}
-                        </option>
+                        </SelectOption>
                       ))}
-                    </select>
+                    </SelectField>
                     <Input
                       aria-label="条件值"
                       required
@@ -405,18 +403,18 @@ export function RulesPanel({
               </Button>
               <div className="field">
                 <Label>执行动作</Label>
-                <select
+                <SelectField
                   value={editing.action}
-                  onChange={(e) =>
-                    setEditing({ ...editing, action: e.target.value })
+                  onValueChange={(value) =>
+                    setEditing({ ...editing, action: value })
                   }
                 >
                   {Object.entries(actions).map(([k, v]) => (
-                    <option key={k} value={k}>
+                    <SelectOption key={k} value={k}>
                       {v}
-                    </option>
+                    </SelectOption>
                   ))}
-                </select>
+                </SelectField>
               </div>
               {editing.action === "folder" && (
                 <div className="field">
@@ -431,13 +429,13 @@ export function RulesPanel({
                   />
                 </div>
               )}
-              <label className="switch-label">
+              <Label className="switch-label">
                 <Switch
                   checked={editing.stop}
                   onCheckedChange={(v) => setEditing({ ...editing, stop: v })}
                 />
                 命中后停止执行后续规则
-              </label>
+              </Label>
               <Button
                 type="button"
                 variant="outline"

@@ -1,66 +1,290 @@
-# Third-party notices
+# macOS 多账号邮件客户端 PRD（调研版）
 
-## shadcn/ui
+> 版本：v0.3 ｜ 日期：2026-09-30 ｜ 状态：核心需求已确认，Alpha 开发与验证中
 
-Components in `src/components/ui/` and `src/hooks/use-mobile.ts` are derived from [shadcn/ui](https://github.com/shadcn-ui/ui), installed through its official registry and adapted locally.
+## 1. 产品概述
 
-MIT License
+做一款以 macOS 为主的本地优先邮件客户端，让用户在一个界面中管理多个个人与工作邮箱，完成稳定收发、快速搜索、批量整理与高效写信。界面参考 shadcn/ui 的清晰层级和密度，桌面形态参考 dbx 的 Tauri + Rust 路线，但产品信息架构应围绕邮件工作流设计，不能照搬数据库 dashboard。
 
-Copyright (c) 2023 shadcn
+**一句话定位**：像 Windows Foxmail 一样顺手处理邮件，兼具 Thunderbird 的多账号与开放协议能力，并保持符合 macOS 使用习惯的界面。
 
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
+**首要平台**：首版仅支持 Apple Silicon（M 系列芯片）的 macOS。产品开源，以本地客户端为核心，允许按功能引入云端邮件处理；日常收发与本地存档不依赖本产品自建云服务。首版无需迁入 Thunderbird 的历史邮件或账户设置。
 
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
+**已确认的核心要求**：可配置多条过滤规则自动归类；邮件完整保存到本地，服务器自动删除后仍可使用；首版同时覆盖常见邮箱预设和自定义 IMAP/POP3 + SMTP 配置。具体决策见第 10 节。
 
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
+## 2. 调研结论与证据
 
-Other npm and Cargo dependencies retain their respective licenses. See the lockfiles for the resolved dependency graph.
+### 2.1 产品对照
 
-## imap-proto
+| 参考产品 | 已核实的能力与启发 | 对本产品的决定 |
+| --- | --- | --- |
+| [Thunderbird](https://www.thunderbird.net/en-US/) | 官方明确支持多账号分别管理或统一收件箱，并整合邮件、日历、联系人；帮助文档列出快速筛选、账户级规则、离线同步等能力。 | 首版不能只做漂亮的收件箱，必须覆盖多账号、统一视图、筛选、离线阅读和可靠的规则基础。 |
+| [Foxmail Windows](https://www.foxmail.com/win/en/) | 官方更新记录包含模板、过滤器、服务端搜索、常用文件夹、延迟标记已读、通讯录去重、日历、笔记及腾讯企业邮专属功能。 | 重点借鉴高频邮件操作与易用性；把服务商专属功能单独评估。 |
+| [Foxmail Mac](https://www.foxmail.com/mac/en/) | 官网显示 2026-06-18 更新了 Apple Silicon 支持；历史记录包含多账号、标签、多级文件夹、定时发送、日历等。 | “长期没有任何更新”与官网记录不符。真实机会应通过当前版本实测用户任务与功能差距，而不是仅凭更新时间判断。 |
+| [dbx](https://github.com/t8y2/dbx) | 仓库 README 写明 Tauri 2、Vue 3、TypeScript、shadcn-vue、Tailwind 与 Rust 后端。 | 可借鉴桌面工程分层和组件视觉；邮件协议、同步与数据模型必须独立设计。 |
+| [shadcn/ui blocks](https://ui.shadcn.com/blocks) | 官方提供 sidebar 和 dashboard 示例，原版 blocks 面向 React。 | 借鉴 sidebar、弹窗、菜单、表格等样式；邮件主界面采用三栏，不使用图表卡片作为首页。 |
 
-`src-tauri/vendor/imap-proto` contains imap-proto 0.10.2 from Dirkjan Ochtman, distributed under MIT/Apache-2.0. The upstream LICENSE-MIT and LICENSE-APACHE files are retained. The STATUS compatibility change is documented in that directory’s MAIL_PATCH.md.
+### 2.2 用户需求假设
 
-## Tiptap and ProseMirror
+用户已明确：过滤规则与本地持久保存是必须存在的功能。真实场景是企业邮箱仅保留 3 天邮件，需要客户端及时保存完整副本，避免服务器清理后失去历史邮件。
 
-The rich text composer uses `@tiptap/react`, `@tiptap/pm`, `@tiptap/starter-kit` and their extensions. Resolved versions and transitive dependencies are recorded in `package-lock.json`.
+以下其他使用习惯仍是从用户描述与竞品功能推导出的假设，尚未通过访谈确认：
 
-MIT License
+1. 用户同时使用 2 个及以上邮箱，反复切换账号或网页是主要负担。
+2. 用户认为 Windows Foxmail 的收发、搜索、筛选与写信流程更顺手，希望在 Mac 上得到相近效率。
+3. Thunderbird 能完成主要工作，但仍有可改善的界面密度、操作路径和 macOS 一致性。
+4. 用户更在意邮件不丢、同步准确和搜索快，胜过首页统计图或 AI 功能。
 
-Copyright (c) 2025, Tiptap GmbH
+**后续验证建议**：访谈 5–8 位 macOS 多邮箱用户，记录他们最近一周最常做的 10 项操作；对 Thunderbird、Foxmail Mac、Foxmail Windows 实机执行同一组任务，记录步骤、耗时、失败点。当前 PRD 基于公开资料和产品发起人的需求确认，尚未完成实机功能审计和其他用户验证。
 
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
+## 3. 目标用户与使用场景
 
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
+| 用户 | 核心任务 | 关键阻碍 |
+| --- | --- | --- |
+| 个人多邮箱用户 | 统一处理私人、订阅、学校、工作邮件 | 漏看消息、错误地从另一个账号回复 |
+| 中小团队成员 | 高频回复、归档、搜索历史附件与往来 | 邮件量大，整理成本高 |
+| 使用短期保留邮箱的用户 | 自动保存完整邮件，长期检索历史往来和附件 | 服务端数日后自动删除，普通同步缓存也可能随之被清理 |
+| 开发者/自由职业者 | 混合使用 Gmail、Outlook、QQ/网易或自建域名邮箱 | 登录方式、服务器设置、文件夹语义各不相同 |
 
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
+### 核心任务
 
-ProseMirror modules use the MIT permission and warranty terms above, with the
-following copyright notice:
+1. 连接多个邮箱，明确看到每个账号是否成功同步。
+2. 在统一收件箱中处理新邮件，并能快速回到某个账号及文件夹。
+3. 从任一邮件回复、转发或写新邮件，发送身份始终清楚。
+4. 按发件人、主题、正文、时间、附件等条件找到邮件。
+5. 批量归档、移动、标记、删除，且误操作可撤销。
+6. 断网时阅读已缓存邮件、继续写草稿，联网后安全完成同步。
+7. 按不同条件自动归类新邮件，并可对已有邮件执行规则。
+8. 把邮件正文、内嵌资源和附件完整存到本地；服务器删除或账户失效后仍可阅读、搜索与导出。
 
-Copyright (C) 2015-2017 by Marijn Haverbeke <marijn@haverbeke.berlin> and others
+## 4. 目标与非目标
 
-The original license files are retained in the respective dependency packages.
+### 首版目标
+
+- 在 macOS 上稳定完成多账号收发，用户能够放心把它作为日常主力邮件客户端。
+- 首版同时提供 Gmail、Outlook/Microsoft 365、QQ、网易、企业邮箱和自建域名的接入入口；通过预设、授权适配和自定义协议配置实现。
+- 可配置的过滤规则和独立本地存档进入首轮内测；先验证“自动保存后服务器删除仍可读”，再扩大试用。
+- 把“读、找、回、整理”四条高频路径做短，支持鼠标与键盘操作。
+- 对失败保持可解释：账号授权过期、发送失败、同步冲突、附件下载失败都有明确状态和恢复操作。
+
+### 首版暂不覆盖
+
+- 自建邮箱服务、网页端、移动端及跨设备同步本产品设置。
+- AI 写信/总结、邮件营销、团队共享收件箱。
+- 完整 Exchange/EWS/EAS、日历/任务、RSS、笔记、端到端加密。
+- Intel Mac、Thunderbird 历史邮件与账户设置迁移。
+- 不承诺通用“邮件撤回”“已读回执可追踪”“超大附件绕过限制”：这些能力依赖服务商或收件人环境，不能作为通用邮件功能承诺。
+
+## 5. 功能范围与优先级
+
+P0 为可替换日常客户端的首版；P1 为首版之后优先补齐；P2 为长期候选。功能描述是本产品需求，不代表所有竞品已实现。
+
+| 模块 | P0：首版 | P1：增强 | P2：候选 |
+| --- | --- | --- | --- |
+| 账号接入 | 多账号；IMAP/POP3 收件 + SMTP 发件；常见邮箱预设与自动发现；自定义收发地址、端口、TLS 和认证；OAuth 授权；添加、停用、删除账号；连接诊断 | 更多企业预设、代理设置、别名/代发 | 企业特殊协议 |
+| 收件与同步 | 按协议增量收取；统一收件箱与单账号视图；IMAP 文件夹映射；POP3 本地收件；未读计数；通知；手动刷新；离线缓存；收取频率设置；后台保活与唤醒补收；进度与错误提示 | 精细带宽限制、能耗优化 | 跨设备客户端设置同步 |
+| 本地存档 | 每账号自动完整保存；手动/批量保存；按规则归入本地文件夹；正文、内嵌资源和附件完整性状态；独立保留；搜索；EML 导出；备份与恢复 | 存档库迁移、更多导出格式、可选云备份 | 多设备存档合并 |
+| 阅读与整理 | 三栏阅读；会话聚合可切换；已读/未读、星标、归档、删除、移动、垃圾邮件；多选批量操作；操作撤销；附件预览/保存 | 标签、置顶常用文件夹、延迟标记已读、快捷操作自定义 | 自动摘要与智能分类 |
+| 写信与发送 | 新建/回复/全部回复/转发；账号身份选择；收件人自动补全；抄送/密送；富文本和纯文本；附件；自动保存草稿；发送状态；撤销发送短暂缓冲 | 签名、模板、定时发送、分别发送、邮件优先级 | 服务商专属撤回或大附件能力 |
+| 搜索与规则 | 跨账号及本地存档搜索；字段筛选；离线索引；多条命名规则；全部/任一条件匹配；排序与停止继续匹配；归类到服务器或本地文件夹；复制、移动、标记、删除；预览、执行日志、手动重跑 | 保存搜索、服务端搜索、跨账号转移规则、嵌套条件组 | 自然语言搜索 |
+| 通讯录 | 本地常用联系人、自动补全、从邮件创建联系人 | macOS Contacts 授权集成、CardDAV、联系人去重 | 企业目录、共享联系人 |
+| 桌面体验 | macOS 菜单栏、常见快捷键、系统通知、开机自启、暗色模式、窗口与栏宽记忆、拖拽附件 | 多窗口、菜单栏未读数、触控板手势 | 插件系统 |
+
+### 5.1 P0 关键行为与验收
+
+| 编号 | 用户故事 | 验收标准 |
+| --- | --- | --- |
+| ACC-01 | 我添加常见邮箱或自定义服务器 | 所有第 5.5 节入口在首版可用；预设自动填入适用配置；需要 OAuth 的账号走浏览器授权；自定义可选择 IMAP/POP3 并分别配置收件和 SMTP；收、发连接分别验证并展示结果。 |
+| ACC-02 | 我同时查看多个账号 | 左栏可在“全部收件箱”和单账号之间切换；每封邮件显示所属账号；停用不删除本地邮件；移除账号默认保留独立存档，清除同步缓存与删除存档是不同操作。 |
+| SYN-01 | 我离线查看和操作邮件 | 已缓存正文可读；IMAP 操作进入待同步队列，联网后执行并显示失败项；POP3 的本地文件夹和已读状态仅在本机生效，不显示为服务端已同步。 |
+| SYN-02 | 我想知道收发是否成功 | 顶部与账号列表显示最近同步时间和错误；发送成功必须得到服务端确认；失败邮件保留在待发送或草稿并有清晰提示。 |
+| READ-01 | 我处理大量新邮件 | 未读、星标、有附件筛选可组合；连续打开下一封无需回到列表；多选后可批量归档、移动、删除，并能撤销最近一次可逆操作。 |
+| COMP-01 | 我从统一收件箱回复 | 默认使用原邮件所属账号/身份发送；写信窗口持续显示发件身份；更改发件身份后重新校验签名与 SMTP 配置。 |
+| COMP-02 | 我写信时关闭窗口或断网 | 草稿自动保存并可恢复；发送前检查收件人、附件及空主题提醒；点击发送后短暂允许撤销，最终发送结果可追踪。 |
+| SRCH-01 | 我搜索历史邮件 | 可在当前文件夹、当前账号、全部账号、本地存档间切换范围；全局搜索包含已移除账号的保留存档并标明来源；未完整下载的邮件提示搜索范围；同步邮件与其本地副本默认合并展示并可查看各存储位置。 |
+| RULE-01 | 我创建不同规则进行归类 | 多条规则可命名、编辑、启停、排序；支持全部/任一条件；可按发件人、收件人、主题、正文、日期和有无附件匹配，归类到服务器或本地文件夹；支持预览与手动执行。 |
+| RULE-02 | 多条规则命中同一封邮件 | 按顺序执行并支持“命中后停止”；可查看匹配条件、执行动作与失败原因；断网重试不重复创建本地副本；移动后继续作用于同一邮件，目标不存在时明确报错。 |
+| LOCAL-01 | 企业邮箱 3 天后自动删除邮件 | 完整保存带附件的测试邮件，模拟服务端删除并完成后续同步；重启 App 和断网后，本地正文、内嵌资源及附件仍可用、可搜索、可导出；同步清理不得删除独立存档。 |
+| LOCAL-02 | 我需要确认邮件真的存下来了 | 下载中、完整已保存、保存失败三种状态清楚可见；只有 MIME 正文与全部邮件附件持久写入且校验通过后显示“完整已保存”；磁盘满或下载中断不得误报成功。 |
+| LOCAL-03 | 我关闭/移除账号或重装恢复备份 | 停用、授权失效、移除账号或清理缓存后存档仍可读；备份恢复后邮件数量、原始内容及附件校验一致；邮件备份不包含账号令牌或密码。 |
+| POP-01 | 我用 POP3 收件 | 同一邮件多轮收取不重复；邮件默认保留在服务器；本地删除不会隐式删除服务端邮件；若用户启用“收取后删除服务器邮件”，只允许在完整本地保存成功后执行。 |
+
+### 5.2 邮件语义边界
+
+- **统一收件箱**只是聚合视图，不把不同账号邮件实际迁移到同一服务端。
+- **离线缓存**服务于服务器邮箱的同步；**本地存档**独立持久保存。服务器删除、账号移除和缓存清理都不能连带删除本地存档。
+- **归档、标签、文件夹**在 Gmail 和普通 IMAP 上语义不同；先做服务商适配与清晰提示，再给统一操作入口。Thunderbird 的 [Gmail 说明](https://support.mozilla.org/en-US/kb/thunderbird-and-gmail) 也提示标签与文件夹映射会影响删除和离线访问。
+- 工具栏将“归档到邮箱”与“保存到本地”作为独立动作，移动/复制菜单明确标注目标在服务器还是本机。
+- **撤销发送**指客户端延迟真正发送；邮件一旦交给服务端，不能保证撤回。定时发送若不使用云服务，应明确告知用户 App 是否必须运行。
+- **已读回执**只是请求，不能保证对方提供；**邮件撤回**只在特定服务商和条件下可能成立。
+
+### 5.3 必须功能：独立本地保存
+
+**默认策略（产品建议）**：新增账号默认开启“自动完整保存到本地”，在连接完成时展示保存范围与磁盘位置。IMAP 默认覆盖收件箱、已发送和用户文件夹，垃圾邮件/废纸篓可选择纳入；POP3 覆盖服务端可收取的邮件和本客户端发送的邮件。自动保存范围可以按账号调整，尚未下载的历史邮件显示待保存数量；不承诺已被服务器删除且从未下载的内容能够恢复。
+
+- 保存完整原始 MIME、头信息、正文、随邮件携带的内嵌资源及所有附件，并保留来源账号、原文件夹、保存时间等信息。外部图片或网盘链接指向的内容不属于邮件附件，不能把“保存了链接”展示为“文件已下载”。
+- 存档独立于服务端标记和删除状态；规则可以将本地副本分类到不同本地文件夹。重复收取、重连、重跑规则和 Gmail 多标签场景应避免重复存档，同时保留来源关系。
+- 手动和自动保存均显示完整性状态与错误；遇到空间不足、中断或写入失败，保留已有内容并支持续传/重试。清理磁盘只清理可重建缓存，不自动淘汰存档。
+- 用户明确删除本地存档时先进入本地废纸篓，永久删除须单独确认；服务端删除不触发该流程。备份覆盖存档文件、文件夹结构与归类元数据，可离线恢复；索引允许重建。
+- 默认启动后立即补收，运行时使用可用的新邮件通知机制并定期检查；初始轮询目标为 5 分钟，允许调整并尊重服务端限制。关闭主窗口默认继续后台收取，明确“退出 App”会停止收取；Mac 睡眠、断网或关机期间无法保证下载，唤醒/重连立即补收。
+- 在保存状态页展示最近成功收取时间、待保存数量与失败项。用户可以填写服务器保留期（如 3 天），在接近保留期且仍有待保存或连续收取失败时提示。只有删除前完整下载的邮件能受本地存档保护。
+
+### 5.4 必须功能：过滤规则与自动归类
+
+每条规则包含名称、适用账号、触发时机、匹配条件、动作、顺序、启用状态及是否停止后续规则。首版支持新邮件到达后自动执行，以及对选定文件夹/邮件手动执行；基础条件支持“全部满足”或“任一满足”，正文条件等待正文下载后再判断。
+
+动作包括：复制/移动到当前账号的服务器文件夹、保存并归类到本地文件夹、标记已读/未读或星标、移到邮箱废纸篓。POP3 仅提供其协议能够支持的动作；本地文件夹归类始终可用。规则执行的删除动作不删除独立存档。跨账号服务器移动和嵌套条件组在 P1。
+
+**执行顺序**：对开启自动保存且在保存范围内的邮件，先完成本地持久保存，再执行可能移除服务器原件的动作；保存失败时阻止该移除动作并记录原因。仅设置“保存到本地”规则的邮件，也必须保存成功后才能执行其后续移除动作。规则在本机运行，App 退出期间不执行；重复触发必须避免重复副本与移动循环。
+
+| 示例规则 | 条件 | 动作 |
+| --- | --- | --- |
+| 项目归类 | 工作账号，主题包含“项目 A” | 保存到本地“项目 A”，移动服务器邮件到“项目 A”文件夹 |
+| 发票归类 | 主题包含“发票”且有附件 | 保存到本地“财务/发票”，标记星标 |
+| 通知归类 | 发件人属于指定通知地址 | 移动到当前账号“通知”文件夹，停止后续规则 |
+
+“企业邮箱全部自动保存”由账号保存策略保证，不要求用户逐条创建保存规则；规则负责进一步分类。
+
+### 5.5 首版账号支持范围
+
+常见服务商预设与自定义配置共用邮件协议能力，统一纳入 P0，不再根据邮箱占比决定是否纳入。预设减少配置步骤；OAuth、授权码与服务端策略仍需逐项适配和验证。
+
+| 账号类别 | 首版入口与接入目标 | 验收边界 |
+| --- | --- | --- |
+| Gmail | 默认预设 + Google 授权；IMAP/SMTP | 完成登录、令牌续期、收发及标签/归档语义验证；POP3 在服务商开放且实测通过的配置中提供 |
+| Outlook.com / Microsoft 365 | 分别提供预设 + Microsoft 授权；目标为允许 IMAP/SMTP 的账号 | 两类账号分别验证；企业租户若禁用协议或拒绝应用授权，明确显示限制，不宣称完整 Exchange 支持 |
+| QQ 邮箱 | 默认预设；适用的 IMAP/POP3 + SMTP 配置与授权码引导 | 分别验证协议开通、认证、收发和本地保存；服务器参数在接入开发时从官方资料核对 |
+| 网易邮箱 | 覆盖 163、126、yeah 的默认预设，支持手动修改 | 子品牌分别验证，授权码与协议开启要求按官方资料接入 |
+| 企业邮箱 | 可维护的企业服务商预设 + 自定义入口 | 支持开放 IMAP/POP3 + SMTP 的企业邮箱；预设优先包括腾讯企业邮、网易企业邮，具体域名配置可覆盖 |
+| 自建域名/其他 | 自定义入口 | 分别填写收发地址、端口、TLS、用户名与认证方式；支持收发使用不同主机与凭据；域名本身不能决定支持的协议 |
+
+IMAP 和 POP3 是可选的收件方式，SMTP 用于发送。POP3 不提供 IMAP 式的服务器文件夹/已读同步；界面按实际能力展示。各服务商不必支持全部协议组合，发布时公开已验证矩阵。仅提供 Exchange 专属接口、禁用标准协议的环境需要独立适配，当前不在通用配置覆盖承诺内。
+
+## 6. 信息架构与界面原则
+
+```text
+邮件
+├─ 全部收件箱 / 未读 / 星标 / 草稿 / 已发送 / 待发送
+├─ 账号 A
+│  ├─ 收件箱 / 已发送 / 草稿 / 归档 / 垃圾邮件 / 废纸篓
+│  └─ 自定义文件夹
+├─ 账号 B …
+├─ 本地存档
+│  ├─ 按来源账号查看 / 自定义本地文件夹
+│  ├─ 保存状态：待下载 / 保存失败 / 完整已保存
+│  └─ 本地废纸篓
+├─ 搜索与保存搜索（保存搜索在 P1）
+├─ 联系人
+└─ 设置：账号、过滤规则、同步与自动保存、通知、写信、快捷键、存储与备份
+```
+
+主界面采用**左侧账号/文件夹、中央邮件列表、右侧阅读面板**。顶部放全局搜索和同步状态，工具栏保留回复、归档、移动、删除等高频动作。窗口变窄时阅读面板切换为独立视图；列表列宽、栏宽、排序和会话视图可记忆。邮件列表优先呈现发件人、主题、摘要、时间、未读、附件、账号标识，不放 dashboard 图表。
+
+服务器文件夹与本地存档在侧栏中分组，邮件详情展示保存状态与存储位置。规则编辑页提供“条件—动作”的可视化编辑，明确目标属于服务器还是本机；保存状态页支持筛选失败项与批量重试。
+
+视觉使用 shadcn 的颜色、间距、菜单、弹窗和侧栏组件模式，同时遵循 macOS 的标题栏、菜单栏、系统通知、键盘导航和深浅色外观。对高密度邮件列表做专门组件，避免把通用 data table 直接当邮件列表。参考 [shadcn blocks](https://ui.shadcn.com/blocks) 的 sidebar 结构与 [Sidebar 组件文档](https://ui.shadcn.com/docs/components/aria/sidebar)。
+
+## 7. 技术与安全约束（产品级）
+
+1. **技术方向**：Tauri 2 + Rust 处理账号、协议、同步、索引和本地存储；前端已确定 React + TypeScript + 原版 shadcn/ui。dbx 实际使用 Vue + shadcn-vue，本项目仅参考其 Tauri + Rust 的桌面架构。
+2. **授权**：Google 官方建议第三方客户端使用 “Sign in with Google”，Google Workspace 已要求 OAuth；Microsoft Exchange Online 已关闭多种协议的基础认证。OAuth 不是附加功能，而是目标账号能否接入的前置条件。[Google 帮助](https://support.google.com/mail/answer/7126229?hl=en)、[Google Workspace 帮助](https://support.google.com/a/answer/9003945?hl=en-na)、[Microsoft 文档](https://learn.microsoft.com/en-us/exchange/clients-and-mobile-in-exchange-online/deprecation-of-basic-authentication-exchange-online)。
+3. **账号兼容声明**：首版承诺经测试的服务商与协议组合，不把“支持 IMAP”写成“完整支持所有 Exchange 功能”。Microsoft 也指出 IMAP 不提供完整 Exchange 特性。[Microsoft 文档](https://learn.microsoft.com/en-us/exchange/clients-and-mobile-in-exchange-online/deprecation-of-basic-authentication-exchange-online)。
+4. **开源与云服务**：产品确定开源，具体许可证在发布前选定。用户允许产品引入云端邮件处理能力；具体功能须说明处理方、传输内容及用途，并提供相应设置。允许云处理不代表首版必须部署后端；P0 收发、规则与本地存档可独立工作，后续可为定时发送等需求选择云端方案。
+5. **隐私**：凭据与令牌放 macOS Keychain；缓存与持久存档分别显示位置、占用和清理方式。根据 2026-09-30 用户确认，外部图片直接显示，网页链接由系统浏览器打开，不显示隔离提示；HTML 邮件清洗脚本和表单，附件按文件保存。崩溃报告与诊断日志不默认包含正文、附件、令牌或密码。
+6. **数据可靠性**：同步数据与持久存档拥有独立生命周期；发送、草稿、保存任务和规则执行均可恢复；只有完整内容安全写入后才发布保存成功状态；本地索引可重建。账号断连、移除和服务端删除不得清除独立存档。
+7. **发布平台**：仅发布 macOS arm64 版本并在 Apple Silicon 真机验证；最低 macOS 版本在 Tauri/WebKit 兼容验证后确定。首版不建设 Intel、Windows 或 Linux 发布流水线。
+
+## 8. 质量门槛与衡量指标
+
+以下是首版**建议验收目标**，需在真实邮箱规模与设备基线确定后校准：
+
+| 指标 | 建议目标 | 验证方法 |
+| --- | --- | --- |
+| 账号接入 | 所有声明支持的预设/协议/认证组合通过必需用例；支持配置中的试用接入成功率目标 ≥ 95% | Gmail、Outlook.com、Microsoft 365、QQ、网易各子品牌、企业邮箱、自建 IMAP/POP3 + SMTP；记录样本量，策略禁止场景验证明确报错 |
+| 本地持久保存 | 已完整保存的测试邮件在服务端删除、移除账号、重启及离线后 100% 可读，正文与附件校验一致 | 模拟“3 天自动删除”；含大附件、中文文件名、内嵌图片；注入磁盘满、下载中断和保存时崩溃 |
+| 过滤规则 | 条件、优先级、停止匹配和目标位置符合配置；重试无重复存档，保存失败不执行受保护的移除动作 | 多规则命中、批量重跑、断网、无效目标、POP3 能力限制与正文未下载用例 |
+| 发信可靠性 | 经服务端确认的发送不丢失；失败可恢复且不误报成功 | 弱网、断网、OAuth 过期、SMTP 拒绝、附件超限用例 |
+| 首屏体验 | 已同步 5 万封邮件后打开应用，列表可交互时间目标 ≤ 3 秒 | 指定 Apple Silicon 测试设备重复测量 |
+| 搜索体验 | 本地索引命中结果首批目标 ≤ 1 秒 | 5 万封邮件样本，按范围和字段测量 |
+| 任务效率 | 访谈用户的前 10 项高频任务中，至少 7 项不慢于当前客户端 | 同一用户同一任务 A/B 实测 |
+| 可用性 | 同步失败、授权过期、待发送卡住均可被用户发现并恢复 | 可用性测试与故障注入 |
+
+首版发布前应至少完成：真实账号兼容矩阵、弱网/断网与大邮箱测试、规则与本地保存联合验收、后台收取和睡眠唤醒测试、macOS 通知和权限测试，以及存档备份与恢复演练。Thunderbird 历史数据和设置迁移不属于首版验收；本产品自身存档的备份恢复属于 P0。
+
+## 9. 交付阶段
+
+| 阶段 | 范围 | 退出条件 |
+| --- | --- | --- |
+| 0. 技术与原型验证 | 已确认服务商的授权/协议验证；本地保存与规则联动原型；三款竞品任务对照 | 验证服务端删除后本地仍完整可用；明确 OAuth 配置、协议限制及最低 macOS 版本 |
+| 1. 可用内测 | P0 账号接入、收发、统一收件箱、阅读、搜索、多条过滤规则、自动本地存档及备份 | 必须功能同时可用；真实邮箱连续日用，发送、收取、保存与规则故障可恢复 |
+| 2. 公测 | 全部 P0 收敛；批量操作、体验打磨、所有首批账号兼容矩阵与 Apple Silicon 发布流程 | 本地存档保留和规则联动验收通过，达成质量门槛，公开协议/策略限制 |
+| 3. 增强 | P1 模板、签名、定时发送、联系人集成、服务端搜索等 | 按访谈频率与开发成本排序交付 |
+
+## 10. 已确认决策与后续设计事项
+
+### 10.1 用户已确认（2026-09-29）
+
+| 决策 | 结论 |
+| --- | --- |
+| 过滤规则 | 必须存在，可设置不同规则自动归类，列入 P0 和首轮内测 |
+| 本地保存 | 必须存在，覆盖“企业邮箱 3 天后删除”场景；服务器删除后完整本地副本仍保留 |
+| 首批账号 | Gmail、Outlook/Microsoft 365、QQ、网易、企业邮箱、自建域名共同纳入首版；常见邮箱提供默认配置，支持自定义收发服务器 |
+| 接入协议 | IMAP/POP3 收件 + SMTP 发件；与服务商所需认证方式配合 |
+| Thunderbird 迁移 | 首版不需要导入旧邮件或账户设置 |
+| 开源 | 确定开源，许可证待选 |
+| 云端处理邮件 | 允许；实际采用哪些云功能、处理方及启用方式在相应功能设计时确定 |
+| 平台 | 首版仅 macOS Apple Silicon（M 系列）；Intel 不在范围内 |
+
+### 10.2 后续设计事项
+
+- 已确定 React + shadcn/ui；视觉遵循用户指定的 `dashboard-01`，采用中性色、可收起侧栏、内嵌圆角内容区。
+- 通过兼容验证确定最低 macOS 版本；选定开源许可证与发布方式。
+- 验证常见服务商 OAuth 应用注册、发布所需流程、协议开通和企业租户限制；据实维护支持矩阵。
+- 用原型验证第 5.3 节的自动保存默认范围、磁盘占用展示和规则编辑交互；这些细节为建议方案，可调整，核心持久保存要求已确定。
+- Foxmail 的其他效率功能继续按任务频率排序，不影响已确认 P0 的实施。
+
+## 11. 资料来源与调研限制
+
+本版核对了截至 2026-09-29 可访问的官网和项目文档：[Thunderbird 官网](https://www.thunderbird.net/en-US/)、[快速筛选](https://support.mozilla.org/en-US/kb/quick-filter-toolbar)、[邮件规则](https://support.mozilla.org/en-US/kb/organize-your-messages-using-filters)、[离线同步设置](https://support.mozilla.org/en-US/kb/configuration-options-accounts)、[Foxmail Windows](https://www.foxmail.com/win/en/)、[Foxmail Mac](https://www.foxmail.com/mac/en/)、[dbx 仓库](https://github.com/t8y2/dbx)、[shadcn blocks](https://ui.shadcn.com/blocks)。公开更新日志能够证明某项能力曾被官方列出，不能单独证明当前版本的完整行为，也不能证明未列出的功能不存在；这些差异需在阶段 0 实机核验。
+
+
+## 15. 已确认的设计与开发决策（2026-09-30）
+
+- 面板风格：以官方 [dashboard-01](https://ui.shadcn.com/view/new-york-v4/dashboard-01) 为基准。复用 SidebarProvider / Sidebar / SidebarInset / SidebarTrigger 和 Card，保留适用于邮件的三栏布局。
+- 应用图标：暂定 `assets/branding/mail-icon-v3.png`，米白底与绿色信封；面板使用黑白灰，图标颜色保留。
+- 前端 React 19 + TypeScript + Vite + Tailwind 4，桌面 Tauri 2 + Rust，SQLite 索引与独立原始 MIME 存档。
+- 当前交付是 Alpha，功能实现与验证状态见 `docs/IMPLEMENTATION.md`。此状态说明不降低前述 P0 验收要求。
+
+
+## 16. 邮件对话体验（用户确认，2026-10-02）
+
+- 将存在回复关系的邮件往来放在同一对话中；自己的邮件靠右、来信靠左并注明发件人，按时间从上到下排列，最新一封在底部。单封独立邮件使用普通阅读面板（2026-10-03 用户调整）。
+- 对话底部支持快速回复；保留完整编辑、富文本/Markdown/HTML、附件及定时发送入口。回复不强制包含原文。
+- HTML 正文、附件、收发地址、完整时间与保存状态逐封可查；开启本地保存的账号保持独立原始邮件存档。
+- 使用 Message-ID / In-Reply-To / References 建立关系；不同账号隔离。缺少关联头的旧邮件独立显示，相同标题不能作为自动合并依据。
+- 新邮件在阅读底部时跟随展示；查看历史时保留阅读位置，以提醒按钮跳至底部。输入中的回复不被新邮件清空。
+- 对话列表筛选和分页以对话为单位；进入匹配对话后可查看跨收件箱/已发送/本地分类的完整关联内容，本地废纸篓单独展示。批量选择整理对话，单封菜单整理该封邮件。
+
+## 17. 账号留存、服务器文件夹与日期（2026-10-03）
+
+- 添加和管理账号均提供“收到的邮件保存在本地”开关，默认开启。关闭时仅保留列表元数据，阅读正文和保存附件需连接服务器；服务端删除后无完整存档的邮件不能继续读取。
+- 关闭开关不删除已有完整存档；重新开启时补充服务器仍存在的邮件。移除账号保留完整存档，清除该账号仅在线阅读的列表记录。
+- 应用自行发送并经 SMTP 确认的邮件保存本地副本，供发送结果恢复与往来记录使用。
+- 账号旁箭头展开服务器文件夹，点击文件夹显示该目录内容并收取；保留原始服务器目录名与展示名。POP3 不提供多文件夹能力。
+- 侧栏底部移除重复留存说明，保存信息集中在邮件头与账号设置页。
+- 邮件时间优先使用有效 Date，再尝试 Received 与 IMAP INTERNALDATE；无法获得时显示“时间未知”，不得以下载时间替代。更新旧索引时保留原始文件、邮件身份、已读、星标及分类。
+- 列表只读取分页元数据，会话关系缓存，正文按需读取；后台收取合并刷新。五万封规模与多服务商弱网表现仍按原验收目标继续验证。
+
+## 系统通知、自启与发送回执补充（2026-10-03）
+
+- 账号收取异常图标悬停显示实际错误，键盘聚焦也可访问。编码错误需定位到文件夹、UID/邮件和 MIME 片段，不因单个损坏附件阻断其他邮件。
+- 设置分别控制新邮件和发送结果的系统通知；初次导入旧邮件不触发通知。实际横幅遵守系统通知与专注模式设置。
+- 正式应用提供开机自启开关，登录后后台运行；完全退出仍停止即时收取，下一次启动补收。开发预览不注册依赖前端服务的自启任务。
+- 用户确认发送回执只需要成功/失败反馈，不请求对方阅读回执。SMTP 接受、发送失败与结果未确认分别显示并保留发送记录，结果不明时不自动重发。
+
+## Tauri notifications and autostart
+
+`tauri-plugin-notification` and `tauri-plugin-autostart` are official Tauri plugins under MIT/Apache-2.0, with versions recorded in `src-tauri/Cargo.lock`. Autostart uses `auto-launch`; macOS notifications use `notify-rust` / `mac-notification-sys`. Original licenses remain in their Cargo packages. The macOS notification adapter preserves the app's own bundle identity during development and propagates native preparation errors.
+
+- https://github.com/tauri-apps/plugins-workspace/tree/v2/plugins/notification
+- https://github.com/tauri-apps/plugins-workspace/tree/v2/plugins/autostart

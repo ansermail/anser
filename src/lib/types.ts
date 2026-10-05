@@ -15,10 +15,12 @@ export interface Account {
   auth: "password" | "oauth";
   oauthClientId: string;
   enabled: boolean;
+  saveLocally?: boolean;
   lastSync: string | null;
   error: string | null;
 }
 export interface Mail {
+  parseWarnings?: string[];
   id: string;
   accountId: string;
   accountEmail: string;
@@ -36,7 +38,14 @@ export interface Mail {
   hash: string;
   size: number;
   savedAt: string;
+  savedLocally?: boolean;
+  serverDate?: string;
   sourceFolder: string;
+  messageId?: string;
+  inReplyTo?: string[];
+  references?: string[];
+  conversationId?: string;
+  conversationCount?: number;
 }
 export interface Condition {
   field: string;
@@ -64,6 +73,7 @@ export interface Query {
   starredOnly?: boolean;
   attachmentsOnly?: boolean;
   searchField?: string;
+  remoteFolder?: string;
 }
 export interface Snapshot {
   accounts: Account[];
@@ -74,14 +84,31 @@ export interface Snapshot {
   logs: string[];
   dataDir: string;
   matched: number;
+  remoteFolders?: RemoteFolder[];
 }
 export interface Detail {
   mail: Mail;
   html: string;
-  attachments: { index: number; name: string; size: number; mime: string }[];
+  attachments: {
+    index: number;
+    name: string;
+    size: number;
+    mime: string;
+    error?: string;
+  }[];
   replyTo?: Address[];
   to?: Address[];
   cc?: Address[];
+}
+export interface QuotedMail {
+  kind: "reply" | "forward";
+  included: boolean;
+  sender: string;
+  recipients: string;
+  date: string;
+  subject: string;
+  body: string;
+  html: string;
 }
 export interface Compose {
   id: string;
@@ -92,7 +119,15 @@ export interface Compose {
   subject: string;
   body: string;
   html?: string;
+  format?: "plain" | "rich" | "markdown" | "html";
+  source?: string;
   attachments: string[];
+  quote?: QuotedMail;
+  replyAnchorId?: string;
+  inReplyTo?: string;
+  references?: string[];
+  deliveryBody?: string;
+  deliveryHtml?: string;
 }
 export interface Address {
   name: string;
@@ -103,18 +138,47 @@ export interface Contact extends Address {
 }
 export interface OutboxRecord {
   id: string;
-  status: "sending" | "sent" | "failed" | "uncertain";
+  status:
+    | "sending"
+    | "sent"
+    | "failed"
+    | "uncertain"
+    | "scheduled"
+    | "overdue"
+    | "paused"
+    | "cancelled";
   draft: Compose;
   error: string;
   updatedAt: string;
   archived: boolean;
+  scheduledAt?: string;
 }
 export interface Preferences {
   syncIntervalMinutes: number;
+  newMailNotifications?: boolean;
+  sendResultNotifications?: boolean;
 }
 export interface ArchiveHealth {
   checked: number;
   healthy: number;
   checkedAt: string;
   problems: { mailId: string; subject: string; error: string }[];
+}
+
+export interface RemoteFolder {
+  accountId: string;
+  name: string;
+  displayName: string;
+  delimiter: string | null;
+  selectable: boolean;
+  roles?: (
+    | "inbox"
+    | "sent"
+    | "drafts"
+    | "trash"
+    | "junk"
+    | "archive"
+    | "all"
+    | "flagged"
+  )[];
 }

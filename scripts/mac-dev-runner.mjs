@@ -1,10 +1,18 @@
 import { mkdir, writeFile, copyFile, rm } from "node:fs/promises";
-import { spawn } from "node:child_process";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import {
+  getDevelopmentSigningIdentity,
+  signDevelopmentBundle,
+} from "./mac-dev-signing.mjs";
 
 const [binary, ...args] = process.argv.slice(2);
 if (!binary) throw new Error("缺少开发版可执行文件");
+if (typeof process.execve !== "function")
+  throw new Error(
+    "macOS 开发预览需要 Node.js 22.15 或更新版本，以正确管理应用重启。",
+  );
+const signingIdentity = await getDevelopmentSigningIdentity();
 const root = fileURLToPath(new URL("../", import.meta.url));
 const bundle = join(dirname(resolve(binary)), "dev-app", "雁信.app");
 const contents = join(bundle, "Contents");
@@ -31,13 +39,8 @@ await writeFile(
 <key>NSHighResolutionCapable</key><true/>
 </dict></plist>`,
 );
-const child = spawn(executable, args, { stdio: "inherit" });
-for (const signal of ["SIGINT", "SIGTERM"])
-  process.on(signal, () => child.kill(signal));
-child.on("error", (error) => {
-  console.error(error);
-  process.exitCode = 1;
-});
-child.on("exit", (code) => {
-  process.exitCode = code ?? 1;
-});
+await signDevelopmentBundle(bundle, signingIdentity);
+// Replace the Cargo runner in place. Tauri owns this exact PID and can stop
+// it during Rust rebuilds, including SIGKILL; spawning a child orphaned the
+// app and left another Dock icon after every rebuild.
+process.execve(executable, [executable, ...args], process.env);

@@ -1,3 +1,6 @@
+fn default_true() -> bool {
+    true
+}
 use serde::{Deserialize, Serialize};
 pub type Result<T> = std::result::Result<T, String>;
 pub fn err(e: impl std::fmt::Display) -> String {
@@ -23,12 +26,30 @@ pub struct Account {
     #[serde(default)]
     pub oauth_client_id: String,
     pub enabled: bool,
+    #[serde(default = "default_true")]
+    pub save_locally: bool,
     #[serde(default)]
     pub last_sync: Option<String>,
     #[serde(default)]
     pub error: Option<String>,
 }
 impl Account {
+    pub fn same_connection(&self, other: &Self) -> bool {
+        self.id == other.id
+            && self.email == other.email
+            && self.provider == other.provider
+            && self.protocol == other.protocol
+            && self.incoming_host == other.incoming_host
+            && self.incoming_port == other.incoming_port
+            && self.incoming_tls == other.incoming_tls
+            && self.smtp_host == other.smtp_host
+            && self.smtp_port == other.smtp_port
+            && self.smtp_tls == other.smtp_tls
+            && self.username == other.username
+            && self.smtp_username == other.smtp_username
+            && self.auth == other.auth
+            && self.oauth_client_id == other.oauth_client_id
+    }
     pub fn validate(&self) -> Result<()> {
         if self.email.parse::<lettre::Address>().is_err() {
             return Err("请输入有效的邮箱地址".into());
@@ -62,6 +83,8 @@ impl Account {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Mail {
+    #[serde(default)]
+    pub parse_warnings: Vec<String>,
     pub id: String,
     pub account_id: String,
     pub account_email: String,
@@ -79,7 +102,21 @@ pub struct Mail {
     pub hash: String,
     pub size: u64,
     pub saved_at: String,
+    #[serde(default = "default_true")]
+    pub saved_locally: bool,
+    #[serde(default)]
+    pub server_date: String,
     pub source_folder: String,
+    #[serde(default)]
+    pub message_id: String,
+    #[serde(default)]
+    pub in_reply_to: Vec<String>,
+    #[serde(default)]
+    pub references: Vec<String>,
+    #[serde(default)]
+    pub conversation_id: String,
+    #[serde(default)]
+    pub conversation_count: usize,
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -110,6 +147,8 @@ pub struct Query {
     pub folder: String,
     pub limit: u32,
     #[serde(default)]
+    pub remote_folder: String,
+    #[serde(default)]
     pub unread_only: bool,
     #[serde(default)]
     pub starred_only: bool,
@@ -137,10 +176,13 @@ pub struct Snapshot {
     pub logs: Vec<String>,
     pub data_dir: String,
     pub matched: u64,
+    pub remote_folders: Vec<RemoteFolder>,
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AttachmentInfo {
+    #[serde(default)]
+    pub error: String,
     pub index: usize,
     pub name: String,
     pub size: usize,
@@ -158,6 +200,18 @@ pub struct Detail {
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct QuotedMail {
+    pub kind: String,
+    pub included: bool,
+    pub sender: String,
+    pub recipients: String,
+    pub date: String,
+    pub subject: String,
+    pub body: String,
+    pub html: String,
+}
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct Compose {
     pub id: String,
     pub account_id: String,
@@ -168,7 +222,23 @@ pub struct Compose {
     pub body: String,
     #[serde(default)]
     pub html: String,
+    #[serde(default)]
+    pub format: String,
+    #[serde(default)]
+    pub source: String,
     pub attachments: Vec<String>,
+    #[serde(default)]
+    pub in_reply_to: String,
+    #[serde(default)]
+    pub reply_anchor_id: String,
+    #[serde(default)]
+    pub references: Vec<String>,
+    #[serde(default)]
+    pub quote: Option<QuotedMail>,
+    #[serde(default)]
+    pub delivery_body: Option<String>,
+    #[serde(default)]
+    pub delivery_html: Option<String>,
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Address {
@@ -191,16 +261,23 @@ pub struct OutboxRecord {
     pub error: String,
     pub updated_at: String,
     pub archived: bool,
+    pub scheduled_at: String,
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Preferences {
+    #[serde(default = "default_true")]
+    pub new_mail_notifications: bool,
+    #[serde(default = "default_true")]
+    pub send_result_notifications: bool,
     pub sync_interval_minutes: u32,
 }
 impl Default for Preferences {
     fn default() -> Self {
         Self {
             sync_interval_minutes: 5,
+            new_mail_notifications: true,
+            send_result_notifications: true,
         }
     }
 }
@@ -218,4 +295,28 @@ pub struct ArchiveHealth {
     pub healthy: usize,
     pub problems: Vec<ArchiveProblem>,
     pub checked_at: String,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RemoteFolder {
+    pub account_id: String,
+    pub name: String,
+    pub display_name: String,
+    pub delimiter: Option<String>,
+    pub selectable: bool,
+    #[serde(default)]
+    pub roles: Vec<FolderRole>,
+}
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum FolderRole {
+    Inbox,
+    Sent,
+    Drafts,
+    Trash,
+    Junk,
+    Archive,
+    All,
+    Flagged,
 }
