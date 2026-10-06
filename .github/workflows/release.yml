@@ -1,0 +1,95 @@
+name: Release macOS
+on:
+  push:
+    tags: ["v[0-9]*"]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  check:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+      - run: npm ci
+      - run: node scripts/release-assets.mjs verify
+      - run: npm test && npm run test:desktop && npm run build && npm run test:rust
+  build:
+    needs: check
+    runs-on: macos-14
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [aarch64-apple-darwin, x86_64-apple-darwin]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+          key: release-${{ matrix.target }}
+      - run: npm ci
+      - name: Require updater signing key
+        env:
+          SIGNING_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+        run: test -n "$SIGNING_KEY" || { echo 'Missing TAURI_SIGNING_PRIVATE_KEY'; exit 1; }
+      - name: Build signed update and first-install DMG
+        uses: tauri-apps/tauri-action@944946e3e4cac6603d1fe8f514171e9ecd3c78aa # v1
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ""
+        with:
+          args: --target ${{ matrix.target }} --bundles app,dmg
+          uploadUpdaterJson: false
+      - run: node scripts/release-assets.mjs collect ${{ matrix.target }} release-assets
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-${{ matrix.target }}
+          path: release-assets/*
+          if-no-files-found: error
+          retention-days: 14
+  draft:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: release-*
+          path: release-assets
+          merge-multiple: true
+      - run: node scripts/release-assets.mjs manifest release-assets
+      - name: Create or update draft Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          VERSION=$(node -p "require('./src-tauri/tauri.conf.json').version")
+          TAG="v$VERSION"
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            DRAFT=$(gh release view "$TAG" --json isDraft --jq .isDraft)
+            test "$DRAFT" = true || { echo 'Published releases are immutable; bump the version.'; exit 1; }
+          else
+            gh release create "$TAG" --draft --target "$GITHUB_SHA" --title "雁信 $VERSION" --notes-file "docs/releases/$TAG.md"
+          fi
+          gh release upload "$TAG" release-assets/*.dmg release-assets/*.tar.gz release-assets/*.sig release-assets/latest.json --clobber

@@ -1,5 +1,11 @@
 import { useConfirmation } from "./hooks/use-confirmation";
 import {
+  useAppUpdate,
+  UpdateIndicator,
+  UpdateSettings,
+  UpdateDialog,
+} from "./components/app-updates";
+import {
   Tooltip,
   TooltipTrigger,
   TooltipContent,
@@ -164,6 +170,7 @@ function time(s: string) {
   return `${d.getFullYear()}/${pad(d.getMonth() + 1)}/${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
 }
 export default function App() {
+  const updates = useAppUpdate();
   const { askConfirmation, confirmationDialog } = useConfirmation();
   useEffect(() => disableNativeContextMenu(document), []);
   const [data, setData] = useState<Snapshot>(initialSnapshot),
@@ -804,6 +811,7 @@ export default function App() {
         closeButton
       />
       <div className="top-actions app-actions">
+        <UpdateIndicator updates={updates} />
         {demo && (
           <Button variant="ghost" className="demo-badge" onClick={demoMode}>
             演示模式 · 退出
@@ -1259,6 +1267,7 @@ export default function App() {
                 <p className="storage-path">{data.dataDir}</p>
               </Card>
               <StorageTools />
+              {page === "settings" && <UpdateSettings updates={updates} />}
               <div className="flex flex-col gap-6">
                 <ServerOperations />
                 <FolderHealthPanel />
@@ -2085,6 +2094,7 @@ export default function App() {
         </DialogContent>
       </Dialog>
       {confirmationDialog}
+      <UpdateDialog updates={updates} blocked={!!draft} />
     </SidebarProvider>
   );
 }

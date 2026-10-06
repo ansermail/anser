@@ -32,6 +32,23 @@ struct AppState {
     realtime: Arc<realtime::RealtimeControl>,
 }
 #[tauri::command]
+async fn restart_for_update(app: tauri::AppHandle, state: tauri::State<'_, AppState>) -> Result<()> {
+    let gate = state.gate.clone();
+    let send_gate = state.send_gate.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        // Wait for an active SMTP operation to persist its result before restarting.
+        let _sync = gate.lock().map_err(err)?;
+        let _sending = send_gate.lock().map_err(err)?;
+        use tauri_plugin_window_state::AppHandleExt;
+        app.save_window_state(window_state_flags()).map_err(err)?;
+        app.restart();
+        #[allow(unreachable_code)]
+        Ok(())
+    })
+    .await
+    .map_err(err)?
+}
+#[tauri::command]
 async fn snapshot(state: tauri::State<'_, AppState>, query: Query) -> Result<Snapshot> {
     let store = state.store.clone();
     tauri::async_runtime::spawn_blocking(move || store.snapshot(&query))
@@ -852,6 +869,7 @@ pub fn run() {
             show_main_window(app)
         }))
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(
             tauri_plugin_window_state::Builder::default()
                 .with_state_flags(window_state_flags())
@@ -968,6 +986,7 @@ pub fn run() {
             }
         })
         .invoke_handler(tauri::generate_handler![
+            restart_for_update,
             snapshot,
             account_folders,
             folder_settings,
