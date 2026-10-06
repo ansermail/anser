@@ -435,3 +435,11 @@ prepareCompose 生成独立的 deliveryBody/deliveryHtml，保留可编辑 body/
 真实测试仅移动前阶段受控副本：QQ E 恰饭12回归档，错误 COPYUID validity=1624979665 与目标1582296105不符，未确认后通过唯一归档1704全文及原编号消失只读恢复；企业邮 B 垃圾43经废纸篓快捷项到Deleted15，再选已发送恢复59，两次回执核验完成。原 INBOX、5460 本地存档、read/star及metadata hash保持；无新 SMTP、永久删除或映射修改。旧来源页真实提示刷新而不移动其他副本。归档无映射禁用已核验，配置后归档动作尚无真实写入验收。
 
 111 项前端、UI 检查、TypeScript与生产构建通过；无后端改动，159项Rust/11项脚本为上一阶段结果。预览持续运行，无安装或后端重启。下一步无 MOVE 分阶段兼容及复杂冲突恢复；样本编号、限制与继续入口见 DEVELOPMENT_STATUS.md 末节。
+
+## 无 MOVE 的分阶段兼容移动（2026-10-06）
+
+完成 SYNC-01B2B2A。依据 [RFC 4315 UIDPLUS](https://www.rfc-editor.org/rfc/rfc4315.html) 的精确 UID EXPUNGE 语义，服务器无 MOVE 但有 UIDPLUS 时先 COPY，并把回执及全文散列持久保存；独立阶段核对目标/来源全文和 UIDVALIDITY 后，记录原目录写入边界，再对精确 UID 添加 Deleted、回读该标记并 UID EXPUNGE。最后重新核验目标全文及原编号消失，原子更新活动来源，其他副本与本地原件保留。不使用普通 EXPUNGE/CLOSE；缺 UIDPLUS 在复制前拒绝。
+
+JSON strategy 标记区分原生与兼容任务，不改变旧日志语义。cleanup_running 只包含写入前核验，重启恢复 cleanup_pending；cleanup_submitted 包含已记录的写入边界，重启恢复 cleanup_uncertain。前置核验失败 cleanup_blocked，写入后失败 cleanup_uncertain，不自动 COPY 或删除重放。设置页使用既有 shadcn 显示阶段和失败原因；“只读核对”始终无写入，“继续移除原目录”仅为有可靠/观察回执的兼容移动排队原目录阶段，执行前完整复核。
+
+170 项 Rust、113 项前端、UI 检查、TypeScript和构建通过，覆盖断线/重启、缺回执、两个全文/命名空间、标记回读、精确 UID 范围、数据库边界、身份/隔离/来源/状态冲突、继续不重复制及原生分支回归。原生新版预览核验菜单、新说明和 7 条旧完成记录，存档仍为5460。当前授权邮箱支持 MOVE，本轮未进行真实无 MOVE 写入、SMTP 或账号映射修改；真实无 MOVE 服务商及复杂冲突恢复矩阵仍未完成。下一入口和预览 PID 见开发进度末节。

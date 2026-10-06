@@ -36,6 +36,9 @@ pub struct DirectoryOperation {
     pub receipt: Option<CopyReceipt>,
     #[serde(default)]
     pub receipt_origin: Option<String>,
+    /// None means native COPY/MOVE; old journal entries remain read-only after receipt.
+    #[serde(default)]
+    pub strategy: Option<String>,
 }
 fn copy_kind() -> String {
     "copy".into()
@@ -65,7 +68,9 @@ pub fn initialize(db: &rusqlite::Connection) -> Result<()> {
         CREATE INDEX IF NOT EXISTS directory_due ON directory_operations(account_id,status,next_attempt);
         UPDATE directory_operations SET status='queued' WHERE status='preparing';
         UPDATE directory_operations SET status='uncertain',error='文件夹操作已提交但确认未保存；请核对原目录和目标目录，不会自动重发' WHERE status='submitted';
-        UPDATE directory_operations SET status='confirmed' WHERE status='verifying';").map_err(err)
+        UPDATE directory_operations SET status='confirmed' WHERE status='verifying';
+        UPDATE directory_operations SET status='cleanup_pending' WHERE status='cleanup_running';
+        UPDATE directory_operations SET status='cleanup_uncertain',error='原目录移除已提交但结果未确认；先只读核对，不会自动再次移除' WHERE status='cleanup_submitted';").map_err(err)
 }
 fn decode(row: &rusqlite::Row<'_>) -> rusqlite::Result<DirectoryOperation> {
     let data: String = row.get(0)?;
@@ -133,7 +138,16 @@ fn check(db: &rusqlite::Connection, op: &DirectoryOperation) -> Result<Account> 
     if !folder.selectable {
         return Err("目标目录不能存放邮件，请选择子文件夹".into());
     }
-    if !matches!(op.status.as_str(), "confirmed" | "verifying") {
+    if !matches!(
+        op.status.as_str(),
+        "confirmed"
+            | "verifying"
+            | "cleanup_pending"
+            | "cleanup_running"
+            | "cleanup_submitted"
+            | "cleanup_uncertain"
+            | "cleanup_blocked"
+    ) {
         let active: bool = db.query_row("SELECT EXISTS(SELECT 1 FROM trusted_sources WHERE account_id=?1 AND folder=?2 AND remote_id=?3 AND mail_id=?4 AND active=1)", params![a.id,op.folder,op.remote_id,op.mail_id], |r| r.get(0)).map_err(err)?;
         if !active {
             return Err("原服务器来源已失效，请重新收取后操作".into());
@@ -196,6 +210,7 @@ impl Store {
             content_hash: String::new(),
             receipt: None,
             receipt_origin: None,
+            strategy: None,
         };
         check(&tx, &op)?;
         let existing: Option<(String,String)> = tx.query_row("SELECT id,status FROM directory_operations WHERE account_id=?1 AND folder=?2 AND remote_id=?3 AND target=?4 AND kind=?5",params![a.id,source,op.remote_id,target,kind],|r|Ok((r.get(0)?,r.get(1)?))).optional().map_err(err)?;
@@ -226,7 +241,7 @@ impl Store {
     }
     pub fn directory_operations(&self) -> Result<Vec<DirectoryOperation>> {
         let db = self.db()?;
-        let mut st=db.prepare(&format!("SELECT {COLUMNS} FROM directory_operations ORDER BY CASE status WHEN 'uncertain' THEN 0 WHEN 'blocked' THEN 1 WHEN 'completed' THEN 3 ELSE 2 END,updated_at DESC LIMIT 50")).map_err(err)?;
+        let mut st=db.prepare(&format!("SELECT {COLUMNS} FROM directory_operations ORDER BY CASE status WHEN 'uncertain' THEN 0 WHEN 'cleanup_uncertain' THEN 0 WHEN 'blocked' THEN 1 WHEN 'cleanup_blocked' THEN 1 WHEN 'completed' THEN 3 ELSE 2 END,updated_at DESC LIMIT 50")).map_err(err)?;
         let mut result = st
             .query_map([], decode)
             .map_err(err)?
@@ -292,6 +307,17 @@ impl Store {
                 "queued"
             }
             ("verify", "confirmed") => "confirmed",
+            ("verify", "cleanup_uncertain" | "cleanup_blocked") => "confirmed",
+            ("continue_move", "confirmed" | "cleanup_uncertain" | "cleanup_blocked")
+                if op.kind == "move"
+                    && op.strategy.as_deref() == Some("copy-delete")
+                    && op.receipt.is_some()
+                    && !op.content_hash.is_empty() =>
+            {
+                check(&tx, &op)?;
+                check_other_move(&tx, &op)?;
+                "cleanup_pending"
+            }
             ("verify", "uncertain") if op.kind == "move" && !op.content_hash.is_empty() => {
                 // Recovery observes a single trusted target, not a guessed
                 // COPYUID. The worker still verifies full MIME and source UID
@@ -329,10 +355,11 @@ impl Store {
         tx.commit().map_err(err)
     }
     pub(crate) fn claim_copy(&self, op: &DirectoryOperation) -> Result<bool> {
-        let next = if op.status == "confirmed" {
-            "verifying"
-        } else {
-            "preparing"
+        let next = match op.status.as_str() {
+            "confirmed" => "verifying",
+            "cleanup_pending" => "cleanup_running",
+            "queued" => "preparing",
+            _ => return Ok(false),
         };
         Ok(self
             .db()?
@@ -346,14 +373,26 @@ impl Store {
     pub(crate) fn validate_copy(&self, op: &DirectoryOperation) -> Result<Account> {
         check(&self.db()?, op)
     }
+    #[cfg(test)]
     pub(crate) fn submit_copy(&self, op: &DirectoryOperation, hash: &str) -> Result<()> {
+        self.submit_directory(op, hash, false)
+    }
+    pub(crate) fn submit_directory(
+        &self,
+        op: &DirectoryOperation,
+        hash: &str,
+        compatibility: bool,
+    ) -> Result<()> {
         let mut db = self.db()?;
         let tx = db
             .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
             .map_err(err)?;
         check(&tx, op)?;
         check_other_move(&tx, op)?;
-        if tx.execute("UPDATE directory_operations SET status='submitted',content_hash=?2 WHERE id=?1 AND status='preparing'",params![op.id,hash]).map_err(err)?!=1 {return Err("文件夹任务状态已变化，停止提交".into());}
+        if compatibility && op.kind != "move" {
+            return Err("兼容移动类型无效".into());
+        }
+        if tx.execute("UPDATE directory_operations SET status='submitted',content_hash=?2,data=json_set(data,'$.strategy',?3) WHERE id=?1 AND status='preparing'",params![op.id,hash,if compatibility { Some("copy-delete") } else { None }]).map_err(err)?!=1 {return Err("文件夹任务状态已变化，停止提交".into());}
         tx.commit().map_err(err)
     }
     pub(crate) fn save_copy_receipt(
@@ -361,8 +400,57 @@ impl Store {
         op: &DirectoryOperation,
         receipt: &CopyReceipt,
     ) -> Result<()> {
-        if self.db()?.execute("UPDATE directory_operations SET status='confirmed',receipt=?2 WHERE id=?1 AND status='submitted'",params![op.id,serde_json::to_string(receipt).map_err(err)?]).map_err(err)?!=1 {return Err("文件夹操作回执无法保存，请核对两个目录，不要重复提交".into());}
+        if self.db()?.execute("UPDATE directory_operations SET status=CASE WHEN json_extract(data,'$.strategy')='copy-delete' THEN 'cleanup_pending' ELSE 'confirmed' END,receipt=?2 WHERE id=?1 AND status='submitted'",params![op.id,serde_json::to_string(receipt).map_err(err)?]).map_err(err)?!=1 {return Err("文件夹操作回执无法保存，请核对两个目录，不要重复提交".into());}
         Ok(())
+    }
+    pub(crate) fn submit_move_cleanup(&self, op: &DirectoryOperation) -> Result<()> {
+        let mut db = self.db()?;
+        let tx = db
+            .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
+            .map_err(err)?;
+        let current = tx
+            .query_row(
+                &format!("SELECT {COLUMNS} FROM directory_operations WHERE id=?1"),
+                [&op.id],
+                decode,
+            )
+            .map_err(err)?;
+        if current.kind != "move"
+            || current.strategy.as_deref() != Some("copy-delete")
+            || current.receipt.is_none()
+            || current.content_hash.is_empty()
+        {
+            return Err("缺少已保存的目标回执，不能移除原目录邮件".into());
+        }
+        let receipt = current.receipt.as_ref().unwrap();
+        if current.content_hash != op.content_hash
+            || op
+                .receipt
+                .as_ref()
+                .is_none_or(|r| r.uid != receipt.uid || r.validity != receipt.validity)
+        {
+            return Err("核验依据已变化，不能移除原目录邮件".into());
+        }
+        let target_remote = format!("{}:{}", receipt.validity, receipt.uid);
+        let linked: Option<String> = tx
+            .query_row(
+                "SELECT mail_id FROM sources WHERE account_id=?1 AND folder=?2 AND remote_id=?3",
+                params![current.account_id, current.target, target_remote],
+                |r| r.get(0),
+            )
+            .optional()
+            .map_err(err)?;
+        if linked.is_some_and(|mail| mail != current.mail_id) {
+            return Err("目标编号已关联其他邮件，不能移除原目录邮件".into());
+        }
+        let mut source_check = current.clone();
+        source_check.status = "queued".into();
+        check(&tx, &source_check)?;
+        check_other_move(&tx, &current)?;
+        if tx.execute("UPDATE directory_operations SET status='cleanup_submitted' WHERE id=?1 AND status='cleanup_running'", [&op.id]).map_err(err)? != 1 {
+            return Err("移动阶段已变化，未移除原目录邮件".into());
+        }
+        tx.commit().map_err(err)
     }
     pub(crate) fn complete_copy(&self, op: &DirectoryOperation) -> Result<()> {
         let receipt = op.receipt.as_ref().ok_or("文件夹操作确认缺失")?;
@@ -379,7 +467,10 @@ impl Store {
                 |r| r.get(0),
             )
             .map_err(err)?;
-        if !matches!(status.as_str(), "confirmed" | "verifying") {
+        if !matches!(
+            status.as_str(),
+            "confirmed" | "verifying" | "cleanup_running" | "cleanup_submitted"
+        ) {
             return Err("文件夹任务状态已变化".into());
         }
         let exists: Option<String> = tx
@@ -409,12 +500,12 @@ impl Store {
     pub(crate) fn fail_copy(&self, id: &str, reason: &str, definite_rejection: bool) -> Result<()> {
         // A saved receipt can be verified again with read-only commands. A
         // missing receipt after submission cannot be safely resent.
-        self.db()?.execute("UPDATE directory_operations SET status=CASE WHEN status IN ('confirmed','verifying') THEN 'confirmed' WHEN status='submitted' AND (?3=0 OR kind='move') THEN 'uncertain' ELSE 'blocked' END,error=?2,next_attempt=?4,updated_at=?5 WHERE id=?1 AND status IN ('preparing','submitted','confirmed','verifying')",params![id,reason,definite_rejection,chrono::Utc::now().timestamp()+60,chrono::Utc::now().timestamp()]).map_err(err)?;
+        self.db()?.execute("UPDATE directory_operations SET status=CASE WHEN status='cleanup_submitted' THEN 'cleanup_uncertain' WHEN status='cleanup_running' THEN 'cleanup_blocked' WHEN status IN ('confirmed','verifying') THEN 'confirmed' WHEN status='submitted' AND (?3=0 OR kind='move') THEN 'uncertain' ELSE 'blocked' END,error=?2,next_attempt=?4,updated_at=?5 WHERE id=?1 AND status IN ('preparing','submitted','confirmed','verifying','cleanup_running','cleanup_submitted')",params![id,reason,definite_rejection,chrono::Utc::now().timestamp()+60,chrono::Utc::now().timestamp()]).map_err(err)?;
         Ok(())
     }
     pub(crate) fn due_copies(&self, account: &str) -> Result<Vec<DirectoryOperation>> {
         let db = self.db()?;
-        let mut st=db.prepare(&format!("SELECT {COLUMNS} FROM directory_operations WHERE account_id=?1 AND status IN ('queued','confirmed') AND next_attempt<=?2 ORDER BY updated_at LIMIT 20")).map_err(err)?;
+        let mut st=db.prepare(&format!("SELECT {COLUMNS} FROM directory_operations WHERE account_id=?1 AND status IN ('queued','confirmed','cleanup_pending') AND next_attempt<=?2 ORDER BY updated_at LIMIT 20")).map_err(err)?;
         let result = st
             .query_map(params![account, chrono::Utc::now().timestamp()], decode)
             .map_err(err)?
@@ -492,6 +583,160 @@ pub fn start(store: Store, app: tauri::AppHandle) {
 #[cfg(test)]
 pub(crate) mod tests {
     use super::*;
+    fn ready_compatibility(store: &Store, id: &str) -> DirectoryOperation {
+        let job = store.queue_move(id, "INBOX", "Archive").unwrap();
+        let op = store.directory_operation(&job).unwrap();
+        store.claim_copy(&op).unwrap();
+        store.submit_directory(&op, "full-hash", true).unwrap();
+        store
+            .save_copy_receipt(
+                &op,
+                &CopyReceipt {
+                    validity: 9,
+                    uid: 34,
+                },
+            )
+            .unwrap();
+        let op = store.directory_operation(&job).unwrap();
+        assert_eq!(op.status, "cleanup_pending");
+        op
+    }
+    #[test]
+    fn compatibility_restart_only_resumes_before_source_mutation_and_keeps_receipt() {
+        for submitted in [false, true] {
+            let (temp, store, a, id) = fixture();
+            let op = ready_compatibility(&store, &id);
+            store.claim_copy(&op).unwrap();
+            if submitted {
+                store.submit_move_cleanup(&op).unwrap();
+            }
+            drop(store);
+            let store = Store::new(temp.path().into()).unwrap();
+            let restored = store.directory_operation(&op.id).unwrap();
+            assert_eq!(restored.strategy.as_deref(), Some("copy-delete"));
+            assert_eq!(restored.receipt.unwrap().uid, 34);
+            assert_eq!(restored.content_hash, "full-hash");
+            assert_eq!(
+                restored.status,
+                if submitted {
+                    "cleanup_uncertain"
+                } else {
+                    "cleanup_pending"
+                }
+            );
+            assert_eq!(
+                store.due_copies(&a.id).unwrap().len(),
+                if submitted { 0 } else { 1 }
+            );
+            assert!(store.directory_action(&op.id, "retry").is_err());
+            if submitted {
+                store.directory_action(&op.id, "verify").unwrap();
+                assert_eq!(
+                    store.directory_operation(&op.id).unwrap().status,
+                    "confirmed"
+                );
+                store.directory_action(&op.id, "continue_move").unwrap();
+                assert_eq!(
+                    store.directory_operation(&op.id).unwrap().status,
+                    "cleanup_pending"
+                );
+            }
+        }
+    }
+    #[test]
+    fn cleanup_submission_rechecks_identity_isolation_source_flags_and_target_collision() {
+        for variant in 0..5 {
+            let (_temp, store, mut a, id) = fixture();
+            let op = ready_compatibility(&store, &id);
+            store.claim_copy(&op).unwrap();
+            match variant {
+                0 => {
+                    a.incoming_host = "changed.invalid".into();
+                    store.save_account(&a).unwrap();
+                }
+                1 => {
+                    store
+                        .isolate_folder(&a, "Archive", "bad", &Default::default())
+                        .unwrap();
+                }
+                2 => {
+                    store
+                        .db()
+                        .unwrap()
+                        .execute("UPDATE sources SET active=0 WHERE folder='INBOX'", [])
+                        .unwrap();
+                }
+                3 => {
+                    store.db().unwrap().execute("INSERT INTO server_operations(id,account_id,folder,remote_id,action,data,revision,status,updated_at) VALUES('pending',?1,'INBOX','7:12','read','{}',1,'queued',0)",[&a.id]).unwrap();
+                }
+                _ => {
+                    store
+                        .db()
+                        .unwrap()
+                        .execute(
+                            "INSERT INTO sources VALUES(?1,'Archive','9:34','other-mail',1)",
+                            [&a.id],
+                        )
+                        .unwrap();
+                }
+            }
+            assert!(store.submit_move_cleanup(&op).is_err(), "variant {variant}");
+            assert_eq!(
+                store.directory_operation(&op.id).unwrap().status,
+                "cleanup_running"
+            );
+        }
+    }
+    #[test]
+    fn compatibility_freezes_flag_intents_and_retains_online_metadata_during_partial_move() {
+        let (_temp, store, a, id) = fixture();
+        let op = ready_compatibility(&store, &id);
+        for status in [
+            "cleanup_pending",
+            "cleanup_running",
+            "cleanup_submitted",
+            "cleanup_uncertain",
+            "cleanup_blocked",
+        ] {
+            store
+                .db()
+                .unwrap()
+                .execute(
+                    "UPDATE directory_operations SET status=?1 WHERE id=?2",
+                    params![status, op.id],
+                )
+                .unwrap();
+            assert!(store.change_mail(&id, "star", "true").is_err());
+            assert!(!store.mail(&id).unwrap().starred);
+            assert!(store.queue_move(&id, "INBOX", "Archive").is_ok()); // same task, not another COPY
+            assert!(store.queue_copy(&id, "INBOX", "Archive").is_err());
+        }
+        store.db().unwrap().execute("UPDATE messages SET data=json_set(data,'$.savedLocally',json('false')) WHERE id=?1",[&id]).unwrap();
+        store.reconcile_folder(&a.id, "INBOX", &[]).unwrap();
+        assert!(store.mail(&id).is_ok());
+    }
+    #[test]
+    fn continuation_requires_compatibility_and_cannot_replay_copy_or_native_move() {
+        let (_temp, store, _a, id) = fixture();
+        let job = store.queue_move(&id, "INBOX", "Archive").unwrap();
+        let op = store.directory_operation(&job).unwrap();
+        store.claim_copy(&op).unwrap();
+        store.submit_copy(&op, "hash").unwrap();
+        store
+            .save_copy_receipt(
+                &op,
+                &CopyReceipt {
+                    validity: 9,
+                    uid: 34,
+                },
+            )
+            .unwrap();
+        assert!(store.directory_action(&job, "continue_move").is_err());
+        assert!(store.directory_action(&job, "retry").is_err());
+        let mut stale = store.directory_operation(&job).unwrap();
+        stale.status = "cleanup_uncertain".into();
+        assert!(!store.claim_copy(&stale).unwrap());
+    }
     pub(crate) fn fixture() -> (tempfile::TempDir, Store, Account, String) {
         let temp = tempfile::tempdir().unwrap();
         let store = Store::new(temp.path().into()).unwrap();

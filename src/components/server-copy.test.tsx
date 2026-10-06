@@ -53,6 +53,48 @@ function button(label: string) {
   )!;
 }
 describe("directory task feedback", () => {
+  it("keeps interrupted compatibility moves distinct from copying and wires explicit continuation", async () => {
+    items = ["cleanup_pending", "cleanup_uncertain", "cleanup_blocked"].map(
+      (status) =>
+        ({
+          ...items[0],
+          id: status,
+          kind: "move",
+          strategy: "copy-delete",
+          receipt: { validity: 9, uid: 34 },
+          status,
+        }) as DirectoryOperation,
+    );
+    await act(async () => root.render(<DirectoryOperationsPanel />));
+    const rows = host.querySelectorAll("li");
+    expect(rows[0].textContent).toContain("待完成移动");
+    expect(rows[0].querySelectorAll("button")).toHaveLength(0);
+    expect(rows[1].textContent).toContain("原目录结果未确认");
+    expect(rows[1].textContent).toContain("只读核对");
+    expect(rows[1].textContent).toContain("继续移除原目录");
+    expect(rows[1].textContent).not.toContain("重试");
+    await act(async () => button("继续移除原目录").click());
+    expect(api.call).toHaveBeenCalledWith("directory_operation_action", {
+      id: "cleanup_uncertain",
+      action: "continue_move",
+    });
+  });
+  it("never offers continuation for missing receipts or ordinary MOVE results", async () => {
+    items[0] = {
+      ...items[0],
+      kind: "move",
+      strategy: "copy-delete",
+      receipt: null,
+    };
+    items[1] = {
+      ...items[1],
+      kind: "move",
+      strategy: null,
+      receipt: { validity: 9, uid: 34 },
+    };
+    await act(async () => root.render(<DirectoryOperationsPanel />));
+    expect(host.textContent).not.toContain("继续移除原目录");
+  });
   it("offers only safe actions for each persisted state", async () => {
     await act(async () => root.render(<DirectoryOperationsPanel />));
     const rows = [...host.querySelectorAll("li")];
