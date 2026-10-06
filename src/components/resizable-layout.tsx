@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { usePanelRef, type Layout } from "react-resizable-panels";
 import {
   ResizableHandle,
@@ -34,22 +34,27 @@ export function NavigationLayout({
   children,
   open,
   expanded,
-  onOpenChange,
 }: {
   sidebar: ReactNode;
   children: ReactNode;
   open: boolean;
   expanded: boolean;
-  onOpenChange: (open: boolean) => void;
 }) {
   const panel = usePanelRef();
+  const visibleWidth = useRef<number | undefined>(undefined);
+  const restoreWidth = visibleWidth.current;
   const hidden = !open || expanded;
   const [layout] = useState(() =>
     readLayout("yanxin-navigation-layout", ["navigation", "workspace"]),
   );
   useEffect(() => {
-    if (hidden) panel.current?.collapse();
-    else panel.current?.expand();
+    // Apply the button action after Resizable has registered the new constraints.
+    const frame = requestAnimationFrame(() => {
+      if (!hidden && restoreWidth) {
+        panel.current?.resize(restoreWidth);
+      }
+    });
+    return () => cancelAnimationFrame(frame);
   }, [hidden, panel]);
   return (
     <ResizablePanelGroup
@@ -68,13 +73,12 @@ export function NavigationLayout({
         aria-hidden={hidden}
         panelRef={panel}
         defaultSize={288}
-        minSize={220}
-        maxSize={380}
-        collapsible
-        collapsedSize={0}
+        minSize={hidden ? 0 : 220}
+        maxSize={hidden ? 0 : 380}
         groupResizeBehavior="preserve-pixel-size"
-        onResize={(size, _id, previous) => {
-          if (previous && !expanded) onOpenChange(size.asPercentage > 0);
+        onResize={(size) => {
+          if (!hidden && size.inPixels > 0)
+            visibleWidth.current = size.inPixels;
         }}
         className="navigation-panel"
       >
@@ -88,7 +92,7 @@ export function NavigationLayout({
       />
       <ResizablePanel
         id="workspace"
-        minSize={580}
+        minSize={620}
         className="workspace-resizable-panel"
       >
         {children}
@@ -107,12 +111,18 @@ export function MailLayout({
   expanded: boolean;
 }) {
   const panel = usePanelRef();
+  const visibleWidth = useRef<number | undefined>(undefined);
+  const restoreWidth = visibleWidth.current;
   const [layout] = useState(() =>
     readLayout("yanxin-mail-layout", ["mail-list", "mail-reader"]),
   );
   useEffect(() => {
-    if (expanded) panel.current?.collapse();
-    else panel.current?.expand();
+    const frame = requestAnimationFrame(() => {
+      if (!expanded && restoreWidth) {
+        panel.current?.resize(restoreWidth);
+      }
+    });
+    return () => cancelAnimationFrame(frame);
   }, [expanded, panel]);
   return (
     <ResizablePanelGroup
@@ -131,11 +141,12 @@ export function MailLayout({
         aria-hidden={expanded}
         panelRef={panel}
         defaultSize={340}
-        minSize={240}
-        maxSize="55%"
-        collapsible
-        collapsedSize={0}
-        collapsedThreshold={0}
+        minSize={expanded ? 0 : 280}
+        maxSize={expanded ? 0 : 560}
+        onResize={(size) => {
+          if (!expanded && size.inPixels > 0)
+            visibleWidth.current = size.inPixels;
+        }}
         className="mail-list-panel"
       >
         {list}
@@ -148,7 +159,8 @@ export function MailLayout({
       />
       <ResizablePanel
         id="mail-reader"
-        minSize={300}
+        // The list's minimum width also bounds the reader's maximum width.
+        minSize={320}
         className="mail-reader-panel"
       >
         {children}

@@ -831,7 +831,6 @@ export default function App() {
       </div>
       <NavigationLayout
         open={sidebarOpen}
-        onOpenChange={setSidebarOpen}
         expanded={readerExpanded}
         sidebar={
           <Sidebar variant="inset" collapsible="none" className="mail-sidebar">
