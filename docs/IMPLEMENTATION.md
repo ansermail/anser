@@ -455,3 +455,9 @@ prepareCompose 生成独立的 deliveryBody/deliveryHtml，保留可编辑 body/
 JSON strategy 标记区分原生与兼容任务，不改变旧日志语义。cleanup_running 只包含写入前核验，重启恢复 cleanup_pending；cleanup_submitted 包含已记录的写入边界，重启恢复 cleanup_uncertain。前置核验失败 cleanup_blocked，写入后失败 cleanup_uncertain，不自动 COPY 或删除重放。设置页使用既有 shadcn 显示阶段和失败原因；“只读核对”始终无写入，“继续移除原目录”仅为有可靠/观察回执的兼容移动排队原目录阶段，执行前完整复核。
 
 170 项 Rust、113 项前端、UI 检查、TypeScript和构建通过，覆盖断线/重启、缺回执、两个全文/命名空间、标记回读、精确 UID 范围、数据库边界、身份/隔离/来源/状态冲突、继续不重复制及原生分支回归。原生新版预览核验菜单、新说明和 7 条旧完成记录，存档仍为5460。当前授权邮箱支持 MOVE，本轮未进行真实无 MOVE 写入、SMTP 或账号映射修改；真实无 MOVE 服务商及复杂冲突恢复矩阵仍未完成。下一入口和预览 PID 见开发进度末节。
+
+## GitHub 发布与应用内更新（2026-10-06）
+
+新增官方 Tauri updater、HTTPS GitHub Release 端点及固定公钥；更新签名私钥存放仓库外并上传 Actions Secret。更新入口仅有新版本时出现，设置页可检查，shadcn 更新中心显示说明和进度，下载/签名验证后由用户安装并重启。写信和开发预览保护、安装失败及重启失败分别处理；重启前等待 SMTP/同步完成。
+
+GitHub CI 和两架构发布工作流已推送；首次 Checks 已成功，Release 构建/实际安装验收按 DEVELOPMENT_STATUS.md 最新检查点记录。当前没有 Developer ID/公证，更新签名与 Apple 签名分别记录，不声称系统信任和钥匙串授权已解决。详见 UPDATES.md。

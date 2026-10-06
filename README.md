@@ -1,6 +1,6 @@
 # 雁信 Yanxin
 
-面向 Apple Silicon Mac 的多账号邮件客户端。React + shadcn/ui + Tauri 2 + Rust。
+面向 Mac 的多账号邮件客户端。React + shadcn/ui + Tauri 2 + Rust；发布流水线构建 Apple Silicon 与 Intel 两种架构。
 
 “雁信”取意鸿雁传书。窗口标题、菜单栏提示、界面及应用包统一使用“雁信”，开发项目名称为 `yanxin`。
 
@@ -41,7 +41,13 @@ npm run test:rust
 npm run desktop:build
 ```
 
-桌面产物：`src-tauri/target/release/bundle/macos/雁信.app`。当前为本地开发构建，未配置 Developer ID 分发签名、公证或自动更新。
+桌面产物：`src-tauri/target/release/bundle/macos/雁信.app` 及带更新签名的 `.app.tar.gz`/`.sig`。本机发布脚本从仓库外读取匹配的更新密钥，密钥缺失或不匹配会停止构建。Developer ID 分发签名及公证尚未配置。
+
+## 发布与更新
+
+GitHub Actions 执行回归，分别构建 Apple Silicon/Intel DMG 与签名更新包，汇总完整文件后创建草稿 Release。正式应用启动后和每 6 小时检查 GitHub Release；有更新才在“本地优先”前显示图标，支持下载进度、签名校验、安装并重启，后续更新无需拖入 Applications。设置页可手动检查。
+
+密钥、版本、首次安装和发布步骤见 [发布与应用内更新](docs/UPDATES.md)。开发预览可以检查更新，下载安装仅在正式应用中进行。首次上线与真实升级的验收记录见 [继续检查点](docs/DEVELOPMENT_STATUS.md)。
 
 ## 已接入
 

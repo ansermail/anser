@@ -9,7 +9,7 @@
     "preview": "vite preview --host 127.0.0.1",
     "tauri": "tauri",
     "desktop": "node scripts/desktop.mjs",
-    "desktop:build": "tauri build --bundles app",
+    "desktop:build": "node scripts/build-release.mjs",
     "test": "vitest run",
     "check": "tsc -b && cargo check --manifest-path src-tauri/Cargo.toml",
     "test:rust": "cargo test --manifest-path src-tauri/Cargo.toml",

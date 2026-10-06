@@ -16,6 +16,7 @@
 
 - [x] UI-03：筛选图标移到搜索框右侧，全部/未读保留在下一行；启用筛选时显示选中背景。原生菜单开关、附件筛选取消、搜索快捷键和最小展开栏宽已核验。
 - [x] UI-04：正常三栏禁止拖动/键盘自动折叠；左栏 220–380px，中栏 280–560px，右栏至少 320px，其最大宽度由中栏最小宽度约束。主动侧栏折叠和正文展开仍可用并恢复最新栏宽，已在原生预览核验。
+- [x] UPDATE-01A：GitHub CI、双架构草稿发布流水线、签名更新清单和应用内更新中心已实现；仓库 Secret 已配置。首次 GitHub Checks 通过，Release 构建与真实安装升级的验收状态见末节及 UPDATES.md。
 - [x] UI-01：移除账号、删除草稿、删除联系人、结果不明发送重试、空主题发送/定时确认改用 shadcn AlertDialog；富文本链接输入改用 shadcn Dialog + Field/Input。
 - [x] UI-02：UI 检查拦截业务代码的原生 confirm/prompt/alert；取消、重复确认和卸载保护测试通过。
 - [x] FOLDER-01：读取 LIST 特殊用途标记，精确名称回退；中文标签、角色图标和排序；旧目录缓存迁移保持服务器路径不变。
@@ -209,3 +210,12 @@ Thunderbird 历史迁移、Intel Mac、完整 Exchange、日历、移动端及�
 - **开发预览已重建并启动**：10:20 Tauri 输出 Running 后确认 app PID 25859 为 Tauri PID 25605 的子进程，再绑定 UI。原生核验测试 B 正文、固定“从收件箱”的移动菜单、缺归档映射禁用、中文目标列表、任务卡片的新恢复说明与 7 个旧完成任务；旧 observed/服务器回执结果不变，存档仍为 5460。未安装新应用包；本轮无新增 SMTP、真实移动/删除或账号映射修改。
 - **验收限制**：当前两个授权邮箱支持 MOVE，本阶段没有强制隐藏能力来冒充真实无 MOVE 验收。兼容分支目前为合成协议和真实代码持久化验收；其真实服务商行为、专门故障演练仍待 SYNC-01B2B2B。旧“其他文件夹”异常根来源仍隔离，不能按 UID 猜测目录；目标多副本、UIDVALIDITY 变化继续保留未完成，尚无强制选择/放宽核对的恢复入口。
 - **下一步入口**：先阅读 `network.rs::cleanup_move_session`、`directory_operations.rs` 与本节，检查 Git HEAD/status；对 SYNC-01B2B2B 建立真实能力/恢复矩阵（授权账号之外需先确认测试范围）。没有适用真实账号时继续 FOLDER-03B2 的 SMTP 成功后服务端已发送上传，另建非幂等 APPEND 持久阶段及确认丢失防重复，不能复用 read/star 的自动重试策略。规则服务端动作、SYNC-01A3B 旧来源恢复、保存范围/补存、FTS/五万封、可切换阅读和附件待办仍未完成。
+
+### GitHub Release 与应用内更新检查点（2026-10-06）
+
+- **UPDATE-01A 代码完成**：首次推送 `43d858d`，正式应用启动后及每 6 小时检查 GitHub Release；有新版本才在“本地优先”前显示图标。更新中心使用 shadcn Dialog/Button/Progress/Alert，显示版本、纯文本发布说明、下载进度与失败，下载签名校验后才提供安装并重启；下载失败不安装，重启失败只重试重启。写信窗口未关闭时阻止安装，开发预览不下载安装。
+- 官方 tauri-plugin-updater 注册与权限已配置；端点 `https://github.com/yn-zxj/yanxin/releases/latest/download/latest.json`。保持产品名和 `dev.maildesk.desktop`；重启前等待当前收取/SMTP 锁并保存窗口状态。
+- **UPDATE-01B 构建启动**：Checks run `37407187998` 成功；Release macOS run `37407257846` 已通过登录后手动启动，构建结果尚在核验。两架构各自产出 DMG、app.tar.gz、sig，汇总检查齐全后生成 latest.json 并创建草稿 Release；禁止覆盖已发布版本。GitHub CLI 已登录仓库管理员账号，私钥通过 stdin 写入 Actions Secret，未进入仓库/日志。
+- 更新密钥在 `~/.config/yanxin-release/updater.key`（0600），不可重新生成替换，须保留仓库外备份。使用 `npm run release:secrets` 核对本机公钥再上传；`npm run desktop:build` 从本机匹配的密钥构建签名更新包。用户确认无 Developer ID 证书，当前没有 Apple 分发签名/公证；更新签名不替代 Apple 身份签名，首次安装及签名身份变化仍可能触发系统/钥匙串确认。
+- **本地验证**：120 项前端、170 项 Rust、13 项脚本、UI/TypeScript/生产构建通过。原生开发预览 Running 后确认 app PID 36686 的父进程为 Tauri 36422，验证设置页“关于与更新”、更新中心布局、检查状态、无正式发布时的失败反馈且顶部无更新图标。两个账号和 5460 本地存档保留；未发送测试邮件或改动真实远端来源。
+- **下一步**：等待本机签名包及 run `37407257846` 完成，核对两架构资源、签名和 latest.json，再记录草稿/发布状态。首次含更新器的正式版需安装一次；后续新版本才可真实验收检测→下载→替换同一应用→重启→版本/账号/存档保持。不能把模拟测试或开发预览检查计为真实自更新成功。后台原有 SYNC-01B2B2B/FOLDER-03B2 等待办保持不变。发布步骤见 UPDATES.md。
