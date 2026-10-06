@@ -13,10 +13,8 @@ import { Skeleton } from "./components/ui/skeleton";
 import { FolderHealthPanel } from "./components/folder-health";
 import { Alert, AlertTitle, AlertDescription } from "./components/ui/alert";
 import { ServerOperations } from "./components/server-operations";
-import {
-  ServerCopyDialog,
-  DirectoryOperationsPanel,
-} from "./components/server-copy";
+import { DirectoryOperationsPanel } from "./components/server-copy";
+import { ServerDirectoryMenu } from "./components/server-directory-menu";
 import { FolderMappingDialog } from "./components/folder-mapping-dialog";
 import { RemoteFolderList } from "./components/remote-folder-list";
 import { remoteFolderLabel } from "./lib/remote-folders";
@@ -39,8 +37,6 @@ import {
   ArrowRight,
   Check,
   CheckCheck,
-  Copy,
-  FolderInput as FolderInputIcon,
   ChevronDown,
   ChevronRight,
   Cloud,
@@ -198,8 +194,6 @@ export default function App() {
     [accountDialog, setAccountDialog] = useState(false),
     [editingAccount, setEditingAccount] = useState<Account | null>(null),
     [mappingAccount, setMappingAccount] = useState<Account | null>(null),
-    [copyMail, setCopyMail] = useState<Mail | null>(null),
-    [directoryKind, setDirectoryKind] = useState<"copy" | "move">("copy"),
     [contactSeed, setContactSeed] = useState<Address | null>(null),
     [draft, setDraft] = useState<Compose | null>(null),
     [drafts, setDrafts] = useState<Compose[]>([]),
@@ -1846,46 +1840,23 @@ export default function App() {
                               <ArrowRight size={15} />
                               <span className="action-label">转发</span>
                             </Button>
-                            <Button
-                              variant="ghost"
-                              size="icon-sm"
-                              title="复制到服务器文件夹"
-                              aria-label="复制到服务器文件夹"
-                              disabled={
-                                !data.accounts.some(
-                                  (a) =>
-                                    a.id === detail.mail.accountId &&
-                                    a.enabled &&
-                                    a.protocol === "imap",
-                                )
-                              }
-                              onClick={() => {
-                                setDirectoryKind("copy");
-                                setCopyMail(detail.mail);
-                              }}
-                            >
-                              <Copy data-icon="inline-start" />
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="icon-sm"
-                              title="移动到服务器文件夹"
-                              aria-label="移动到服务器文件夹"
-                              disabled={
-                                !data.accounts.some(
-                                  (a) =>
-                                    a.id === detail.mail.accountId &&
-                                    a.enabled &&
-                                    a.protocol === "imap",
-                                )
-                              }
-                              onClick={() => {
-                                setDirectoryKind("move");
-                                setCopyMail(detail.mail);
-                              }}
-                            >
-                              <FolderInputIcon data-icon="inline-start" />
-                            </Button>
+                            {(["copy", "move"] as const).map((kind) => (
+                              <ServerDirectoryMenu
+                                key={kind}
+                                mail={detail.mail}
+                                kind={kind}
+                                view={query.view}
+                                remoteFolder={query.remoteFolder}
+                                disabled={
+                                  !data.accounts.some(
+                                    (a) =>
+                                      a.id === detail.mail.accountId &&
+                                      a.enabled &&
+                                      a.protocol === "imap",
+                                  )
+                                }
+                              />
+                            ))}
                           </div>
                           <span className="toolbar-divider" />
                           <Button
@@ -2102,12 +2073,6 @@ export default function App() {
         </DialogContent>
       </Dialog>
       {confirmationDialog}
-      <ServerCopyDialog
-        mail={copyMail}
-        kind={directoryKind}
-        initialSource={query.remoteFolder || "INBOX"}
-        onClose={() => setCopyMail(null)}
-      />
     </SidebarProvider>
   );
 }
