@@ -1404,52 +1404,49 @@ export default function App() {
                       </AlertDescription>
                     </Alert>
                   )}
-                  <div className="search-box">
-                    <Search size={16} />
-                    <Input
-                      ref={searchRef}
-                      value={search}
-                      onChange={(e) => setSearch(e.target.value)}
-                      placeholder="搜索当前范围的邮件…"
-                      aria-label="搜索邮件"
-                    />
-                    {search ? (
-                      <Button
-                        variant="ghost"
-                        onClick={() => setSearch("")}
-                        title="清除搜索"
-                      >
-                        <X size={14} />
-                      </Button>
-                    ) : (
-                      <kbd>⌘ K</kbd>
-                    )}
-                  </div>
-                  <div className="list-filters">
-                    <Tabs
-                      value={query.unreadOnly ? "unread" : "all"}
-                      onValueChange={(value) =>
-                        setQuery((q) => ({
-                          ...q,
-                          unreadOnly: value === "unread",
-                        }))
-                      }
-                    >
-                      <TabsList>
-                        <TabsTrigger value="all">全部</TabsTrigger>
-                        <TabsTrigger value="unread">未读</TabsTrigger>
-                      </TabsList>
-                    </Tabs>
+                  <div className="mail-search-row">
+                    <div className="search-box">
+                      <Search size={16} />
+                      <Input
+                        ref={searchRef}
+                        value={search}
+                        onChange={(e) => setSearch(e.target.value)}
+                        placeholder="搜索当前范围的邮件…"
+                        aria-label="搜索邮件"
+                      />
+                      {search ? (
+                        <Button
+                          variant="ghost"
+                          onClick={() => setSearch("")}
+                          title="清除搜索"
+                        >
+                          <X size={14} />
+                        </Button>
+                      ) : (
+                        <kbd>⌘ K</kbd>
+                      )}
+                    </div>
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
-                        <Button variant="ghost" size="sm" aria-label="筛选邮件">
-                          <SlidersHorizontal size={14} />
-                          筛选
-                          {query.starredOnly ||
-                          query.attachmentsOnly ||
-                          query.searchField
-                            ? " · 已启用"
-                            : ""}
+                        <Button
+                          variant={
+                            query.starredOnly ||
+                            query.attachmentsOnly ||
+                            query.searchField
+                              ? "secondary"
+                              : "ghost"
+                          }
+                          size="icon-lg"
+                          aria-label="筛选邮件"
+                          title={
+                            query.starredOnly ||
+                            query.attachmentsOnly ||
+                            query.searchField
+                              ? "筛选邮件（已启用）"
+                              : "筛选邮件"
+                          }
+                        >
+                          <SlidersHorizontal />
                         </Button>
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end">
@@ -1506,6 +1503,22 @@ export default function App() {
                         </DropdownMenuRadioGroup>
                       </DropdownMenuContent>
                     </DropdownMenu>
+                  </div>
+                  <div className="list-filters">
+                    <Tabs
+                      value={query.unreadOnly ? "unread" : "all"}
+                      onValueChange={(value) =>
+                        setQuery((q) => ({
+                          ...q,
+                          unreadOnly: value === "unread",
+                        }))
+                      }
+                    >
+                      <TabsList>
+                        <TabsTrigger value="all">全部</TabsTrigger>
+                        <TabsTrigger value="unread">未读</TabsTrigger>
+                      </TabsList>
+                    </Tabs>
                   </div>
                   {checked.length > 0 && (
                     <div className="batch-toolbar">
