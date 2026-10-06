@@ -249,7 +249,11 @@ pub fn start(store: Store, app: tauri::AppHandle, control: Arc<RealtimeControl>)
             // Historical sweeps can take much longer than the configured poll
             // interval. Poll each inbox here, independently of the sweep gate
             // and of whether the server actually delivers IDLE notifications.
-            let interval = store.preferences().unwrap_or_default().sync_interval_minutes as i64 * 60;
+            let interval = store
+                .preferences()
+                .unwrap_or_default()
+                .sync_interval_minutes as i64
+                * 60;
             for (id, worker) in &mut workers {
                 if worker.fallback.due(now, interval) {
                     enqueue(&mut pending, id.clone(), worker.control.clone());
@@ -366,7 +370,12 @@ mod tests {
         assert_eq!(pending["a"].serial, 2);
         assert_eq!(pending["a"].retry_at, retry);
         assert_eq!(pending["a"].failures, 3);
-        assert!(!finish_pending(pending.get_mut("a").unwrap(), 1, SyncOutcome::Finished(true), Instant::now()));
+        assert!(!finish_pending(
+            pending.get_mut("a").unwrap(),
+            1,
+            SyncOutcome::Finished(true),
+            Instant::now()
+        ));
         a.stop();
         enqueue(&mut pending, "a".into(), a);
         assert_eq!(pending["a"].serial, 2);

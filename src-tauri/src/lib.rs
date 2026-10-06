@@ -32,7 +32,10 @@ struct AppState {
     realtime: Arc<realtime::RealtimeControl>,
 }
 #[tauri::command]
-async fn restart_for_update(app: tauri::AppHandle, state: tauri::State<'_, AppState>) -> Result<()> {
+async fn restart_for_update(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, AppState>,
+) -> Result<()> {
     let gate = state.gate.clone();
     let send_gate = state.send_gate.clone();
     tauri::async_runtime::spawn_blocking(move || {

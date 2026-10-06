@@ -12,17 +12,21 @@ jobs:
   check:
     runs-on: macos-14
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
         with:
           node-version: 22
           cache: npm
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@1.91.1
+        with:
+          components: rustfmt
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: src-tauri
       - run: npm ci
+      - run: npm run format:check && cargo fmt --manifest-path src-tauri/Cargo.toml -- --check
       - run: npm test
       - run: npm run test:desktop
       - run: npm run build
       - run: npm run test:rust
+      - run: cargo test --manifest-path src-tauri/vendor/imap-proto/Cargo.toml

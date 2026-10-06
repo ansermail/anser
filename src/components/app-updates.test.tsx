@@ -70,6 +70,9 @@ afterEach(async () => {
   host.remove();
   vi.unstubAllEnvs();
 });
+it("uses the running application's version rather than the frontend package version", () => {
+  expect(host.textContent).toContain("雁信 0.1.0");
+});
 it("hides the top entry without an available update and displays release notes when one exists", async () => {
   expect(
     document.querySelector('[aria-label="有新版本，打开更新中心"]'),

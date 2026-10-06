@@ -11,33 +11,60 @@ concurrency:
 jobs:
   check:
     runs-on: macos-14
+    outputs:
+      build_required: ${{ steps.release.outputs.build_required }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
         with:
           node-version: 22
           cache: npm
-      - uses: dtolnay/rust-toolchain@stable
+      - id: release
+        name: Skip versions already published
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          VERSION=$(node -p "require('./src-tauri/tauri.conf.json').version")
+          if gh release view "v$VERSION" --json isDraft --jq .isDraft > /tmp/release-state 2>/dev/null && test "$(cat /tmp/release-state)" = false; then
+            echo "build_required=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::v$VERSION is already published; skipping without replacing its assets."
+          else
+            echo "build_required=true" >> "$GITHUB_OUTPUT"
+          fi
+      - uses: dtolnay/rust-toolchain@1.91.1
+        with:
+          components: rustfmt
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: src-tauri
       - run: npm ci
       - run: node scripts/release-assets.mjs verify
-      - run: npm test && npm run test:desktop && npm run build && npm run test:rust
+      - run: npm run format:check && cargo fmt --manifest-path src-tauri/Cargo.toml -- --check
+      - name: Frontend tests
+        run: npm test
+      - name: Desktop script tests
+        run: npm run test:desktop
+      - name: Production frontend build
+        run: npm run build
+      - name: Rust tests
+        run: npm run test:rust
+      - name: IMAP parser tests
+        run: cargo test --manifest-path src-tauri/vendor/imap-proto/Cargo.toml
   build:
     needs: check
+    if: needs.check.outputs.build_required == 'true'
     runs-on: macos-14
     strategy:
       fail-fast: false
       matrix:
         target: [aarch64-apple-darwin, x86_64-apple-darwin]
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
         with:
           node-version: 22
           cache: npm
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@1.91.1
         with:
           targets: ${{ matrix.target }}
       - uses: Swatinem/rust-cache@v2
@@ -57,8 +84,15 @@ jobs:
         with:
           args: --target ${{ matrix.target }} --bundles app,dmg
           uploadUpdaterJson: false
+      - name: Verify complete macOS app signature
+        env:
+          BUILD_TARGET: ${{ matrix.target }}
+        run: |
+          APP="src-tauri/target/$BUILD_TARGET/release/bundle/macos/雁信.app"
+          test -s "$APP/Contents/_CodeSignature/CodeResources"
+          codesign --verify --strict --deep "$APP"
       - run: node scripts/release-assets.mjs collect ${{ matrix.target }} release-assets
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         with:
           name: release-${{ matrix.target }}
           path: release-assets/*
@@ -66,15 +100,15 @@ jobs:
           retention-days: 14
   draft:
     needs: build
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
         with:
           node-version: 22
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v6
         with:
           pattern: release-*
           path: release-assets

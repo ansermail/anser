@@ -300,6 +300,7 @@ impl Store {
             .map_err(err)?;
         Ok(())
     }
+    #[cfg(test)]
     pub fn has_source(&self, account: &str, folder: &str, remote: &str) -> Result<bool> {
         self.db()?.query_row("SELECT EXISTS(SELECT 1 FROM sources WHERE account_id=?1 AND folder=?2 AND remote_id=?3)",params![account,folder,remote],|r|r.get(0)).map_err(err)
     }

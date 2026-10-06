@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { version as buildVersion } from "../../package.json";
 import { getVersion } from "@tauri-apps/api/app";
 import { invoke, isTauri } from "@tauri-apps/api/core";
 import { check, type Update } from "@tauri-apps/plugin-updater";
@@ -35,7 +36,7 @@ type Phase =
 
 export function useAppUpdate() {
   const [update, setUpdate] = useState<Update | null>(null);
-  const [version, setVersion] = useState("");
+  const [version, setVersion] = useState(buildVersion);
   const [phase, setPhase] = useState<Phase>("idle");
   const [error, setError] = useState("");
   const [open, setOpen] = useState(false);

@@ -18,7 +18,7 @@ fn is_entry_component_char(c: u8) -> bool {
 }
 
 enum EntryParseStage<'a> {
-    PrivateShared(usize),
+    PrivateShared,
     Admin(usize),
     VendorComment(usize),
     Path(usize),
@@ -26,7 +26,7 @@ enum EntryParseStage<'a> {
     Fail(nom::Err<&'a [u8]>),
 }
 
-fn check_private_shared(i: &[u8]) -> EntryParseStage {
+fn check_private_shared(i: &[u8]) -> EntryParseStage<'_> {
     if i.starts_with(b"/private") {
         EntryParseStage::VendorComment(8)
     } else if i.starts_with(b"/shared") {
@@ -38,7 +38,7 @@ fn check_private_shared(i: &[u8]) -> EntryParseStage {
     }
 }
 
-fn check_admin(i: &[u8], l: usize) -> EntryParseStage {
+fn check_admin(i: &[u8], l: usize) -> EntryParseStage<'_> {
     if i[l..].starts_with(b"/admin") {
         EntryParseStage::Path(l + 6)
     } else {
@@ -46,7 +46,7 @@ fn check_admin(i: &[u8], l: usize) -> EntryParseStage {
     }
 }
 
-fn check_vendor_comment(i: &[u8], l: usize) -> EntryParseStage {
+fn check_vendor_comment(i: &[u8], l: usize) -> EntryParseStage<'_> {
     if i[l..].starts_with(b"/comment") {
         EntryParseStage::Path(l + 8)
     } else if i[l..].starts_with(b"/vendor") {
@@ -63,7 +63,7 @@ fn check_vendor_comment(i: &[u8], l: usize) -> EntryParseStage {
     }
 }
 
-fn check_path(i: &[u8], l: usize) -> EntryParseStage {
+fn check_path(i: &[u8], l: usize) -> EntryParseStage<'_> {
     if i.len() == l || i[l] == b' ' || i[l] == b'\r' {
         return EntryParseStage::Done(l);
     } else if i[l] != b'/' {
@@ -78,10 +78,10 @@ fn check_path(i: &[u8], l: usize) -> EntryParseStage {
 }
 
 fn check_entry_name(i: &[u8]) -> IResult<&[u8], &[u8]> {
-    let mut stage = EntryParseStage::PrivateShared(0);
+    let mut stage = EntryParseStage::PrivateShared;
     loop {
         match stage {
-            EntryParseStage::PrivateShared(_) => {
+            EntryParseStage::PrivateShared => {
                 stage = check_private_shared(i);
             }
             EntryParseStage::Admin(l) => {

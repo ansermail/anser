@@ -530,7 +530,7 @@ named!(response<Response>, alt!(
 
 pub type ParseResult<'a> = IResult<&'a [u8], Response<'a>>;
 
-pub fn parse_response(msg: &[u8]) -> ParseResult {
+pub fn parse_response(msg: &[u8]) -> ParseResult<'_> {
     response(msg)
 }
 

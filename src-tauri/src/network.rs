@@ -133,7 +133,11 @@ fn imap_session_using<T: std::io::Read + Write>(
             .map_err(|(e, _)| format!("IMAP 登录失败：{e}"))
     }?;
     if a.provider == "netease" || a.provider == "neteaseWork" {
-        let _ = session.run_command_and_check_ok("ID (\"name\" \"Yanxin\" \"version\" \"0.1.0\")");
+        let _ = session.run_command_and_check_ok(concat!(
+            "ID (\"name\" \"Yanxin\" \"version\" \"",
+            env!("CARGO_PKG_VERSION"),
+            "\")"
+        ));
     }
     Ok(session)
 }
