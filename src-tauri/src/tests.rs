@@ -352,6 +352,7 @@ pub(super) fn query() -> Query {
         starred_only: false,
         attachments_only: false,
         search_field: String::new(),
+        list_mode: ListMode::Conversations,
     }
 }
 fn rule(id: &str, action: &str, stop: bool) -> Rule {
@@ -1114,6 +1115,24 @@ fn conversation_combines_inbox_and_sent_with_scope_pagination_and_old_archive_up
     assert_eq!(snapshot.messages.len(), 1);
     assert_eq!(snapshot.messages[0].conversation_count, 3);
     let turns = store.conversation(&snapshot.messages[0].id).unwrap();
+    q.list_mode = ListMode::Messages;
+    let single = store.snapshot(&q).unwrap();
+    assert_eq!(single.matched, 3);
+    assert_eq!(single.messages.len(), 1);
+    assert_eq!(single.messages[0].id, turns[2].id);
+    assert_eq!(single.messages[0].conversation_count, 1);
+    assert!(single.messages[0].conversation_id.is_empty());
+    assert!(single.messages[0].body.is_empty());
+    q.limit = 10;
+    q.view = "all".into();
+    let inbox = store.snapshot(&q).unwrap();
+    assert_eq!(inbox.matched, 2);
+    assert_eq!(inbox.messages[1].id, turns[0].id);
+    q.search = "Latest".into();
+    assert_eq!(store.snapshot(&q).unwrap().matched, 1);
+    assert_eq!(store.snapshot(&q).unwrap().messages[0].id, turns[2].id);
+    q.search.clear();
+    q.list_mode = ListMode::Conversations;
     assert_eq!(
         turns.iter().map(|m| m.body.as_str()).collect::<Vec<_>>(),
         vec!["Original", "Reply", "Latest"]
@@ -1153,6 +1172,22 @@ fn conversation_combines_inbox_and_sent_with_scope_pagination_and_old_archive_up
     store.update_mail(&trashed).unwrap();
     assert_eq!(store.conversation(&old.id).unwrap().len(), 2);
     assert_eq!(store.conversation(&trashed.id).unwrap().len(), 1);
+}
+#[test]
+fn legacy_query_defaults_to_conversations_and_rejects_unknown_list_modes() {
+    let mut value = serde_json::to_value(query()).unwrap();
+    value.as_object_mut().unwrap().remove("listMode");
+    let old: Query = serde_json::from_value(value.clone()).unwrap();
+    assert_eq!(old.list_mode, ListMode::Conversations);
+    value["listMode"] = "messages".into();
+    assert_eq!(
+        serde_json::from_value::<Query>(value.clone())
+            .unwrap()
+            .list_mode,
+        ListMode::Messages
+    );
+    value["listMode"] = "unknown".into();
+    assert!(serde_json::from_value::<Query>(value).is_err());
 }
 #[test]
 fn outgoing_reply_has_rfc_thread_headers_without_quoting_and_rejects_header_injection() {

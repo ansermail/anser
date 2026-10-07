@@ -74,6 +74,7 @@ export interface Query {
   attachmentsOnly?: boolean;
   searchField?: string;
   remoteFolder?: string;
+  listMode?: "conversations" | "messages";
 }
 export interface Snapshot {
   accounts: Account[];

@@ -71,12 +71,17 @@ export async function snapshot(query: Query): Promise<Snapshot> {
           .toLowerCase()
           .includes(query.search.toLowerCase()),
     );
-    const summaries = conversationSummaries(
-      messages.sort(
-        (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime(),
-      ),
-      all,
+    messages.sort(
+      (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime(),
     );
+    const summaries =
+      query.listMode === "messages"
+        ? messages.map((mail) => ({
+            ...mail,
+            conversationId: undefined,
+            conversationCount: 1,
+          }))
+        : conversationSummaries(messages, all);
     return {
       ...structuredClone({ ...demo, messages: [] }),
       messages: structuredClone(summaries.slice(0, query.limit)),

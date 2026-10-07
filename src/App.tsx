@@ -57,6 +57,8 @@ import {
   Maximize2,
   Minimize2,
   MoreHorizontal,
+  MessagesSquare,
+  List,
   Paperclip,
   Plus,
   RefreshCw,
@@ -169,6 +171,15 @@ function time(s: string) {
   const pad = (n: number) => String(n).padStart(2, "0");
   return `${d.getFullYear()}/${pad(d.getMonth() + 1)}/${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
 }
+function savedListMode(): "conversations" | "messages" {
+  try {
+    return localStorage.getItem("mail-list-mode") === "messages"
+      ? "messages"
+      : "conversations";
+  } catch {
+    return "conversations";
+  }
+}
 export default function App() {
   const updates = useAppUpdate();
   const { askConfirmation, confirmationDialog } = useConfirmation();
@@ -181,6 +192,7 @@ export default function App() {
       folder: "",
       limit: 200,
       unreadOnly: false,
+      listMode: savedListMode(),
     }),
     [expandedAccounts, setExpandedAccounts] = useState<string[]>([]),
     [folderLoading, setFolderLoading] = useState<string[]>([]),
@@ -225,6 +237,14 @@ export default function App() {
   selectionRef.current = selected;
   const localChanges = useRef(new Map<string, Partial<Mail>>());
   queryRef.current = query;
+  const grouped = query.listMode !== "messages";
+  useEffect(() => {
+    try {
+      localStorage.setItem("mail-list-mode", query.listMode || "conversations");
+    } catch {
+      // The current session remains usable when storage is unavailable.
+    }
+  }, [query.listMode]);
   useEffect(() => {
     if (data.remoteFolders) setServerFolders(data.remoteFolders);
   }, [data.remoteFolders]);
@@ -496,6 +516,7 @@ export default function App() {
       search: "",
       limit: 200,
       unreadOnly: false,
+      listMode: query.listMode,
     });
   }
   async function mutate(
@@ -593,7 +614,7 @@ export default function App() {
     const index = data.messages.findIndex(
       (m) =>
         m.id === selected ||
-        (!!m.conversationId && m.conversationId === conversationId),
+        (grouped && !!m.conversationId && m.conversationId === conversationId),
     );
     if (index >= 0)
       return data.messages[index + (direction === "previous" ? -1 : 1)];
@@ -607,7 +628,9 @@ export default function App() {
     const index = data.messages.findIndex(
       (item) =>
         item.id === m.id ||
-        (!!m.conversationId && item.conversationId === m.conversationId),
+        (grouped &&
+          !!m.conversationId &&
+          item.conversationId === m.conversationId),
     );
     if (index >= 0)
       readingNeighbors.current = {
@@ -620,9 +643,11 @@ export default function App() {
       };
     setSelected(m.id);
     try {
-      const conversation = await call<Mail[]>("mail_conversation", {
-        id: m.id,
-      });
+      const mode = query.listMode;
+      const conversation = grouped
+        ? await call<Mail[]>("mail_conversation", { id: m.id })
+        : [m];
+      if (queryRef.current.listMode !== mode) return;
       for (const mail of conversation.filter((mail) => !mail.isRead))
         await updateMail(mail.id, "read", "true");
       void refresh();
@@ -672,6 +697,7 @@ export default function App() {
       search: "",
       limit: 200,
       unreadOnly: false,
+      listMode: query.listMode,
     });
     setSearch("");
     void refresh();
@@ -1387,7 +1413,9 @@ export default function App() {
                         aria-label="切换侧边栏"
                       />
                       <h1>{title}</h1>
-                      <span>{data.matched} 个对话</span>
+                      <span>
+                        {data.matched} {grouped ? "个对话" : "封邮件"}
+                      </span>
                     </div>
                     <Button
                       variant="ghost"
@@ -1530,16 +1558,61 @@ export default function App() {
                         <TabsTrigger value="unread">未读</TabsTrigger>
                       </TabsList>
                     </Tabs>
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          aria-label="邮件显示方式"
+                        >
+                          {grouped ? (
+                            <MessagesSquare data-icon="inline-start" />
+                          ) : (
+                            <List data-icon="inline-start" />
+                          )}
+                          {grouped ? "按对话" : "逐封邮件"}
+                          <ChevronDown data-icon="inline-end" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuRadioGroup
+                          value={query.listMode || "conversations"}
+                          onValueChange={(value) => {
+                            if (
+                              value !== "conversations" &&
+                              value !== "messages"
+                            )
+                              return;
+                            setChecked([]);
+                            readingNeighbors.current = null;
+                            setQuery((q) => ({
+                              ...q,
+                              listMode: value,
+                              limit: 200,
+                            }));
+                          }}
+                        >
+                          <DropdownMenuRadioItem value="conversations">
+                            按对话分组
+                          </DropdownMenuRadioItem>
+                          <DropdownMenuRadioItem value="messages">
+                            逐封邮件
+                          </DropdownMenuRadioItem>
+                        </DropdownMenuRadioGroup>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
                   </div>
                   {checked.length > 0 && (
                     <div className="batch-toolbar">
-                      <span>已选 {checked.length} 个对话</span>
+                      <span>
+                        已选 {checked.length} {grouped ? "个对话" : "封邮件"}
+                      </span>
                       <Button
                         variant="ghost"
                         size="icon-sm"
                         title="标记为已读"
                         onClick={() =>
-                          void mutate(checked, "read", "true", true)
+                          void mutate(checked, "read", "true", grouped)
                         }
                       >
                         <CheckCheck size={15} />
@@ -1550,7 +1623,7 @@ export default function App() {
                         title="归入本地文件夹"
                         onClick={() => {
                           setMoveIds(checked);
-                          setMoveThreads(true);
+                          setMoveThreads(grouped);
                           setMoveFolder("");
                         }}
                       >
@@ -1565,7 +1638,7 @@ export default function App() {
                             checked,
                             "trash",
                             query.view === "trash" ? "false" : "true",
-                            true,
+                            grouped,
                           )
                         }
                       >
@@ -1580,7 +1653,7 @@ export default function App() {
                       data.messages.map((m) => (
                         <div
                           key={m.id}
-                          className={`mail-row ${selected === m.id || (!!m.conversationId && m.conversationId === detail?.mail.conversationId) ? "selected" : ""} ${!m.isRead ? "unread" : ""}`}
+                          className={`mail-row ${selected === m.id || (grouped && !!m.conversationId && m.conversationId === detail?.mail.conversationId) ? "selected" : ""} ${!m.isRead ? "unread" : ""}`}
                         >
                           <div className="row-check">
                             <Checkbox
@@ -1609,7 +1682,7 @@ export default function App() {
                             <div className="row-subject">
                               {!m.isRead && <i />}
                               {m.subject}
-                              {(m.conversationCount || 0) > 1 && (
+                              {grouped && (m.conversationCount || 0) > 1 && (
                                 <Badge
                                   variant="secondary"
                                   className="conversation-count"
@@ -1933,8 +2006,9 @@ export default function App() {
                       <h1>{detail.mail.subject}</h1>
                     </div>
                     <ConversationReader
-                      key={selected}
+                      key={`${selected}:${query.listMode}`}
                       selected={detail}
+                      singleMessage={!grouped}
                       revision={data.messages}
                       accounts={data.accounts}
                       demo={demo}

@@ -6,6 +6,7 @@ import App from "./App";
 import { enterDemo, leaveDemo, snapshot } from "./lib/api";
 import * as api from "./lib/api";
 import type { Query } from "./lib/types";
+import { toast } from "sonner";
 
 let root: Root;
 let host: HTMLDivElement;
@@ -57,6 +58,20 @@ async function seedReplyThread() {
   localStorage.setItem("mail-desktop-demo-v1", JSON.stringify(seed));
   api.restoreDemo();
 }
+async function chooseListMode(label: string) {
+  await act(async () => {
+    host
+      .querySelector('[aria-label="邮件显示方式"]')!
+      .dispatchEvent(
+        new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true }),
+      );
+  });
+  await click(
+    [...document.querySelectorAll('[role="menuitemradio"]')].find(
+      (item) => item.textContent === label,
+    ) ?? null,
+  );
+}
 beforeEach(async () => {
   Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
   vi.stubGlobal(
@@ -87,11 +102,108 @@ beforeEach(async () => {
   });
 });
 afterEach(async () => {
+  await act(async () => toast.dismiss());
+  // Sonner keeps its exit-animation timeout alive after an immediate unmount.
+  await act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 250));
+  });
   await act(async () => root.unmount());
   host.remove();
   leaveDemo();
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
+});
+describe("message and conversation display modes", () => {
+  it("changes counts and keeps its preference across categories and reopening", async () => {
+    await seedReplyThread();
+    await click(nav("本地存档"));
+    expect(host.querySelectorAll("button.mail-row-main")).toHaveLength(8);
+    await chooseListMode("逐封邮件");
+    expect(host.querySelectorAll("button.mail-row-main")).toHaveLength(9);
+    expect(host.querySelector(".conversation-count")).toBeNull();
+    expect(host.querySelector(".list-heading")?.textContent).toContain(
+      "9 封邮件",
+    );
+    await click(nav("星标邮件"));
+    expect(
+      host.querySelector('[aria-label="邮件显示方式"]')?.textContent,
+    ).toContain("逐封邮件");
+    await act(async () => root.unmount());
+    root = createRoot(host);
+    await act(async () => root.render(<App />));
+    expect(
+      host.querySelector('[aria-label="邮件显示方式"]')?.textContent,
+    ).toContain("逐封邮件");
+    await chooseListMode("按对话分组");
+    expect(host.querySelectorAll("button.mail-row-main")).toHaveLength(8);
+    expect(localStorage.getItem("mail-list-mode")).toBe("conversations");
+  });
+  it("reads and navigates single turns without loading or marking the rest of a thread", async () => {
+    await seedReplyThread();
+    await click(nav("本地存档"));
+    await chooseListMode("逐封邮件");
+    const calls = vi.spyOn(api, "call");
+    await click(host.querySelector("button.mail-row-main"));
+    expect(host.querySelector(".conversation-stream")).toBeNull();
+    expect(host.querySelector(".reader-scroll .message-body")).not.toBeNull();
+    expect(
+      calls.mock.calls.some(([command]) => command === "mail_conversation"),
+    ).toBe(false);
+    const single = await snapshot({ ...localQuery, listMode: "messages" });
+    expect(single.messages.find((m) => m.id === "demo-0")?.isRead).toBe(true);
+    expect(single.messages.find((m) => m.id === "older-reply")?.isRead).toBe(
+      false,
+    );
+    await click(host.querySelector('[aria-label="下一封邮件"]'));
+    expect(calls).toHaveBeenCalledWith("mail_detail", { id: "older-reply" });
+    expect(host.querySelectorAll(".mail-row.selected")).toHaveLength(1);
+    await click(host.querySelector('[aria-label="上一封邮件"]'));
+    expect(host.querySelectorAll(".mail-row.selected")).toHaveLength(1);
+    await chooseListMode("按对话分组");
+    expect(host.querySelectorAll(".conversation-turn")).toHaveLength(2);
+  });
+  it("applies a selected single-mail batch action without trashing its reply", async () => {
+    await seedReplyThread();
+    await click(nav("本地存档"));
+    await chooseListMode("逐封邮件");
+    await click(host.querySelector('.row-check [role="checkbox"]'));
+    expect(host.querySelector(".batch-toolbar")?.textContent).toContain(
+      "已选 1 封邮件",
+    );
+    await click(host.querySelector('.batch-toolbar [title="移到本地废纸篓"]'));
+    const list = await snapshot({ ...localQuery, listMode: "messages" });
+    expect(list.messages.some((m) => m.id === "demo-0")).toBe(false);
+    expect(list.messages.some((m) => m.id === "older-reply")).toBe(true);
+  });
+  it("cancels late conversation loading when the user switches to individual messages", async () => {
+    await seedReplyThread();
+    await click(nav("本地存档"));
+    const originalCall = api.call;
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    vi.spyOn(api, "call").mockImplementation(
+      async <T,>(
+        command: string,
+        args: Record<string, unknown> = {},
+      ): Promise<T> => {
+        if (command === "mail_conversation") await gate;
+        return originalCall<T>(command, args);
+      },
+    );
+    await click(host.querySelector("button.mail-row-main"));
+    await chooseListMode("逐封邮件");
+    await act(async () => {
+      release();
+      await gate;
+    });
+    expect(host.querySelector(".conversation-stream")).toBeNull();
+    const list = await snapshot({ ...localQuery, listMode: "messages" });
+    expect(list.messages.find((m) => m.id === "older-reply")?.isRead).toBe(
+      false,
+    );
+  });
 });
 describe("reading unread mail within its current category", () => {
   it("navigates adjacent messages in the current list and protects its boundary", async () => {

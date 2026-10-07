@@ -160,6 +160,15 @@ pub struct Query {
     pub attachments_only: bool,
     #[serde(default)]
     pub search_field: String,
+    #[serde(default)]
+    pub list_mode: ListMode,
+}
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum ListMode {
+    #[default]
+    Conversations,
+    Messages,
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]

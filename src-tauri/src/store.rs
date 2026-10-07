@@ -555,8 +555,20 @@ impl Store {
         let messages = rows
             .map(|r| serde_json::from_str(&r.map_err(err)?).map_err(err))
             .collect::<Result<Vec<Mail>>>()?;
-        let index = self.conversation_index(&q.account_id)?;
-        let mut messages = crate::conversation::summaries(messages, &index);
+        let mut messages = match q.list_mode {
+            ListMode::Conversations => {
+                let index = self.conversation_index(&q.account_id)?;
+                crate::conversation::summaries(messages, &index)
+            }
+            ListMode::Messages => messages
+                .into_iter()
+                .map(|mut mail| {
+                    mail.conversation_id.clear();
+                    mail.conversation_count = 1;
+                    mail
+                })
+                .collect(),
+        };
         let matched = messages.len() as u64;
         messages.truncate(q.limit.clamp(1, 5000) as usize);
         let stats=db.query_row("SELECT COUNT(*),COALESCE(SUM(json_extract(data,'$.isRead')=0 AND json_extract(data,'$.trashed')=0),0),COALESCE(SUM(CASE WHEN COALESCE(json_extract(data,'$.savedLocally'),1)=1 THEN json_extract(data,'$.size') ELSE 0 END),0),COALESCE(SUM(COALESCE(json_extract(data,'$.savedLocally'),1)),0) FROM message_listing",[],|r|Ok(Stats{total:r.get(0)?,saved:r.get(3)?,unread:r.get(1)?,bytes:r.get(2)?})).map_err(err)?;

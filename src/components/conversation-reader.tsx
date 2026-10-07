@@ -472,6 +472,7 @@ function QuickReply({
 
 export function ConversationReader({
   selected,
+  singleMessage = false,
   revision,
   accounts,
   demo,
@@ -486,6 +487,7 @@ export function ConversationReader({
   onLink,
 }: {
   selected: Detail;
+  singleMessage?: boolean;
   revision: Mail[];
   accounts: Account[];
   demo: boolean;
@@ -526,6 +528,11 @@ export function ConversationReader({
   }, [scrollRef]);
   useEffect(() => {
     let live = true;
+    if (singleMessage) {
+      setMessages([selected.mail]);
+      setError("");
+      return;
+    }
     void call<Mail[]>("mail_conversation", { id: selected.mail.id })
       .then((list) => {
         if (!live) return;
@@ -545,7 +552,7 @@ export function ConversationReader({
     return () => {
       live = false;
     };
-  }, [selected.mail.id, revision, retry]);
+  }, [selected.mail.id, revision, retry, singleMessage]);
   useEffect(() => {
     const scroll = scrollRef.current,
       content = stream.current;
@@ -582,10 +589,11 @@ export function ConversationReader({
     replyTarget.current = target?.id || "";
   const targetDetail = details[replyTarget.current];
   if (
-    messages.length === 1 &&
-    (selected.mail.conversationCount || 1) === 1 &&
-    !selected.mail.inReplyTo?.length &&
-    !selected.mail.references?.length
+    singleMessage ||
+    (messages.length === 1 &&
+      (selected.mail.conversationCount || 1) === 1 &&
+      !selected.mail.inReplyTo?.length &&
+      !selected.mail.references?.length)
   ) {
     return (
       <div className="reader-scroll" id="mail-reader-content" ref={scrollRef}>
