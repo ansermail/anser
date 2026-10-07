@@ -1048,6 +1048,22 @@ pub fn run() {
         .build(tauri::generate_context!())
         .expect("failed to build Yanxin")
         .run(|app, event| {
+            if matches!(event, tauri::RunEvent::Ready)
+                && !std::env::args().any(|arg| arg == "--autostart")
+            {
+                show_main_window(app);
+                if let Some(state) = app.try_state::<AppState>() {
+                    let visible = app
+                        .get_webview_window("main")
+                        .and_then(|window| window.is_visible().ok())
+                        .unwrap_or(false);
+                    let _ = state.store.log(&format!(
+                        "雁信 {} 启动完成，主窗口{}",
+                        app.package_info().version,
+                        if visible { "已显示" } else { "尚未显示" }
+                    ));
+                }
+            }
             #[cfg(target_os = "macos")]
             if let tauri::RunEvent::Reopen { .. } = event {
                 show_main_window(app);
