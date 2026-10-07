@@ -180,6 +180,9 @@ function savedListMode(): "conversations" | "messages" {
     return "conversations";
   }
 }
+function queryScope(query: Query) {
+  return JSON.stringify({ ...query, limit: 0 });
+}
 export default function App() {
   const updates = useAppUpdate();
   const { askConfirmation, confirmationDialog } = useConfirmation();
@@ -233,7 +236,13 @@ export default function App() {
     scope: string;
     previous: string[];
     next: string[];
+    known: string[];
+    date: string;
   } | null>(null);
+  const navigationRequest = useRef(0);
+  const navigationPending = useRef(false);
+  const dataScope = useRef("");
+  const [navigationLoading, setNavigationLoading] = useState(false);
   selectionRef.current = selected;
   const localChanges = useRef(new Map<string, Partial<Mail>>());
   queryRef.current = query;
@@ -290,8 +299,10 @@ export default function App() {
       const currentQuery = queryRef.current;
       try {
         const value = await snapshot(currentQuery);
-        if (seq === request.current && currentQuery === queryRef.current)
+        if (seq === request.current && currentQuery === queryRef.current) {
+          dataScope.current = queryScope(currentQuery);
           setData(value);
+        }
         const reading = selectionRef.current;
         if (reading) {
           const metadata = await call<Mail>("mail_metadata", {
@@ -479,10 +490,13 @@ export default function App() {
           )
         )
           return;
-        const mail = neighboringMail(e.key === "ArrowUp" ? "previous" : "next");
-        if (mail) {
+        const direction = e.key === "ArrowUp" ? "previous" : "next";
+        if (
+          neighboringMail(direction) ||
+          (direction === "next" && canLoadNext())
+        ) {
           e.preventDefault();
-          void openMail(mail);
+          void navigateReading(direction);
         }
         return;
       }
@@ -497,7 +511,7 @@ export default function App() {
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [compose, page, draft, selected, data.messages, detail, query]);
+  }, [compose, page, draft, selected, data, detail, query]);
   function navigate(
     view: string,
     accountId = "",
@@ -606,26 +620,111 @@ export default function App() {
     );
   }
   function readingScope() {
-    return JSON.stringify({ ...query, limit: 0 });
+    return queryScope(query);
   }
-  function neighboringMail(direction: "previous" | "next") {
+  useEffect(() => {
+    navigationRequest.current++;
+    navigationPending.current = false;
+    setNavigationLoading(false);
+    return () => {
+      navigationRequest.current++;
+      navigationPending.current = false;
+    };
+  }, [query, selected, page, demo, search]);
+  function neighboringMail(
+    direction: "previous" | "next",
+    messages = data.messages,
+  ) {
+    if (dataScope.current !== readingScope()) return undefined;
     const conversationId =
       detail?.mail.id === selected ? detail.mail.conversationId : undefined;
-    const index = data.messages.findIndex(
+    const index = messages.findIndex(
       (m) =>
         m.id === selected ||
         (grouped && !!m.conversationId && m.conversationId === conversationId),
     );
     if (index >= 0)
-      return data.messages[index + (direction === "previous" ? -1 : 1)];
+      return messages[index + (direction === "previous" ? -1 : 1)];
     const anchor = readingNeighbors.current;
     if (anchor?.scope !== readingScope()) return undefined;
-    const byId = new Map(data.messages.map((m) => [m.id, m]));
+    const byId = new Map(messages.map((m) => [m.id, m]));
     const id = anchor[direction].find((id) => byId.has(id));
-    return id ? byId.get(id) : undefined;
+    if (id) return byId.get(id);
+    // An opened unread mail can leave the list before the next page arrives.
+    // Only newly loaded older results may extend its recorded next boundary.
+    const known = new Set(anchor.known);
+    return direction === "next"
+      ? messages.find(
+          (mail) =>
+            !known.has(mail.id) &&
+            new Date(mail.date).getTime() <= new Date(anchor.date).getTime(),
+        )
+      : undefined;
   }
-  async function openMail(m: Mail) {
-    const index = data.messages.findIndex(
+  function canLoadNext() {
+    const conversationId =
+      detail?.mail.id === selected ? detail.mail.conversationId : undefined;
+    const hasPosition =
+      readingNeighbors.current?.scope === readingScope() ||
+      data.messages.some(
+        (mail) =>
+          mail.id === selected ||
+          (grouped &&
+            !!conversationId &&
+            mail.conversationId === conversationId),
+      );
+    return (
+      dataScope.current === readingScope() &&
+      !!selected &&
+      hasPosition &&
+      query.limit < 5000 &&
+      data.matched > data.messages.length
+    );
+  }
+  async function navigateReading(direction: "previous" | "next") {
+    if (navigationPending.current) return;
+    const neighbor = neighboringMail(direction);
+    if (neighbor) {
+      await openMail(neighbor);
+      return;
+    }
+    if (direction !== "next" || !canLoadNext()) return;
+    const currentQuery = queryRef.current;
+    const reading = selectionRef.current;
+    const ticket = ++navigationRequest.current;
+    navigationPending.current = true;
+    setNavigationLoading(true);
+    // Reject an older background refresh while this page is being fetched.
+    request.current++;
+    const nextQuery = {
+      ...currentQuery,
+      limit: Math.min(currentQuery.limit + 200, 5000),
+    };
+    try {
+      const value = await snapshot(nextQuery);
+      if (
+        ticket !== navigationRequest.current ||
+        currentQuery !== queryRef.current ||
+        reading !== selectionRef.current
+      )
+        return;
+      const next = neighboringMail("next", value.messages);
+      dataScope.current = queryScope(nextQuery);
+      setData(value);
+      setQuery(nextQuery);
+      if (next) void openMail(next, value.messages);
+    } catch (e) {
+      if (ticket === navigationRequest.current)
+        toast.error(`加载更多邮件失败：${String(e)}`);
+    } finally {
+      if (ticket === navigationRequest.current) {
+        navigationPending.current = false;
+        setNavigationLoading(false);
+      }
+    }
+  }
+  async function openMail(m: Mail, messages = data.messages) {
+    const index = messages.findIndex(
       (item) =>
         item.id === m.id ||
         (grouped &&
@@ -635,11 +734,13 @@ export default function App() {
     if (index >= 0)
       readingNeighbors.current = {
         scope: readingScope(),
-        previous: data.messages
+        previous: messages
           .slice(0, index)
           .reverse()
           .map((item) => item.id),
-        next: data.messages.slice(index + 1).map((item) => item.id),
+        next: messages.slice(index + 1).map((item) => item.id),
+        known: messages.map((item) => item.id),
+        date: m.date,
       };
     setSelected(m.id);
     try {
@@ -1772,11 +1873,13 @@ export default function App() {
                                   variant="ghost"
                                   size="icon-sm"
                                   aria-label="上一封邮件"
-                                  disabled={!neighboringMail("previous")}
-                                  onClick={() => {
-                                    const mail = neighboringMail("previous");
-                                    if (mail) void openMail(mail);
-                                  }}
+                                  disabled={
+                                    navigationLoading ||
+                                    !neighboringMail("previous")
+                                  }
+                                  onClick={() =>
+                                    void navigateReading("previous")
+                                  }
                                 >
                                   <ArrowLeft size={17} />
                                 </Button>
@@ -1789,16 +1892,26 @@ export default function App() {
                                   variant="ghost"
                                   size="icon-sm"
                                   aria-label="下一封邮件"
-                                  disabled={!neighboringMail("next")}
-                                  onClick={() => {
-                                    const mail = neighboringMail("next");
-                                    if (mail) void openMail(mail);
-                                  }}
+                                  aria-busy={navigationLoading}
+                                  disabled={
+                                    navigationLoading ||
+                                    (!neighboringMail("next") && !canLoadNext())
+                                  }
+                                  onClick={() => void navigateReading("next")}
                                 >
                                   <ArrowRight size={17} />
                                 </Button>
                               </TooltipTrigger>
-                              <TooltipContent>下一封邮件（⌥↓）</TooltipContent>
+                              <TooltipContent>
+                                {navigationLoading
+                                  ? "正在加载更多邮件…"
+                                  : "下一封邮件（⌥↓）"}
+                              </TooltipContent>
+                              {navigationLoading && (
+                                <span className="sr-only" role="status">
+                                  正在加载更多邮件…
+                                </span>
+                              )}
                             </Tooltip>
                             <span className="toolbar-divider" />
                             <Button

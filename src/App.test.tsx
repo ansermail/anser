@@ -72,6 +72,23 @@ async function chooseListMode(label: string) {
     ) ?? null,
   );
 }
+async function seedLargeMailbox() {
+  const seed = await snapshot(localQuery);
+  const mail = seed.messages[0];
+  const newest = new Date(mail.date).getTime();
+  seed.messages = Array.from({ length: 205 }, (_, index) => ({
+    ...mail,
+    id: `page-${index}`,
+    subject: `Pagination mail ${index}`,
+    date: new Date(newest - index * 1000).toISOString(),
+    messageId: `<page-${index}@example.com>`,
+    isRead: false,
+    starred: true,
+  }));
+  localStorage.setItem("mail-desktop-demo-v1", JSON.stringify(seed));
+  api.restoreDemo();
+  await click(nav("本地存档"));
+}
 beforeEach(async () => {
   Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
   vi.stubGlobal(
@@ -204,6 +221,137 @@ describe("message and conversation display modes", () => {
       false,
     );
   });
+});
+describe("reading across loaded page boundaries", () => {
+  it.each(["按对话分组", "逐封邮件"])(
+    "loads the next page and keeps previous navigation in %s mode",
+    async (mode) => {
+      await seedLargeMailbox();
+      if (mode === "逐封邮件") await chooseListMode(mode);
+      expect(host.querySelectorAll("button.mail-row-main")).toHaveLength(200);
+      await click(host.querySelectorAll("button.mail-row-main")[199]);
+      await click(host.querySelector('[aria-label="下一封邮件"]'));
+      expect(host.querySelector(".message-heading h1")?.textContent).toBe(
+        "Pagination mail 200",
+      );
+      expect(host.querySelectorAll("button.mail-row-main")).toHaveLength(205);
+      await click(host.querySelector('[aria-label="上一封邮件"]'));
+      expect(host.querySelector(".message-heading h1")?.textContent).toBe(
+        "Pagination mail 199",
+      );
+      await click(host.querySelectorAll("button.mail-row-main")[204]);
+      expect(
+        (host.querySelector('[aria-label="下一封邮件"]') as HTMLButtonElement)
+          .disabled,
+      ).toBe(true);
+    },
+  );
+  it("extends an unread boundary when the opened mail disappears from its filter", async () => {
+    await seedLargeMailbox();
+    await chooseListMode("逐封邮件");
+    await click(filter("未读"));
+    await click(host.querySelectorAll("button.mail-row-main")[199]);
+    expect(host.querySelector(".message-heading h1")?.textContent).toBe(
+      "Pagination mail 199",
+    );
+    expect(host.querySelectorAll(".mail-row.selected")).toHaveLength(0);
+    await click(host.querySelector('[aria-label="下一封邮件"]'));
+    expect(host.querySelector(".message-heading h1")?.textContent).toBe(
+      "Pagination mail 200",
+    );
+  });
+  it("does not extend an old position when a new filter excludes the current mail", async () => {
+    await seedLargeMailbox();
+    await click(host.querySelector("button.mail-row-main"));
+    await click(filter("未读"));
+    expect(host.querySelector(".message-heading h1")?.textContent).toBe(
+      "Pagination mail 0",
+    );
+    expect(host.querySelectorAll("button.mail-row-main")).toHaveLength(200);
+    expect(
+      (host.querySelector('[aria-label="下一封邮件"]') as HTMLButtonElement)
+        .disabled,
+    ).toBe(true);
+  });
+  it("keeps the current mail on failure, prevents duplicate loading and allows retry", async () => {
+    await seedLargeMailbox();
+    await click(host.querySelectorAll("button.mail-row-main")[199]);
+    const originalSnapshot = api.snapshot;
+    let reject!: (error: Error) => void;
+    const gate = new Promise<never>((_, fail) => {
+      reject = fail;
+    });
+    const calls = vi.spyOn(api, "snapshot").mockImplementation(async (q) => {
+      if (q.limit > 200) return gate;
+      return originalSnapshot(q);
+    });
+    await click(host.querySelector('[aria-label="下一封邮件"]'));
+    expect(
+      host
+        .querySelector('[aria-label="下一封邮件"]')
+        ?.getAttribute("aria-busy"),
+    ).toBe("true");
+    await act(async () =>
+      host.querySelector(".reader")!.dispatchEvent(
+        new KeyboardEvent("keydown", {
+          key: "ArrowDown",
+          altKey: true,
+          bubbles: true,
+        }),
+      ),
+    );
+    expect(calls.mock.calls.filter(([q]) => q.limit > 200)).toHaveLength(1);
+    await act(async () => {
+      reject(new Error("Test unavailable"));
+    });
+    expect(host.querySelector(".message-heading h1")?.textContent).toBe(
+      "Pagination mail 199",
+    );
+    expect(document.body.textContent).toContain("加载更多邮件失败");
+    calls.mockImplementation(originalSnapshot);
+    await click(host.querySelector('[aria-label="下一封邮件"]'));
+    expect(host.querySelector(".message-heading h1")?.textContent).toBe(
+      "Pagination mail 200",
+    );
+  });
+  it.each(["category", "mode", "selection"])(
+    "discards a delayed page after changing %s",
+    async (change) => {
+      await seedLargeMailbox();
+      await click(host.querySelectorAll("button.mail-row-main")[199]);
+      const originalSnapshot = api.snapshot;
+      let release!: () => void;
+      const gate = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      vi.spyOn(api, "snapshot").mockImplementation(async (q) => {
+        if (q.limit > 200) await gate;
+        return originalSnapshot(q);
+      });
+      await click(host.querySelector('[aria-label="下一封邮件"]'));
+      if (change === "category") await click(nav("星标邮件"));
+      if (change === "mode") await chooseListMode("逐封邮件");
+      if (change === "selection")
+        await click(host.querySelector("button.mail-row-main"));
+      await act(async () => {
+        release();
+        await gate;
+      });
+      expect(host.querySelectorAll("button.mail-row-main")).toHaveLength(200);
+      expect(host.querySelector(".message-heading h1")?.textContent).toBe(
+        change === "category"
+          ? undefined
+          : change === "mode"
+            ? "Pagination mail 199"
+            : "Pagination mail 0",
+      );
+      expect(
+        host
+          .querySelector('[aria-label="下一封邮件"]')
+          ?.getAttribute("aria-busy"),
+      ).not.toBe("true");
+    },
+  );
 });
 describe("reading unread mail within its current category", () => {
   it("navigates adjacent messages in the current list and protects its boundary", async () => {
