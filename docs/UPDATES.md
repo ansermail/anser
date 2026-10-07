@@ -27,7 +27,7 @@
 1. 同步修改 package.json、package-lock.json（npm install --package-lock-only）、src-tauri/Cargo.toml、Cargo.lock 和 tauri.conf.json 的版本。
 2. 写 `docs/releases/v版本.md`，运行 `npm run release:check` 和回归，提交并推送。
 3. 推送对应 `v版本` tag，或者运行 `gh workflow run release.yml --ref main`。
-4. 等待两架构构建和草稿生成，核验 DMG、app.tar.gz、sig、latest.json 和版本说明；再发布草稿。首次 v0.1.0 属于 Alpha，不代表开发计划全部完成。
+4. 等待两架构构建和草稿生成，核验 DMG、app.tar.gz、sig、latest.json 和版本说明；再发布草稿。当前 v0.1.2 仍属于 Alpha，不代表开发计划全部完成。
 5. 用含更新器的旧正式版检查新版本、下载安装并重启，确认账号、本地存档、窗口及新版本号。
 
 ## 验收记录
@@ -39,3 +39,11 @@
 0.1.0 首次 CI 包缺完整应用签名，虽更新归档签名有效，仍未通过 codesign 验证，已撤出稳定 latest。0.1.1 使用官方支持的 ad-hoc 完整应用签名并在 CI 强制验证 CodeResources/codesign；仍不是 Apple Developer ID 公证。
 
 同版本已发布时，流水线提前跳过构建，不再把 tag push 的重复触发计为发布失败。升级版本同步更新 npm/Tauri/Cargo，页面从实际运行的 native 应用获取版本，不读取更新服务器版本来冒充已安装版本。格式检查已加入 CI，Rust 1.91.1 与本机验证一致；解析器兼容修改保留独立回归。
+
+## 0.1.2 启动恢复
+
+正常启动和更新重启完成时，在 Ready 事件主动显示主窗口，避免新进程启动但窗口不可见。--autostart 保持后台启动。最近活动记录启动版本和实际窗口可见状态；完整原位升级验收结果以 DEVELOPMENT_STATUS.md 为准。
+
+## 0.1.2 验收结果
+
+双架构流水线、发布文件/清单及签名验证通过，0.1.2 已作为 latest 发布。从实际 GitHub 0.1.1 包完成应用内下载、原位替换和新进程启动；新二进制与 GitHub 包逐字节一致，启动日志记录主窗口已显示，账号与存档保留。自动重启后工具不能读取窗口；另行正常打开同一更新后的包确认 0.1.2/Alpha，具体限制和待办保留在开发检查点。不能把正常重新打开视为自动重启时的视觉验收。
