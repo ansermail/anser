@@ -474,6 +474,46 @@ fn corruption_blocks_rules_and_restore() {
     assert!(s.detail(&m.id).is_err());
 }
 #[test]
+fn historical_rules_skip_unmatched_archives_but_verify_matched_originals() {
+    let dir = tempfile::tempdir().unwrap();
+    let s = Store::new(dir.path().into()).unwrap();
+    s.ingest(&account(), "INBOX", "1", &raw(), false).unwrap();
+    let m = s.snapshot(&query()).unwrap().messages[0].clone();
+    std::fs::write(
+        dir.path().join("archive").join(format!("{}.eml", m.hash)),
+        b"corrupt",
+    )
+    .unwrap();
+    let mut r = rule("scoped", "star", true);
+    r.conditions[0].value = "unrelated subject".into();
+    s.save_rules(&[r.clone()]).unwrap();
+    assert_eq!(s.run_rules().unwrap(), 0);
+    assert!(!s.mail(&m.id).unwrap().starred);
+    r.conditions[0].value = m.subject;
+    s.save_rules(&[r]).unwrap();
+    assert!(s.run_rules().is_err());
+    assert!(!s.mail(&m.id).unwrap().starred);
+}
+#[test]
+fn historical_rule_candidates_preserve_body_conditions_and_stop_order() {
+    let dir = tempfile::tempdir().unwrap();
+    let s = Store::new(dir.path().into()).unwrap();
+    s.ingest(&account(), "INBOX", "1", &raw(), false).unwrap();
+    let m = s.snapshot(&query()).unwrap().messages[0].clone();
+    let mut first = rule("body", "star", true);
+    first.conditions = vec![Condition {
+        field: "body".into(),
+        operator: "equals".into(),
+        value: s.mail(&m.id).unwrap().body,
+    }];
+    s.save_rules(&[first, rule("later", "trash", false)])
+        .unwrap();
+    assert_eq!(s.run_rules().unwrap(), 1);
+    let after = s.mail(&m.id).unwrap();
+    assert!(after.starred);
+    assert!(!after.trashed);
+}
+#[test]
 fn rule_conditions_and_validation() {
     let (m, _, _) = archive::parse(&raw(), &account(), "INBOX").unwrap();
     let mut r = rule("r", "star", false);

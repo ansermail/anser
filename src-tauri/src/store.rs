@@ -427,7 +427,11 @@ impl Store {
         tx.execute("INSERT INTO sources(account_id,folder,remote_id,mail_id) VALUES(?1,?2,?3,?4) ON CONFLICT(account_id,folder,remote_id) DO UPDATE SET mail_id=excluded.mail_id,active=1",params![a.id,folder,remote,mail.id]).map_err(err)?;
         tx.commit().map_err(err)?;
         // A deduplicated MIME can acquire its rule source on a later folder scan.
-        self.apply_rules_inner(&mail.id, !(is_new || upgraded))?;
+        if is_new || upgraded {
+            self.apply_rules(&mail.id)?;
+        } else {
+            self.apply_rules_inner(&mail.id, true)?;
+        }
         Ok(is_new)
     }
     pub fn apply_rules(&self, id: &str) -> Result<u32> {
@@ -435,12 +439,17 @@ impl Store {
     }
     fn apply_rules_inner(&self, id: &str, remote_only: bool) -> Result<u32> {
         let configured = self.rules()?;
-        if configured.is_empty()
-            || (remote_only && !configured.iter().any(|r| r.enabled && rules::remote(r)))
-        {
+        if remote_only && !configured.iter().any(|r| r.enabled && rules::remote(r)) {
             return Ok(0);
         }
-        let mut m = self.mail(id)?;
+        self.apply_configured_rules(self.mail(id)?, &configured, remote_only)
+    }
+    fn apply_configured_rules(
+        &self,
+        mut m: Mail,
+        configured: &[Rule],
+        remote_only: bool,
+    ) -> Result<u32> {
         if m.saved_locally && !remote_only {
             archive::read_raw(&self.root, &m.hash)?;
         }
@@ -534,16 +543,40 @@ impl Store {
         Ok(matches)
     }
     pub fn run_rules(&self) -> Result<u32> {
+        // Freeze the ordered configuration once per historical scan. Use the
+        // body-free projection unless a condition actually needs stored text;
+        // unrelated archives must not be opened or hashed by a scoped rule.
+        let configured = self.rules()?;
+        if !configured.iter().any(|r| r.enabled) {
+            return Ok(0);
+        }
+        let needs_body = configured.iter().any(|r| {
+            r.enabled
+                && r.conditions
+                    .iter()
+                    .any(|condition| condition.field == "body")
+        });
         let db = self.db()?;
-        let mut q = db.prepare("SELECT id FROM messages").map_err(err)?;
-        let ids = q
+        let mut q = db
+            .prepare(if needs_body {
+                "SELECT data FROM messages ORDER BY rowid"
+            } else {
+                "SELECT data FROM message_listing ORDER BY rowid"
+            })
+            .map_err(err)?;
+        let candidates = q
             .query_map([], |r| r.get::<_, String>(0))
             .map_err(err)?
             .collect::<std::result::Result<Vec<_>, _>>()
             .map_err(err)?;
         let mut n = 0;
-        for id in ids {
-            n += self.apply_rules(&id)?;
+        for data in candidates {
+            let mail: Mail = serde_json::from_str(&data).map_err(err)?;
+            if configured.iter().any(|rule| rules::matches(rule, &mail)) {
+                // Load the current full record only for candidates. Conditions
+                // and stop ordering are evaluated again before any mutation.
+                n += self.apply_configured_rules(self.mail(&mail.id)?, &configured, false)?;
+            }
         }
         Ok(n)
     }
