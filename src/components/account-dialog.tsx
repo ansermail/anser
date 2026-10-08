@@ -27,6 +27,7 @@ import { Channel } from "@tauri-apps/api/core";
 import { makeAccount, providers } from "@/lib/providers";
 import type { Account } from "@/lib/types";
 import { toast } from "sonner";
+import { AccountEmailField } from "./account-email-field";
 export function AccountDialog({
   open,
   onOpenChange,
@@ -213,32 +214,26 @@ export function AccountDialog({
               </Button>
             )}
             <fieldset disabled={busy}>
-              <div className="field">
-                <Label htmlFor="email">邮箱地址</Label>
-                <Input
-                  id="email"
-                  type="email"
-                  placeholder="you@example.com"
-                  value={account.email}
-                  required
-                  disabled={!!editing}
-                  onChange={(e) => {
-                    const email = e.target.value;
-                    const domain = email.split("@")[1];
-                    update({
-                      email,
-                      username: email,
-                      ...(account.provider === "netease" &&
-                      ["163.com", "126.com", "yeah.net"].includes(domain)
-                        ? {
-                            incomingHost: `${account.protocol === "imap" ? "imap" : "pop"}.${domain}`,
-                            smtpHost: `smtp.${domain}`,
-                          }
-                        : {}),
-                    });
-                  }}
-                />
-              </div>
+              <AccountEmailField
+                key={account.id}
+                provider={account.provider}
+                value={account.email}
+                disabled={!!editing}
+                onChange={(email) => {
+                  const domain = email.split("@")[1];
+                  update({
+                    email,
+                    username: email,
+                    ...(account.provider === "netease" &&
+                    ["163.com", "126.com", "yeah.net"].includes(domain)
+                      ? {
+                          incomingHost: `${account.protocol === "imap" ? "imap" : "pop"}.${domain}`,
+                          smtpHost: `smtp.${domain}`,
+                        }
+                      : {}),
+                  });
+                }}
+              />
               <div className="field">
                 <Label htmlFor="name">账号名称</Label>
                 <Input
