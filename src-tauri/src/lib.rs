@@ -13,6 +13,7 @@ mod operations;
 mod productivity;
 mod realtime;
 mod remote;
+mod retention;
 mod rule_operations;
 mod rules;
 mod scheduling;
@@ -713,6 +714,27 @@ async fn folder_settings(state: tauri::State<'_, AppState>, id: String) -> Resul
         .map_err(err)?
 }
 #[tauri::command]
+async fn retention_settings(
+    state: tauri::State<'_, AppState>,
+    id: String,
+) -> Result<retention::RetentionSettings> {
+    let store = state.store.clone();
+    tauri::async_runtime::spawn_blocking(move || store.retention_settings(&id))
+        .await
+        .map_err(err)?
+}
+#[tauri::command]
+async fn save_retention(
+    state: tauri::State<'_, AppState>,
+    account: Account,
+    overrides: Vec<retention::FolderRetention>,
+) -> Result<()> {
+    let store = state.store.clone();
+    tauri::async_runtime::spawn_blocking(move || store.save_retention(&account, &overrides))
+        .await
+        .map_err(err)?
+}
+#[tauri::command]
 async fn save_folder_mappings(
     state: tauri::State<'_, AppState>,
     app: tauri::AppHandle,
@@ -1046,6 +1068,8 @@ pub fn run() {
             snapshot,
             account_folders,
             folder_settings,
+            retention_settings,
+            save_retention,
             save_folder_mappings,
             sync_remote_folder,
             mail_detail,

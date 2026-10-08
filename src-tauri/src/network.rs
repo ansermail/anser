@@ -754,10 +754,20 @@ fn sync_imap_scope<T: std::io::Read + Write>(
     let remote_folders = discover_remote_folders(&a.id, session)?;
     store.save_remote_folders(&a.id, &remote_folders)?;
     let remote_folders = store.remote_folders(Some(&a.id))?;
+    let saved_folders = store
+        .retention_overrides(&a.id)?
+        .into_iter()
+        .filter(|item| item.save_locally)
+        .map(|item| item.folder)
+        .collect::<std::collections::HashSet<_>>();
     let mut folders = remote_folders
         .iter()
         .filter(|folder| folder.selectable)
-        .filter(|folder| only.is_some() || !crate::remote::excluded_from_auto_sync(folder))
+        .filter(|folder| {
+            only.is_some()
+                || saved_folders.contains(&folder.name)
+                || !crate::remote::excluded_from_auto_sync(folder)
+        })
         .map(|folder| folder.name.clone())
         .collect::<Vec<_>>();
     folders.sort_by_key(|f| !f.eq_ignore_ascii_case("INBOX"));
@@ -892,7 +902,7 @@ fn sync_imap_scope<T: std::io::Read + Write>(
                 stage = format!("下载 UID {uid} 的完整邮件");
                 let (fetched, full, latest) = loop {
                     let current = store.account(&a.id)?;
-                    let full = current.save_locally;
+                    let full = store.should_save_folder(&current, &folder)?;
                     stage = format!(
                         "下载 UID {uid} 的{}",
                         if full {
@@ -913,15 +923,18 @@ fn sync_imap_scope<T: std::io::Read + Write>(
                         imap::error::Error::Parse(_) => "服务器邮件响应无效或未完整传输".into(),
                         other => err(other),
                     })?;
-                    let latest = store.account(&a.id)?;
+                    let mut latest = store.account(&a.id)?;
                     if !latest.enabled || !latest.same_connection(a) {
                         return Err("账号已暂停或连接配置已修改，停止旧收取任务".into());
                     }
                     // Never archive headers as a complete message if retention was
                     // enabled while this request was in flight; fetch the body first.
-                    if latest.save_locally && !full {
+                    if store.should_save_folder(&latest, &folder)? && !full {
                         continue;
                     }
+                    // This payload's completeness is independent of the account
+                    // default. ingest rechecks current folder retention before saving.
+                    latest.save_locally = full;
                     break (fetched, full, latest);
                 };
                 let (raw, size, read) = if full {
@@ -2109,6 +2122,92 @@ mod tests {
         (result, written)
     }
 
+    #[test]
+    fn explicit_full_scope_includes_junk_and_online_scope_uses_headers_only() {
+        for junk in [true, false] {
+            let temp = tempfile::tempdir().unwrap();
+            let store = Store::new(temp.path().into()).unwrap();
+            let a = crate::tests::account();
+            store.save_account(&a).unwrap();
+            let folder = if junk { "Junk" } else { "INBOX" };
+            store
+                .db()
+                .unwrap()
+                .execute(
+                    "INSERT INTO folder_retention VALUES(?1,?2,?3)",
+                    rusqlite::params![a.id, folder, junk],
+                )
+                .unwrap();
+            let mut response = format!("a1 OK Login\r\n* CAPABILITY IMAP4rev1\r\na2 OK Capabilities\r\n* LIST ({}) \"/\" \"{folder}\"\r\na3 OK Listed\r\n* 1 EXISTS\r\n* OK [UIDVALIDITY 7] Valid\r\na4 OK [READ-ONLY] Opened\r\n* SEARCH 12\r\na5 OK Searched\r\n", if junk {"\\Junk"} else {""}).into_bytes();
+            let original = crate::tests::raw();
+            let end = original.windows(4).position(|w| w == b"\r\n\r\n").unwrap() + 4;
+            let payload = if junk {
+                original.as_slice()
+            } else {
+                &original[..end]
+            };
+            let section = if junk { "" } else { "HEADER" };
+            response.extend_from_slice(
+                format!(
+                    "* 1 FETCH (UID 12 FLAGS () RFC822.SIZE {} BODY[{section}] {{{}}}\r\n",
+                    original.len(),
+                    payload.len()
+                )
+                .as_bytes(),
+            );
+            response.extend_from_slice(payload);
+            response.extend_from_slice(b")\r\na6 OK Fetched\r\n");
+            let commands = Arc::new(Mutex::new(Vec::new()));
+            let mut session = imap::Client::new(ImapTranscript {
+                responses: Cursor::new(response),
+                commands: commands.clone(),
+            })
+            .login("test", "fixture-only")
+            .unwrap();
+            assert_eq!(sync_imap(&store, &a, &mut session).unwrap(), 1);
+            let written = String::from_utf8(commands.lock().unwrap().clone()).unwrap();
+            assert!(written.contains("EXAMINE"));
+            assert!(store.has_source(&a.id, folder, "7:12").unwrap());
+            assert_eq!(written.contains("BODY.PEEK[]"), junk);
+            assert_eq!(written.contains("BODY.PEEK[HEADER]"), !junk);
+            let mut q = crate::tests::query();
+            q.view = "inbox".into();
+            let mail = store.snapshot(&q).unwrap().messages.remove(0);
+            assert_eq!(mail.saved_locally, junk);
+            if junk {
+                assert_eq!(store.message_raw(&mail).unwrap(), original);
+            } else {
+                assert!(mail.body.is_empty());
+                assert_eq!(mail.size, original.len() as u64);
+            }
+        }
+    }
+    #[test]
+    fn folder_full_retention_fetches_complete_mime_under_online_account_default() {
+        let temp = tempfile::tempdir().unwrap();
+        let store = Store::new(temp.path().into()).unwrap();
+        let mut a = crate::tests::account();
+        a.save_locally = false;
+        store.save_account(&a).unwrap();
+        store
+            .db()
+            .unwrap()
+            .execute("INSERT INTO folder_retention VALUES(?1,'INBOX',1)", [&a.id])
+            .unwrap();
+        let raw = crate::tests::raw();
+        let (result, commands) = imap_round(&store, Some(7), "", Some(12), Some(&raw));
+        assert_eq!(result.unwrap(), 1);
+        assert!(commands.contains("BODY.PEEK[]"));
+        assert!(!commands.contains("BODY.PEEK[HEADER]"));
+        let mail = store
+            .snapshot(&crate::tests::query())
+            .unwrap()
+            .messages
+            .remove(0);
+        assert!(mail.saved_locally);
+        assert_eq!(store.message_raw(&mail).unwrap(), raw);
+        assert!(!store.account(&a.id).unwrap().save_locally);
+    }
     #[test]
     fn empty_status_attributes_keep_connection_and_archive_nonempty_folder() {
         let dir = tempfile::tempdir().unwrap();

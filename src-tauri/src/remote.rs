@@ -163,10 +163,11 @@ impl Store {
         .into())
     }
     pub fn source_available(&self, a: &Account, folder: &str, remote: &str) -> Result<bool> {
+        let save = self.should_save_folder(a, folder)?;
         let data: Option<String> = self.db()?.query_row("SELECT m.data FROM sources s JOIN message_listing m ON m.id=s.mail_id WHERE s.account_id=?1 AND s.folder=?2 AND s.remote_id=?3 AND NOT EXISTS(SELECT 1 FROM folder_health h WHERE h.account_id=s.account_id AND h.folder=s.folder)",params![a.id,folder,remote],|r|r.get(0)).optional().map_err(err)?;
         Ok(data
             .and_then(|s| serde_json::from_str::<Mail>(&s).ok())
-            .is_some_and(|m| !a.save_locally || m.saved_locally))
+            .is_some_and(|m| !save || m.saved_locally))
     }
     pub(crate) fn cached_flag_uids(
         &self,
@@ -180,9 +181,14 @@ impl Store {
         let db = self.db()?;
         let mut stmt = db.prepare("SELECT s.remote_id FROM sources s JOIN message_listing m ON m.id=s.mail_id AND m.account_id=s.account_id WHERE s.account_id=?1 AND s.folder=?2 AND (?3=0 OR json_extract(m.data,'$.savedLocally')=1)").map_err(err)?;
         let rows = stmt
-            .query_map(params![account.id, folder, account.save_locally], |r| {
-                r.get::<_, String>(0)
-            })
+            .query_map(
+                params![
+                    account.id,
+                    folder,
+                    self.should_save_folder(account, folder)?
+                ],
+                |r| r.get::<_, String>(0),
+            )
             .map_err(err)?;
         let mut uids = std::collections::HashSet::new();
         for row in rows {

@@ -19,6 +19,15 @@ export interface Account {
   lastSync: string | null;
   error: string | null;
 }
+export interface FolderRetention {
+  folder: string;
+  saveLocally: boolean;
+}
+export interface RetentionSettings {
+  defaultSave: boolean;
+  folders: RemoteFolder[];
+  overrides: FolderRetention[];
+}
 export interface Mail {
   parseWarnings?: string[];
   id: string;

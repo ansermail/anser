@@ -5,7 +5,15 @@ import {
 } from "./conversations";
 import { ruleMatches } from "./rule-match";
 import { invoke, isTauri } from "@tauri-apps/api/core";
-import type { Snapshot, Query, Mail, Rule, Detail, Compose } from "./types";
+import type {
+  Account,
+  Snapshot,
+  Query,
+  Mail,
+  Rule,
+  Detail,
+  Compose,
+} from "./types";
 import { makeDemo } from "./demo";
 import { parseAddresses } from "./addresses";
 import type { Address, Contact, OutboxRecord } from "./types";
@@ -182,6 +190,22 @@ export async function call<T = void>(
         break;
       case "folder_settings":
         result = { folders: await call("account_folders", args), mappings: [] };
+        break;
+      case "retention_settings":
+        result = {
+          defaultSave:
+            demo.accounts.find((a) => a.id === args.id)?.saveLocally !== false,
+          folders: await call("account_folders", args),
+          overrides: JSON.parse(
+            localStorage.getItem(`${key}:retention:${args.id}`) || "[]",
+          ),
+        };
+        break;
+      case "save_retention":
+        localStorage.setItem(
+          `${key}:retention:${(args.account as Account).id}`,
+          JSON.stringify(args.overrides),
+        );
         break;
       case "preview_rule":
         result = demo.messages
@@ -535,6 +559,7 @@ export async function call<T = void>(
         "directory_operations",
         "rule_executions",
         "folder_settings",
+        "retention_settings",
         "copy_sources",
       ].includes(command)
     )

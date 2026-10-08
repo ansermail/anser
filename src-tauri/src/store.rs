@@ -98,6 +98,7 @@ impl Store {
         crate::directory_operations::initialize(&db)?;
         crate::sent_uploads::initialize(&db)?;
         crate::rule_operations::initialize(&db)?;
+        crate::retention::initialize(&db)?;
         s.migrate_folder_roles()?;
         s.recover_archive_deletion()?;
         s.refresh_archive_metadata()?;
@@ -234,6 +235,8 @@ impl Store {
                 .map_err(err)?;
             tx.execute("DELETE FROM folder_mappings WHERE account_id=?1", [&a.id])
                 .map_err(err)?;
+            tx.execute("DELETE FROM folder_retention WHERE account_id=?1", [&a.id])
+                .map_err(err)?;
         }
         tx.commit().map_err(err)
     }
@@ -252,6 +255,8 @@ impl Store {
         tx.execute("DELETE FROM folder_mappings WHERE account_id=?1", [id])
             .map_err(err)?;
         tx.execute("DELETE FROM remote_folders WHERE account_id=?1", [id])
+            .map_err(err)?;
+        tx.execute("DELETE FROM folder_retention WHERE account_id=?1", [id])
             .map_err(err)?;
         tx.execute("UPDATE server_operations SET status='blocked',revision=revision+1,error='账号已移除，本地存档保留' WHERE account_id=?1 AND status!='completed'", [id]).map_err(err)?;
         tx.execute("DELETE FROM accounts WHERE id=?1", [id])
@@ -329,12 +334,13 @@ impl Store {
         // A cleanup can disable retention while a FETCH is in flight. Do not
         // republish an old request as a local archive after it finishes.
         let mut a = a.clone();
-        if folder != "Sent"
-            && self
-                .account(&a.id)
-                .is_ok_and(|current| !current.save_locally)
-        {
-            a.save_locally = false;
+        // Only a confirmed local SMTP record can bypass receiving retention.
+        // A real server folder also named Sent must obey the latest scope.
+        let local_sent = folder == "Sent" && self.db()?.query_row("SELECT EXISTS(SELECT 1 FROM outbox WHERE id=?1 AND status='sent' AND json_extract(data,'$.accountId')=?2)", params![remote,a.id], |r|r.get::<_,bool>(0)).map_err(err)?;
+        if !local_sent {
+            if let Ok(current) = self.account(&a.id) {
+                a.save_locally &= self.should_save_folder(&current, folder)?;
+            }
         }
         let a = &a;
         let (mut mail, _, _) = archive::parse(raw, a, folder)?;
@@ -823,7 +829,7 @@ impl Store {
             )?;
         }
         drop(stmt);
-        snap.execute_batch("DELETE FROM accounts; DELETE FROM drafts; DELETE FROM outbox; DELETE FROM sent_uploads; DELETE FROM logs; DELETE FROM server_operations; DELETE FROM folder_health; DELETE FROM directory_operations; DELETE FROM rule_executions; VACUUM;").map_err(err)?;
+        snap.execute_batch("DELETE FROM accounts; DELETE FROM folder_retention; DELETE FROM drafts; DELETE FROM outbox; DELETE FROM sent_uploads; DELETE FROM logs; DELETE FROM server_operations; DELETE FROM folder_health; DELETE FROM directory_operations; DELETE FROM rule_executions; VACUUM;").map_err(err)?;
         archive::atomic_write(
             &folder.join("manifest.json"),
             br#"{"format":"mail-desktop-archive","version":1}"#,

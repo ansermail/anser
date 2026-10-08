@@ -22,6 +22,7 @@ import { ServerOperations } from "./components/server-operations";
 import { DirectoryOperationsPanel } from "./components/server-copy";
 import { ServerDirectoryMenu } from "./components/server-directory-menu";
 import { FolderMappingDialog } from "./components/folder-mapping-dialog";
+import { RetentionDialog } from "./components/retention-dialog";
 import { RemoteFolderList } from "./components/remote-folder-list";
 import { remoteFolderLabel } from "./lib/remote-folders";
 import { coalesceRefresh } from "./lib/refresh-queue";
@@ -98,6 +99,7 @@ import { Checkbox } from "./components/ui/checkbox";
 import {
   DropdownMenu,
   DropdownMenuContent,
+  DropdownMenuGroup,
   DropdownMenuItem,
   DropdownMenuCheckboxItem,
   DropdownMenuRadioGroup,
@@ -216,6 +218,7 @@ export default function App() {
     [accountDialog, setAccountDialog] = useState(false),
     [editingAccount, setEditingAccount] = useState<Account | null>(null),
     [mappingAccount, setMappingAccount] = useState<Account | null>(null),
+    [retentionAccount, setRetentionAccount] = useState<Account | null>(null),
     [contactSeed, setContactSeed] = useState<Address | null>(null),
     [draft, setDraft] = useState<Compose | null>(null),
     [drafts, setDrafts] = useState<Compose[]>([]),
@@ -1253,6 +1256,7 @@ export default function App() {
                           <p>
                             {a.email}{" "}
                             <Badge variant="outline">
+                              默认：
                               {a.saveLocally === false
                                 ? "在线阅读"
                                 : "本地留存"}
@@ -1278,55 +1282,64 @@ export default function App() {
                             </Button>
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end">
-                            <DropdownMenuItem
-                              onClick={() => {
-                                setEditingAccount(a);
-                                setAccountDialog(true);
-                              }}
-                            >
-                              编辑账号配置
-                            </DropdownMenuItem>
-                            {a.protocol === "imap" && (
+                            <DropdownMenuGroup>
                               <DropdownMenuItem
-                                onClick={() => setMappingAccount(a)}
+                                onClick={() => {
+                                  setEditingAccount(a);
+                                  setAccountDialog(true);
+                                }}
                               >
-                                特殊文件夹
+                                编辑账号配置
                               </DropdownMenuItem>
-                            )}
-                            <DropdownMenuItem
-                              onClick={() =>
-                                void call("account_action", {
-                                  id: a.id,
-                                  remove: false,
-                                })
-                                  .then(refresh)
-                                  .catch((e) => toast.error(String(e)))
-                              }
-                            >
-                              {a.enabled ? "暂停收取" : "启用收取"}
-                            </DropdownMenuItem>
-                            <DropdownMenuSeparator />
-                            <DropdownMenuItem
-                              variant="destructive"
-                              onClick={async () => {
-                                if (
-                                  await askConfirmation({
-                                    title: "移除账号？",
-                                    description: `移除 ${a.email} 后停止收取，本地完整存档会保留，未存档的列表记录将清理。`,
-                                    action: "移除账号",
-                                    destructive: true,
-                                  })
-                                )
+                              {a.protocol === "imap" && (
+                                <DropdownMenuItem
+                                  onClick={() => setRetentionAccount(a)}
+                                >
+                                  文件夹保存范围
+                                </DropdownMenuItem>
+                              )}
+                              {a.protocol === "imap" && (
+                                <DropdownMenuItem
+                                  onClick={() => setMappingAccount(a)}
+                                >
+                                  特殊文件夹
+                                </DropdownMenuItem>
+                              )}
+                              <DropdownMenuItem
+                                onClick={() =>
                                   void call("account_action", {
                                     id: a.id,
-                                    remove: true,
+                                    remove: false,
                                   })
                                     .then(refresh)
-                                    .catch((e) => toast.error(String(e)));
-                              }}
-                            >
-                              移除账号，保留存档
-                            </DropdownMenuItem>
+                                    .catch((e) => toast.error(String(e)))
+                                }
+                              >
+                                {a.enabled ? "暂停收取" : "启用收取"}
+                              </DropdownMenuItem>
+                              <DropdownMenuSeparator />
+                              <DropdownMenuItem
+                                variant="destructive"
+                                onClick={async () => {
+                                  if (
+                                    await askConfirmation({
+                                      title: "移除账号？",
+                                      description: `移除 ${a.email} 后停止收取，本地完整存档会保留，未存档的列表记录将清理。`,
+                                      action: "移除账号",
+                                      destructive: true,
+                                    })
+                                  )
+                                    void call("account_action", {
+                                      id: a.id,
+                                      remove: true,
+                                    })
+                                      .then(refresh)
+                                      .catch((e) => toast.error(String(e)));
+                                }}
+                              >
+                                移除账号，保留存档
+                              </DropdownMenuItem>
+                            </DropdownMenuGroup>
                           </DropdownMenuContent>
                         </DropdownMenu>
                       </article>
@@ -2238,6 +2251,11 @@ export default function App() {
       <FolderMappingDialog
         account={mappingAccount}
         onClose={() => setMappingAccount(null)}
+        onSaved={() => void refresh()}
+      />
+      <RetentionDialog
+        account={retentionAccount}
+        onClose={() => setRetentionAccount(null)}
         onSaved={() => void refresh()}
       />
       <AccountDialog

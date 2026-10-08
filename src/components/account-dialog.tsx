@@ -427,6 +427,8 @@ export function AccountDialog({
                   {account.saveLocally !== false
                     ? "保存完整正文与附件，服务器删除后仍可阅读。"
                     : "仅保存列表信息，打开正文时从服务器加载。已有存档保留。"}
+                  {account.protocol === "imap" &&
+                    " 此项为账号默认，文件夹可在设置中单独选择保存范围。"}
                 </small>
               </div>
             </div>

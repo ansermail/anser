@@ -280,6 +280,11 @@ impl Store {
         }
         if stop_saving {
             tx.execute("UPDATE accounts SET data=json_set(data,'$.saveLocally',json('false')) WHERE ?1='' OR id=?1", [account]).map_err(err)?;
+            tx.execute(
+                "DELETE FROM folder_retention WHERE ?1='' OR account_id=?1",
+                [account],
+            )
+            .map_err(err)?;
         }
         let stage = self
             .root
