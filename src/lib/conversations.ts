@@ -15,6 +15,7 @@ export function conversationIndex(messages: Mail[]) {
   messages.forEach((mail, i) => {
     for (const id of [
       mail.messageId,
+      mail.serverMessageId,
       ...(mail.inReplyTo || []),
       ...(mail.references || []),
     ].filter(Boolean)) {
@@ -40,7 +41,7 @@ export function conversationMessages(messages: Mail[], selected: Mail) {
       index.get(mail.id) !== index.get(selected.id)
     )
       continue;
-    const key = mail.messageId || mail.id;
+    const key = mail.serverMessageId || mail.messageId || mail.id;
     if (!seen.has(key) || mail.id === selected.id) seen.set(key, mail);
   }
   return [...seen.values()].sort(
@@ -57,7 +58,7 @@ export function conversationSummaries(filtered: Mail[], all: Mail[]) {
     const key = JSON.stringify([index.get(mail.id), mail.trashed]);
     let identities = counts.get(key);
     if (!identities) counts.set(key, (identities = new Set()));
-    identities.add(mail.messageId || mail.id);
+    identities.add(mail.serverMessageId || mail.messageId || mail.id);
   }
   for (const mail of filtered) {
     const key = index.get(mail.id)!;
@@ -77,16 +78,17 @@ export function conversationSummaries(filtered: Mail[], all: Mail[]) {
   return [...groups.values()];
 }
 export function replyHeaders(mail: Mail) {
-  if (!mail.messageId) return {};
+  const messageId = mail.serverMessageId || mail.messageId;
+  if (!messageId) return {};
   const references = [
     ...new Set([
       ...(mail.references?.length ? mail.references : mail.inReplyTo || []),
-      mail.messageId,
+      messageId,
     ]),
   ];
   // Keep root plus recent ancestry within the outgoing-header bound.
   return {
-    inReplyTo: mail.messageId,
+    inReplyTo: messageId,
     references:
       references.length > 100
         ? [references[0], ...references.slice(-99)]

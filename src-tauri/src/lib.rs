@@ -15,6 +15,7 @@ mod realtime;
 mod remote;
 mod rules;
 mod scheduling;
+mod sent_uploads;
 mod store;
 mod sync_control;
 use models::*;
@@ -359,6 +360,23 @@ async fn list_outbox(state: tauri::State<'_, AppState>) -> Result<Vec<OutboxReco
     tauri::async_runtime::spawn_blocking(move || store.outbox())
         .await
         .map_err(err)?
+}
+#[tauri::command]
+async fn sent_upload_action(
+    state: tauri::State<'_, AppState>,
+    id: String,
+    action: String,
+) -> Result<()> {
+    let store = state.store.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        if action == "queue" {
+            store.queue_sent_upload(&id)
+        } else {
+            store.sent_upload_action(&id, &action)
+        }
+    })
+    .await
+    .map_err(err)?
 }
 #[tauri::command]
 fn retry_outbox(
@@ -909,6 +927,7 @@ pub fn run() {
             realtime::start(store.clone(), app.handle().clone(), realtime);
             operations::start(store.clone(), app.handle().clone());
             directory_operations::start(store.clone(), app.handle().clone());
+            sent_uploads::start(store.clone(), app.handle().clone());
             let menu = tauri::menu::Menu::default(app.handle())?;
             app.set_menu(menu)?;
             tauri::tray::TrayIconBuilder::new()
@@ -1018,6 +1037,7 @@ pub fn run() {
             delete_contact,
             contact_suggestions,
             list_outbox,
+            sent_upload_action,
             retry_outbox,
             archive_outbox,
             get_preferences,

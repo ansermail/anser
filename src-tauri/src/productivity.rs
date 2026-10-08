@@ -180,6 +180,10 @@ impl Store {
                 )
                 .map_err(err)?;
             let archived = exists && archive::read_raw(&self.root, &hash).is_ok();
+            let server_copy = self.sent_upload(&id)?;
+            let server_copy_available = self
+                .account(&draft.account_id)
+                .is_ok_and(|a| a.enabled && a.protocol == "imap");
             out.push(OutboxRecord {
                 id,
                 status,
@@ -188,6 +192,8 @@ impl Store {
                 updated_at,
                 archived,
                 scheduled_at,
+                server_copy,
+                server_copy_available,
             });
         }
         Ok(out)
@@ -230,8 +236,17 @@ impl Store {
             return Err("仅 SMTP 已确认的邮件可恢复为已发送存档".into());
         }
         let draft: Compose = serde_json::from_str(&data).map_err(err)?;
-        let account = self.account(&draft.account_id)?;
+        let mut account = self.account(&draft.account_id)?;
+        // This is an explicit local recovery, independent of received-mail retention.
+        account.save_locally = true;
         self.ingest(&account, "Sent", id, &raw, true)?;
+        if let Some(upload) = self.sent_upload(id)?.filter(|u| {
+            u.status == "completed"
+                && !u.server_message_id.is_empty()
+                && u.identity == crate::operations::identity(&account)
+        }) {
+            self.db()?.execute("UPDATE messages SET data=json_set(data,'$.serverMessageId',?3) WHERE id=(SELECT mail_id FROM sources WHERE account_id=?1 AND folder='Sent' AND remote_id=?2)",params![account.id,id,upload.server_message_id]).map_err(err)?;
+        }
         self.db()?
             .execute("DELETE FROM drafts WHERE id=?1", [id])
             .map_err(err)?;

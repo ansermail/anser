@@ -321,6 +321,7 @@ pub fn parse(
         saved_locally: true,
         server_date: String::new(),
         source_folder: folder.into(),
+        server_message_id: String::new(),
         message_id: message_ids(
             &parsed
                 .headers

@@ -113,6 +113,8 @@ pub struct Mail {
     pub source_folder: String,
     #[serde(default)]
     pub message_id: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub server_message_id: String,
     #[serde(default)]
     pub in_reply_to: Vec<String>,
     #[serde(default)]
@@ -275,6 +277,9 @@ pub struct OutboxRecord {
     pub updated_at: String,
     pub archived: bool,
     pub scheduled_at: String,
+    pub server_copy: Option<crate::sent_uploads::SentUpload>,
+    #[serde(default)]
+    pub server_copy_available: bool,
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]

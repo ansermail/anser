@@ -69,6 +69,7 @@ mod tests {
         .unwrap();
         let record = &s.outbox().unwrap()[0];
         assert_eq!(record.status, "sent");
+        assert_eq!(record.server_copy.as_ref().unwrap().status, "queued");
         assert!(record.archived);
         assert!(s.cancel_schedule(&d.id).is_err());
         assert!(s

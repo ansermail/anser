@@ -42,6 +42,7 @@ export interface Mail {
   serverDate?: string;
   sourceFolder: string;
   messageId?: string;
+  serverMessageId?: string;
   inReplyTo?: string[];
   references?: string[];
   conversationId?: string;
@@ -153,6 +154,16 @@ export interface OutboxRecord {
   updatedAt: string;
   archived: boolean;
   scheduledAt?: string;
+  serverCopyAvailable?: boolean;
+  serverCopy?: {
+    targetLabel?: string;
+    origin?: string;
+    status: string;
+    target: string;
+    error: string;
+    validity: number;
+    uid?: number;
+  };
 }
 export interface Preferences {
   syncIntervalMinutes: number;

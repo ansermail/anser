@@ -1266,11 +1266,7 @@ pub(crate) fn send_with<T>(
             "发送未完成：{error}。草稿和发送记录已保留，请检查发送记录。"
         ));
     }
-    db.execute(
-        "UPDATE outbox SET status='sent',updated_at=?2 WHERE id=?1",
-        rusqlite::params![c.id, chrono::Utc::now().to_rfc3339()],
-    )
-    .map_err(err)?;
+    store.confirm_smtp(&a, &c.id)?;
     let mut sent_account = a.clone();
     sent_account.save_locally = true;
     let saved = store.ingest(&sent_account, "Sent", &c.id, &raw, true);
@@ -1315,7 +1311,7 @@ pub(crate) fn deliver_scheduled(
         store.finish_send(&c.id, status, &error)?;
         return Err(error);
     }
-    store.finish_send(&c.id, "sent", "")?;
+    store.confirm_smtp(&a, &c.id)?;
     let mut sent_account = a.clone();
     sent_account.save_locally = true;
     match store.ingest(&sent_account, "Sent", &c.id, &scheduled.raw, true) {
@@ -4153,5 +4149,787 @@ mod copy_tests {
             store.directory_operation(&op.id).unwrap().status,
             "cleanup_running"
         );
+    }
+}
+
+// APPEND receipts must not capture outgoing credentials or MIME literals.
+#[derive(Default, Debug)]
+struct AppendCapture {
+    enabled: bool,
+    input: Vec<u8>,
+    tag: Option<String>,
+    overflow: bool,
+}
+#[derive(Debug)]
+struct AppendStream<T> {
+    inner: T,
+    capture: Arc<Mutex<AppendCapture>>,
+}
+impl<T: std::io::Read> std::io::Read for AppendStream<T> {
+    fn read(&mut self, b: &mut [u8]) -> std::io::Result<usize> {
+        let n = self.inner.read(b)?;
+        if let Ok(mut c) = self.capture.lock() {
+            if c.enabled {
+                if c.input.len() + n <= 65536 {
+                    c.input.extend_from_slice(&b[..n]);
+                } else {
+                    c.overflow = true;
+                }
+            }
+        }
+        Ok(n)
+    }
+}
+impl<T: Write> Write for AppendStream<T> {
+    fn write(&mut self, b: &[u8]) -> std::io::Result<usize> {
+        let n = self.inner.write(b)?;
+        if let Ok(mut c) = self.capture.lock() {
+            if c.enabled && c.tag.is_none() {
+                c.tag = std::str::from_utf8(&b[..n.min(128)])
+                    .ok()
+                    .and_then(|s| s.split_whitespace().next())
+                    .map(str::to_string);
+            }
+        }
+        Ok(n)
+    }
+    fn flush(&mut self) -> std::io::Result<()> {
+        self.inner.flush()
+    }
+}
+fn append_uid(c: &AppendCapture, validity: u32) -> Result<Option<u32>> {
+    use imap_proto::{Response, Status};
+    if c.overflow {
+        return Err("上传响应超出大小限制，只能核对结果".into());
+    }
+    let tag = c.tag.as_deref().ok_or("上传命令标识缺失")?;
+    let mut bytes = c.input.as_slice();
+    while !bytes.is_empty() {
+        let (rest, response) = imap_proto::parse_response(bytes)
+            .map_err(|_| "上传响应无效或未完整传输，只能核对结果")?;
+        bytes = rest;
+        if let Response::Done {
+            tag: actual,
+            status: Status::Ok,
+            information,
+            ..
+        } = response
+        {
+            if actual.as_bytes() != tag.as_bytes() {
+                continue;
+            }
+            let Some(info) = information else {
+                return Ok(None);
+            };
+            let Some(code) = info
+                .strip_prefix('[')
+                .and_then(|s| s.split_once(']').map(|(code, _)| code))
+            else {
+                return Ok(None);
+            };
+            let fields: Vec<_> = code.split_whitespace().collect();
+            if fields
+                .first()
+                .is_none_or(|v| !v.eq_ignore_ascii_case("APPENDUID"))
+            {
+                return Ok(None);
+            }
+            let one = |s: &str| s.parse::<u32>().ok().filter(|v| *v > 0);
+            if fields.len() != 3 || one(fields[1]) != Some(validity) {
+                return Err("上传回执的目录标识不匹配，只能核对结果".into());
+            }
+            return one(fields[2])
+                .map(Some)
+                .ok_or("上传回执 UID 无效，只能核对结果".into());
+        }
+    }
+    Err("上传完成确认缺失，只能核对结果".into())
+}
+fn append_rejection(c: &AppendCapture) -> Option<String> {
+    use imap_proto::{Response, Status};
+    if c.overflow {
+        return None;
+    }
+    let tag = c.tag.as_deref()?;
+    let mut bytes = c.input.as_slice();
+    while !bytes.is_empty() {
+        let (rest, response) = imap_proto::parse_response(bytes).ok()?;
+        bytes = rest;
+        if let Response::Done {
+            tag: actual,
+            status: Status::No | Status::Bad,
+            information,
+            ..
+        } = response
+        {
+            if actual.as_bytes() == tag.as_bytes() {
+                return Some(
+                    information
+                        .unwrap_or("服务器拒绝 APPEND")
+                        .chars()
+                        .take(256)
+                        .collect(),
+                );
+            }
+        }
+    }
+    None
+}
+// Preserve all original headers and the complete MIME body/attachments.
+// Relays may add trace/signature headers; those additions do not duplicate a send.
+fn sent_headers_match(
+    original: &[mailparse::MailHeader<'_>],
+    server: &[mailparse::MailHeader<'_>],
+    renamed: bool,
+) -> bool {
+    use mailparse::MailHeaderMap;
+    for h in original {
+        let name = h.get_key();
+        if renamed && name.eq_ignore_ascii_case("Message-ID") {
+            continue;
+        }
+        if original.get_all_values(&name) != server.get_all_values(&name) {
+            return false;
+        }
+    }
+    for name in [
+        "From",
+        "Sender",
+        "Reply-To",
+        "To",
+        "Cc",
+        "Bcc",
+        "Date",
+        "Subject",
+        "Message-ID",
+        "In-Reply-To",
+        "References",
+        "MIME-Version",
+        "Content-Type",
+        "Content-Transfer-Encoding",
+        "Content-Disposition",
+        "Content-ID",
+    ] {
+        if renamed && name == "Message-ID" {
+            continue;
+        }
+        if original.get_all_values(name) != server.get_all_values(name) {
+            return false;
+        }
+    }
+    true
+}
+#[cfg(test)]
+fn sent_content_matches(local: &[u8], remote: &[u8]) -> Result<bool> {
+    sent_content_matches_id(local, remote, false)
+}
+fn sent_content_matches_id(local: &[u8], remote: &[u8], renamed: bool) -> Result<bool> {
+    use mailparse::MailHeaderMap;
+    let (original, start) = mailparse::parse_headers(local).map_err(err)?;
+    let (server, server_start) = mailparse::parse_headers(remote).map_err(err)?;
+    if !sent_headers_match(&original, &server, renamed) {
+        return Ok(false);
+    }
+    let body = &local[start..];
+    let server_body = &remote[server_start..];
+    if body != server_body {
+        // Compare a narrowly observed empty multipart epilogue; preserve raw MIME.
+        let kind = mailparse::parse_content_type(
+            &original.get_first_value("Content-Type").unwrap_or_default(),
+        );
+        let closing = kind.params.get("boundary").map(|v| format!("--{v}--\r\n"));
+        if !kind.mimetype.starts_with("multipart/")
+            || closing.is_none_or(|v| !body.ends_with(v.as_bytes()))
+            || !matches!(
+                server_body.strip_prefix(body),
+                Some(b"\r\n") | Some(b"\r\n\r\n")
+            )
+        {
+            return Ok(false);
+        }
+    }
+    Ok(true)
+}
+fn sent_fetch_match<T: std::io::Read + Write>(
+    session: &mut imap::Session<T>,
+    uid: u32,
+    raw: &[u8],
+    renamed: bool,
+) -> Result<String> {
+    let result = session
+        .uid_fetch(uid.to_string(), "(UID BODY.PEEK[])")
+        .map_err(err)?;
+    if result.len() != 1 || result[0].uid != Some(uid) {
+        return Err("已发送副本不存在或返回编号不匹配，只能核对结果".into());
+    }
+    let body = result[0].body().ok_or("已发送副本未返回完整原件")?;
+    if !sent_content_matches_id(raw, body, renamed)? {
+        return Err("服务器副本的邮件头或 MIME 内容不同，请人工核对；不会再次上传".into());
+    }
+    let (headers, _) = mailparse::parse_headers(body).map_err(err)?;
+    use mailparse::MailHeaderMap;
+    let values = headers.get_all_values("Message-ID");
+    if values.len() != 1
+        || archive::message_ids(&values[0]) != values
+        || values[0].len() > 998
+        || !values[0].is_ascii()
+    {
+        return Err("服务器副本 Message-ID 无效".into());
+    }
+    Ok(values[0].clone())
+}
+fn sent_find<T: std::io::Read + Write>(
+    session: &mut imap::Session<T>,
+    u: &crate::sent_uploads::SentUpload,
+    raw: &[u8],
+    allow_renamed: bool,
+) -> Result<Option<(u32, String)>> {
+    use mailparse::MailHeaderMap;
+    let mid = u.message_id.replace('\\', "\\\\").replace('"', "\\\"");
+    let ids = session
+        .uid_search(format!("HEADER Message-ID \"{mid}\""))
+        .map_err(err)?;
+    if ids.len() > 1 {
+        return Err("已发送目录有多个匹配副本，请人工核对；不会再次上传".into());
+    }
+    if let Some(uid) = ids.into_iter().next() {
+        return Ok(Some((uid, sent_fetch_match(session, uid, raw, false)?)));
+    }
+    if !allow_renamed {
+        return Ok(None);
+    }
+    // QQ rewrites Message-ID in its automatic SMTP archive. A generated random
+    // multipart boundary plus all immutable headers and the entire MIME payload
+    // identify the outgoing instance. Equal subject/date alone is never enough.
+    let (headers, _) = mailparse::parse_headers(raw).map_err(err)?;
+    let kind =
+        mailparse::parse_content_type(&headers.get_first_value("Content-Type").unwrap_or_default());
+    if !kind.mimetype.starts_with("multipart/")
+        || kind.params.get("boundary").is_none_or(|v| v.len() < 16)
+    {
+        return Ok(None);
+    }
+    let Some(date) = headers
+        .get_first_value("Date")
+        .and_then(|v| chrono::DateTime::parse_from_rfc2822(&v).ok())
+    else {
+        return Ok(None);
+    };
+    let from = archive::addresses(&headers.get_first_value("From").unwrap_or_default())?;
+    if from.len() != 1 {
+        return Ok(None);
+    }
+    let query = format!(
+        "SENTSINCE {} SENTBEFORE {}",
+        (date - chrono::Duration::days(1)).format("%d-%b-%Y"),
+        (date + chrono::Duration::days(2)).format("%d-%b-%Y")
+    );
+    let ids = session.uid_search(query).map_err(err)?;
+    // QQ can return a broad result despite date keys. Header batches remain
+    // bounded; download full MIME only after every original header matches.
+    if ids.len() > 1000 || ids.contains(&0) {
+        return Err("已发送邮件头候选过多或编号无效，无法完整核对；不会上传".into());
+    }
+    let mut ids: Vec<u32> = ids.into_iter().collect();
+    ids.sort_unstable();
+    let mut candidates = Vec::new();
+    for batch in ids.chunks(50) {
+        let set = batch
+            .iter()
+            .map(u32::to_string)
+            .collect::<Vec<_>>()
+            .join(",");
+        let fetched = session
+            .uid_fetch(set, "(UID BODY.PEEK[HEADER])")
+            .map_err(err)?;
+        let returned: std::collections::HashSet<u32> =
+            fetched.iter().filter_map(|v| v.uid).collect();
+        if fetched.len() != batch.len()
+            || returned.len() != batch.len()
+            || batch.iter().any(|uid| !returned.contains(uid))
+        {
+            return Err("候选目录在核对中变化或返回编号无效，请刷新后只读核对".into());
+        }
+        for message in fetched.iter() {
+            let header = message.header().ok_or("候选副本缺少邮件头")?;
+            let (remote, _) = mailparse::parse_headers(header).map_err(err)?;
+            if sent_headers_match(&headers, &remote, true) {
+                candidates.push(message.uid.unwrap());
+            }
+        }
+    }
+    if candidates.len() > 20 {
+        return Err("全文候选副本过多，无法唯一核对；不会上传".into());
+    }
+    let mut found = None;
+    for uid in candidates {
+        let server_id = sent_fetch_match(session, uid, raw, true)?;
+        if found.is_some() {
+            return Err("有多个全文一致的改写标识副本，不能猜测目录来源".into());
+        }
+        found = Some((uid, server_id));
+    }
+    Ok(found)
+}
+fn upload_sent_session<T: std::io::Read + Write>(
+    store: &Store,
+    job: &crate::sent_uploads::SentUpload,
+    session: &mut imap::Session<T>,
+    capture: &Arc<Mutex<AppendCapture>>,
+) -> Result<()> {
+    let mut u = store.sent_upload(&job.id)?.ok_or("上传任务不存在")?;
+    let (account, raw) = store.upload_content(&u)?;
+    let allow_renamed = account.provider == "qq";
+    let target = store.upload_target(&u)?;
+    let mailbox = examine_verified(session, &target)?;
+    let validity = mailbox_uid_validity(session, &target, &mailbox)?
+        .ok_or("已发送目录缺少可靠 UIDVALIDITY，未执行上传")?;
+    let read_only = job.status != "queued";
+    if read_only {
+        if u.validity != validity || u.target != target {
+            return Err("原上传目录的 UIDVALIDITY 已变化，不能确认旧上传结果".into());
+        }
+    } else {
+        store.bind_upload(&u, &target, validity)?;
+        u = store.sent_upload(&u.id)?.unwrap();
+    }
+    // Tencent may reject writes after EXAMINE. SELECT changes session access
+    // only; it never marks/deletes mail and we never issue CLOSE/EXPUNGE.
+    let selected = session.select(&u.target).map_err(err)?;
+    if selected.uid_validity != Some(u.validity) {
+        return Err("上传前目录 UIDVALIDITY 无法确认或已变化，尚未提交".into());
+    }
+    if let Some(uid) = u.uid {
+        let server_id = sent_fetch_match(session, uid, &raw, allow_renamed)?;
+        if !u.server_message_id.is_empty() && server_id != u.server_message_id {
+            return Err("已确认的服务器 Message-ID 已变化，请人工核对".into());
+        }
+        store.set_upload_server_id(&u.id, &server_id)?;
+        store.receipt_upload(&u, uid)?;
+        return store.complete_upload(&store.sent_upload(&u.id)?.unwrap());
+    }
+    if let Some((uid, server_id)) = sent_find(session, &u, &raw, allow_renamed)? {
+        store.set_upload_server_id(&u.id, &server_id)?;
+        store.receipt_upload(&u, uid)?;
+        return store.complete_upload(&store.sent_upload(&u.id)?.unwrap());
+    }
+    if read_only {
+        return Err("暂未找到唯一且内容一致的已发送副本；不会重新上传，请稍后只读核对".into());
+    }
+    store.submit_upload(&u)?;
+    *capture.lock().map_err(err)? = AppendCapture {
+        enabled: true,
+        ..Default::default()
+    };
+    // imap 2.4 does not escape the mailbox in its APPEND builder.
+    let quoted = u.target.replace('\\', "\\\\").replace('"', "\\\"");
+    let (headers, _) = mailparse::parse_headers(&raw).map_err(err)?;
+    use mailparse::MailHeaderMap;
+    let date = headers
+        .get_first_value("Date")
+        .and_then(|v| chrono::DateTime::parse_from_rfc2822(&v).ok());
+    let result =
+        session.append_with_flags_and_date(&quoted, &raw, &[imap::types::Flag::Seen], date);
+    capture.lock().map_err(err)?.enabled = false;
+    if matches!(&result, Err(imap::error::Error::Append)) {
+        // imap 2.4 emits Error::Append exclusively before writing the literal.
+        // A tagged NO/BAD therefore proves this attempt transmitted no MIME.
+        if let Some(reason) = append_rejection(&*capture.lock().map_err(err)?) {
+            let error = format!("服务器明确拒绝上传，原件尚未传输：{reason}");
+            store.reject_upload_before_literal(&u.id, &error)?;
+            return Err(error);
+        }
+    }
+    result.map_err(|e| format!("上传已提交但确认未取得：{e}；不会自动重复上传"))?;
+    let uid = append_uid(&*capture.lock().map_err(err)?, u.validity)?;
+    if let Some(uid) = uid {
+        store.receipt_upload(&u, uid)?;
+    }
+    // Reopen read-only after APPEND; never CLOSE/EXPUNGE or change other flags.
+    let mailbox = examine_verified(session, &u.target)?;
+    let current = mailbox_uid_validity(session, &u.target, &mailbox)?;
+    if current != Some(u.validity) {
+        return Err("上传后目标目录的 UIDVALIDITY 已变化，只能核对结果".into());
+    }
+    let uid = match uid {
+        Some(uid) => {
+            let server_id = sent_fetch_match(session, uid, &raw, allow_renamed)?;
+            store.set_upload_server_id(&u.id, &server_id)?;
+            uid
+        }
+        None => {
+            let (uid, server_id) = sent_find(session, &u, &raw, allow_renamed)?
+                .ok_or("上传成功响应已收到，但副本尚未核对到；不会再次上传")?;
+            store.set_upload_server_id(&u.id, &server_id)?;
+            uid
+        }
+    };
+    if u.uid.is_none() && store.sent_upload(&u.id)?.unwrap().uid.is_none() {
+        store.receipt_upload(&u, uid)?;
+    }
+    store.complete_upload(&store.sent_upload(&u.id)?.unwrap())
+}
+pub(crate) fn upload_sent(store: &Store, job: &crate::sent_uploads::SentUpload) -> Result<()> {
+    let target = store.upload_target(job)?;
+    let gate = crate::sync_control::folder_gate(&store.root, &job.account_id, &target)?;
+    let _guard = gate.lock().map_err(err)?;
+    let (a, _) = store.upload_content(job)?;
+    let capture = Arc::new(Mutex::new(AppendCapture::default()));
+    let shared = capture.clone();
+    let mut session =
+        imap_session_using(&a, &auth::credentials(&a)?, None, |inner| AppendStream {
+            inner,
+            capture: shared,
+        })?;
+    upload_sent_session(store, job, &mut session, &capture)
+}
+
+#[cfg(test)]
+mod sent_tests {
+    use super::*;
+    use std::{
+        collections::VecDeque,
+        io::{Cursor, Read},
+    };
+    #[derive(Debug)]
+    struct Wire {
+        responses: VecDeque<Vec<u8>>,
+        current: Cursor<Vec<u8>>,
+        pending: bool,
+        written: Arc<Mutex<Vec<u8>>>,
+    }
+    impl Read for Wire {
+        fn read(&mut self, b: &mut [u8]) -> std::io::Result<usize> {
+            self.current.read(b)
+        }
+    }
+    impl Write for Wire {
+        fn write(&mut self, b: &[u8]) -> std::io::Result<usize> {
+            self.written.lock().unwrap().extend(b);
+            self.pending = true;
+            Ok(b.len())
+        }
+        fn flush(&mut self) -> std::io::Result<()> {
+            if self.pending {
+                self.current = Cursor::new(self.responses.pop_front().unwrap_or_default());
+                self.pending = false;
+            }
+            Ok(())
+        }
+    }
+    fn session(
+        replies: Vec<Vec<u8>>,
+    ) -> (
+        imap::Session<AppendStream<Wire>>,
+        Arc<Mutex<AppendCapture>>,
+        Arc<Mutex<Vec<u8>>>,
+    ) {
+        let written = Arc::new(Mutex::new(Vec::new()));
+        let capture = Arc::new(Mutex::new(AppendCapture::default()));
+        let wire = Wire {
+            responses: replies.into(),
+            current: Cursor::new(Vec::new()),
+            pending: false,
+            written: written.clone(),
+        };
+        let client = imap::Client::new(AppendStream {
+            inner: wire,
+            capture: capture.clone(),
+        });
+        (
+            client.login("fixture", "not-real").unwrap(),
+            capture,
+            written,
+        )
+    }
+    fn examine(tag: &str, v: u32) -> Vec<u8> {
+        format!("* 1 EXISTS\r\n* OK [UIDVALIDITY {v}] stable\r\n{tag} OK [READ-ONLY] done\r\n")
+            .into_bytes()
+    }
+    fn fetch(tag: &str, uid: u32, raw: &[u8]) -> Vec<u8> {
+        let mut r = format!("* 1 FETCH (UID {uid} BODY[] {{{}}}\r\n", raw.len()).into_bytes();
+        r.extend(raw);
+        r.extend(format!(")\r\n{tag} OK done\r\n").as_bytes());
+        r
+    }
+    fn claim(s: &Store, id: &str) -> crate::sent_uploads::SentUpload {
+        let u = s.sent_upload(id).unwrap().unwrap();
+        assert!(s.claim_upload(&u).unwrap());
+        u
+    }
+    #[test]
+    fn append_uid_receipt_content_verification_and_source_link() {
+        let (_temp, s, a, id, raw) = crate::sent_uploads::tests::fixture();
+        let u = claim(&s, &id);
+        let (mut session, c, w) = session(vec![
+            b"a1 OK login\r\n".to_vec(),
+            examine("a2", 7),
+            examine("a3", 7),
+            b"* SEARCH\r\na4 OK searched\r\n".to_vec(),
+            b"+ ready\r\n".to_vec(),
+            b"a5 OK [APPENDUID 7 9] appended\r\n".to_vec(),
+            examine("a6", 7),
+            fetch("a7", 9, &raw),
+        ]);
+        upload_sent_session(&s, &u, &mut session, &c).unwrap();
+        assert_eq!(s.sent_upload(&id).unwrap().unwrap().status, "completed");
+        assert_eq!(s.sent_upload(&id).unwrap().unwrap().origin, "appended");
+        assert!(s.has_source(&a.id, "Sent Messages", "7:9").unwrap());
+        assert_eq!(
+            String::from_utf8_lossy(&w.lock().unwrap())
+                .matches(" APPEND ")
+                .count(),
+            1
+        );
+        assert!(!c.lock().unwrap().input.windows(20).any(|v| v == &raw[..20]));
+    }
+    #[test]
+    fn existing_relay_copy_and_missing_appenduid_never_create_extra_duplicates() {
+        let (_temp, s, _, id, raw) = crate::sent_uploads::tests::fixture();
+        let u = claim(&s, &id);
+        let mut relayed = b"Received: relay-added-trace\r\n".to_vec();
+        relayed.extend(&raw);
+        let (mut session, c, w) = session(vec![
+            b"a1 OK login\r\n".to_vec(),
+            examine("a2", 7),
+            examine("a3", 7),
+            b"* SEARCH 9\r\na4 OK searched\r\n".to_vec(),
+            fetch("a5", 9, &relayed),
+        ]);
+        upload_sent_session(&s, &u, &mut session, &c).unwrap();
+        assert!(!String::from_utf8_lossy(&w.lock().unwrap()).contains("APPEND"));
+        assert_eq!(s.sent_upload(&id).unwrap().unwrap().origin, "existing");
+        let (_temp, s, _, id, raw) = crate::sent_uploads::tests::fixture();
+        let u = claim(&s, &id);
+        let (mut session, c, _) = self::session(vec![
+            b"a1 OK login\r\n".to_vec(),
+            examine("a2", 7),
+            examine("a3", 7),
+            b"* SEARCH\r\na4 OK searched\r\n".to_vec(),
+            b"+ ready\r\n".to_vec(),
+            b"a5 OK appended\r\n".to_vec(),
+            examine("a6", 7),
+            b"* SEARCH 9\r\na7 OK searched\r\n".to_vec(),
+            fetch("a8", 9, &raw),
+        ]);
+        upload_sent_session(&s, &u, &mut session, &c).unwrap();
+        assert_eq!(s.sent_upload(&id).unwrap().unwrap().uid, Some(9));
+    }
+    #[test]
+    fn lost_confirmation_only_recovers_by_observation_and_never_reappends() {
+        let (temp, s, _, id, raw) = crate::sent_uploads::tests::fixture();
+        let u = claim(&s, &id);
+        let (mut wire, c, _) = session(vec![
+            b"a1 OK login\r\n".to_vec(),
+            examine("a2", 7),
+            examine("a3", 7),
+            b"* SEARCH\r\na4 OK searched\r\n".to_vec(),
+            b"+ ready\r\n".to_vec(),
+            vec![],
+        ]);
+        assert!(upload_sent_session(&s, &u, &mut wire, &c).is_err());
+        s.fail_upload(&id, "lost").unwrap();
+        let s = Store::new(temp.path().into()).unwrap();
+        assert!(s.due_uploads().unwrap().is_empty());
+        assert!(s.sent_upload_action(&id, "retry").is_err());
+        s.sent_upload_action(&id, "verify").unwrap();
+        let u = claim(&s, &id);
+        let (mut wire, c, w) = session(vec![
+            b"a1 OK login\r\n".to_vec(),
+            examine("a2", 7),
+            examine("a3", 7),
+            b"* SEARCH 9\r\na4 OK searched\r\n".to_vec(),
+            fetch("a5", 9, &raw),
+        ]);
+        upload_sent_session(&s, &u, &mut wire, &c).unwrap();
+        assert!(!String::from_utf8_lossy(&w.lock().unwrap()).contains("APPEND"));
+        assert_eq!(s.sent_upload(&id).unwrap().unwrap().status, "completed");
+    }
+    #[test]
+    fn ambiguous_copies_content_changes_and_receipt_mismatch_stop_upload() {
+        for ids in ["9 10", "9"] {
+            let (_temp, s, _, id, raw) = crate::sent_uploads::tests::fixture();
+            let u = claim(&s, &id);
+            let mut replies = vec![
+                b"a1 OK login\r\n".to_vec(),
+                examine("a2", 7),
+                examine("a3", 7),
+                format!("* SEARCH {ids}\r\na4 OK searched\r\n").into_bytes(),
+            ];
+            if ids == "9" {
+                let mut changed = raw.clone();
+                changed.extend(b"changed");
+                replies.push(fetch("a5", 9, &changed));
+            }
+            let (mut wire, c, w) = session(replies);
+            assert!(upload_sent_session(&s, &u, &mut wire, &c).is_err());
+            assert!(!String::from_utf8_lossy(&w.lock().unwrap()).contains("APPEND"));
+        }
+        for receipt in [
+            "a5 OK [APPENDUID 8 9] done\r\n",
+            "a5 OK [APPENDUID 7 9:9] done\r\n",
+        ] {
+            let (_temp, s, _, id, _) = crate::sent_uploads::tests::fixture();
+            let u = claim(&s, &id);
+            let (mut wire, c, _) = session(vec![
+                b"a1 OK login\r\n".to_vec(),
+                examine("a2", 7),
+                examine("a3", 7),
+                b"* SEARCH\r\na4 OK searched\r\n".to_vec(),
+                b"+ ready\r\n".to_vec(),
+                receipt.as_bytes().to_vec(),
+            ]);
+            assert!(upload_sent_session(&s, &u, &mut wire, &c).is_err());
+            s.fail_upload(&id, "bad receipt").unwrap();
+            assert_eq!(s.sent_upload(&id).unwrap().unwrap().status, "uncertain");
+        }
+    }
+    #[test]
+    fn original_headers_mime_and_attachment_bytes_are_preserved() {
+        let (_temp, _, _, _, raw) = crate::sent_uploads::tests::fixture();
+        let mut traced = b"DKIM-Signature: relay\r\n".to_vec();
+        traced.extend(&raw);
+        assert!(sent_content_matches(&raw, &traced).unwrap());
+        let mut changed = b"Reply-To: stranger@example.com\r\n".to_vec();
+        changed.extend(&raw);
+        assert!(!sent_content_matches(&raw, &changed).unwrap());
+        for tail in [b"\r\n".as_slice(), b"\r\n\r\n".as_slice()] {
+            let mut padded = raw.clone();
+            padded.extend(tail);
+            assert!(sent_content_matches(&raw, &padded).unwrap());
+        }
+        for tail in [b"extra epilogue".as_slice(), b"\r\n\r\n\r\n".as_slice()] {
+            let mut changed = raw.clone();
+            changed.extend(tail);
+            assert!(!sent_content_matches(&raw, &changed).unwrap());
+        }
+        let plain = b"Message-ID: <plain@example.com>\r\nContent-Type: text/plain\r\n\r\nbody\r\n";
+        let mut padded = plain.to_vec();
+        padded.extend(b"\r\n");
+        assert!(!sent_content_matches(plain, &padded).unwrap());
+        let mut changed = raw.clone();
+        changed.extend(b"modified body");
+        assert!(!sent_content_matches(&raw, &changed).unwrap());
+    }
+    #[test]
+    fn qq_rewritten_identifier_requires_unique_complete_payload_and_preserves_reply_links() {
+        for duplicate in [false, true] {
+            let (_temp, s, mut a, id, raw) = crate::sent_uploads::tests::fixture();
+            a.provider = "qq".into();
+            s.save_account(&a).unwrap();
+            let u = claim(&s, &id);
+            let remote = String::from_utf8(raw.clone())
+                .unwrap()
+                .replace(&u.message_id, "<rewritten@example.com>")
+                .into_bytes();
+            let (_, end) = mailparse::parse_headers(&remote).unwrap();
+            let mut replies = vec![
+                b"a1 OK login\r\n".to_vec(),
+                examine("a2", 7),
+                examine("a3", 7),
+                b"* SEARCH\r\na4 OK searched\r\n".to_vec(),
+                if duplicate {
+                    b"* SEARCH 9 10\r\na5 OK searched\r\n".to_vec()
+                } else {
+                    b"* SEARCH 9\r\na5 OK searched\r\n".to_vec()
+                },
+            ];
+            let mut header = Vec::new();
+            for uid in if duplicate { vec![9, 10] } else { vec![9] } {
+                header.extend(
+                    format!("* 1 FETCH (UID {uid} BODY[HEADER] {{{}}}\r\n", end).as_bytes(),
+                );
+                header.extend(&remote[..end]);
+                header.extend(b")\r\n");
+            }
+            header.extend(b"a6 OK done\r\n");
+            replies.push(header);
+            replies.push(fetch("a7", 9, &remote));
+            if duplicate {
+                replies.push(fetch("a8", 10, &remote));
+            }
+            let (mut wire, c, w) = session(replies);
+            let result = upload_sent_session(&s, &u, &mut wire, &c);
+            assert!(!String::from_utf8_lossy(&w.lock().unwrap()).contains("APPEND"));
+            if duplicate {
+                assert!(result.is_err());
+                continue;
+            }
+            result.unwrap();
+            let completed = s.sent_upload(&id).unwrap().unwrap();
+            assert_eq!(completed.server_message_id, "<rewritten@example.com>");
+            assert_eq!(completed.origin, "existing");
+            let local = s.snapshot(&crate::tests::query()).unwrap().messages[0].clone();
+            assert_eq!(s.message_raw(&s.mail(&local.id).unwrap()).unwrap(), raw);
+            let reply=b"From: recipient@example.com\r\nTo: test@example.com\r\nMessage-ID: <reply@example.com>\r\nIn-Reply-To: <rewritten@example.com>\r\nSubject: reply\r\nDate: Wed, 07 Oct 2026 00:00:00 +0000\r\n\r\nreply";
+            s.ingest(&a, "INBOX", "7:12", reply, true).unwrap();
+            assert_eq!(s.conversation(&local.id).unwrap().len(), 2);
+        }
+    }
+    #[test]
+    fn broad_qq_date_search_prefilters_headers_and_fetches_only_one_complete_candidate() {
+        let (_temp, s, mut a, id, raw) = crate::sent_uploads::tests::fixture();
+        a.provider = "qq".into();
+        s.save_account(&a).unwrap();
+        let u = claim(&s, &id);
+        let remote = String::from_utf8(raw.clone())
+            .unwrap()
+            .replace(&u.message_id, "<rewritten@example.com>")
+            .into_bytes();
+        let (_, end) = mailparse::parse_headers(&remote).unwrap();
+        let list = (1..=30)
+            .map(|n| n.to_string())
+            .collect::<Vec<_>>()
+            .join(" ");
+        let mut headers = Vec::new();
+        for uid in 1..=30 {
+            let mut header = remote[..end].to_vec();
+            if uid != 30 {
+                header = [b"Subject: unrelated\r\n".as_slice(), header.as_slice()].concat();
+            }
+            headers.extend(
+                format!(
+                    "* {uid} FETCH (UID {uid} BODY[HEADER] {{{}}}\r\n",
+                    header.len()
+                )
+                .as_bytes(),
+            );
+            headers.extend(header);
+            headers.extend(b")\r\n");
+        }
+        headers.extend(b"a6 OK done\r\n");
+        let (mut wire, c, w) = session(vec![
+            b"a1 OK login\r\n".to_vec(),
+            examine("a2", 7),
+            examine("a3", 7),
+            b"* SEARCH\r\na4 OK done\r\n".to_vec(),
+            format!("* SEARCH {list}\r\na5 OK done\r\n").into_bytes(),
+            headers,
+            fetch("a7", 30, &remote),
+        ]);
+        upload_sent_session(&s, &u, &mut wire, &c).unwrap();
+        assert_eq!(s.sent_upload(&id).unwrap().unwrap().uid, Some(30));
+        let commands = String::from_utf8_lossy(&w.lock().unwrap()).into_owned();
+        assert_eq!(commands.matches("BODY.PEEK[]").count(), 1);
+        assert!(!commands.contains("APPEND"));
+    }
+    #[test]
+    fn tagged_rejection_before_literal_is_retryable_without_resending_smtp() {
+        let (_temp, s, _, id, raw) = crate::sent_uploads::tests::fixture();
+        let u = claim(&s, &id);
+        let (mut wire, c, w) = session(vec![
+            b"a1 OK login\r\n".to_vec(),
+            examine("a2", 7),
+            examine("a3", 7),
+            b"* SEARCH\r\na4 OK searched\r\n".to_vec(),
+            b"a5 NO APPEND not permitted\r\n".to_vec(),
+        ]);
+        let error = upload_sent_session(&s, &u, &mut wire, &c).unwrap_err();
+        assert!(error.contains("原件尚未传输"));
+        assert_eq!(s.sent_upload(&id).unwrap().unwrap().status, "blocked");
+        assert!(!w.lock().unwrap().windows(raw.len()).any(|b| b == raw));
+        s.sent_upload_action(&id, "retry").unwrap();
+        assert_eq!(s.outbox().unwrap()[0].status, "sent");
+        assert_eq!(s.sent_upload(&id).unwrap().unwrap().status, "queued");
     }
 }

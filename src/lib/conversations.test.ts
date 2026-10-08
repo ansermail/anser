@@ -69,4 +69,17 @@ describe("RFC email conversations", () => {
     expect(result.references?.at(-1)).toBe("<reply@example.com>");
     expect(replyHeaders({ ...base, messageId: undefined })).toEqual({});
   });
+  it("links a verified server identifier without losing the original and uses it in replies", () => {
+    const sent = mail("sent", [], {
+      serverMessageId: "<rewritten@example.com>",
+    });
+    const reply = mail("reply", ["<rewritten@example.com>"]);
+    const originalRef = mail("old-link", [sent.messageId!]);
+    const all = [sent, reply, originalRef];
+    expect(new Set(conversationIndex(all).values()).size).toBe(1);
+    expect(replyHeaders(sent)).toEqual({
+      inReplyTo: "<rewritten@example.com>",
+      references: ["<rewritten@example.com>"],
+    });
+  });
 });

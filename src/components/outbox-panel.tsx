@@ -15,6 +15,19 @@ import { SidebarTrigger } from "./ui/sidebar";
 import { toast } from "sonner";
 import { localDateTime, scheduledIso } from "@/lib/schedule-time";
 import { SchedulePicker } from "./schedule-picker";
+import { Badge } from "./ui/badge";
+
+const uploadLabels: Record<string, string> = {
+  queued: "等待保存到服务器",
+  preparing: "正在核对已发送目录",
+  submitted: "上传已提交",
+  confirmed: "回执已保存，等待核对",
+  verifying: "正在核对服务器副本",
+  checking: "等待只读核对",
+  completed: "服务器已发送副本已核对",
+  blocked: "尚未上传，需要处理",
+  uncertain: "保存结果未确认",
+};
 
 const labels = {
   sending: "发送中",
@@ -124,6 +137,22 @@ export function OutboxPanel({
       setBusy("");
     }
   }
+  async function upload(record: OutboxRecord, action: string) {
+    setBusy(record.id);
+    try {
+      await call("sent_upload_action", { id: record.id, action });
+      await refresh();
+      toast.success(
+        action === "verify"
+          ? "已安排只读核对，不会重复上传或发送"
+          : "已安排保存副本，不会重新发送邮件",
+      );
+    } catch (e) {
+      toast.error(String(e));
+    } finally {
+      setBusy("");
+    }
+  }
   return (
     <section className="workspace-panel">
       <div className="panel-heading">
@@ -190,7 +219,70 @@ export function OutboxPanel({
                   : "本地副本尚未归档，原始邮件仍保存在发送记录中"}
               </p>
             )}
+            {r.status === "sent" && r.serverCopy && (
+              <div className="outbox-hint">
+                <Badge variant="secondary">
+                  {uploadLabels[r.serverCopy.status] || "保存状态待核对"}
+                </Badge>
+                {r.serverCopy.target && (
+                  <p>
+                    服务器目录：
+                    {r.serverCopy.targetLabel || r.serverCopy.target}
+                  </p>
+                )}
+                {r.serverCopy.error && (
+                  <p className="form-error">{r.serverCopy.error}</p>
+                )}
+                {r.serverCopy.origin === "existing" && (
+                  <p>服务器已有相同副本，未重复上传。</p>
+                )}
+                {r.serverCopy.status === "uncertain" && (
+                  <p>
+                    SMTP
+                    发送已经成功，副本可能已保存。仅核对结果，不会自动再次上传。
+                  </p>
+                )}
+              </div>
+            )}
+            {r.status === "sent" && r.error && (
+              <p className="form-error">{r.error}</p>
+            )}
             <div className="outbox-actions">
+              {r.status === "sent" &&
+                r.serverCopyAvailable &&
+                !r.serverCopy && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={!!busy}
+                    onClick={() => void upload(r, "queue")}
+                  >
+                    保存到服务器已发送
+                  </Button>
+                )}
+              {r.status === "sent" && r.serverCopy?.status === "blocked" && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={!!busy}
+                  onClick={() => void upload(r, "retry")}
+                >
+                  重试保存副本
+                </Button>
+              )}
+              {r.status === "sent" &&
+                ["uncertain", "confirmed"].includes(
+                  r.serverCopy?.status || "",
+                ) && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={!!busy}
+                    onClick={() => void upload(r, "verify")}
+                  >
+                    只读核对副本
+                  </Button>
+                )}
               {["scheduled", "overdue", "paused"].includes(r.status) && (
                 <>
                   <Button

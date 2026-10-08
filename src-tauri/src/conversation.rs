@@ -12,6 +12,8 @@ struct Link {
     #[serde(default)]
     message_id: String,
     #[serde(default)]
+    server_message_id: String,
+    #[serde(default)]
     in_reply_to: Vec<String>,
     #[serde(default)]
     references: Vec<String>,
@@ -33,6 +35,7 @@ fn index(links: &[Link]) -> Index {
     let mut owners = HashMap::new();
     for (i, link) in links.iter().enumerate() {
         for token in std::iter::once(&link.message_id)
+            .chain(std::iter::once(&link.server_message_id))
             .chain(&link.in_reply_to)
             .chain(&link.references)
             .filter(|t| !t.is_empty())
@@ -63,7 +66,9 @@ fn index(links: &[Link]) -> Index {
     for (i, link) in links.iter().enumerate() {
         let name = names[&root(&mut parents, i)].clone();
         roots.insert(link.id.clone(), name.clone());
-        let identity = if link.message_id.is_empty() {
+        let identity = if !link.server_message_id.is_empty() {
+            link.server_message_id.clone()
+        } else if link.message_id.is_empty() {
             format!("local:{}", link.id)
         } else {
             link.message_id.clone()
@@ -103,8 +108,8 @@ impl Store {
         let tx = db
             .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
             .map_err(err)?;
-        let rows = tx.prepare("SELECT data FROM messages WHERE id=?1 OR (account_id=?2 AND ?3!='' AND json_extract(data,'$.messageId')=?3)").map_err(err)?
-            .query_map(rusqlite::params![id, selected.account_id, selected.message_id], |r| r.get::<_, String>(0)).map_err(err)?
+        let rows = tx.prepare("SELECT data FROM messages WHERE id=?1 OR (account_id=?2 AND ((?3!='' AND json_extract(data,'$.messageId')=?3) OR (?4!='' AND COALESCE(NULLIF(json_extract(data,'$.serverMessageId'),''),json_extract(data,'$.messageId'))=?4)))").map_err(err)?
+            .query_map(rusqlite::params![id, selected.account_id, selected.message_id, if selected.server_message_id.is_empty() { &selected.message_id } else { &selected.server_message_id }], |r| r.get::<_, String>(0)).map_err(err)?
             .collect::<std::result::Result<Vec<_>,_>>().map_err(err)?;
         for data in rows {
             let mut mail: Mail = serde_json::from_str(&data).map_err(err)?;
@@ -148,7 +153,7 @@ impl Store {
         }
         // A read transaction pins both the revision and link metadata to the
         // same snapshot while new messages continue to arrive in WAL mode.
-        let mut query = tx.prepare("SELECT json_object('id',id,'accountId',account_id,'messageId',COALESCE(json_extract(data,'$.messageId'),''),'inReplyTo',json(COALESCE(json_extract(data,'$.inReplyTo'),'[]')),'references',json(COALESCE(json_extract(data,'$.references'),'[]')),'trashed',json(CASE WHEN json_extract(data,'$.trashed') THEN 'true' ELSE 'false' END)) FROM readable_listing").map_err(err)?;
+        let mut query = tx.prepare("SELECT json_object('id',id,'accountId',account_id,'messageId',COALESCE(json_extract(data,'$.messageId'),''),'serverMessageId',COALESCE(json_extract(data,'$.serverMessageId'),''),'inReplyTo',json(COALESCE(json_extract(data,'$.inReplyTo'),'[]')),'references',json(COALESCE(json_extract(data,'$.references'),'[]')),'trashed',json(CASE WHEN json_extract(data,'$.trashed') THEN 'true' ELSE 'false' END)) FROM readable_listing").map_err(err)?;
         let links = query
             .query_map([], |r| r.get::<_, String>(0))
             .map_err(err)?
@@ -198,14 +203,19 @@ impl Store {
                 .unwrap_or(&1);
             // A server Sent copy and the local SMTP archive can have different
             // bytes but the same Message-ID. Keep both archives; show one turn.
-            if !mail.message_id.is_empty() {
-                if let Some(&position) = positions.get(&mail.message_id) {
+            let identity = if mail.server_message_id.is_empty() {
+                &mail.message_id
+            } else {
+                &mail.server_message_id
+            };
+            if !identity.is_empty() {
+                if let Some(&position) = positions.get(identity) {
                     if mail.id == id {
                         out[position] = mail;
                     }
                     continue;
                 }
-                positions.insert(mail.message_id.clone(), out.len());
+                positions.insert(identity.clone(), out.len());
             }
             out.push(mail);
         }
@@ -222,6 +232,7 @@ mod tests {
             id: id.into(),
             account_id: "work".into(),
             message_id: message.into(),
+            server_message_id: String::new(),
             in_reply_to: vec![],
             references: refs.iter().map(|s| s.to_string()).collect(),
             trashed: false,
