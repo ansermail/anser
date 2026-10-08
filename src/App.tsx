@@ -1199,7 +1199,11 @@ export default function App() {
           ) : page === "outbox" ? (
             <OutboxPanel onDraft={setDraft} />
           ) : page === "rules" ? (
-            <RulesPanel data={data} onChange={() => void refresh()} />
+            <RulesPanel
+              data={data}
+              onChange={() => void refresh()}
+              onShowTasks={() => setPage("settings")}
+            />
           ) : page === "settings" || page === "storage" ? (
             <section className="workspace-panel">
               <div className="panel-heading">

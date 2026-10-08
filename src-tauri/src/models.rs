@@ -142,6 +142,8 @@ pub struct Rule {
     pub conditions: Vec<Condition>,
     pub action: String,
     pub destination: String,
+    #[serde(default)]
+    pub source_folder: String,
     pub stop: bool,
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]

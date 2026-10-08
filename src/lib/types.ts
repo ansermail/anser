@@ -62,6 +62,7 @@ export interface Rule {
   conditions: Condition[];
   action: string;
   destination: string;
+  sourceFolder?: string;
   stop: boolean;
 }
 export interface Query {

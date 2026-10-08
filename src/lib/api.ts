@@ -180,14 +180,28 @@ export async function call<T = void>(
       case "save_rules":
         demo.rules = args.rules as Rule[];
         break;
+      case "folder_settings":
+        result = { folders: await call("account_folders", args), mappings: [] };
+        break;
       case "preview_rule":
         result = demo.messages
-          .filter((m) =>
-            ruleMatches({ ...(args.rule as Rule), enabled: true }, m),
+          .filter(
+            (m) =>
+              ruleMatches({ ...(args.rule as Rule), enabled: true }, m) &&
+              (!["serverCopy", "serverMove"].includes(
+                (args.rule as Rule).action,
+              ) ||
+                m.sourceFolder === (args.rule as Rule).sourceFolder),
           )
           .map((m) => m.subject);
         break;
       case "run_rules": {
+        if (
+          demo.rules.some(
+            (r) => r.enabled && ["serverCopy", "serverMove"].includes(r.action),
+          )
+        )
+          throw new Error("演示模式不执行服务器规则，请在真实桌面预览中测试");
         let count = 0;
         for (const m of demo.messages) {
           for (const r of demo.rules) {
@@ -292,6 +306,7 @@ export async function call<T = void>(
       }
       case "folder_health":
       case "directory_operations":
+      case "rule_executions":
         result = [];
         break;
       case "copy_sources":
@@ -302,6 +317,7 @@ export async function call<T = void>(
       case "queue_server_copy":
       case "queue_server_move":
       case "directory_operation_action":
+      case "retry_rule_execution":
         throw new Error(
           "演示模式不执行服务器文件夹操作，请在真实桌面预览中测试",
         );
@@ -517,6 +533,8 @@ export async function call<T = void>(
         "server_operations",
         "folder_health",
         "directory_operations",
+        "rule_executions",
+        "folder_settings",
         "copy_sources",
       ].includes(command)
     )

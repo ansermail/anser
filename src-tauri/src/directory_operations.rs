@@ -180,18 +180,42 @@ impl Store {
         target: &str,
         kind: &str,
     ) -> Result<String> {
+        let mut db = self.db()?;
+        let tx = db
+            .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
+            .map_err(err)?;
+        let data: String = tx
+            .query_row("SELECT data FROM messages WHERE id=?1", [mail_id], |r| {
+                r.get(0)
+            })
+            .map_err(err)?;
+        let mail: Mail = serde_json::from_str(&data).map_err(err)?;
+        let id = Self::queue_directory_in(&tx, &mail, source, target, kind)?;
+        tx.commit().map_err(err)?;
+        Ok(id)
+    }
+    pub(crate) fn queue_directory_in(
+        tx: &rusqlite::Connection,
+        mail: &Mail,
+        source: &str,
+        target: &str,
+        kind: &str,
+    ) -> Result<String> {
+        let mail_id = &mail.id;
         if source.eq_ignore_ascii_case(target) {
             return Err("请选择不同的服务器目标目录".into());
         }
         if target.bytes().any(|b| b < 32 || b == 127) {
             return Err("目标目录名称无效".into());
         }
-        let mail = self.mail(mail_id)?;
-        let a = self.account(&mail.account_id)?;
-        let mut db = self.db()?;
-        let tx = db
-            .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
+        let a_data: String = tx
+            .query_row(
+                "SELECT data FROM accounts WHERE id=?1",
+                [&mail.account_id],
+                |r| r.get(0),
+            )
             .map_err(err)?;
+        let a: Account = serde_json::from_str(&a_data).map_err(err)?;
         let remote_id: String = tx.query_row("SELECT remote_id FROM trusted_sources WHERE account_id=?1 AND mail_id=?2 AND folder=?3 AND active=1 ORDER BY remote_id LIMIT 1", params![a.id,mail_id,source], |r| r.get(0)).map_err(|_| "该邮件在所选目录没有可用的服务器来源")?;
         operations::remote_identity(&remote_id).ok_or("仅本地邮件不能复制到服务器")?;
         let op = DirectoryOperation {
@@ -200,7 +224,7 @@ impl Store {
             account_id: a.id.clone(),
             account_email: a.email.clone(),
             mail_id: mail_id.into(),
-            subject: mail.subject,
+            subject: mail.subject.clone(),
             folder: source.into(),
             remote_id,
             target: target.into(),
@@ -227,7 +251,6 @@ impl Store {
             return Err("该服务器来源已有移动任务，请先查看现有结果".into());
         }
         tx.execute("INSERT INTO directory_operations(id,account_id,folder,remote_id,target,kind,data,status,updated_at) VALUES(?1,?2,?3,?4,?5,?6,?7,'queued',?8)",params![op.id,a.id,source,op.remote_id,target,kind,serde_json::to_string(&op).map_err(err)?,chrono::Utc::now().timestamp()]).map_err(err)?;
-        tx.commit().map_err(err)?;
         Ok(op.id)
     }
     pub fn directory_operation(&self, id: &str) -> Result<DirectoryOperation> {

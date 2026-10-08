@@ -369,6 +369,7 @@ fn rule(id: &str, action: &str, stop: bool) -> Rule {
         }],
         action: action.into(),
         destination: "财务/发票".into(),
+        source_folder: String::new(),
         stop,
     }
 }

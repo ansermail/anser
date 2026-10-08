@@ -97,6 +97,7 @@ impl Store {
         crate::folder_health::initialize(&db)?;
         crate::directory_operations::initialize(&db)?;
         crate::sent_uploads::initialize(&db)?;
+        crate::rule_operations::initialize(&db)?;
         s.migrate_folder_roles()?;
         s.recover_archive_deletion()?;
         s.refresh_archive_metadata()?;
@@ -425,19 +426,44 @@ impl Store {
         }
         tx.execute("INSERT INTO sources(account_id,folder,remote_id,mail_id) VALUES(?1,?2,?3,?4) ON CONFLICT(account_id,folder,remote_id) DO UPDATE SET mail_id=excluded.mail_id,active=1",params![a.id,folder,remote,mail.id]).map_err(err)?;
         tx.commit().map_err(err)?;
-        if is_new || upgraded {
-            self.apply_rules(&mail.id)?;
-        }
+        // A deduplicated MIME can acquire its rule source on a later folder scan.
+        self.apply_rules_inner(&mail.id, !(is_new || upgraded))?;
         Ok(is_new)
     }
     pub fn apply_rules(&self, id: &str) -> Result<u32> {
+        self.apply_rules_inner(id, false)
+    }
+    fn apply_rules_inner(&self, id: &str, remote_only: bool) -> Result<u32> {
+        let configured = self.rules()?;
+        if configured.is_empty()
+            || (remote_only && !configured.iter().any(|r| r.enabled && rules::remote(r)))
+        {
+            return Ok(0);
+        }
         let mut m = self.mail(id)?;
-        if m.saved_locally {
+        if m.saved_locally && !remote_only {
             archive::read_raw(&self.root, &m.hash)?;
         }
         let mut count = 0;
-        for r in self.rules()? {
+        for r in configured {
+            if remote_only && !rules::remote(&r) {
+                if rules::matches(&r, &m) && r.stop {
+                    break;
+                }
+                continue;
+            }
             if rules::matches(&r, &m) {
+                if rules::remote(&r) {
+                    if self.apply_remote_rule(&r, &m, false)? {
+                        count += 1;
+                    } else {
+                        continue;
+                    }
+                    if r.stop {
+                        break;
+                    }
+                    continue;
+                }
                 match r.action.as_str() {
                     "folder" => m.local_folder = r.destination.clone(),
                     "read" => {
@@ -499,7 +525,9 @@ impl Store {
         let mut matches = Vec::new();
         for row in q.query_map([], |r| r.get::<_, String>(0)).map_err(err)? {
             let m: Mail = serde_json::from_str(&row.map_err(err)?).map_err(err)?;
-            if rules::matches(&rule, &m) {
+            if rules::matches(&rule, &m)
+                && (!rules::remote(&rule) || self.rule_has_source(&rule, &m)?)
+            {
                 matches.push(m.subject);
             }
         }
@@ -762,7 +790,7 @@ impl Store {
             )?;
         }
         drop(stmt);
-        snap.execute_batch("DELETE FROM accounts; DELETE FROM drafts; DELETE FROM outbox; DELETE FROM sent_uploads; DELETE FROM logs; DELETE FROM server_operations; DELETE FROM folder_health; DELETE FROM directory_operations; VACUUM;").map_err(err)?;
+        snap.execute_batch("DELETE FROM accounts; DELETE FROM drafts; DELETE FROM outbox; DELETE FROM sent_uploads; DELETE FROM logs; DELETE FROM server_operations; DELETE FROM folder_health; DELETE FROM directory_operations; DELETE FROM rule_executions; VACUUM;").map_err(err)?;
         archive::atomic_write(
             &folder.join("manifest.json"),
             br#"{"format":"mail-desktop-archive","version":1}"#,

@@ -1,5 +1,5 @@
 import { SelectField, SelectOption } from "@/components/ui/select-field";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   Plus,
   ArrowDown,
@@ -25,9 +25,13 @@ import {
   DialogTitle,
   DialogDescription,
 } from "./ui/dialog";
-import type { Rule, Snapshot } from "@/lib/types";
+import type { Rule, Snapshot, FolderSettings } from "@/lib/types";
 import { call } from "@/lib/api";
 import { toast } from "sonner";
+import { SelectGroup } from "./ui/select";
+import { RuleServerFolders } from "./rule-server-folders";
+import { RuleExecutions } from "./rule-executions";
+
 const fields: { [key: string]: string } = {
   sender: "发件人",
   recipients: "收件人",
@@ -42,17 +46,51 @@ const actions: { [key: string]: string } = {
   unread: "标记为未读",
   star: "添加星标",
   trash: "移到本地废纸篓",
+  serverCopy: "复制到服务器文件夹",
+  serverMove: "移动到服务器文件夹",
 };
 export function RulesPanel({
   data,
   onChange,
+  onShowTasks,
 }: {
   data: Snapshot;
   onChange: () => void;
+  onShowTasks: () => void;
 }) {
   const [editing, setEditing] = useState<Rule | null>(null),
     [busy, setBusy] = useState(false),
     [preview, setPreview] = useState<string[] | null>(null);
+  const remote = (r: Rule) => ["serverCopy", "serverMove"].includes(r.action);
+  const [folderNames, setFolderNames] = useState<
+    Record<string, Record<string, string>>
+  >({});
+  const remoteAccounts = [
+    ...new Set(data.rules.filter(remote).map((r) => r.accountId)),
+  ]
+    .sort()
+    .join(",");
+  useEffect(() => {
+    let live = true;
+    for (const id of remoteAccounts.split(",").filter(Boolean))
+      void call<FolderSettings>("folder_settings", { id })
+        .then((s) => {
+          if (live)
+            setFolderNames((names) => ({
+              ...names,
+              [id]: Object.fromEntries(
+                s.folders.map((f) => [f.name, f.displayName]),
+              ),
+            }));
+        })
+        .catch(() => {});
+    return () => {
+      live = false;
+    };
+  }, [remoteAccounts]);
+  const folderLabel = (r: Rule, path: string, fallback: string) =>
+    folderNames[r.accountId]?.[path] ||
+    (path === "INBOX" ? "收件箱" : fallback);
   async function save(rs: Rule[]) {
     try {
       await call("save_rules", { rules: rs });
@@ -67,7 +105,7 @@ export function RulesPanel({
     setBusy(true);
     try {
       const n = await call<number>("run_rules");
-      toast.success(`规则执行完成，共匹配 ${n} 次`);
+      toast.success(`规则已处理，共匹配 ${n} 次；服务器动作结果见执行记录`);
       onChange();
     } catch (e) {
       toast.error(String(e));
@@ -115,7 +153,9 @@ export function RulesPanel({
       </div>
       <div className="info-strip">
         <SlidersHorizontal size={17} />
-        <span>规则按顺序执行，完整保存后再归类。当前动作只影响本地存档。</span>
+        <span>
+          规则按顺序执行。本地归类保留原件；服务器复制和移动会创建独立任务。
+        </span>
         <Button
           variant="ghost"
           size="sm"
@@ -214,6 +254,7 @@ export function RulesPanel({
       <div className="quiet-note">
         无需保持邮箱网页打开。雁信在这台 Mac 上运行时，会自动处理新收到的邮件。
       </div>
+      <RuleExecutions onShowTasks={onShowTasks} />
       <Dialog
         open={!!editing}
         onOpenChange={(v) => {
@@ -224,7 +265,7 @@ export function RulesPanel({
           <DialogHeader>
             <DialogTitle>编辑过滤规则</DialogTitle>
             <DialogDescription>
-              支持多个条件，按账号和邮件内容自动整理本地存档。
+              按账号和条件设置本地整理或服务器文件夹动作，预览后保存。
             </DialogDescription>
           </DialogHeader>
           {editing && (
@@ -257,16 +298,36 @@ export function RulesPanel({
                   <Label>适用账号</Label>
                   <SelectField
                     value={editing.accountId}
+                    aria-label="规则适用账号"
                     onValueChange={(value) =>
-                      setEditing({ ...editing, accountId: value })
+                      setEditing({
+                        ...editing,
+                        accountId: value,
+                        ...(remote(editing)
+                          ? { sourceFolder: "", destination: "" }
+                          : {}),
+                      })
                     }
                   >
-                    <SelectOption value="">全部账号</SelectOption>
-                    {data.accounts.map((a) => (
-                      <SelectOption key={a.id} value={a.id}>
-                        {a.email}
+                    <SelectGroup>
+                      <SelectOption value="" disabled={remote(editing)}>
+                        全部账号
                       </SelectOption>
-                    ))}
+                      {data.accounts.map((a) => (
+                        <SelectOption
+                          key={a.id}
+                          value={a.id}
+                          disabled={
+                            remote(editing) &&
+                            (!a.enabled ||
+                              a.protocol !== "imap" ||
+                              a.provider === "gmail")
+                          }
+                        >
+                          {a.email}
+                        </SelectOption>
+                      ))}
+                    </SelectGroup>
                   </SelectField>
                 </div>
                 <div className="field">
@@ -280,8 +341,10 @@ export function RulesPanel({
                       })
                     }
                   >
-                    <SelectOption value="all">满足全部条件</SelectOption>
-                    <SelectOption value="any">满足任一条件</SelectOption>
+                    <SelectGroup>
+                      <SelectOption value="all">满足全部条件</SelectOption>
+                      <SelectOption value="any">满足任一条件</SelectOption>
+                    </SelectGroup>
                   </SelectField>
                 </div>
               </div>
@@ -311,11 +374,17 @@ export function RulesPanel({
                         })
                       }
                     >
-                      {Object.entries(fields).map(([k, v]) => (
-                        <SelectOption key={k} value={k}>
-                          {v}
-                        </SelectOption>
-                      ))}
+                      <SelectGroup>
+                        {Object.entries(fields).map(([k, v]) => (
+                          <SelectOption
+                            key={k}
+                            value={k}
+                            disabled={remote(editing) && k === "body"}
+                          >
+                            {v}
+                          </SelectOption>
+                        ))}
+                      </SelectGroup>
                     </SelectField>
                     <SelectField
                       aria-label="条件比较"
@@ -329,23 +398,25 @@ export function RulesPanel({
                         })
                       }
                     >
-                      {(c.field === "date"
-                        ? [
-                            ["before", "早于"],
-                            ["after", "晚于"],
-                          ]
-                        : c.field === "attachment"
-                          ? [["equals", "等于"]]
-                          : [
-                              ["contains", "包含"],
-                              ["equals", "等于"],
-                              ["notContains", "不包含"],
+                      <SelectGroup>
+                        {(c.field === "date"
+                          ? [
+                              ["before", "早于"],
+                              ["after", "晚于"],
                             ]
-                      ).map(([k, v]) => (
-                        <SelectOption key={k} value={k}>
-                          {v}
-                        </SelectOption>
-                      ))}
+                          : c.field === "attachment"
+                            ? [["equals", "等于"]]
+                            : [
+                                ["contains", "包含"],
+                                ["equals", "等于"],
+                                ["notContains", "不包含"],
+                              ]
+                        ).map(([k, v]) => (
+                          <SelectOption key={k} value={k}>
+                            {v}
+                          </SelectOption>
+                        ))}
+                      </SelectGroup>
                     </SelectField>
                     <Input
                       aria-label="条件值"
@@ -404,18 +475,35 @@ export function RulesPanel({
               <div className="field">
                 <Label>执行动作</Label>
                 <SelectField
+                  aria-label="规则执行动作"
                   value={editing.action}
                   onValueChange={(value) =>
-                    setEditing({ ...editing, action: value })
+                    setEditing({
+                      ...editing,
+                      action: value,
+                      destination: "",
+                      sourceFolder: "",
+                    })
                   }
                 >
-                  {Object.entries(actions).map(([k, v]) => (
-                    <SelectOption key={k} value={k}>
-                      {v}
-                    </SelectOption>
-                  ))}
+                  <SelectGroup>
+                    {Object.entries(actions).map(([k, v]) => (
+                      <SelectOption key={k} value={k}>
+                        {v}
+                      </SelectOption>
+                    ))}
+                  </SelectGroup>
                 </SelectField>
               </div>
+              {remote(editing) && (
+                <RuleServerFolders
+                  rule={editing}
+                  account={data.accounts.find(
+                    (a) => a.id === editing.accountId,
+                  )}
+                  onChange={setEditing}
+                />
+              )}
               {editing.action === "folder" && (
                 <div className="field">
                   <Label>本地文件夹</Label>
@@ -484,7 +572,25 @@ export function RulesPanel({
                 >
                   取消
                 </Button>
-                <Button type="submit">保存规则</Button>
+                <Button
+                  type="submit"
+                  disabled={
+                    remote(editing) &&
+                    (!editing.accountId ||
+                      editing.conditions.some((c) => c.field === "body") ||
+                      !editing.sourceFolder ||
+                      !editing.destination ||
+                      !data.accounts.some(
+                        (a) =>
+                          a.id === editing.accountId &&
+                          a.enabled &&
+                          a.protocol === "imap" &&
+                          a.provider !== "gmail",
+                      ))
+                  }
+                >
+                  保存规则
+                </Button>
               </div>
             </form>
           )}

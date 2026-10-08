@@ -13,6 +13,7 @@ mod operations;
 mod productivity;
 mod realtime;
 mod remote;
+mod rule_operations;
 mod rules;
 mod scheduling;
 mod sent_uploads;
@@ -185,6 +186,22 @@ async fn server_operations(
 async fn retry_server_operation(state: tauri::State<'_, AppState>, id: String) -> Result<()> {
     let store = state.store.clone();
     tauri::async_runtime::spawn_blocking(move || store.retry_server_operation(&id))
+        .await
+        .map_err(err)?
+}
+#[tauri::command]
+async fn rule_executions(
+    state: tauri::State<'_, AppState>,
+) -> Result<Vec<rule_operations::RuleExecution>> {
+    let store = state.store.clone();
+    tauri::async_runtime::spawn_blocking(move || store.rule_executions())
+        .await
+        .map_err(err)?
+}
+#[tauri::command]
+async fn retry_rule_execution(state: tauri::State<'_, AppState>, id: String) -> Result<()> {
+    let store = state.store.clone();
+    tauri::async_runtime::spawn_blocking(move || store.retry_rule_execution(&id))
         .await
         .map_err(err)?
 }
@@ -1045,6 +1062,8 @@ pub fn run() {
             server_operations,
             retry_server_operation,
             save_rules,
+            rule_executions,
+            retry_rule_execution,
             preview_rule,
             run_rules,
             connect_account,
