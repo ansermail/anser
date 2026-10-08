@@ -3,9 +3,10 @@ import { fileURLToPath } from "node:url";
 import { join } from "node:path";
 import { mkdtemp, writeFile, chmod, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
+import { loadOAuthEnvironment } from "./oauth-env.mjs";
 
 const root = fileURLToPath(new URL("../", import.meta.url));
-const env = { ...process.env };
+const env = await loadOAuthEnvironment(root);
 let runnerDirectory;
 if (process.platform === "darwin") {
   // Cargo still builds an ASCII executable; launch it inside a named app bundle.

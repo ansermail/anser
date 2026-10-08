@@ -2,9 +2,10 @@ import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
 import { spawn } from "node:child_process";
+import { loadOAuthEnvironment } from "./oauth-env.mjs";
 const config = JSON.parse(fs.readFileSync("src-tauri/tauri.conf.json", "utf8"));
 const key = path.join(os.homedir(), ".config/yanxin-release/updater.key");
-const env = { ...process.env };
+const env = await loadOAuthEnvironment(process.cwd());
 if (!env.TAURI_SIGNING_PRIVATE_KEY) {
   if (!fs.existsSync(key))
     throw new Error(

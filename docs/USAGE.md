@@ -45,6 +45,8 @@ QQ、网易等通常需在邮箱官网启用 IMAP/POP3/SMTP 并获取授权码�
 
 Gmail / Microsoft 的 OAuth 需要注册属于本产品的应用。可以在账号高级设置填写 Client ID，或构建前设置 `MAIL_GOOGLE_CLIENT_ID`、`MAIL_MICROSOFT_CLIENT_ID`；Google 桌面应用如需 client secret，可设置 `MAIL_GOOGLE_CLIENT_SECRET`。不要提交实际凭据。原生应用中的 client secret 不是可保密的服务端秘密。
 
+本机开发可在项目根目录的 `.env.local` 填写上述变量；`npm run desktop` 和 `npm run desktop:build` 会加载，已有进程环境变量优先。该文件已被 Git 忽略，建议权限设为 `600`，不要使用 `VITE_` 前缀暴露到前端。修改后需要重新启动开发应用，让 Rust 重新编译配置。添加账号时选择 Gmail、填写邮箱地址，OAuth Client ID 留空即可使用本机默认配置，再点击连接并在系统浏览器完成 Google 授权。Google 控制台处于测试状态时，需要将登录账号加入测试用户；实际登录与收发仍需验收。本机配置不会自动进入 GitHub 发布流水线或已发布安装包。
+
 代码使用系统浏览器、PKCE 和本机临时端口回调；Google 应配置桌面客户端，Microsoft 应配置公共原生客户端与 localhost 重定向及邮件委托权限。OAuth 应用发布审核、租户策略和真实授权仍需验证。参考 [Google 原生应用 OAuth](https://developers.google.com/identity/protocols/oauth2/native-app)、[Microsoft 邮件协议 OAuth](https://learn.microsoft.com/en-us/exchange/client-developer/legacy-protocols/how-to-authenticate-an-imap-pop-smtp-application-by-using-oauth)。
 
 ## 数据与行为
