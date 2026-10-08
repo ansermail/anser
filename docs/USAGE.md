@@ -49,6 +49,8 @@ Gmail / Microsoft 的 OAuth 需要注册属于本产品的应用。可以在账�
 
 代码使用系统浏览器、PKCE 和本机临时端口回调；Google 应配置桌面客户端，Microsoft 应配置公共原生客户端与 localhost 重定向及邮件委托权限。OAuth 应用发布审核、租户策略和真实授权仍需验证。参考 [Google 原生应用 OAuth](https://developers.google.com/identity/protocols/oauth2/native-app)、[Microsoft 邮件协议 OAuth](https://learn.microsoft.com/en-us/exchange/client-developer/legacy-protocols/how-to-authenticate-an-imap-pop-smtp-application-by-using-oauth)。
 
+当前开发版会分别显示等待浏览器授权、交换令牌、收件及发件服务器验证；等待浏览器时可取消，超过 3 分钟会结束等待。请完成新打开页面的授权，过期页面不能用于下一次连接。Google 使用 `127.0.0.1` 回环回调及随机端口，桌面客户端无需在控制台逐个登记临时端口。Gmail 本机授权、令牌交换和连接验证已通过，实际发信、长期令牌刷新及标签操作仍需验收。
+
 ## 数据与行为
 
 - 默认数据目录由 Tauri `app_data_dir` 决定，macOS 通常为 `~/Library/Application Support/dev.maildesk.desktop/`；应用设置页显示实际位置。

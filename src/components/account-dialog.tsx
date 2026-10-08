@@ -22,7 +22,8 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { call } from "@/lib/api";
+import { call, native, isDemo } from "@/lib/api";
+import { Channel } from "@tauri-apps/api/core";
 import { makeAccount, providers } from "@/lib/providers";
 import type { Account } from "@/lib/types";
 import { toast } from "sonner";
@@ -44,6 +45,8 @@ export function AccountDialog({
     [busy, setBusy] = useState(false),
     [reauthorize, setReauthorize] = useState(false),
     [smtpUseIncoming, setSmtpUseIncoming] = useState(false),
+    [stage, setStage] = useState(""),
+    [cancelling, setCancelling] = useState(false),
     [error, setError] = useState("");
   useEffect(() => {
     if (!open) return;
@@ -71,8 +74,16 @@ export function AccountDialog({
   async function connect() {
     if (!account) return;
     setBusy(true);
+    setStage("");
+    setCancelling(false);
     setError("");
+    let active = true;
     try {
+      const progress = native && !isDemo() ? new Channel<string>() : undefined;
+      if (progress)
+        progress.onmessage = (value) => {
+          if (active) setStage(value);
+        };
       const result = await call<string>(
         editing ? "edit_account" : "connect_account",
         {
@@ -85,6 +96,7 @@ export function AccountDialog({
           smtpPassword,
           reauthorize,
           smtpUseIncoming,
+          onProgress: progress,
         },
       );
       setPassword("");
@@ -99,7 +111,10 @@ export function AccountDialog({
     } catch (e) {
       setError(String(e));
     } finally {
+      active = false;
       setBusy(false);
+      setStage("");
+      setCancelling(false);
     }
   }
   const needsValidation =
@@ -428,9 +443,21 @@ export function AccountDialog({
             <Button className="w-full" type="submit" disabled={busy}>
               {busy ? <LoaderCircle className="animate-spin" /> : <KeyRound />}
               {busy
-                ? needsValidation
-                  ? "正在验证连接…"
-                  : "正在保存设置…"
+                ? cancelling
+                  ? "正在取消授权…"
+                  : stage === "browser"
+                    ? "等待浏览器授权…"
+                    : stage === "token"
+                      ? "正在交换授权令牌…"
+                      : stage === "incoming"
+                        ? "正在验证收件服务器…"
+                        : stage === "smtp"
+                          ? "正在验证发件服务器…"
+                          : stage === "saving"
+                            ? "正在保存账号…"
+                            : needsValidation
+                              ? "正在验证连接…"
+                              : "正在保存设置…"
                 : editing
                   ? needsValidation
                     ? "验证并保存配置"
@@ -439,6 +466,30 @@ export function AccountDialog({
                     ? "授权并连接"
                     : "验证并连接邮箱"}
             </Button>
+            {busy && stage === "browser" && (
+              <div className="flex flex-col gap-2" role="status">
+                <p className="text-sm text-muted-foreground">
+                  请在新打开的系统浏览器页面完成授权，再返回雁信。等待超过 3
+                  分钟会自动结束。
+                </p>
+                <Button
+                  type="button"
+                  variant="outline"
+                  disabled={cancelling}
+                  onClick={async () => {
+                    setCancelling(true);
+                    try {
+                      await call("cancel_authorization", { id: account.id });
+                    } catch (e) {
+                      setCancelling(false);
+                      setError(String(e));
+                    }
+                  }}
+                >
+                  取消授权
+                </Button>
+              </div>
+            )}
           </form>
         )}
       </DialogContent>

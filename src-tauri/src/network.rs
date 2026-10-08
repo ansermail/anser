@@ -371,14 +371,16 @@ fn pop_session(a: &Account, s: &Secret) -> Result<BufReader<TlsStream<TcpStream>
     }
     Ok(r)
 }
-pub fn test(a: &Account, s: &Secret) -> Result<()> {
+pub fn test_with_progress(a: &Account, s: &Secret, progress: &impl Fn(&str)) -> Result<()> {
     a.validate()?;
+    progress("incoming");
     if a.protocol == "imap" {
         imap_session(a, s)?.logout().map_err(err)?;
     } else {
         let mut pop = pop_session(a, s)?;
         pop_command(&mut pop, "QUIT")?;
     }
+    progress("smtp");
     if !smtp(a, s)?
         .test_connection()
         .map_err(|e| format!("收件成功，但 SMTP 连接失败：{e}"))?

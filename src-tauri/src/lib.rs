@@ -208,24 +208,28 @@ async fn run_rules(state: tauri::State<'_, AppState>) -> Result<u32> {
     .map_err(err)?
 }
 #[tauri::command]
+fn cancel_authorization(id: String) -> Result<()> {
+    auth::cancel_authorization(&id)
+}
+#[tauri::command]
 async fn connect_account(
     state: tauri::State<'_, AppState>,
     mut account: Account,
     password: String,
     smtp_password: String,
+    on_progress: tauri::ipc::Channel<String>,
 ) -> Result<()> {
     let store = state.store.clone();
     let gate = state.gate.clone();
     let send_gate = state.send_gate.clone();
     let realtime = state.realtime.clone();
     tauri::async_runtime::spawn_blocking(move || {
-        let _guard = gate.try_lock().map_err(|_| "正在处理邮件，请稍后重试")?;
-        let _sending = send_gate
-            .try_lock()
-            .map_err(|_| "正在发送邮件，请稍后修改账号")?;
+        let progress = |stage: &str| {
+            let _ = on_progress.send(stage.to_string());
+        };
         account.validate()?;
         let secret = if account.auth == "oauth" {
-            auth::authorize(&account)?
+            auth::authorize(&account, &progress)?
         } else {
             if password.is_empty() {
                 return Err("请输入密码或客户端授权码".into());
@@ -236,7 +240,12 @@ async fn connect_account(
                 ..Default::default()
             }
         };
-        network::test(&account, &secret)?;
+        let _guard = gate.try_lock().map_err(|_| "正在处理邮件，请稍后重试")?;
+        let _sending = send_gate
+            .try_lock()
+            .map_err(|_| "正在发送邮件，请稍后修改账号")?;
+        network::test_with_progress(&account, &secret, &progress)?;
+        progress("saving");
         auth::save(&account.id, &secret)?;
         account.error = None;
         store.save_account(&account)?;
@@ -254,12 +263,16 @@ async fn edit_account(
     smtp_password: String,
     reauthorize: bool,
     smtp_use_incoming: bool,
+    on_progress: tauri::ipc::Channel<String>,
 ) -> Result<String> {
     let store = state.store.clone();
     let gate = state.gate.clone();
     let send_gate = state.send_gate.clone();
     let realtime = state.realtime.clone();
     tauri::async_runtime::spawn_blocking(move || {
+        let progress = |stage: &str| {
+            let _ = on_progress.send(stage.to_string());
+        };
         let old = store.account(&account.id)?;
         if password.is_empty()
             && smtp_password.is_empty()
@@ -271,16 +284,6 @@ async fn edit_account(
             store.log(&format!("账号 {} 本地留存与名称设置已保存", account.email))?;
             return Ok("账号设置已保存".into());
         }
-        let _guard = gate
-            .try_lock()
-            .map_err(|_| "正在收取邮件，暂时不能更改服务器连接配置")?;
-        let inbox_gate = sync_control::folder_gate(&store.root, &account.id, "INBOX")?;
-        let _inbox = inbox_gate
-            .try_lock()
-            .map_err(|_| "正在收取邮件，暂时不能更改服务器连接配置")?;
-        let _sending = send_gate
-            .try_lock()
-            .map_err(|_| "正在发送邮件，请稍后修改账号")?;
         account.validate()?;
         if old.email != account.email {
             return Err("修改邮箱地址请添加新账号".into());
@@ -290,7 +293,7 @@ async fn edit_account(
                 || old.auth != account.auth
                 || auth::client_id(&old) != auth::client_id(&account)
             {
-                auth::authorize(&account)?
+                auth::authorize(&account, &progress)?
             } else {
                 auth::credentials(&old)?
             }
@@ -320,7 +323,21 @@ async fn edit_account(
             }
             secret
         };
-        network::test(&account, &secret)?;
+        let _guard = gate
+            .try_lock()
+            .map_err(|_| "正在收取邮件，暂时不能更改服务器连接配置")?;
+        let inbox_gate = sync_control::folder_gate(&store.root, &account.id, "INBOX")?;
+        let _inbox = inbox_gate
+            .try_lock()
+            .map_err(|_| "正在收取邮件，暂时不能更改服务器连接配置")?;
+        let _sending = send_gate
+            .try_lock()
+            .map_err(|_| "正在发送邮件，请稍后修改账号")?;
+        if !store.account(&account.id)?.same_connection(&old) {
+            return Err("等待授权期间账号连接配置已变化，请重新打开设置".into());
+        }
+        network::test_with_progress(&account, &secret, &progress)?;
+        progress("saving");
         auth::save(&account.id, &secret)?;
         store.edit_account(&account)?;
         realtime.restart();
@@ -1031,6 +1048,7 @@ pub fn run() {
             preview_rule,
             run_rules,
             connect_account,
+            cancel_authorization,
             edit_account,
             list_contacts,
             save_contact,
