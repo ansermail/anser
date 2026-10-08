@@ -23,6 +23,7 @@ import { DirectoryOperationsPanel } from "./components/server-copy";
 import { ServerDirectoryMenu } from "./components/server-directory-menu";
 import { FolderMappingDialog } from "./components/folder-mapping-dialog";
 import { RetentionDialog } from "./components/retention-dialog";
+import { ArchiveJobsPanel } from "./components/archive-jobs";
 import { RemoteFolderList } from "./components/remote-folder-list";
 import { remoteFolderLabel } from "./lib/remote-folders";
 import { coalesceRefresh } from "./lib/refresh-queue";
@@ -40,6 +41,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import {
   Archive,
   ArrowDownToLine,
+  HardDriveDownload,
   ArrowLeft,
   ArrowRight,
   Check,
@@ -219,6 +221,7 @@ export default function App() {
     [editingAccount, setEditingAccount] = useState<Account | null>(null),
     [mappingAccount, setMappingAccount] = useState<Account | null>(null),
     [retentionAccount, setRetentionAccount] = useState<Account | null>(null),
+    [archiving, setArchiving] = useState(false),
     [contactSeed, setContactSeed] = useState<Address | null>(null),
     [draft, setDraft] = useState<Compose | null>(null),
     [drafts, setDrafts] = useState<Compose[]>([]),
@@ -235,6 +238,8 @@ export default function App() {
     queryRef = useRef(query),
     readerRef = useRef<HTMLDivElement>(null);
   const selectionRef = useRef(selected);
+  const detailRef = useRef(detail);
+  detailRef.current = detail;
   const readingNeighbors = useRef<{
     scope: string;
     previous: string[];
@@ -315,19 +320,29 @@ export default function App() {
             metadata &&
             selectionRef.current === reading &&
             seq === request.current
-          )
-            setDetail((current) =>
-              current?.mail.id === reading
-                ? {
-                    ...current,
-                    mail: {
-                      ...metadata,
-                      body: current.mail.body,
-                      ...localChanges.current.get(reading),
-                    },
-                  }
-                : current,
-            );
+          ) {
+            if (
+              detailRef.current?.mail.id === reading &&
+              detailRef.current.mail.hash !== metadata.hash
+            ) {
+              // The body and attachments must come from the same new original
+              // as the metadata, especially after online mail is archived.
+              setDetail(null);
+              setDetailRetry((n) => n + 1);
+            } else
+              setDetail((current) =>
+                current?.mail.id === reading
+                  ? {
+                      ...current,
+                      mail: {
+                        ...metadata,
+                        body: current.mail.body,
+                        ...localChanges.current.get(reading),
+                      },
+                    }
+                  : current,
+              );
+          }
         }
       } catch (e) {
         toast.error(String(e));
@@ -812,6 +827,25 @@ export default function App() {
       setDrafts(await call<Compose[]>("list_drafts"));
     } catch (e) {
       toast.error(String(e));
+    }
+  }
+  async function queueArchives(ids: string[], conversations = false) {
+    if (archiving) return;
+    setArchiving(true);
+    try {
+      const result = await call<{
+        queued: number;
+        alreadySaved: number;
+        blocked: number;
+      }>("queue_archives", { ids, conversations });
+      toast.success(
+        `已安排 ${result.queued} 封补存，${result.alreadySaved} 封已有完整存档，${result.blocked} 封需处理`,
+        { action: { label: "查看任务", onClick: () => setPage("storage") } },
+      );
+    } catch (e) {
+      toast.error(String(e));
+    } finally {
+      setArchiving(false);
     }
   }
   async function exportMail(m: Mail) {
@@ -1410,6 +1444,7 @@ export default function App() {
                 </div>
                 <p className="storage-path">{data.dataDir}</p>
               </Card>
+              <ArchiveJobsPanel />
               <StorageTools />
               {page === "settings" && <UpdateSettings updates={updates} />}
               <div className="flex flex-col gap-6">
@@ -1725,6 +1760,15 @@ export default function App() {
                       <span>
                         已选 {checked.length} {grouped ? "个对话" : "封邮件"}
                       </span>
+                      <Button
+                        variant="ghost"
+                        size="icon-sm"
+                        title="完整保存到本地"
+                        disabled={archiving}
+                        onClick={() => void queueArchives(checked, grouped)}
+                      >
+                        <HardDriveDownload />
+                      </Button>
                       <Button
                         variant="ghost"
                         size="icon-sm"
@@ -2131,6 +2175,19 @@ export default function App() {
                                 ? "服务器邮件"
                                 : "完整已保存"}
                           </span>
+                          {detail.mail.savedLocally === false && (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              disabled={archiving}
+                              onClick={() =>
+                                void queueArchives([detail.mail.id])
+                              }
+                            >
+                              <HardDriveDownload />
+                              完整保存到本地
+                            </Button>
+                          )}
                         </div>
                       </div>
                       <h1>{detail.mail.subject}</h1>
@@ -2154,7 +2211,9 @@ export default function App() {
                         attachment(index, name, mail)
                       }
                       onAction={(mail, action, value) =>
-                        void mutate([mail.id], action, value, false, [mail])
+                        action === "save"
+                          ? void queueArchives([mail.id])
+                          : void mutate([mail.id], action, value, false, [mail])
                       }
                       onLink={(href) =>
                         void openMailLink(href).catch((e) =>

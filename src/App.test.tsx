@@ -131,6 +131,117 @@ afterEach(async () => {
   vi.restoreAllMocks();
 });
 describe("message and conversation display modes", () => {
+  it("reloads selected content when archival changes the original hash", async () => {
+    const seed = await snapshot(localQuery);
+    seed.messages = [{ ...seed.messages[0], savedLocally: false }];
+    localStorage.setItem("mail-desktop-demo-v1", JSON.stringify(seed));
+    api.restoreDemo();
+    await click(nav("全部收件箱"));
+    await chooseListMode("逐封邮件");
+    let archived = false;
+    const original = api.call;
+    vi.spyOn(api, "call").mockImplementation(
+      async <T,>(command: string, args: Record<string, unknown> = {}) => {
+        if (command === "queue_archives") {
+          archived = true;
+          return { queued: 1, alreadySaved: 0, blocked: 0 } as T;
+        }
+        const result = await original<unknown>(command, args);
+        if (command === "mail_detail") {
+          const d = result as import("./lib/types").Detail;
+          return {
+            ...d,
+            html: "",
+            mail: {
+              ...d.mail,
+              hash: archived ? "full-hash" : "header-hash",
+              savedLocally: archived,
+              body: archived ? "Full archived original" : "Online body preview",
+            },
+          } as T;
+        }
+        if (command === "mail_metadata") {
+          const m = result as import("./lib/types").Mail;
+          return {
+            ...m,
+            hash: archived ? "full-hash" : "header-hash",
+            savedLocally: archived,
+            body: "",
+          } as T;
+        }
+        return result as T;
+      },
+    );
+    await click(host.querySelector("button.mail-row-main"));
+    expect(host.textContent).toContain("Online body preview");
+    await click(
+      [...host.querySelectorAll(".message-metadata button")].find((b) =>
+        b.textContent?.includes("完整保存到本地"),
+      ) ?? null,
+    );
+    await click(host.querySelector('[title="星标"], [title="取消星标"]'));
+    expect(host.textContent).toContain("Full archived original");
+    expect(host.textContent).not.toContain("Online body preview");
+  });
+  it("queues a single online mail explicitly without changing account retention", async () => {
+    const seed = await snapshot(localQuery);
+    const mail = { ...seed.messages[0], savedLocally: false };
+    seed.messages = [mail];
+    localStorage.setItem("mail-desktop-demo-v1", JSON.stringify(seed));
+    api.restoreDemo();
+    await click(nav("全部收件箱"));
+    await chooseListMode("逐封邮件");
+    const original = api.call;
+    const calls = vi
+      .spyOn(api, "call")
+      .mockImplementation(
+        async <T,>(command: string, args: Record<string, unknown> = {}) =>
+          command === "queue_archives"
+            ? ({ queued: 1, alreadySaved: 0, blocked: 0 } as T)
+            : original<T>(command, args),
+      );
+    await click(host.querySelector("button.mail-row-main"));
+    await click(
+      [...host.querySelectorAll(".message-metadata button")].find((b) =>
+        b.textContent?.includes("完整保存到本地"),
+      ) ?? null,
+    );
+    expect(calls).toHaveBeenCalledWith("queue_archives", {
+      ids: [mail.id],
+      conversations: false,
+    });
+    expect(
+      calls.mock.calls.some(
+        ([c]) => c === "edit_account_preferences" || c === "send_mail",
+      ),
+    ).toBe(false);
+  });
+  it("keeps grouped versus individual batch archival scope in the command", async () => {
+    await seedReplyThread();
+    await click(nav("本地存档"));
+    const original = api.call;
+    const calls = vi
+      .spyOn(api, "call")
+      .mockImplementation(
+        async <T,>(command: string, args: Record<string, unknown> = {}) =>
+          command === "queue_archives"
+            ? ({ queued: 1, alreadySaved: 1, blocked: 0 } as T)
+            : original<T>(command, args),
+      );
+    await click(host.querySelector('.row-check [role="checkbox"]'));
+    await click(host.querySelector('.batch-toolbar [title="完整保存到本地"]'));
+    expect(calls).toHaveBeenLastCalledWith("queue_archives", {
+      ids: ["demo-0"],
+      conversations: true,
+    });
+    await chooseListMode("逐封邮件");
+    await click(host.querySelector('.row-check [role="checkbox"]'));
+    await click(host.querySelector('.batch-toolbar [title="完整保存到本地"]'));
+    expect(calls).toHaveBeenLastCalledWith("queue_archives", {
+      ids: ["demo-0"],
+      conversations: false,
+    });
+  });
   it("changes counts and keeps its preference across categories and reopening", async () => {
     await seedReplyThread();
     await click(nav("本地存档"));

@@ -191,6 +191,14 @@ export async function call<T = void>(
       case "folder_settings":
         result = { folders: await call("account_folders", args), mappings: [] };
         break;
+      case "archive_jobs":
+        result = [];
+        break;
+      case "queue_archives":
+      case "archive_job_action":
+        throw new Error(
+          "演示模式不下载服务器原件，请在桌面客户端中使用真实邮箱测试补存",
+        );
       case "retention_settings":
         result = {
           defaultSave:
@@ -560,6 +568,7 @@ export async function call<T = void>(
         "rule_executions",
         "folder_settings",
         "retention_settings",
+        "archive_jobs",
         "copy_sources",
       ].includes(command)
     )

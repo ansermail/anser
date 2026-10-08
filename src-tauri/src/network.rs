@@ -7,7 +7,10 @@ use crate::{
 };
 use base64::Engine;
 use lettre::{
-    message::{header::ContentType, Attachment, MultiPart, SinglePart},
+    message::{
+        header::{ContentTransferEncoding, ContentType},
+        Attachment, Body, MultiPart, SinglePart,
+    },
     transport::smtp::authentication::{Credentials, Mechanism},
     Message, SmtpTransport, Transport,
 };
@@ -1105,7 +1108,9 @@ fn inline_images(html: &str) -> Result<(String, Vec<SinglePart>, usize)> {
         }
         let cid = format!("yanxin-{}@local", uuid::Uuid::new_v4());
         output = output.replace(source, &format!("cid:{cid}"));
-        images.push(Attachment::new_inline(cid).body(bytes, content_type));
+        let encoded = Body::new_with_encoding(bytes, ContentTransferEncoding::Base64)
+            .map_err(|_| "内嵌图片编码失败")?;
+        images.push(Attachment::new_inline(cid).body(encoded, content_type));
     }
     Ok((output, images, total))
 }
@@ -1210,7 +1215,8 @@ pub(crate) fn build_message(a: &Account, c: &Compose) -> Result<Message> {
                     .into(),
             )
             .body(
-                bytes,
+                Body::new_with_encoding(bytes, ContentTransferEncoding::Base64)
+                    .map_err(|_| "附件编码失败")?,
                 ContentType::parse("application/octet-stream").map_err(err)?,
             ),
         );
@@ -2781,10 +2787,19 @@ pub fn probe_folder(
 }
 pub fn read_remote(store: &Store, a: &Account, mail: &Mail) -> Result<Vec<u8>> {
     let (folder, remote) = store.source(&mail.id)?;
+    read_remote_source(store, a, mail, &folder, &remote)
+}
+pub(crate) fn read_remote_source(
+    _store: &Store,
+    a: &Account,
+    mail: &Mail,
+    folder: &str,
+    remote: &str,
+) -> Result<Vec<u8>> {
     let secret = auth::credentials(a)?;
     let raw = if a.protocol == "imap" {
         let mut session = imap_session(a, &secret)?;
-        let mailbox = examine_verified(&mut session, &folder)?;
+        let mailbox = examine_verified(&mut session, folder)?;
         let mut pieces = remote.split(':');
         let first = pieces.next().ok_or("服务器邮件标识无效")?;
         let uid = pieces
@@ -2792,8 +2807,10 @@ pub fn read_remote(store: &Store, a: &Account, mail: &Mail) -> Result<Vec<u8>> {
             .and_then(|s| s.parse::<u32>().ok())
             .ok_or("服务器邮件标识无效")?;
         if first != "content"
-            && mailbox_uid_validity(&mut session, &folder, &mailbox)?
-                .is_some_and(|v| first != v.to_string())
+            && mailbox_uid_validity(&mut session, folder, &mailbox)?
+                .map(|v| v.to_string())
+                .as_deref()
+                != Some(first)
         {
             return Err("服务器文件夹已重建，请刷新后再打开邮件".into());
         }
@@ -2824,7 +2841,7 @@ pub fn read_remote(store: &Store, a: &Account, mail: &Mail) -> Result<Vec<u8>> {
         let _ = pop_command(&mut pop, "QUIT");
         raw
     };
-    let parsed = archive::parse(&raw, a, &folder)?.0;
+    let parsed = archive::parse(&raw, a, folder)?.0;
     // UID reuse must not display an unrelated message in an old open tab.
     if !mail.message_id.is_empty() && parsed.message_id != mail.message_id {
         return Err("服务器邮件标识已变化，请刷新后重试".into());

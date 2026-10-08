@@ -99,6 +99,7 @@ impl Store {
         crate::sent_uploads::initialize(&db)?;
         crate::rule_operations::initialize(&db)?;
         crate::retention::initialize(&db)?;
+        crate::archive_jobs::initialize(&db)?;
         s.migrate_folder_roles()?;
         s.recover_archive_deletion()?;
         s.refresh_archive_metadata()?;
@@ -258,6 +259,7 @@ impl Store {
             .map_err(err)?;
         tx.execute("DELETE FROM folder_retention WHERE account_id=?1", [id])
             .map_err(err)?;
+        tx.execute("UPDATE archive_jobs SET status='cancelled',revision=revision+1,error='账号已移除，本地存档保留' WHERE json_extract(data,'$.accountId')=?1 AND status!='completed'",[id]).map_err(err)?;
         tx.execute("UPDATE server_operations SET status='blocked',revision=revision+1,error='账号已移除，本地存档保留' WHERE account_id=?1 AND status!='completed'", [id]).map_err(err)?;
         tx.execute("DELETE FROM accounts WHERE id=?1", [id])
             .map_err(err)?;
@@ -829,7 +831,7 @@ impl Store {
             )?;
         }
         drop(stmt);
-        snap.execute_batch("DELETE FROM accounts; DELETE FROM folder_retention; DELETE FROM drafts; DELETE FROM outbox; DELETE FROM sent_uploads; DELETE FROM logs; DELETE FROM server_operations; DELETE FROM folder_health; DELETE FROM directory_operations; DELETE FROM rule_executions; VACUUM;").map_err(err)?;
+        snap.execute_batch("DELETE FROM accounts; DELETE FROM folder_retention; DELETE FROM archive_jobs; DELETE FROM drafts; DELETE FROM outbox; DELETE FROM sent_uploads; DELETE FROM logs; DELETE FROM server_operations; DELETE FROM folder_health; DELETE FROM directory_operations; DELETE FROM rule_executions; VACUUM;").map_err(err)?;
         archive::atomic_write(
             &folder.join("manifest.json"),
             br#"{"format":"mail-desktop-archive","version":1}"#,

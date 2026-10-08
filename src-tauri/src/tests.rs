@@ -841,6 +841,74 @@ fn rich_mime_preserves_plain_alternative_and_bcc_only_in_envelope() {
     assert!(crate::network::build_message(&account(), &bad).is_err());
 }
 #[test]
+fn outgoing_attachments_and_ascii_inline_images_survive_smtp_line_normalization_byte_for_byte() {
+    use mailparse::MailHeaderMap;
+    let dir = tempfile::tempdir().unwrap();
+    let files: Vec<Vec<u8>> = vec![
+        b"line one\nline two\n".to_vec(),
+        b"CRLF\r\nCR\rLF\n".to_vec(),
+        vec![0, 255, 13, 10, 128],
+        "中文\n多行文件\n".as_bytes().to_vec(),
+    ];
+    let mut d = draft();
+    d.attachments = files
+        .iter()
+        .enumerate()
+        .map(|(i, bytes)| {
+            let path = dir.path().join(format!("file-{i}.dat"));
+            std::fs::write(&path, bytes).unwrap();
+            path.to_string_lossy().into_owned()
+        })
+        .collect();
+    let svg = b"<svg>\n<path d=\"M0 0L1 1\"/>\n</svg>\n";
+    use base64::Engine;
+    d.delivery_html = Some(format!(
+        "<p>inline</p><img src=\"data:image/svg+xml;base64,{}\">",
+        base64::engine::general_purpose::STANDARD.encode(svg)
+    ));
+    let raw = crate::network::build_message(&account(), &d)
+        .unwrap()
+        .formatted();
+    // SMTP DATA requires CRLF. Even a relay normalizing every bare LF must
+    // leave file bytes intact, since attachments are encoded as binary Base64.
+    let mut wire = Vec::new();
+    for (i, b) in raw.iter().enumerate() {
+        if *b == b'\n' && (i == 0 || raw[i - 1] != b'\r') {
+            wire.push(b'\r');
+        }
+        wire.push(*b);
+    }
+    let parsed = mailparse::parse_mail(&wire).unwrap();
+    let mut leaves = Vec::new();
+    archive::leaves(&parsed, &mut leaves);
+    let parts = leaves
+        .iter()
+        .filter(|p| p.ctype.mimetype == "application/octet-stream")
+        .collect::<Vec<_>>();
+    assert_eq!(parts.len(), files.len());
+    for (part, original) in parts.iter().zip(files) {
+        assert_eq!(
+            part.headers
+                .get_first_value("Content-Transfer-Encoding")
+                .as_deref(),
+            Some("base64")
+        );
+        assert_eq!(part.get_body_raw().unwrap(), original);
+    }
+    let image = leaves
+        .iter()
+        .find(|p| p.ctype.mimetype == "image/svg+xml")
+        .unwrap();
+    assert_eq!(
+        image
+            .headers
+            .get_first_value("Content-Transfer-Encoding")
+            .as_deref(),
+        Some("base64")
+    );
+    assert_eq!(image.get_body_raw().unwrap(), svg);
+}
+#[test]
 fn quoted_delivery_keeps_html_and_embedded_images_in_mime() {
     let mut d = draft();
     d.delivery_body = Some("New reply\nOriginal text".into());

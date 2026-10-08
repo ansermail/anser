@@ -25,6 +25,7 @@ import { Textarea } from "./ui/textarea";
 import {
   DropdownMenu,
   DropdownMenuContent,
+  DropdownMenuGroup,
   DropdownMenuItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
@@ -136,45 +137,53 @@ function Turn({
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
-            <DropdownMenuItem
-              disabled={!detail}
-              onClick={() => detail && onReply(detail)}
-            >
-              <Reply size={14} />
-              回复这封邮件
-            </DropdownMenuItem>
-            <DropdownMenuItem
-              disabled={!detail}
-              onClick={() => detail && onReply(detail, false, true)}
-            >
-              <ReplyAll size={14} />
-              全部回复
-            </DropdownMenuItem>
-            <DropdownMenuItem
-              disabled={!detail}
-              onClick={() => detail && onReply(detail, true)}
-            >
-              <Send size={14} />
-              转发
-            </DropdownMenuItem>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem onClick={() => onExport(mail)}>
-              <ArrowDownToLine size={14} />
-              导出原始邮件
-            </DropdownMenuItem>
-            <DropdownMenuItem
-              onClick={() => onAction(mail, "star", String(!mail.starred))}
-            >
-              <Star size={14} />
-              {mail.starred ? "取消星标" : "星标"}
-            </DropdownMenuItem>
-            <DropdownMenuItem
-              variant="destructive"
-              onClick={() => onAction(mail, "trash", String(!mail.trashed))}
-            >
-              <Trash2 size={14} />
-              {mail.trashed ? "恢复邮件" : "移到本地废纸篓"}
-            </DropdownMenuItem>
+            <DropdownMenuGroup>
+              <DropdownMenuItem
+                disabled={!detail}
+                onClick={() => detail && onReply(detail)}
+              >
+                <Reply size={14} />
+                回复这封邮件
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                disabled={!detail}
+                onClick={() => detail && onReply(detail, false, true)}
+              >
+                <ReplyAll size={14} />
+                全部回复
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                disabled={!detail}
+                onClick={() => detail && onReply(detail, true)}
+              >
+                <Send size={14} />
+                转发
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              {mail.savedLocally === false && (
+                <DropdownMenuItem onClick={() => onAction(mail, "save", "")}>
+                  <ArrowDownToLine />
+                  完整保存到本地
+                </DropdownMenuItem>
+              )}
+              <DropdownMenuItem onClick={() => onExport(mail)}>
+                <ArrowDownToLine size={14} />
+                导出原始邮件
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                onClick={() => onAction(mail, "star", String(!mail.starred))}
+              >
+                <Star size={14} />
+                {mail.starred ? "取消星标" : "星标"}
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                variant="destructive"
+                onClick={() => onAction(mail, "trash", String(!mail.trashed))}
+              >
+                <Trash2 size={14} />
+                {mail.trashed ? "恢复邮件" : "移到本地废纸篓"}
+              </DropdownMenuItem>
+            </DropdownMenuGroup>
           </DropdownMenuContent>
         </DropdownMenu>
       </div>

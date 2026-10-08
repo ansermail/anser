@@ -1,5 +1,6 @@
 mod archive;
 mod archive_deletion;
+mod archive_jobs;
 mod attachment_preview;
 mod auth;
 mod conversation;
@@ -735,6 +736,35 @@ async fn save_retention(
         .map_err(err)?
 }
 #[tauri::command]
+async fn queue_archives(
+    state: tauri::State<'_, AppState>,
+    ids: Vec<String>,
+    conversations: bool,
+) -> Result<archive_jobs::ArchiveQueueResult> {
+    let store = state.store.clone();
+    tauri::async_runtime::spawn_blocking(move || store.queue_archives(&ids, conversations))
+        .await
+        .map_err(err)?
+}
+#[tauri::command]
+async fn archive_jobs(state: tauri::State<'_, AppState>) -> Result<Vec<archive_jobs::ArchiveJob>> {
+    let store = state.store.clone();
+    tauri::async_runtime::spawn_blocking(move || store.archive_jobs())
+        .await
+        .map_err(err)?
+}
+#[tauri::command]
+async fn archive_job_action(
+    state: tauri::State<'_, AppState>,
+    id: String,
+    action: String,
+) -> Result<()> {
+    let store = state.store.clone();
+    tauri::async_runtime::spawn_blocking(move || store.archive_job_action(&id, &action))
+        .await
+        .map_err(err)?
+}
+#[tauri::command]
 async fn save_folder_mappings(
     state: tauri::State<'_, AppState>,
     app: tauri::AppHandle,
@@ -984,6 +1014,7 @@ pub fn run() {
             operations::start(store.clone(), app.handle().clone());
             directory_operations::start(store.clone(), app.handle().clone());
             sent_uploads::start(store.clone(), app.handle().clone());
+            archive_jobs::start(store.clone(), app.handle().clone());
             let menu = tauri::menu::Menu::default(app.handle())?;
             app.set_menu(menu)?;
             tauri::tray::TrayIconBuilder::new()
@@ -1070,6 +1101,9 @@ pub fn run() {
             folder_settings,
             retention_settings,
             save_retention,
+            queue_archives,
+            archive_jobs,
+            archive_job_action,
             save_folder_mappings,
             sync_remote_folder,
             mail_detail,

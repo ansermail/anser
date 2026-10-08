@@ -268,6 +268,7 @@ impl Store {
         let mut hashes = std::collections::BTreeSet::new();
         for (mail, online) in &mails {
             hashes.insert(mail.hash.clone());
+            tx.execute("UPDATE archive_jobs SET status='cancelled',revision=revision+1,error='本地存档已清理' WHERE mail_id=?1",[&mail.id]).map_err(err)?;
             if *online {
                 tx.execute("UPDATE messages SET data=json_set(data,'$.savedLocally',json('false'),'$.body','') WHERE id=?1", [&mail.id]).map_err(err)?;
             } else {
@@ -279,6 +280,7 @@ impl Store {
             }
         }
         if stop_saving {
+            tx.execute("UPDATE archive_jobs SET status='cancelled',revision=revision+1,error='已停止本地保存' WHERE (?1='' OR json_extract(data,'$.accountId')=?1) AND status NOT IN ('completed','cancelled')",[account]).map_err(err)?;
             tx.execute("UPDATE accounts SET data=json_set(data,'$.saveLocally',json('false')) WHERE ?1='' OR id=?1", [account]).map_err(err)?;
             tx.execute(
                 "DELETE FROM folder_retention WHERE ?1='' OR account_id=?1",
