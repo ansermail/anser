@@ -16,6 +16,7 @@ export interface Account {
   oauthClientId: string;
   enabled: boolean;
   saveLocally?: boolean;
+  serverRetentionDays?: number | null;
   lastSync: string | null;
   error: string | null;
 }
@@ -24,9 +25,22 @@ export interface FolderRetention {
   saveLocally: boolean;
 }
 export interface RetentionSettings {
+  account?: Account;
   defaultSave: boolean;
   folders: RemoteFolder[];
   overrides: FolderRetention[];
+  summary?: RetentionSummary;
+}
+export interface RetentionSummary {
+  dataDir: string;
+  known: number;
+  saved: number;
+  savedBytes: number;
+  pending: number;
+  failedJobs: number;
+  lastSync: string | null;
+  receiveError: string | null;
+  warning: string | null;
 }
 export interface Mail {
   parseWarnings?: string[];

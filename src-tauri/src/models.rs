@@ -29,6 +29,8 @@ pub struct Account {
     #[serde(default = "default_true")]
     pub save_locally: bool,
     #[serde(default)]
+    pub server_retention_days: Option<u32>,
+    #[serde(default)]
     pub last_sync: Option<String>,
     #[serde(default)]
     pub error: Option<String>,
@@ -51,6 +53,12 @@ impl Account {
             && self.oauth_client_id == other.oauth_client_id
     }
     pub fn validate(&self) -> Result<()> {
+        if self
+            .server_retention_days
+            .is_some_and(|days| days == 0 || days > 3650)
+        {
+            return Err("服务器保留期请填写 1–3650 天，未知时留空".into());
+        }
         if self.email.parse::<lettre::Address>().is_err() {
             return Err("请输入有效的邮箱地址".into());
         }

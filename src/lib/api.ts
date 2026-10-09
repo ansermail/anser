@@ -199,22 +199,67 @@ export async function call<T = void>(
         throw new Error(
           "演示模式不下载服务器原件，请在桌面客户端中使用真实邮箱测试补存",
         );
-      case "retention_settings":
+      case "retention_settings": {
+        const account = demo.accounts.find((a) => a.id === args.id);
+        if (!account) throw new Error("账号不存在");
+        const folders = await call<import("./types").RemoteFolder[]>(
+          "account_folders",
+          args,
+        );
+        const overrides = JSON.parse(
+          localStorage.getItem(`${key}:retention:${args.id}`) || "[]",
+        ) as import("./types").FolderRetention[];
+        const mails = demo.messages.filter((m) => m.accountId === account.id);
+        const saved = mails.filter((m) => m.savedLocally !== false);
+        const wanted = folders
+          .filter((f) => f.selectable)
+          .filter((f) => {
+            const override = overrides.find((o) => o.folder === f.name);
+            return (
+              (override?.saveLocally ?? account.saveLocally !== false) &&
+              (!(f.roles || []).some((r) => ["junk", "trash"].includes(r)) ||
+                override?.saveLocally === true)
+            );
+          });
         result = {
-          defaultSave:
-            demo.accounts.find((a) => a.id === args.id)?.saveLocally !== false,
-          folders: await call("account_folders", args),
-          overrides: JSON.parse(
-            localStorage.getItem(`${key}:retention:${args.id}`) || "[]",
-          ),
+          account,
+          defaultSave: account.saveLocally !== false,
+          folders,
+          overrides,
+          summary: {
+            dataDir: demo.dataDir,
+            known: mails.length,
+            saved: saved.length,
+            savedBytes: saved.reduce((n, m) => n + m.size, 0),
+            pending: mails.filter(
+              (m) =>
+                m.savedLocally === false &&
+                wanted.some((f) => f.name === m.sourceFolder),
+            ).length,
+            failedJobs: 0,
+            lastSync: account.lastSync,
+            receiveError: account.error,
+            warning: null,
+          },
         };
         break;
-      case "save_retention":
+      }
+      case "save_retention": {
+        const account = args.account as Account;
+        const days = account.serverRetentionDays;
+        if (
+          days != null &&
+          (!Number.isInteger(days) || days < 1 || days > 3650)
+        )
+          throw new Error("服务器保留期请填写 1–3650 天，未知时留空");
         localStorage.setItem(
-          `${key}:retention:${(args.account as Account).id}`,
+          `${key}:retention:${account.id}`,
           JSON.stringify(args.overrides),
         );
+        const current = demo.accounts.find((a) => a.id === account.id);
+        if (current) current.serverRetentionDays = days ?? null;
         break;
+      }
       case "preview_rule":
         result = demo.messages
           .filter(

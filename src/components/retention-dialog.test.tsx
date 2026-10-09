@@ -10,10 +10,15 @@ let root: Root, host: HTMLDivElement, settings: RetentionSettings;
 const a = { ...makeAccount("qq"), id: "fixture-a", saveLocally: false };
 const onClose = vi.fn(),
   onSaved = vi.fn();
-async function render(account: Account | null = a) {
+async function render(account: Account | null = a, onboarding = false) {
   await act(async () =>
     root.render(
-      <RetentionDialog account={account} onClose={onClose} onSaved={onSaved} />,
+      <RetentionDialog
+        account={account}
+        onboarding={onboarding}
+        onClose={onClose}
+        onSaved={onSaved}
+      />,
     ),
   );
 }
@@ -95,7 +100,7 @@ it("shows the account default and submits explicit wire folder overrides only", 
   await select("垃圾邮件保存方式", "在线阅读");
   await click("保存范围");
   expect(api.call).toHaveBeenCalledWith("save_retention", {
-    account: a,
+    account: { ...a, serverRetentionDays: null },
     overrides: [
       { folder: "INBOX", saveLocally: true },
       { folder: "&encoded-spam-", saveLocally: false },
@@ -115,7 +120,7 @@ it("inherit removes an override and cancel does not save changes", async () => {
   );
   await click("保存范围");
   expect(api.call).toHaveBeenCalledWith("save_retention", {
-    account: a,
+    account: { ...a, serverRetentionDays: null },
     overrides: [],
   });
 });
@@ -163,4 +168,140 @@ it("ignores stale loads and a save completion after changing accounts", async ()
   await act(async () => resolveSave());
   expect(onClose).not.toHaveBeenCalled();
   expect(onSaved).not.toHaveBeenCalled();
+});
+it("shows connection guidance and cached-only status without changing retention on skip", async () => {
+  settings.account = { ...a, serverRetentionDays: 3 };
+  settings.summary = {
+    dataDir: "/fixture/archive",
+    known: 20,
+    saved: 12,
+    savedBytes: 1024,
+    pending: 4,
+    failedJobs: 2,
+    lastSync: null,
+    receiveError: "offline",
+    warning: "接近保留期",
+  };
+  await render(a, true);
+  expect(document.body.textContent).toContain("邮箱已连接");
+  expect(document.body.textContent).toContain(
+    "尚未发现的服务器历史邮件不包含在内",
+  );
+  expect(document.body.textContent).toContain("4 封");
+  expect(document.body.textContent).toContain("offline");
+  expect(document.body.textContent).toContain("接近保留期");
+  expect(document.body.textContent).toContain("/fixture/archive");
+  await click("以后再设置");
+  expect(api.call).not.toHaveBeenCalledWith(
+    "save_retention",
+    expect.anything(),
+  );
+  expect(onClose).toHaveBeenCalledOnce();
+});
+it("refreshes counts without replacing unsaved choices or retargeting the loaded connection", async () => {
+  const canonical = {
+    ...a,
+    oauthClientId: "canonical-client",
+    serverRetentionDays: 3,
+  };
+  settings.account = canonical;
+  settings.summary = {
+    dataDir: "/fixture",
+    known: 10,
+    saved: 1,
+    savedBytes: 123,
+    pending: 9,
+    failedJobs: 0,
+    lastSync: null,
+    receiveError: null,
+    warning: null,
+  };
+  await render();
+  await select("收件箱保存方式", "完整保存");
+  const newSettings = {
+    ...settings,
+    account: { ...canonical, incomingHost: "changed.example.com" },
+    summary: { ...settings.summary, pending: 8 },
+  };
+  vi.mocked(api.call).mockImplementation(async (command) =>
+    command === "retention_settings"
+      ? (newSettings as never)
+      : (undefined as never),
+  );
+  await click("刷新保存状态");
+  await click("保存范围");
+  expect(api.call).toHaveBeenCalledWith("save_retention", {
+    account: canonical,
+    overrides: [{ folder: "INBOX", saveLocally: true }],
+  });
+});
+it("supports POP retention reminders and blocks invalid day values", async () => {
+  const pop = { ...a, protocol: "pop3" as const };
+  settings.account = pop;
+  await render(pop);
+  expect(document.body.textContent).toContain("POP3 保存服务端可收取的邮件");
+  expect(document.querySelector('[aria-label="收件箱保存方式"]')).toBeNull();
+  const input = document.querySelector(
+    "#server-retention-days",
+  ) as HTMLInputElement;
+  async function value(text: string) {
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(
+        HTMLInputElement.prototype,
+        "value",
+      )!.set!.call(input, text);
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+      input.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+  }
+  await value("0");
+  const save = [...document.querySelectorAll("button")].find(
+    (b) => b.textContent === "保存设置",
+  )!;
+  expect(save.disabled).toBe(true);
+  await value("3");
+  expect(save.disabled).toBe(false);
+  await click("保存设置");
+  expect(api.call).toHaveBeenCalledWith("save_retention", {
+    account: { ...pop, serverRetentionDays: 3 },
+    overrides: [],
+  });
+});
+it("polls status without replacing unsaved scope and stops when closed", async () => {
+  vi.useFakeTimers();
+  try {
+    settings.summary = {
+      dataDir: "/fixture",
+      known: 10,
+      saved: 1,
+      savedBytes: 123,
+      pending: 9,
+      failedJobs: 0,
+      lastSync: null,
+      receiveError: null,
+      warning: null,
+    };
+    await render();
+    await select("收件箱保存方式", "完整保存");
+    settings = { ...settings, summary: { ...settings.summary, pending: 8 } };
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(5000);
+    });
+    expect(document.body.textContent).toContain("8 封");
+    await click("保存范围");
+    expect(api.call).toHaveBeenCalledWith(
+      "save_retention",
+      expect.objectContaining({
+        overrides: [{ folder: "INBOX", saveLocally: true }],
+      }),
+    );
+    await render(null);
+    const before = vi.mocked(api.call).mock.calls.length;
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(10000);
+    });
+    expect(vi.mocked(api.call).mock.calls.length).toBe(before);
+  } finally {
+    vi.useRealTimers();
+  }
 });

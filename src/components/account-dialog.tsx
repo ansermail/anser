@@ -36,7 +36,7 @@ export function AccountDialog({
 }: {
   open: boolean;
   onOpenChange: (v: boolean) => void;
-  onDone: () => void;
+  onDone: (connected?: Account) => void;
   editing?: Account | null;
 }) {
   const [account, setAccount] = useState<Account | null>(null),
@@ -102,7 +102,15 @@ export function AccountDialog({
       );
       setPassword("");
       setSmtpPassword("");
-      onDone();
+      onDone(
+        editing
+          ? undefined
+          : {
+              ...account,
+              username: account.username || account.email,
+              name: account.name || account.email,
+            },
+      );
       onOpenChange(false);
       setAccount(null);
       toast.success(

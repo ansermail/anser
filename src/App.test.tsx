@@ -1080,3 +1080,71 @@ describe("reading unread mail within its current category", () => {
     }
   });
 });
+
+it("opens saving guidance after a new account connects without submitting folder changes", async () => {
+  await click(nav("设置与账号"));
+  await click(
+    [...host.querySelectorAll("button")].find(
+      (b) => b.textContent?.trim() === "添加账号",
+    ) || null,
+  );
+  await click(
+    [...document.querySelectorAll("button.provider")].find((b) =>
+      b.textContent?.includes("QQ 邮箱"),
+    ) || null,
+  );
+  const input = document.querySelector("#email") as HTMLInputElement;
+  await act(async () => {
+    Object.getOwnPropertyDescriptor(
+      HTMLInputElement.prototype,
+      "value",
+    )!.set!.call(input, "fictional-test");
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+    input.dispatchEvent(new Event("change", { bubbles: true }));
+  });
+  const realCall = api.call;
+  let connected: import("./lib/types").Account | undefined;
+  const mock = vi
+    .spyOn(api, "call")
+    .mockImplementation(async (command, args) => {
+      if (command === "connect_account") {
+        connected = args?.account as import("./lib/types").Account;
+        expect(connected.email).toBe("fictional-test@qq.com");
+        return "verified fixture" as never;
+      }
+      if (command === "retention_settings" && args?.id === connected?.id)
+        return {
+          account: connected,
+          defaultSave: true,
+          folders: [],
+          overrides: [],
+          summary: {
+            dataDir: "/fixture",
+            known: 0,
+            saved: 0,
+            savedBytes: 0,
+            pending: 0,
+            failedJobs: 0,
+            lastSync: null,
+            receiveError: null,
+            warning: null,
+          },
+        } as never;
+      return realCall(command, args);
+    });
+  await act(async () =>
+    document
+      .querySelector("form.account-form")!
+      .dispatchEvent(new Event("submit", { bubbles: true, cancelable: true })),
+  );
+  expect(document.body.textContent).toContain("邮箱已连接");
+  expect(document.body.textContent).toContain("本地保存状态");
+  expect(document.body.textContent).toContain("fictional-test@qq.com");
+  expect(mock).not.toHaveBeenCalledWith("save_retention", expect.anything());
+  await click(
+    [...document.querySelectorAll("button")].find(
+      (b) => b.textContent?.trim() === "以后再设置",
+    ) || null,
+  );
+  expect(document.querySelector('[role="dialog"]')).toBeNull();
+});

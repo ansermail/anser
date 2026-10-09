@@ -731,9 +731,11 @@ async fn save_retention(
     overrides: Vec<retention::FolderRetention>,
 ) -> Result<()> {
     let store = state.store.clone();
-    tauri::async_runtime::spawn_blocking(move || store.save_retention(&account, &overrides))
-        .await
-        .map_err(err)?
+    tauri::async_runtime::spawn_blocking(move || {
+        store.save_retention_preferences(&account, &overrides)
+    })
+    .await
+    .map_err(err)?
 }
 #[tauri::command]
 async fn queue_archives(

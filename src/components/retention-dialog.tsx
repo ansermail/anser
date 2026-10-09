@@ -4,6 +4,8 @@ import { toast } from "sonner";
 import { call } from "@/lib/api";
 import type { Account, FolderRetention, RetentionSettings } from "@/lib/types";
 import { Button } from "./ui/button";
+import { Input } from "./ui/input";
+import { RetentionSummaryView } from "./retention-summary";
 import { Alert, AlertDescription } from "./ui/alert";
 import { Skeleton } from "./ui/skeleton";
 import { Field, FieldGroup, FieldLabel, FieldDescription } from "./ui/field";
@@ -28,10 +30,12 @@ export function RetentionDialog({
   account,
   onClose,
   onSaved,
+  onboarding = false,
 }: {
   account: Account | null;
   onClose: () => void;
   onSaved: () => void;
+  onboarding?: boolean;
 }) {
   const epoch = useRef(0);
   const [settings, setSettings] = useState<RetentionSettings | null>(null);
@@ -39,18 +43,28 @@ export function RetentionDialog({
   const [busy, setBusy] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [days, setDays] = useState("");
+  const summaryFlight = useRef(false);
+  const refreshSummaryRef = useRef<() => void>(() => {});
+  useEffect(() => {
+    if (!account) return;
+    const timer = window.setInterval(() => refreshSummaryRef.current(), 5000);
+    return () => window.clearInterval(timer);
+  }, [account?.id]);
   useEffect(() => {
     const current = ++epoch.current;
     setSettings(null);
     setValues({});
     setError("");
     setBusy(false);
+    setDays("");
     if (!account) return;
     setLoading(true);
     void call<RetentionSettings>("retention_settings", { id: account.id })
       .then((data) => {
         if (epoch.current !== current) return;
         setSettings(data);
+        setDays(data.account?.serverRetentionDays?.toString() || "");
         setValues(
           Object.fromEntries(
             data.overrides.map((item) => [
@@ -71,7 +85,13 @@ export function RetentionDialog({
     };
   }, [account?.id]);
   if (!account) return null;
-  const folders = settings?.folders.filter((f) => f.selectable) || [];
+  const folders =
+    account.protocol === "imap"
+      ? settings?.folders.filter((f) => f.selectable) || []
+      : [];
+  const validDays =
+    days === "" ||
+    (/^\d+$/.test(days) && Number(days) > 0 && Number(days) <= 3650);
   const missing = Object.keys(values).filter(
     (name) => !folders.some((f) => f.name === name),
   );
@@ -92,8 +112,38 @@ export function RetentionDialog({
       if (epoch.current === current) setLoading(false);
     }
   }
+  async function refreshSummary(background = false) {
+    if (!account || loading || busy || summaryFlight.current) return;
+    const current = epoch.current;
+    summaryFlight.current = true;
+    if (!background) {
+      setLoading(true);
+      setError("");
+    }
+    try {
+      const data = await call<RetentionSettings>("retention_settings", {
+        id: account.id,
+      });
+      if (epoch.current === current)
+        setSettings((old) => (old ? { ...old, summary: data.summary } : data));
+    } catch (e) {
+      if (epoch.current === current && !background) setError(String(e));
+    } finally {
+      summaryFlight.current = false;
+      if (epoch.current === current && !background) setLoading(false);
+    }
+  }
+  refreshSummaryRef.current = () => void refreshSummary(true);
   async function save() {
-    if (!account || !settings || loading || busy || missing.length) return;
+    if (
+      !account ||
+      !settings ||
+      loading ||
+      busy ||
+      missing.length ||
+      !validDays
+    )
+      return;
     const current = epoch.current;
     setBusy(true);
     setError("");
@@ -101,9 +151,19 @@ export function RetentionDialog({
       ([folder, value]) => ({ folder, saveLocally: value === "save" }),
     );
     try {
-      await call("save_retention", { account, overrides });
+      await call("save_retention", {
+        account: {
+          ...(settings.account || account),
+          serverRetentionDays: days === "" ? null : Number(days),
+        },
+        overrides,
+      });
       if (epoch.current !== current) return;
-      toast.success("文件夹保存范围已保存");
+      toast.success(
+        account.protocol === "imap"
+          ? "文件夹保存范围已保存"
+          : "本地保存设置已保存",
+      );
       onSaved();
       onClose();
     } catch (e) {
@@ -130,11 +190,24 @@ export function RetentionDialog({
         }}
       >
         <DialogHeader>
-          <DialogTitle>文件夹保存范围</DialogTitle>
+          <DialogTitle>
+            {onboarding
+              ? "邮箱已连接"
+              : account.protocol === "imap"
+                ? "文件夹保存范围"
+                : "本地保存设置"}
+          </DialogTitle>
           <DialogDescription>
             {account.name} · {account.email}
           </DialogDescription>
         </DialogHeader>
+        {onboarding && (
+          <Alert>
+            <AlertDescription>
+              收发服务器验证通过。后台将按你选择的账号默认方式收取；这里可以进一步调整保存范围，之后也能在设置与账号中修改。
+            </AlertDescription>
+          </Alert>
+        )}
         <p className="text-sm text-muted-foreground">
           账号默认：
           {settings
@@ -145,13 +218,44 @@ export function RetentionDialog({
           。可为每个文件夹单独设置；已有完整存档保留。
         </p>
         <p className="text-sm text-muted-foreground">
-          垃圾邮件和废纸篓默认不自动收取。选择“完整保存”后纳入后台收取；下次收取会补齐可用邮件的正文与附件。
+          {account.protocol === "pop3"
+            ? "POP3 保存服务端可收取的邮件及本客户端发送的邮件，保存方式跟随账号设置。"
+            : "垃圾邮件和废纸篓默认不自动收取。选择“完整保存”后纳入后台收取；下次收取会补齐可用邮件的正文与附件。"}
         </p>
+        {settings?.summary && (
+          <RetentionSummaryView
+            summary={settings.summary}
+            busy={busy || loading}
+            onRefresh={() => void refreshSummary()}
+          />
+        )}
         {loading && !settings && (
           <Skeleton className="h-48" aria-label="正在加载保存范围" />
         )}
         {settings && (
           <FieldGroup className="gap-4">
+            <Field data-invalid={!validDays}>
+              <FieldLabel htmlFor="server-retention-days">
+                服务器保留期（天，可选）
+              </FieldLabel>
+              <Input
+                id="server-retention-days"
+                type="number"
+                min={1}
+                max={3650}
+                step={1}
+                value={days}
+                disabled={busy || loading}
+                aria-invalid={!validDays}
+                placeholder="例如 3；未知时留空"
+                onChange={(e) => setDays(e.target.value)}
+              />
+              <FieldDescription>
+                {validDays
+                  ? "仅用于待保存提醒，不改变服务器删除规则。可填写 1–3650 天；只有删除前完整下载的邮件才有本地副本。"
+                  : "请输入 1–3650 的整数，未知时留空。"}
+              </FieldDescription>
+            </Field>
             {folders.map((folder, i) => (
               <Field key={folder.name} orientation="horizontal">
                 <div className="flex min-w-0 flex-1 flex-col gap-1">
@@ -193,9 +297,9 @@ export function RetentionDialog({
                 </Select>
               </Field>
             ))}
-            {!folders.length && (
+            {!folders.length && account.protocol === "imap" && (
               <FieldDescription>
-                尚无可读取文件夹，请刷新目录或先完成收取。
+                尚无可读取文件夹，请刷新目录或先完成收取。当前按账号默认方式处理。
               </FieldDescription>
             )}
             {missing.length > 0 && (
@@ -238,13 +342,19 @@ export function RetentionDialog({
             刷新目录
           </Button>
           <Button variant="outline" disabled={busy} onClick={onClose}>
-            取消
+            {onboarding ? "以后再设置" : "取消"}
           </Button>
           <Button
-            disabled={!settings || loading || busy || missing.length > 0}
+            disabled={
+              !settings || loading || busy || missing.length > 0 || !validDays
+            }
             onClick={() => void save()}
           >
-            {busy ? "正在保存…" : "保存范围"}
+            {busy
+              ? "正在保存…"
+              : account.protocol === "imap"
+                ? "保存范围"
+                : "保存设置"}
           </Button>
         </DialogFooter>
       </DialogContent>

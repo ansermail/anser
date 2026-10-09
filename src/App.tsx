@@ -221,6 +221,7 @@ export default function App() {
     [editingAccount, setEditingAccount] = useState<Account | null>(null),
     [mappingAccount, setMappingAccount] = useState<Account | null>(null),
     [retentionAccount, setRetentionAccount] = useState<Account | null>(null),
+    [retentionIntro, setRetentionIntro] = useState(false),
     [archiving, setArchiving] = useState(false),
     [contactSeed, setContactSeed] = useState<Address | null>(null),
     [draft, setDraft] = useState<Compose | null>(null),
@@ -1325,13 +1326,16 @@ export default function App() {
                               >
                                 编辑账号配置
                               </DropdownMenuItem>
-                              {a.protocol === "imap" && (
-                                <DropdownMenuItem
-                                  onClick={() => setRetentionAccount(a)}
-                                >
-                                  文件夹保存范围
-                                </DropdownMenuItem>
-                              )}
+                              <DropdownMenuItem
+                                onClick={() => {
+                                  setRetentionIntro(false);
+                                  setRetentionAccount(a);
+                                }}
+                              >
+                                {a.protocol === "imap"
+                                  ? "文件夹保存范围"
+                                  : "本地保存设置"}
+                              </DropdownMenuItem>
                               {a.protocol === "imap" && (
                                 <DropdownMenuItem
                                   onClick={() => setMappingAccount(a)}
@@ -2314,6 +2318,7 @@ export default function App() {
       />
       <RetentionDialog
         account={retentionAccount}
+        onboarding={retentionIntro}
         onClose={() => setRetentionAccount(null)}
         onSaved={() => void refresh()}
       />
@@ -2324,9 +2329,13 @@ export default function App() {
           setAccountDialog(open);
           if (!open) setEditingAccount(null);
         }}
-        onDone={() => {
+        onDone={(connected) => {
           void refresh();
           void sync();
+          if (connected) {
+            setRetentionIntro(true);
+            setRetentionAccount(connected);
+          }
         }}
       />
       <ComposeDialog

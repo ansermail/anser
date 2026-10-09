@@ -174,7 +174,21 @@ impl Store {
         if let Some(data) = data {
             let mut current: Account = serde_json::from_str(&data).map_err(err)?;
             if current.same_connection(account) {
-                current.last_sync = account.last_sync.clone();
+                // A long sweep may fail after a newer inbox job succeeds. Its
+                // old checkpoint must not move the latest success backwards.
+                if let Some(incoming) = account
+                    .last_sync
+                    .as_deref()
+                    .and_then(|time| chrono::DateTime::parse_from_rfc3339(time).ok())
+                {
+                    let prior = current
+                        .last_sync
+                        .as_deref()
+                        .and_then(|time| chrono::DateTime::parse_from_rfc3339(time).ok());
+                    if prior.is_none_or(|prior| incoming >= prior) {
+                        current.last_sync = account.last_sync.clone();
+                    }
+                }
                 current.error = account.error.clone();
                 tx.execute(
                     "UPDATE accounts SET data=?2 WHERE id=?1",
@@ -208,7 +222,7 @@ impl Store {
             .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
             .map_err(err)?;
         tx.execute(
-            "UPDATE accounts SET data=?2 WHERE id=?1",
+            "UPDATE accounts SET data=json_set(?2,'$.serverRetentionDays',json_extract(data,'$.serverRetentionDays')) WHERE id=?1",
             params![a.id, serde_json::to_string(&next).map_err(err)?],
         )
         .map_err(err)?;
@@ -729,6 +743,7 @@ impl Store {
             oauth_client_id: String::new(),
             enabled: false,
             save_locally: true,
+            server_retention_days: None,
             last_sync: None,
             error: None,
         }

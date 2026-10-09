@@ -333,6 +333,7 @@ pub(super) fn account() -> Account {
         oauth_client_id: "".into(),
         enabled: true,
         save_locally: true,
+        server_retention_days: None,
         last_sync: None,
         error: None,
     }
