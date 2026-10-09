@@ -1895,10 +1895,15 @@ export default function App() {
                               {m.localFolder !== "全部存档" && (
                                 <small>{m.localFolder}</small>
                               )}
-                              {m.hasAttachments && <Paperclip size={12} />}
                               <span className="row-spacer" />
                               {m.starred && (
                                 <Star size={13} className="star-on" />
+                              )}
+                              {m.hasAttachments && (
+                                <Paperclip
+                                  className="size-3 shrink-0"
+                                  aria-label="包含附件"
+                                />
                               )}
                             </div>
                           </Button>
