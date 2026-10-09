@@ -60,3 +60,32 @@ describe("rule preview semantics", () => {
     ).toBe(false);
   });
 });
+it("does not treat an online or undecodable body as an empty matching body", () => {
+  const negative = {
+    ...rule,
+    conditions: [{ field: "body", operator: "notContains", value: "missing" }],
+  };
+  const online = { ...mail, body: "", savedLocally: false };
+  expect(ruleMatches(negative, online)).toBe(false);
+  expect(ruleMatches(negative, { ...online, savedLocally: true })).toBe(true);
+  expect(
+    ruleMatches(negative, {
+      ...online,
+      savedLocally: true,
+      parseWarnings: ["text/plain 正文片段无法解码：fixture"],
+    }),
+  ).toBe(false);
+  expect(
+    ruleMatches(
+      {
+        ...negative,
+        mode: "any",
+        conditions: [
+          ...negative.conditions,
+          { field: "subject", operator: "contains", value: "invoice" },
+        ],
+      },
+      online,
+    ),
+  ).toBe(true);
+});

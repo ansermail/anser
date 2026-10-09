@@ -6,7 +6,7 @@
 
 [下载最新版本](https://github.com/yn-zxj/yanxin/releases/latest) · [使用说明](docs/USAGE.md) · [开发进度](docs/DEVELOPMENT_STATUS.md) · [反馈问题](https://github.com/yn-zxj/yanxin/issues)
 
-> 当前版本为 **0.1.2 Alpha**，支持 Apple Silicon 与 Intel Mac。核心功能已实现，长期稳定性、部分服务商兼容性及完整发布验收仍在持续完善。
+> 当前版本为 **0.1.3 Alpha**，支持 Apple Silicon 与 Intel Mac。核心功能已实现，长期稳定性、部分服务商兼容性及完整发布验收仍在持续完善。
 
 ![雁信的多账号收件箱与邮件阅读界面](docs/screenshots/inbox-demo.png)
 
