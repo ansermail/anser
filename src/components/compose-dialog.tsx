@@ -1,3 +1,6 @@
+import { Alert, AlertDescription } from "./ui/alert";
+import { signatureContent } from "@/lib/signatures";
+import type { MailSignature } from "@/lib/types";
 import { useConfirmation } from "@/hooks/use-confirmation";
 import { MailContent } from "./mail-content";
 import { Switch } from "./ui/switch";
@@ -66,6 +69,8 @@ export function ComposeDialog({
     [countdown, setCountdown] = useState<number | null>(null),
     [sending, setSending] = useState(false),
     [extra, setExtra] = useState(false);
+  const [signatureError, setSignatureError] = useState("");
+  const [signatureReload, setSignatureReload] = useState(0);
   const [suggestions, setSuggestions] = useState<Address[]>([]);
   const [deliveryPreview, setDeliveryPreview] = useState(false);
   const previewContent = useMemo(
@@ -92,12 +97,41 @@ export function ComposeDialog({
     setValue(draft);
     setCountdown(null);
     setSaved(false);
+    setSignatureError("");
     setExtra(!!draft?.cc || !!draft?.bcc);
     setExpanded(false);
     setPlanning(false);
     setDeliveryPreview(false);
     setPlanTime(localDateTime());
   }, [draft, cancelConfirmation]);
+  useEffect(() => {
+    if (!value?.accountId || value.signature?.accountId === value.accountId)
+      return;
+    setSignatureError("");
+    const accountId = value.accountId,
+      id = value.id;
+    let live = true;
+    void call<MailSignature>("mail_signature", { accountId })
+      .then((config) => {
+        if (live)
+          setValue((current) =>
+            current?.id === id && current.accountId === accountId
+              ? { ...current, signature: signatureContent(accountId, config) }
+              : current,
+          );
+      })
+      .catch((e) => {
+        if (live) setSignatureError(String(e));
+      });
+    return () => {
+      live = false;
+    };
+  }, [
+    value?.id,
+    value?.accountId,
+    value?.signature?.accountId,
+    signatureReload,
+  ]);
   useEffect(() => {
     if (!draft) return;
     let live = true;
@@ -163,6 +197,14 @@ export function ComposeDialog({
   async function valid() {
     if (!value?.accountId || !value.to.trim()) {
       toast.error("请选择发件账号并填写收件人");
+      return false;
+    }
+    if (value.signature?.accountId !== value.accountId) {
+      toast.error(
+        signatureError
+          ? "签名读取失败，请重试或选择本封不使用签名"
+          : "正在读取发件账号签名，请稍后发送",
+      );
       return false;
     }
     for (const [name, addresses] of [
@@ -548,6 +590,70 @@ export function ComposeDialog({
                   />
                 )}
               </div>
+              {signatureError && (
+                <Alert variant="destructive" className="mx-6 w-auto">
+                  <AlertDescription className="flex flex-wrap items-center gap-2">
+                    <span className="text-sm text-destructive">
+                      无法读取签名：{signatureError}
+                    </span>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setSignatureReload((v) => v + 1)}
+                    >
+                      重新读取签名
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => {
+                        setSignatureError("");
+                        update({
+                          signature: {
+                            accountId: value.accountId,
+                            included: false,
+                            body: "",
+                            html: "",
+                          },
+                        });
+                      }}
+                    >
+                      本封不使用签名
+                    </Button>
+                  </AlertDescription>
+                </Alert>
+              )}
+              {value.signature &&
+                value.signature.accountId === value.accountId &&
+                (value.signature.body || value.signature.html) && (
+                  <section className="px-6 py-4 flex flex-col gap-3">
+                    <Label
+                      htmlFor={`include-signature-${value.id}`}
+                      className="flex items-center gap-2"
+                    >
+                      <Switch
+                        id={`include-signature-${value.id}`}
+                        checked={value.signature.included}
+                        onCheckedChange={(included) =>
+                          update({
+                            signature: { ...value.signature!, included },
+                          })
+                        }
+                      />
+                      附加邮件签名
+                    </Label>
+                    {value.signature.included && (
+                      <MailContent
+                        html={
+                          value.signature.html ||
+                          textToHtml(value.signature.body)
+                        }
+                        title="本封邮件签名"
+                        onOpenLink={() => {}}
+                      />
+                    )}
+                  </section>
+                )}
               {value.quote?.included && (
                 <section
                   className="compose-quoted-original"

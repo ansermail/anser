@@ -3,7 +3,7 @@ import { version as buildVersion } from "../../package.json";
 import { getVersion } from "@tauri-apps/api/app";
 import { invoke, isTauri } from "@tauri-apps/api/core";
 import { check, type Update } from "@tauri-apps/plugin-updater";
-import { Download, RefreshCw, RotateCw } from "lucide-react";
+import { Download, RefreshCw, RotateCw, Github } from "lucide-react";
 import { Button } from "./ui/button";
 import {
   Card,
@@ -231,6 +231,16 @@ export function UpdateSettings({ updates }: { updates: Updates }) {
         >
           <RefreshCw data-icon="inline-start" />
           检查更新
+        </Button>
+        <Button variant="ghost" asChild>
+          <a
+            href="https://github.com/ansermail/anser"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            <Github data-icon="inline-start" />
+            项目仓库
+          </a>
         </Button>
         {updates.update && (
           <Button variant="ghost" onClick={() => updates.setOpen(true)}>

@@ -117,3 +117,54 @@ describe("mail source formats", () => {
     expect(result.html).not.toContain("原文");
   });
 });
+
+describe("account signatures", () => {
+  it("adds signature before the quote, preserves editable content and never doubles it", () => {
+    const draft = {
+      ...newDraft("a"),
+      body: "Reply text",
+      signature: {
+        accountId: "a",
+        included: true,
+        body: "Regards\nAlex",
+        html: '<p><b>Regards</b><br>Alex</p><img src="data:image/png;base64,aGVsbG8=">',
+      },
+      quote: {
+        kind: "reply" as const,
+        included: true,
+        sender: "other@example.com",
+        recipients: "",
+        date: "2026-10-01T00:00:00Z",
+        subject: "Example",
+        body: "Original",
+        html: "<p>Original</p>",
+      },
+    };
+    const result = prepareCompose(draft);
+    expect(result.body).toBe("Reply text");
+    expect(result.deliveryBody!.indexOf("Alex")).toBeLessThan(
+      result.deliveryBody!.indexOf("Original"),
+    );
+    expect(result.deliveryHtml).toContain("data-anser-signature");
+    expect(result.deliveryHtml).toContain("data:image/png;base64,aGVsbG8=");
+    expect(prepareCompose(result)).toEqual(result);
+    const excluded = prepareCompose({
+      ...result,
+      signature: { ...result.signature!, included: false },
+    });
+    expect(excluded.deliveryBody).not.toContain("Alex");
+    expect(excluded.deliveryHtml).not.toContain("data-anser-signature");
+  });
+  it("keeps a plain signature plain and escapes user markup in the HTML alternative", () => {
+    const draft = {
+      ...newDraft("a"),
+      body: "<Authored>",
+      signature: { accountId: "a", included: true, body: "<Name>", html: "" },
+    };
+    expect(prepareCompose(draft).deliveryBody).toBe("<Authored>\n\n<Name>");
+    expect(prepareCompose(draft).deliveryHtml).toBe("");
+    expect(
+      prepareCompose({ ...draft, html: "<p>Authored</p>" }).deliveryHtml,
+    ).toContain("&lt;Name&gt;");
+  });
+});

@@ -289,3 +289,71 @@ it("uses a shadcn confirmation for an empty subject and cancellation keeps the d
   expect(document.querySelector(".compose-dialog")).toBeTruthy();
   expect(document.body.textContent).not.toContain("撤销发送 · 8s");
 });
+
+describe("signature composition", () => {
+  it("loads the account signature, saves a disabled choice and retains the draft snapshot", async () => {
+    await call("save_mail_signature", {
+      accountId: seed.accountId,
+      signature: {
+        enabled: true,
+        useHtml: false,
+        text: "Snapshot signature",
+        fileName: "",
+        fileText: "",
+        fileHtml: "",
+      },
+    });
+    seed = { ...seed, id: "signature-test", signature: undefined };
+    await renderHarness();
+    expect(
+      document
+        .querySelector('iframe[title="本封邮件签名"]')
+        ?.getAttribute("srcdoc"),
+    ).toContain("Snapshot signature");
+    await act(async () =>
+      (
+        document.querySelector(
+          '[id^="include-signature-"]',
+        ) as HTMLButtonElement
+      ).click(),
+    );
+    await click("保存草稿并关闭");
+    const saved = (await call<Compose[]>("list_drafts")).find(
+      (d) => d.id === seed.id,
+    )!;
+    expect(saved.body).toBe(seed.body);
+    expect(saved.signature?.included).toBe(false);
+    expect(saved.signature?.body).toBe("Snapshot signature");
+    await call("save_mail_signature", {
+      accountId: seed.accountId,
+      signature: {
+        enabled: true,
+        useHtml: false,
+        text: "Changed settings",
+        fileName: "",
+        fileText: "",
+        fileHtml: "",
+      },
+    });
+    seed = { ...saved, id: "signature-reopen" };
+    await renderHarness();
+    expect(document.querySelector('iframe[title="本封邮件签名"]')).toBeNull();
+    await act(async () =>
+      (
+        document.querySelector(
+          '[id^="include-signature-"]',
+        ) as HTMLButtonElement
+      ).click(),
+    );
+    expect(
+      document
+        .querySelector('iframe[title="本封邮件签名"]')
+        ?.getAttribute("srcdoc"),
+    ).toContain("Snapshot signature");
+    expect(
+      document
+        .querySelector('iframe[title="本封邮件签名"]')
+        ?.getAttribute("srcdoc"),
+    ).not.toContain("Changed settings");
+  });
+});

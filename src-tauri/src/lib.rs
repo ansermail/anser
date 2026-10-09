@@ -1,6 +1,7 @@
 mod archive;
 mod archive_deletion;
 mod archive_jobs;
+mod archive_location;
 mod attachment_preview;
 mod auth;
 mod conversation;
@@ -19,6 +20,7 @@ mod rule_operations;
 mod rules;
 mod scheduling;
 mod sent_uploads;
+mod signatures;
 mod store;
 mod sync_control;
 use models::*;
@@ -54,6 +56,21 @@ async fn restart_for_update(
     })
     .await
     .map_err(err)?
+}
+#[tauri::command]
+fn mail_signature(
+    state: tauri::State<AppState>,
+    account_id: String,
+) -> Result<signatures::MailSignature> {
+    state.store.mail_signature(&account_id)
+}
+#[tauri::command]
+fn save_mail_signature(
+    state: tauri::State<AppState>,
+    account_id: String,
+    signature: signatures::MailSignature,
+) -> Result<()> {
+    state.store.save_mail_signature(&account_id, &signature)
 }
 #[tauri::command]
 async fn snapshot(state: tauri::State<'_, AppState>, query: Query) -> Result<Snapshot> {
@@ -915,8 +932,31 @@ async fn restore_archive(state: tauri::State<'_, AppState>, path: String) -> Res
     .map_err(err)?
 }
 #[tauri::command]
+fn archive_location(state: tauri::State<AppState>) -> archive_location::LocationStatus {
+    state.store.archive_location()
+}
+#[tauri::command]
+async fn move_archive_location(
+    state: tauri::State<'_, AppState>,
+    parent: String,
+) -> Result<archive_location::LocationStatus> {
+    let store = state.store.clone();
+    tauri::async_runtime::spawn_blocking(move || store.move_archive_location(&parent))
+        .await
+        .map_err(err)?
+}
+#[tauri::command]
+async fn cleanup_archive_migration(
+    state: tauri::State<'_, AppState>,
+) -> Result<archive_location::LocationStatus> {
+    let store = state.store.clone();
+    tauri::async_runtime::spawn_blocking(move || store.cleanup_archive_migration())
+        .await
+        .map_err(err)?
+}
+#[tauri::command]
 fn open_data_folder(state: tauri::State<AppState>) -> Result<()> {
-    open::that(&state.store.root).map_err(err)
+    open::that(archive_location::physical_root(&state.store.root)?).map_err(err)
 }
 fn web_link(url: &str) -> Result<url::Url> {
     let parsed = url::Url::parse(url).map_err(err)?;
@@ -1099,6 +1139,8 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             restart_for_update,
             snapshot,
+            mail_signature,
+            save_mail_signature,
             account_folders,
             folder_settings,
             retention_settings,
@@ -1160,6 +1202,9 @@ pub fn run() {
             delete_local_archives,
             restore_archive,
             open_data_folder,
+            archive_location,
+            move_archive_location,
+            cleanup_archive_migration,
             open_mail_link
         ])
         .build(tauri::generate_context!())

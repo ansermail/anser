@@ -1,3 +1,5 @@
+import { ArchiveLocation } from "./components/archive-location";
+import { MailSignatures } from "./components/mail-signatures";
 import { useConfirmation } from "./hooks/use-confirmation";
 import {
   useAppUpdate,
@@ -95,7 +97,13 @@ import {
   SidebarProvider,
   SidebarTrigger,
 } from "./components/ui/sidebar";
-import { Card } from "./components/ui/card";
+import {
+  Card,
+  CardHeader,
+  CardTitle,
+  CardAction,
+  CardContent,
+} from "./components/ui/card";
 import { Badge } from "./components/ui/badge";
 import { Checkbox } from "./components/ui/checkbox";
 import {
@@ -1243,7 +1251,7 @@ export default function App() {
               onShowTasks={() => setPage("settings")}
             />
           ) : page === "settings" || page === "storage" ? (
-            <section className="workspace-panel">
+            <section className="workspace-panel settings-workspace">
               <div className="panel-heading">
                 <div>
                   <span className="eyebrow">
@@ -1448,13 +1456,17 @@ export default function App() {
                 </div>
                 <p className="storage-path">{data.dataDir}</p>
               </Card>
+              {page === "settings" && (
+                <MailSignatures accounts={data.accounts} />
+              )}
+              <ArchiveLocation onChanged={() => void refresh()} />
               <ArchiveJobsPanel />
               <StorageTools />
               {page === "settings" && <UpdateSettings updates={updates} />}
               <div className="flex flex-col gap-6">
-                <ServerOperations />
+                <ServerOperations defaultCollapsed />
                 <FolderHealthPanel />
-                <DirectoryOperationsPanel />
+                <DirectoryOperationsPanel defaultCollapsed />
               </div>
               <div className="info-strip">
                 <Info size={17} />
@@ -1463,43 +1475,57 @@ export default function App() {
                   App、睡眠或断网时暂停。邮件须在服务器删除前完整下载。
                 </span>
               </div>
-              <div className="section-title">
-                <h3>最近活动</h3>
+              <Collapsible asChild>
+                <Card>
+                  <CardHeader>
+                    <CardTitle>最近活动</CardTitle>
+                    <CardAction className="flex items-center gap-2">
+                      <CollapsibleTrigger asChild>
+                        <Button
+                          variant="ghost"
+                          size="icon-sm"
+                          aria-label="展开或收起最近活动"
+                          className="group"
+                        >
+                          <ChevronDown className="transition-transform group-data-[state=open]:rotate-180" />
+                        </Button>
+                      </CollapsibleTrigger>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => void refresh()}
+                      >
+                        <RefreshCw size={14} />
+                        刷新
+                      </Button>
+                    </CardAction>
+                  </CardHeader>
+                  <CollapsibleContent asChild>
+                    <CardContent className="activity-list">
+                      {data.logs.length ? (
+                        data.logs.map((l, i) => (
+                          <p key={i}>
+                            <Check size={13} />
+                            {l}
+                          </p>
+                        ))
+                      ) : (
+                        <p>连接邮箱后，这里会显示收取和规则执行记录。</p>
+                      )}
+                    </CardContent>
+                  </CollapsibleContent>
+                </Card>
+              </Collapsible>
+              {import.meta.env.DEV && (
                 <Button
                   variant="ghost"
-                  size="sm"
-                  onClick={() => void refresh()}
-                >
-                  <RefreshCw size={14} />
-                  刷新
-                </Button>
-              </div>
-              <div className="activity-list">
-                {data.logs.length ? (
-                  data.logs.map((l, i) => (
-                    <p key={i}>
-                      <Check size={13} />
-                      {l}
-                    </p>
-                  ))
-                ) : (
-                  <p>连接邮箱后，这里会显示收取和规则执行记录。</p>
-                )}
-              </div>
-              <div className="dev-note">
-                <span>
-                  Anser · 雁信 {updates.version} ·{" "}
-                  {updates.preview ? "开发预览" : "Alpha"}
-                </span>
-                <Button
-                  variant="ghost"
-                  className="text-link"
+                  className="text-link self-start"
                   onClick={demoMode}
                 >
                   {demo ? "退出演示" : "体验示例邮箱"}
-                  <ArrowRight size={14} />
+                  <ArrowRight data-icon="inline-end" />
                 </Button>
-              </div>
+              )}
             </section>
           ) : page === "drafts" ? (
             <section className="workspace-panel">

@@ -238,6 +238,8 @@ pub struct QuotedMail {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Compose {
+    #[serde(default)]
+    pub signature: Option<crate::signatures::ComposeSignature>,
     pub id: String,
     pub account_id: String,
     pub to: String,

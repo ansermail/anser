@@ -3191,3 +3191,19 @@ kbd {
   overflow: hidden;
   text-overflow: ellipsis;
 }
+
+.settings-workspace {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+.settings-workspace > .panel-heading {
+  margin-bottom: 0;
+}
+
+.preview-shell {
+  min-width: 980px;
+}
+.preview-sidebar {
+  background: var(--sidebar);
+}

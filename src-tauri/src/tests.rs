@@ -801,6 +801,7 @@ fn older_snapshot_queries_default_to_all_read_states() {
 
 pub(super) fn draft() -> Compose {
     Compose {
+        signature: None,
         id: "draft-1".into(),
         account_id: account().id,
         to: "\"Doe, Alex\" <alex@example.com>".into(),

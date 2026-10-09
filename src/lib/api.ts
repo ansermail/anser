@@ -1,3 +1,4 @@
+import { emptySignature } from "./signatures";
 import {
   conversationIndex,
   conversationMessages,
@@ -24,6 +25,7 @@ export function isDemo() {
   return demo !== null;
 }
 export function enterDemo() {
+  if (native && !import.meta.env.DEV) throw new Error("正式应用不开放示例邮箱");
   demo = makeDemo();
   localStorage.setItem(key, JSON.stringify(demo));
 }
@@ -35,8 +37,17 @@ export function leaveDemo() {
   localStorage.removeItem(key + "-preferences");
   localStorage.removeItem(key + "-outbox");
   localStorage.removeItem(key + "-auto-start");
+  for (let i = localStorage.length - 1; i >= 0; i--) {
+    const stored = localStorage.key(i);
+    if (stored?.startsWith(key + "-signature-"))
+      localStorage.removeItem(stored);
+  }
 }
 export function restoreDemo() {
+  if (native && !import.meta.env.DEV) {
+    leaveDemo();
+    return;
+  }
   try {
     const data = localStorage.getItem(key);
     if (data) demo = JSON.parse(data);
@@ -116,6 +127,36 @@ export async function call<T = void>(
   if (demo) {
     let result: unknown;
     switch (command) {
+      case "archive_location":
+        result = {
+          path: demo.dataDir,
+          defaultPath: demo.dataDir,
+          available: true,
+          error: "",
+          external: false,
+          cleanupPending: false,
+          migrating: false,
+          completed: 0,
+          total: 0,
+        };
+        break;
+      case "move_archive_location":
+      case "cleanup_archive_migration":
+        throw new Error("示例邮箱不会迁移本机文件");
+      case "mail_signature":
+        result =
+          JSON.parse(
+            localStorage.getItem(key + "-signature-" + args.accountId) ||
+              "null",
+          ) || emptySignature();
+        break;
+      case "save_mail_signature":
+        localStorage.setItem(
+          key + "-signature-" + args.accountId,
+          JSON.stringify(args.signature),
+        );
+        result = null;
+        break;
       case "account_folders": {
         const names = new Set([
           "INBOX",
