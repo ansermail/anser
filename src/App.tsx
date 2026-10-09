@@ -2366,7 +2366,10 @@ export default function App() {
       />
       <ComposeDialog
         draft={draft}
-        onClose={() => setDraft(null)}
+        onClose={() => {
+          setDraft(null);
+          void refresh();
+        }}
         accounts={data.accounts}
         onSent={() => void refresh()}
       />

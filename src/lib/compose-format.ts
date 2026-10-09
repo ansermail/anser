@@ -7,6 +7,30 @@ export function composeFormat(draft: Compose): ComposeFormat {
   return draft.format || (draft.html ? "rich" : "plain");
 }
 
+export function hasDraftContent(draft: Compose): boolean {
+  if (
+    [
+      draft.to,
+      draft.cc,
+      draft.bcc,
+      draft.subject,
+      draft.body,
+      draft.source,
+    ].some((text) => !!text?.trim()) ||
+    draft.attachments.length ||
+    draft.quote ||
+    draft.replyAnchorId ||
+    draft.inReplyTo
+  )
+    return true;
+  if (!draft.html) return false;
+  if (htmlToText(draft.html).trim()) return true;
+  const doc = new DOMParser().parseFromString(draft.html, "text/html");
+  return !!doc.body.querySelector(
+    "img,video,audio,svg,canvas,object,embed,iframe,hr",
+  );
+}
+
 export function sanitizeComposeHtml(source: string) {
   return DOMPurify.sanitize(source, {
     WHOLE_DOCUMENT: true,

@@ -57,7 +57,7 @@ export const providers = [
   },
   {
     id: "exmail",
-    name: "腾讯企业邮",
+    name: "腾讯企业邮箱",
     letter: "企",
     domain: "",
     imap: "imap.exmail.qq.com",
@@ -68,7 +68,7 @@ export const providers = [
   },
   {
     id: "neteaseWork",
-    name: "网易企业邮",
+    name: "网易企业邮箱",
     letter: "企",
     domain: "",
     imap: "imap.qiye.163.com",

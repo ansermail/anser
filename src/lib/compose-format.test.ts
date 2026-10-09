@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   compileSource,
   composeFormat,
+  hasDraftContent,
   prepareCompose,
   prepareEditorCompose,
 } from "./compose-format";
@@ -166,5 +167,35 @@ describe("account signatures", () => {
     expect(
       prepareCompose({ ...draft, html: "<p>Authored</p>" }).deliveryHtml,
     ).toContain("&lt;Name&gt;");
+  });
+});
+describe("draft content detection", () => {
+  it("ignores the selected sender, automatic signature and empty rich text markup", () => {
+    const draft = newDraft("work");
+    draft.signature = {
+      accountId: "work",
+      included: true,
+      body: "Automatic signature",
+      html: "<p>Automatic signature</p>",
+    };
+    expect(hasDraftContent(draft)).toBe(false);
+    expect(
+      hasDraftContent({ ...draft, body: " \n\t ", html: "<p>&nbsp;<br></p>" }),
+    ).toBe(false);
+  });
+  it("preserves recipients, subject, attachments, visible HTML resources and reply context", () => {
+    const draft = newDraft("work");
+    for (const fields of [
+      { to: "recipient@example.com" },
+      { cc: "copy@example.com" },
+      { bcc: "hidden@example.com" },
+      { subject: "Subject" },
+      { body: "Content" },
+      { attachments: ["/test/attachment.txt"] },
+      { html: '<img src="data:image/png;base64,aA==">' },
+      { inReplyTo: "<reply@example.com>" },
+      { format: "html" as const, source: "<p></p>" },
+    ])
+      expect(hasDraftContent({ ...draft, ...fields })).toBe(true);
   });
 });
