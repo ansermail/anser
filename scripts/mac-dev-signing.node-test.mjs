@@ -111,3 +111,15 @@ test("signing failure is propagated without verification or a fallback signature
   );
   assert.equal(count, 1);
 });
+test("Anser override takes priority while the prior environment name stays compatible", async () => {
+  const identity = await getDevelopmentSigningIdentity(
+    {
+      ANSER_DEV_SIGNING_IDENTITY: certificate.name,
+      YANXIN_DEV_SIGNING_IDENTITY: second.name,
+    },
+    async () => ({
+      stdout: `1) ${certificate.hash} "${certificate.name}"\n2) ${second.hash} "${second.name}"`,
+    }),
+  );
+  assert.deepEqual(identity, certificate);
+});

@@ -1488,7 +1488,7 @@ export default function App() {
               </div>
               <div className="dev-note">
                 <span>
-                  雁信 {updates.version} ·{" "}
+                  Anser · 雁信 {updates.version} ·{" "}
                   {updates.preview ? "开发预览" : "Alpha"}
                 </span>
                 <Button

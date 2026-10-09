@@ -14,7 +14,7 @@
 - `.github/workflows/release.yml`：推送 `v*` tag，或 Actions 手动运行；验证版本、发布说明和测试后，分别构建 Apple Silicon 与 Intel Mac 的 DMG、app.tar.gz 与签名。
 - 构建任务只产出架构独立的 artifacts；汇总任务检查两个架构文件齐全，统一生成 latest.json 并创建草稿 Release，避免并行写清单丢失架构。
 - 发布后的同版本不可覆盖。草稿可重跑上传；`releases/latest/download/latest.json` 只有正式发布后才可用。用户检查不读取草稿。
-- 仓库是公开的 `yn-zxj/yanxin`；客户端不包含 GitHub token。端点仅 HTTPS，签名必须有效；失败时保留当前安装，不执行重启。
+- 仓库是公开的 `ansermail/anser`；客户端不包含 GitHub token。端点仅 HTTPS，签名必须有效；失败时保留当前安装，不执行重启。
 
 ## 签名密钥
 
@@ -51,3 +51,11 @@
 ## 0.1.3 发布范围
 
 0.1.3 包含已验收的收取优化、补存、保存引导和此前阅读/服务器操作功能，仍为 Alpha。正在开发的异步规则扩展另存分支，没有进入这个版本；本机 Google OAuth 测试配置也不进入公开包。发布说明见 docs/releases/v0.1.3.md，发布与原位升级的实际验收状态见 DEVELOPMENT_STATUS.md。
+
+## Anser 与组织仓库迁移
+
+项目英文名为 Anser，中文名为雁信。后续代码和发布使用 ansermail/anser，安装包以 Anser_版本_架构命名。0.1.4 更新器与发布页已切到组织仓库。
+
+存储/钥匙串标识 dev.maildesk.desktop、已有布局/草稿格式标记和更新公钥继续保留。发布密钥仍沿用 ~/.config/yanxin-release/updater.key，避免生成另一把密钥导致旧客户端不能验证更新；开发签名优先读取 ANSER_DEV_SIGNING_IDENTITY，也兼容此前变量名。
+
+个人仓库中已构建的 0.1.3 草稿没有发布。旧安装包仍请求旧仓库的更新端点；代码克隆不会产生 GitHub 转移重定向。需要一次迁移更新或安装组织版后，客户端才改用新端点。删除个人仓库前先完成这一步。

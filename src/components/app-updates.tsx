@@ -23,7 +23,7 @@ import {
 import { Progress } from "./ui/progress";
 import { Alert, AlertDescription } from "./ui/alert";
 
-const releasePage = "https://github.com/yn-zxj/yanxin/releases";
+const releasePage = "https://github.com/ansermail/anser/releases";
 type Phase =
   | "idle"
   | "checking"
@@ -207,7 +207,7 @@ export function UpdateSettings({ updates }: { updates: Updates }) {
       <CardHeader>
         <CardTitle>关于与更新</CardTitle>
         <CardDescription>
-          雁信 {updates.version || "—"} · 从 GitHub Release 获取更新
+          Anser · 雁信 {updates.version || "—"} · 从 GitHub Release 获取更新
         </CardDescription>
       </CardHeader>
       <CardContent className="flex flex-wrap items-center gap-3">

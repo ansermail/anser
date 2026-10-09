@@ -1,12 +1,12 @@
-# 雁信 Yanxin
+# Anser（雁信）
 
 **邮件，自在有序。**
 
 雁信是一款面向 macOS 的多账号邮件客户端。它将不同邮箱的邮件集中呈现，提供清晰的阅读与回复体验，并支持将完整邮件和附件独立保存在本机。
 
-[下载最新版本](https://github.com/yn-zxj/yanxin/releases/latest) · [使用说明](docs/USAGE.md) · [开发进度](docs/DEVELOPMENT_STATUS.md) · [反馈问题](https://github.com/yn-zxj/yanxin/issues)
+[下载最新版本](https://github.com/ansermail/anser/releases/latest) · [使用说明](docs/USAGE.md) · [开发进度](docs/DEVELOPMENT_STATUS.md) · [反馈问题](https://github.com/ansermail/anser/issues)
 
-> 当前版本为 **0.1.3 Alpha**，支持 Apple Silicon 与 Intel Mac。核心功能已实现，长期稳定性、部分服务商兼容性及完整发布验收仍在持续完善。
+> 当前版本为 **0.1.4 Alpha**，支持 Apple Silicon 与 Intel Mac。核心功能已实现，长期稳定性、部分服务商兼容性及完整发布验收仍在持续完善。
 
 ![雁信的多账号收件箱与邮件阅读界面](docs/screenshots/inbox-demo.png)
 
@@ -41,7 +41,7 @@ _所有展示截图均来自浏览器演示模式，使用项目内置的虚构�
 
 ## 下载与安装
 
-1. 前往 [GitHub Releases](https://github.com/yn-zxj/yanxin/releases/latest) 下载 DMG。
+1. 前往 [GitHub Releases](https://github.com/ansermail/anser/releases/latest) 下载 DMG。
 2. Apple Silicon Mac 选择文件名含 `aarch64` 的版本；Intel Mac 选择含 `x86_64` 的版本。
 3. 打开 DMG，将「雁信」拖入「应用程序」，再启动应用。
 4. 添加邮箱账号，按服务商要求填写密码、授权码或 OAuth 配置。

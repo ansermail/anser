@@ -994,7 +994,7 @@ pub fn run() {
         )
         .setup(|app| {
             // The standard plugin uses Terminal in dev mode. This preview already
-            // runs inside a real .app bundle, so retain Yanxin's own identity.
+            // runs inside a real .app bundle, so retain Anser's own identity.
             #[cfg(target_os = "macos")]
             let _ = notify_rust::set_application(&app.config().identifier);
             if std::env::args().any(|arg| arg == "--autostart") {
@@ -1163,7 +1163,7 @@ pub fn run() {
             open_mail_link
         ])
         .build(tauri::generate_context!())
-        .expect("failed to build Yanxin")
+        .expect("failed to build Anser")
         .run(|app, event| {
             if matches!(event, tauri::RunEvent::Ready)
                 && !std::env::args().any(|arg| arg == "--autostart")

@@ -124,6 +124,6 @@ jobs:
             DRAFT=$(gh release view "$TAG" --json isDraft --jq .isDraft)
             test "$DRAFT" = true || { echo 'Published releases are immutable; bump the version.'; exit 1; }
           else
-            gh release create "$TAG" --draft --target "$GITHUB_SHA" --title "雁信 $VERSION" --notes-file "docs/releases/$TAG.md"
+            gh release create "$TAG" --draft --target "$GITHUB_SHA" --title "Anser - 雁信 $VERSION" --notes-file "docs/releases/$TAG.md"
           fi
           gh release upload "$TAG" release-assets/*.dmg release-assets/*.tar.gz release-assets/*.sig release-assets/latest.json --clobber

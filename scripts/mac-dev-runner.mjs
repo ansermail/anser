@@ -18,8 +18,9 @@ const bundle = join(dirname(resolve(binary)), "dev-app", "雁信.app");
 const contents = join(bundle, "Contents");
 await mkdir(join(contents, "MacOS"), { recursive: true });
 await mkdir(join(contents, "Resources"), { recursive: true });
-const executable = join(contents, "MacOS", "yanxin");
+const executable = join(contents, "MacOS", "anser");
 await rm(executable, { force: true });
+await rm(join(contents, "MacOS", "yanxin"), { force: true });
 await copyFile(resolve(binary), executable);
 await copyFile(
   join(root, "src-tauri/icons/icon.icns"),
@@ -32,7 +33,7 @@ await writeFile(
 <plist version="1.0"><dict>
 <key>CFBundleName</key><string>雁信</string>
 <key>CFBundleDisplayName</key><string>雁信</string>
-<key>CFBundleExecutable</key><string>yanxin</string>
+<key>CFBundleExecutable</key><string>anser</string>
 <key>CFBundleIdentifier</key><string>dev.maildesk.desktop</string>
 <key>CFBundlePackageType</key><string>APPL</string>
 <key>CFBundleIconFile</key><string>icon.icns</string>

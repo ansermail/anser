@@ -225,9 +225,9 @@ fn wait_callback(
                     continue;
                 }
                 let body = if result.is_ok() {
-                    "Authorization received. You can return to Yanxin."
+                    "Authorization received. You can return to Anser."
                 } else {
-                    "Authorization was not completed. Return to Yanxin to try again."
+                    "Authorization was not completed. Return to Anser to try again."
                 };
                 let response = format!("HTTP/1.1 200 OK\r\nContent-Type: text/plain; charset=utf-8\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}", body.len(), body);
                 let _ = stream.write_all(response.as_bytes());
