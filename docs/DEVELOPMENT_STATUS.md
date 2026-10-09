@@ -417,3 +417,6 @@ Thunderbird 历史迁移、Intel Mac、完整 Exchange、日历、移动端及�
 - 仅为该 205 封、多次导航用例提供 15 秒独立预算，保留分页数量、下一封、上一封与末尾禁用断言。不放宽整个测试套件，不改变业务导航逻辑。
 - 使用 0.1.5 与新标签对应修复后的源码，保留 v0.1.4 标签及失败运行证据，不改写已有标签。组织库双架构构建、资源验签与公开发布仍等待本轮完成。
 - 本轮云端 Checks 37897545343 成功：166 前端、231 Rust、39 IMAP 解析器、17 桌面脚本通过；格式/UI/TypeScript/生产构建通过。发布运行 37897545796 的检查阶段也全部通过，两个架构开始构建。开发预览 PID 99398（父 Tauri 49935）显示 Anser · 雁信 0.1.5，原账号及 5474 封本地存档保留。此次未发送、移动或删除真实邮件，未修改真实账号设置。
+- **组织版已发布**：Release macOS 37897545796 的检查、Apple Silicon、Intel 与草稿汇总均成功。v0.1.5 对应源码 1e0b546，7 项公开资源齐全；2026-10-09 15:23:51（Asia/Shanghai）正式发布并设为 latest，地址 https://github.com/ansermail/anser/releases/tag/v0.1.5 。原个人仓库草稿未发布，后续代码 origin 为 git@github.com:ansermail/anser.git。
+- **资源核验**：两个更新归档分别为 11450143 / 11964440 字节，用原更新公钥及 Tauri 同库 minisign-verify 验签通过，认证版本均为 0.1.5。两个完整 app 的 codesign --verify --strict --deep、CFBundleIdentifier=dev.maildesk.desktop、CFBundleExecutable=anser、CFBundleShortVersionString=0.1.5 和 arm64/x86_64 架构核验通过，DMG 的 hdiutil verify 通过。latest.json 的版本、发布说明、两个下载 URL 与签名均核对；公开无认证 latest 端点与已验收清单逐字节一致。
+- **接续与限制**：这次没有覆盖安装/执行正式包，没有把开发预览重建当作原位升级验收。旧 0.1.2 仍内置个人仓库更新地址，旧仓库未删除，也没有自动建立迁移桥。先完成一次组织版安装或迁移更新，再删除旧仓库。后续回到 RULES-03 工作分支，先合入 main 的 Anser 名称/版本/组织地址及 matches_with_body 修复，再按 docs/RULES_03_WORKING.md 的未完成项继续；其余 SAVE-01B2、SYNC-02B2、保存故障/大附件、搜索/五万封、Gmail 与正式更新矩阵仍未完成。
