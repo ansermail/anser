@@ -1,7 +1,7 @@
 use crate::{
     archive,
     auth::{self, Secret},
-    idle::{ConnectionControl, MailboxActivity, ObservedStream, TimedStream},
+    idle::{ActivityNotification, ConnectionControl, MailboxActivity, ObservedStream, TimedStream},
     models::*,
     store::Store,
 };
@@ -212,12 +212,17 @@ pub enum WatchOutcome {
     Stopped,
     Unsupported,
 }
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum WatchSignal {
+    CatchUp,
+    MailboxChanged,
+}
 fn watch_session<T: TimedStream>(
     session: &mut imap::Session<ObservedStream<T>>,
     activity: &Arc<Mutex<MailboxActivity>>,
     control: &ConnectionControl,
     mut ready: impl FnMut(),
-    mut changed: impl FnMut(),
+    changed: impl Fn(WatchSignal) + Send + Sync + 'static,
     idle_timeout: Duration,
 ) -> Result<WatchOutcome> {
     if !session.capabilities().map_err(|e| match e {
@@ -228,24 +233,26 @@ fn watch_session<T: TimedStream>(
     session
         .examine("INBOX")
         .map_err(|e| format!("打开实时收件箱失败：{e}"))?;
-    activity.lock().map_err(err)?.take_changed();
+    let changed = Arc::new(changed);
+    let notified = changed.clone();
+    let _notification = ActivityNotification::register(
+        activity,
+        Arc::new(move || notified(WatchSignal::MailboxChanged)),
+    )?;
     let mut connected = false;
     while !control.stopped() {
         // Start listening before queueing a catch-up, covering the SELECT/IDLE gap.
         let idle = session.idle().map_err(|e| format!("启动 IDLE 失败：{e}"))?;
         if !connected {
             ready();
-            changed();
+            changed(WatchSignal::CatchUp);
             connected = true;
         }
-        idle.wait_with_timeout(idle_timeout)
-            .map_err(|e| format!("等待 IDLE 通知失败：{e}"))?;
+        let result = idle.wait_with_timeout(idle_timeout);
         if control.stopped() {
             break;
         }
-        if activity.lock().map_err(err)?.take_changed() {
-            changed();
-        }
+        result.map_err(|e| format!("等待 IDLE 通知失败：{e}"))?;
     }
     Ok(WatchOutcome::Stopped)
 }
@@ -254,7 +261,7 @@ pub fn watch_imap(
     secret: &Secret,
     control: &ConnectionControl,
     ready: impl FnMut(),
-    changed: impl FnMut(),
+    changed: impl Fn(WatchSignal) + Send + Sync + 'static,
 ) -> Result<WatchOutcome> {
     let result = catch_unwind(AssertUnwindSafe(|| {
         let activity = Arc::new(Mutex::new(MailboxActivity::default()));
@@ -752,6 +759,7 @@ fn sync_imap_scope<T: std::io::Read + Write>(
     updated: &impl Fn(),
     only: Option<&str>,
 ) -> Result<u32> {
+    let scope_started = std::time::Instant::now();
     let mut count = 0;
     let mut selection_errors = Vec::new();
     let remote_folders = discover_remote_folders(&a.id, session)?;
@@ -779,7 +787,16 @@ fn sync_imap_scope<T: std::io::Read + Write>(
             continue;
         }
         let folder_gate = crate::sync_control::folder_gate(&store.root, &a.id, &folder)?;
+        let gate_started = std::time::Instant::now();
         let _folder_guard = folder_gate.lock().map_err(err)?;
+        if only.is_some_and(|name| name.eq_ignore_ascii_case("INBOX")) {
+            let _ = store.log(&format!(
+                "{} 收件诊断：目录准备 {} 毫秒；等待收件箱任务 {} 毫秒，开始检查邮件",
+                a.email,
+                scope_started.elapsed().as_millis(),
+                gate_started.elapsed().as_millis(),
+            ));
+        }
         let mut stage = "打开文件夹".to_string();
         let mut evidence = crate::folder_health::SelectionEvidence::default();
         let mut sync_folder = || -> Result<()> {
@@ -825,72 +842,16 @@ fn sync_imap_scope<T: std::io::Read + Write>(
                 ))?;
             }
             let mut cached_flags = Vec::new();
-            if let Some(validity) = validity {
-                let cached = store.cached_flag_uids(a, &folder, validity)?;
-                let cached = ids
-                    .iter()
-                    .copied()
-                    .filter(|uid| cached.contains(uid))
-                    .collect::<Vec<_>>();
-                for chunk in cached.chunks(100) {
-                    stage = "回读已读与星标状态".into();
-                    let current = store.account(&a.id)?;
-                    if !current.enabled || !current.same_connection(a) {
-                        return Err("账号已暂停或连接配置已修改，停止旧收取任务".into());
-                    }
-                    let set = chunk
-                        .iter()
-                        .map(u32::to_string)
-                        .collect::<Vec<_>>()
-                        .join(",");
-                    let fetched = session
-                        .run_command_and_read_response(format!("UID FETCH {set} (UID FLAGS)"))
-                        .map_err(err)?;
-                    let flags = remote_flags(&fetched)?
-                        .into_iter()
-                        .filter(|(uid, _, _)| chunk.contains(uid))
-                        .map(|(uid, read, star)| (format!("{validity}:{uid}"), read, star))
-                        .collect::<Vec<_>>();
-                    cached_flags.extend(flags);
-                }
-            }
-            // Repair previously downloaded messages that had no Date header.
-            // Batch requests avoid one network round trip per old message.
-            if let Some(validity) = validity {
-                let missing = store
-                    .unknown_dates(&a.id, &folder)?
-                    .into_iter()
-                    .filter_map(|remote| {
-                        remote
-                            .strip_prefix(&format!("{validity}:"))
-                            .and_then(|s| s.parse::<u32>().ok())
-                    })
-                    .collect::<Vec<_>>();
-                for chunk in missing.chunks(100) {
-                    let set = chunk
-                        .iter()
-                        .map(u32::to_string)
-                        .collect::<Vec<_>>()
-                        .join(",");
-                    let response = session
-                        .run_command_and_read_response(format!(
-                            "UID FETCH {set} (UID INTERNALDATE)"
-                        ))
-                        .map_err(err)?;
-                    for (uid, date) in internal_dates(&response)? {
-                        store.set_server_date(
-                            &a.id,
-                            &folder,
-                            &format!("{validity}:{uid}"),
-                            &date,
-                        )?;
-                    }
-                }
-            }
+            // Freeze the old UID set before ingesting new mail, then download
+            // newest mail before the many network round trips for old flags.
+            let prior_cached = validity
+                .map(|v| store.cached_flag_uids(a, &folder, v))
+                .transpose()?
+                .unwrap_or_default();
             ids.sort_unstable();
             ids.reverse();
             let mut remote_ids = Vec::with_capacity(ids.len());
-            for uid in ids {
+            for &uid in &ids {
                 let current = store.account(&a.id)?;
                 if !current.enabled || !current.same_connection(a) {
                     return Err("账号已暂停或连接配置已修改，停止旧收取任务".into());
@@ -986,6 +947,70 @@ fn sync_imap_scope<T: std::io::Read + Write>(
                     store.set_server_date(&a.id, &folder, &remote, &date)?;
                 }
                 remote_ids.push(remote);
+            }
+            if only.is_some_and(|name| name.eq_ignore_ascii_case("INBOX")) {
+                let _ = store.log(&format!("{} 收件诊断：新邮件检查已完成，新增 {count} 封，目录阶段 {} 毫秒；继续回读旧邮件状态", a.email, scope_started.elapsed().as_millis()));
+            }
+            if let Some(validity) = validity {
+                let cached = ids
+                    .iter()
+                    .copied()
+                    .filter(|uid| prior_cached.contains(uid))
+                    .collect::<Vec<_>>();
+                for chunk in cached.chunks(100) {
+                    stage = "回读已读与星标状态".into();
+                    let current = store.account(&a.id)?;
+                    if !current.enabled || !current.same_connection(a) {
+                        return Err("账号已暂停或连接配置已修改，停止旧收取任务".into());
+                    }
+                    let set = chunk
+                        .iter()
+                        .map(u32::to_string)
+                        .collect::<Vec<_>>()
+                        .join(",");
+                    let fetched = session
+                        .run_command_and_read_response(format!("UID FETCH {set} (UID FLAGS)"))
+                        .map_err(err)?;
+                    let flags = remote_flags(&fetched)?
+                        .into_iter()
+                        .filter(|(uid, _, _)| chunk.contains(uid))
+                        .map(|(uid, read, star)| (format!("{validity}:{uid}"), read, star))
+                        .collect::<Vec<_>>();
+                    cached_flags.extend(flags);
+                }
+            }
+            // Repair previously downloaded messages that had no Date header.
+            // Batch requests avoid one network round trip per old message.
+            if let Some(validity) = validity {
+                let missing = store
+                    .unknown_dates(&a.id, &folder)?
+                    .into_iter()
+                    .filter_map(|remote| {
+                        remote
+                            .strip_prefix(&format!("{validity}:"))
+                            .and_then(|s| s.parse::<u32>().ok())
+                    })
+                    .collect::<Vec<_>>();
+                for chunk in missing.chunks(100) {
+                    let set = chunk
+                        .iter()
+                        .map(u32::to_string)
+                        .collect::<Vec<_>>()
+                        .join(",");
+                    let response = session
+                        .run_command_and_read_response(format!(
+                            "UID FETCH {set} (UID INTERNALDATE)"
+                        ))
+                        .map_err(err)?;
+                    for (uid, date) in internal_dates(&response)? {
+                        store.set_server_date(
+                            &a.id,
+                            &folder,
+                            &format!("{validity}:{uid}"),
+                            &date,
+                        )?;
+                    }
+                }
             }
             // Only replace the current server locations after every fetch and
             // archive write succeeds. Prior local MIME files always remain.
@@ -1440,7 +1465,9 @@ mod tests {
                             .unwrap();
                     }
                     let mut done = String::new();
-                    reader.read_line(&mut done).unwrap();
+                    if reader.read_line(&mut done).unwrap_or(0) == 0 {
+                        break;
+                    }
                     assert_eq!(done, "DONE\r\n");
                     commands.push("DONE".into());
                     cycles += 1;
@@ -1448,7 +1475,9 @@ mod tests {
                 } else {
                     panic!("unexpected command: {line}")
                 };
-                reader.get_mut().write_all(response.as_bytes()).unwrap();
+                if reader.get_mut().write_all(response.as_bytes()).is_err() {
+                    break;
+                }
             }
             commands
         });
@@ -1456,22 +1485,23 @@ mod tests {
         socket
             .set_read_timeout(Some(Duration::from_secs(2)))
             .unwrap();
-        let control = ConnectionControl::default();
+        let control = Arc::new(ConnectionControl::default());
         control.attach(&socket).unwrap();
         let activity = Arc::new(Mutex::new(MailboxActivity::default()));
         let mut client = imap::Client::new(ObservedStream::new(socket, activity.clone()));
         client.read_greeting().unwrap();
         let mut session = client.login("test", "test").map_err(|(e, _)| e).unwrap();
-        let mut changes = 0;
+        let changes = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let notified = changes.clone();
+        let cancelled = control.clone();
         let result = watch_session(
             &mut session,
             &activity,
             &control,
             || {},
-            || {
-                changes += 1;
-                if changes == 2 {
-                    control.stop();
+            move |_| {
+                if notified.fetch_add(1, std::sync::atomic::Ordering::SeqCst) == 1 {
+                    cancelled.stop();
                 }
             },
             if mode == "keepalive" {
@@ -1482,7 +1512,11 @@ mod tests {
         );
         control.stop();
         drop(session);
-        (result, changes, server.join().unwrap())
+        (
+            result,
+            changes.load(std::sync::atomic::Ordering::SeqCst),
+            server.join().unwrap(),
+        )
     }
     #[test]
     fn idle_push_queues_catchup_and_new_mail_but_ignores_repeated_counts_and_keepalives() {
@@ -1490,7 +1524,7 @@ mod tests {
         assert_eq!(result.unwrap(), WatchOutcome::Stopped);
         assert_eq!(changes, 2);
         assert_eq!(commands.iter().filter(|c| c.ends_with("IDLE")).count(), 3);
-        assert_eq!(commands.iter().filter(|c| *c == "DONE").count(), 3);
+        assert_eq!(commands.iter().filter(|c| *c == "DONE").count(), 2);
     }
     #[test]
     fn tencent_post_login_capability_trailing_space_keeps_connection_usable_for_idle() {
@@ -1515,6 +1549,89 @@ mod tests {
         assert_eq!(result.unwrap(), WatchOutcome::Stopped);
         assert_eq!(changes, 2);
         assert_eq!(commands.iter().filter(|c| c.ends_with("IDLE")).count(), 2);
+    }
+    #[test]
+    fn idle_notification_is_delivered_before_done_ack_and_outside_activity_lock() {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let socket = TcpStream::connect(listener.local_addr().unwrap()).unwrap();
+        let control = Arc::new(ConnectionControl::default());
+        control.attach(&socket).unwrap();
+        let (notified_tx, notified_rx) = std::sync::mpsc::channel();
+        let ack = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let server_ack = ack.clone();
+        let server_control = control.clone();
+        let server = std::thread::spawn(move || {
+            let (socket, _) = listener.accept().unwrap();
+            socket
+                .set_read_timeout(Some(Duration::from_secs(2)))
+                .unwrap();
+            let mut reader = BufReader::new(socket);
+            reader.get_mut().write_all(b"* OK Test IMAP\r\n").unwrap();
+            loop {
+                let mut line = String::new();
+                assert!(reader.read_line(&mut line).unwrap() > 0);
+                let tag = line.split_whitespace().next().unwrap();
+                let response = if line.contains("LOGIN") {
+                    format!("{tag} OK Login\r\n")
+                } else if line.contains("CAPABILITY") {
+                    format!("* CAPABILITY IMAP4rev1 IDLE\r\n{tag} OK Caps\r\n")
+                } else if line.contains("EXAMINE") {
+                    format!("* 1 EXISTS\r\n{tag} OK [READ-ONLY] Open\r\n")
+                } else if line.contains("IDLE") {
+                    reader
+                        .get_mut()
+                        .write_all(b"+ idling\r\n* 2 EXISTS\r\n")
+                        .unwrap();
+                    let mut done = String::new();
+                    reader.read_line(&mut done).unwrap();
+                    assert_eq!(done, "DONE\r\n");
+                    // Deliberately withhold DONE's response until the independent
+                    // notification is delivered. The old after-wait callback
+                    // deadlocked here and missed the deadline.
+                    notified_rx.recv_timeout(Duration::from_secs(1)).unwrap();
+                    server_ack.store(true, std::sync::atomic::Ordering::SeqCst);
+                    reader
+                        .get_mut()
+                        .write_all(format!("{tag} OK Done\r\n").as_bytes())
+                        .unwrap();
+                    server_control.stop();
+                    break;
+                } else {
+                    panic!("Unexpected command: {line}");
+                };
+                reader.get_mut().write_all(response.as_bytes()).unwrap();
+            }
+        });
+        let activity = Arc::new(Mutex::new(MailboxActivity::default()));
+        let observed = activity.clone();
+        let signals = Arc::new(Mutex::new(Vec::new()));
+        let received = signals.clone();
+        let mut client = imap::Client::new(ObservedStream::new(socket, activity.clone()));
+        client.read_greeting().unwrap();
+        let mut session = client.login("test", "test").map_err(|(e, _)| e).unwrap();
+        let result = watch_session(
+            &mut session,
+            &activity,
+            &control,
+            || {},
+            move |signal| {
+                received.lock().unwrap().push(signal);
+                if signal == WatchSignal::MailboxChanged {
+                    assert!(!ack.load(std::sync::atomic::Ordering::SeqCst));
+                    assert!(observed.try_lock().is_ok());
+                    notified_tx.send(()).unwrap();
+                }
+            },
+            Duration::from_secs(1),
+        );
+        control.stop();
+        server.join().unwrap();
+        assert_eq!(result.unwrap(), WatchOutcome::Stopped);
+        assert!(!activity.lock().unwrap().notify_is_registered());
+        assert!(signals
+            .lock()
+            .unwrap()
+            .contains(&WatchSignal::MailboxChanged));
     }
     #[test]
     fn starttls_never_returns_a_plain_connection_after_rejection() {
@@ -1988,6 +2105,71 @@ mod tests {
         assert!(
             !written.contains("BODY") && !written.contains("STORE") && !written.contains("EXPUNGE")
         );
+    }
+
+    #[test]
+    fn new_mail_is_published_before_cached_flag_round_trips() {
+        let temp = tempfile::tempdir().unwrap();
+        let store = Store::new(temp.path().into()).unwrap();
+        let account = crate::tests::account();
+        store.save_account(&account).unwrap();
+        store
+            .ingest(&account, "INBOX", "7:12", &crate::tests::raw(), false)
+            .unwrap();
+        let raw = b"From: new@example.com\r\nTo: test@example.com\r\nSubject: New notification\r\nMessage-ID: <new-priority@example.com>\r\nDate: Fri, 9 Oct 2026 01:00:00 +0000\r\n\r\nNew mail first.\r\n";
+        let mut response = b"a1 OK Login\r\n* CAPABILITY IMAP4rev1\r\na2 OK Caps\r\n* LIST () \"/\" \"INBOX\"\r\na3 OK Listed\r\n* 2 EXISTS\r\n* OK [UIDVALIDITY 7] Valid\r\na4 OK [READ-ONLY] Opened\r\n* SEARCH 12 13\r\na5 OK Searched\r\n".to_vec();
+        response.extend(
+            format!(
+                "* 2 FETCH (UID 13 FLAGS () RFC822.SIZE {} BODY[] {{{}}}\r\n",
+                raw.len(),
+                raw.len()
+            )
+            .as_bytes(),
+        );
+        response.extend(raw);
+        response.extend(b")\r\na6 OK New mail\r\n* 1 FETCH (UID 12 FLAGS (\\Seen \\Flagged))\r\na7 OK Old flags\r\n");
+        let commands = Arc::new(Mutex::new(Vec::new()));
+        let stream = ImapTranscript {
+            responses: Cursor::new(response),
+            commands: commands.clone(),
+        };
+        let mut session = imap::Client::new(stream)
+            .login("test", "fixture-only")
+            .unwrap();
+        let published = std::cell::Cell::new(false);
+        assert_eq!(
+            sync_imap_scope(
+                &store,
+                &account,
+                &mut session,
+                &|| {
+                    let written = String::from_utf8(commands.lock().unwrap().clone()).unwrap();
+                    if !published.replace(true) {
+                        assert!(written.contains("UID FETCH 13"));
+                        assert!(!written.contains("UID FETCH 12 (UID FLAGS)"));
+                        assert!(store.has_source(&account.id, "INBOX", "7:13").unwrap());
+                    }
+                },
+                Some("INBOX")
+            )
+            .unwrap(),
+            1
+        );
+        assert!(published.get());
+        let old = store
+            .snapshot(&crate::tests::query())
+            .unwrap()
+            .messages
+            .into_iter()
+            .find(|m| m.subject != "New notification")
+            .unwrap();
+        assert!(old.is_read && old.starred);
+        let written = String::from_utf8(commands.lock().unwrap().clone()).unwrap();
+        assert!(
+            written.find("UID FETCH 13").unwrap()
+                < written.find("UID FETCH 12 (UID FLAGS)").unwrap()
+        );
+        assert!(!written.contains("STORE") && !written.contains("EXPUNGE"));
     }
 
     #[test]
@@ -2646,7 +2828,15 @@ pub fn sync_folder_with_updates(
     if a.protocol != "imap" {
         return sync_with_updates(store, a, updated);
     }
+    let started = std::time::Instant::now();
     let mut session = imap_session(a, &auth::credentials(a)?)?;
+    if folder.eq_ignore_ascii_case("INBOX") {
+        let _ = store.log(&format!(
+            "{} 收件诊断：连接与认证 {} 毫秒",
+            a.email,
+            started.elapsed().as_millis()
+        ));
+    }
     let result = catch_unwind(AssertUnwindSafe(|| {
         sync_imap_scope(store, a, &mut session, &updated, Some(folder))
     }))

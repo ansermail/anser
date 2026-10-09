@@ -54,8 +54,32 @@ struct Worker {
     fallback: crate::productivity::SyncSchedule,
 }
 enum EventKind {
-    Changed,
+    Changed(Trigger),
     Status(String),
+}
+#[derive(Clone, Debug)]
+struct Trigger {
+    source: &'static str,
+    at: Instant,
+    time: chrono::DateTime<chrono::Utc>,
+}
+impl Trigger {
+    fn new(source: &'static str) -> Self {
+        Self {
+            source,
+            at: Instant::now(),
+            time: chrono::Utc::now(),
+        }
+    }
+    fn poll() -> Self {
+        Self::new("定时补查")
+    }
+    fn signal(signal: network::WatchSignal) -> Self {
+        Self::new(match signal {
+            network::WatchSignal::CatchUp => "监听连接后补查",
+            network::WatchSignal::MailboxChanged => "服务器实时通知",
+        })
+    }
 }
 struct Event {
     id: String,
@@ -93,6 +117,9 @@ fn spawn_worker(store: Store, account: Account, tx: mpsc::Sender<Event>) -> Work
                 _ => break,
             };
             let mut connected = false;
+            let changed_tx = tx.clone();
+            let changed_control = stopped.clone();
+            let changed_id = account.id.clone();
             let result = secret.and_then(|secret| {
                 network::watch_imap(
                     &account,
@@ -106,11 +133,11 @@ fn spawn_worker(store: Store, account: Account, tx: mpsc::Sender<Event>) -> Work
                             kind: EventKind::Status("实时收取已连接（IMAP IDLE）".into()),
                         });
                     },
-                    || {
-                        let _ = tx.send(Event {
-                            id: account.id.clone(),
-                            control: stopped.clone(),
-                            kind: EventKind::Changed,
+                    move |signal| {
+                        let _ = changed_tx.send(Event {
+                            id: changed_id.clone(),
+                            control: changed_control.clone(),
+                            kind: EventKind::Changed(Trigger::signal(signal)),
                         });
                     },
                 )
@@ -153,8 +180,14 @@ struct Pending {
     serial: u64,
     retry_at: Instant,
     failures: u32,
+    trigger: Trigger,
 }
-fn enqueue(pending: &mut HashMap<String, Pending>, id: String, control: Arc<ConnectionControl>) {
+fn enqueue(
+    pending: &mut HashMap<String, Pending>,
+    id: String,
+    control: Arc<ConnectionControl>,
+    trigger: Trigger,
+) {
     if control.stopped() {
         return;
     }
@@ -163,6 +196,7 @@ fn enqueue(pending: &mut HashMap<String, Pending>, id: String, control: Arc<Conn
         serial: 0,
         retry_at: Instant::now(),
         failures: 0,
+        trigger: trigger.clone(),
     });
     // A new listener generation must not inherit an old listener's backoff.
     if !Arc::ptr_eq(&queued.control, &control) {
@@ -171,9 +205,11 @@ fn enqueue(pending: &mut HashMap<String, Pending>, id: String, control: Arc<Conn
             serial: 0,
             retry_at: Instant::now(),
             failures: 0,
+            trigger: trigger.clone(),
         };
     }
     queued.serial += 1;
+    queued.trigger = trigger;
 }
 #[derive(Debug, PartialEq, Eq)]
 enum SyncOutcome {
@@ -256,7 +292,12 @@ pub fn start(store: Store, app: tauri::AppHandle, control: Arc<RealtimeControl>)
                 * 60;
             for (id, worker) in &mut workers {
                 if worker.fallback.due(now, interval) {
-                    enqueue(&mut pending, id.clone(), worker.control.clone());
+                    enqueue(
+                        &mut pending,
+                        id.clone(),
+                        worker.control.clone(),
+                        Trigger::poll(),
+                    );
                     worker.fallback.completed(now);
                 }
             }
@@ -289,8 +330,8 @@ pub fn start(store: Store, app: tauri::AppHandle, control: Arc<RealtimeControl>)
                         continue;
                     }
                     match event.kind {
-                        EventKind::Changed => {
-                            enqueue(&mut pending, event.id, event.control);
+                        EventKind::Changed(trigger) => {
+                            enqueue(&mut pending, event.id, event.control, trigger);
                         }
                         EventKind::Status(message) => {
                             if let Ok(account) = store.account(&event.id) {
@@ -316,6 +357,7 @@ pub fn start(store: Store, app: tauri::AppHandle, control: Arc<RealtimeControl>)
                     let job_app = app.clone();
                     let cancelled = worker_control.clone();
                     let account_id = id.clone();
+                    let trigger = queued.trigger.clone();
                     let expected = workers
                         .get(&id)
                         .map(|w| w.config.clone())
@@ -339,9 +381,30 @@ pub fn start(store: Store, app: tauri::AppHandle, control: Arc<RealtimeControl>)
                                 {
                                     return SyncOutcome::Stale;
                                 }
-                                SyncOutcome::Finished(
-                                    crate::sync_inbox(&job_store, &job_app, account).is_ok(),
-                                )
+                                let started = Instant::now();
+                                let email = account.email.clone();
+                                let _ = job_store.log(&format!(
+                                    "{} 收件诊断：{} {}；排队 {} 毫秒，开始收件箱收取",
+                                    email,
+                                    trigger.source,
+                                    trigger
+                                        .time
+                                        .to_rfc3339_opts(chrono::SecondsFormat::Millis, true),
+                                    trigger.at.elapsed().as_millis(),
+                                ));
+                                let result = crate::sync_inbox(&job_store, &job_app, account);
+                                let _ = job_store.log(&format!(
+                                    "{} 收件诊断：{} {}；本轮 {} 毫秒，从触发到结束 {} 毫秒；{}",
+                                    email,
+                                    trigger.source,
+                                    trigger
+                                        .time
+                                        .to_rfc3339_opts(chrono::SecondsFormat::Millis, true),
+                                    started.elapsed().as_millis(),
+                                    trigger.at.elapsed().as_millis(),
+                                    if result.is_ok() { "成功" } else { "失败" },
+                                ));
+                                SyncOutcome::Finished(result.is_ok())
                             }),
                         },
                     );
@@ -359,13 +422,13 @@ mod tests {
         let mut pending = HashMap::new();
         let a = Arc::new(ConnectionControl::default());
         let b = Arc::new(ConnectionControl::default());
-        enqueue(&mut pending, "a".into(), a.clone());
+        enqueue(&mut pending, "a".into(), a.clone(), Trigger::poll());
         let retry = Instant::now() + Duration::from_secs(30);
         let job = pending.get_mut("a").unwrap();
         job.retry_at = retry;
         job.failures = 3;
-        enqueue(&mut pending, "a".into(), a.clone());
-        enqueue(&mut pending, "b".into(), b);
+        enqueue(&mut pending, "a".into(), a.clone(), Trigger::poll());
+        enqueue(&mut pending, "b".into(), b, Trigger::poll());
         assert_eq!(pending.len(), 2);
         assert_eq!(pending["a"].serial, 2);
         assert_eq!(pending["a"].retry_at, retry);
@@ -377,10 +440,15 @@ mod tests {
             Instant::now()
         ));
         a.stop();
-        enqueue(&mut pending, "a".into(), a);
+        enqueue(&mut pending, "a".into(), a, Trigger::poll());
         assert_eq!(pending["a"].serial, 2);
         let replacement = Arc::new(ConnectionControl::default());
-        enqueue(&mut pending, "a".into(), replacement.clone());
+        enqueue(
+            &mut pending,
+            "a".into(),
+            replacement.clone(),
+            Trigger::poll(),
+        );
         assert!(Arc::ptr_eq(&pending["a"].control, &replacement));
         assert_eq!(pending["a"].serial, 1);
         assert_eq!(pending["a"].failures, 0);
@@ -393,6 +461,7 @@ mod tests {
             serial: 1,
             retry_at: now,
             failures: 0,
+            trigger: Trigger::poll(),
         };
         assert!(!finish_pending(
             &mut pending,

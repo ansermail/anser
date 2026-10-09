@@ -49,8 +49,33 @@ pub struct MailboxActivity {
     count: Option<u32>,
     changed: bool,
     line: Vec<u8>,
+    notify: Option<Arc<dyn Fn() + Send + Sync>>,
+}
+/// Registration is removed on normal return, protocol failure and unwind.
+pub struct ActivityNotification(Arc<Mutex<MailboxActivity>>);
+impl ActivityNotification {
+    pub fn register(
+        activity: &Arc<Mutex<MailboxActivity>>,
+        notify: Arc<dyn Fn() + Send + Sync>,
+    ) -> Result<Self> {
+        let mut state = activity.lock().map_err(err)?;
+        state.take_changed();
+        state.notify = Some(notify);
+        Ok(Self(activity.clone()))
+    }
+}
+impl Drop for ActivityNotification {
+    fn drop(&mut self) {
+        if let Ok(mut state) = self.0.lock() {
+            state.notify = None;
+        }
+    }
 }
 impl MailboxActivity {
+    #[cfg(test)]
+    pub fn notify_is_registered(&self) -> bool {
+        self.notify.is_some()
+    }
     fn observe(&mut self, bytes: &[u8]) {
         for byte in bytes {
             // IDLE only sends short unsolicited status lines; bound malformed input.
@@ -119,8 +144,22 @@ impl<T: TimedStream> Read for ObservedStream<T> {
             self.stream.read_timeout(Some(remaining))?;
         }
         let size = self.stream.read(buffer)?;
-        if let Ok(mut activity) = self.activity.lock() {
+        let notify = if let Ok(mut activity) = self.activity.lock() {
             activity.observe(&buffer[..size]);
+            if activity.notify.is_some() && activity.take_changed() {
+                activity.notify.clone()
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+        // Enqueue as soon as the status line arrives. imap's IDLE handle sends
+        // DONE and waits for its acknowledgement before wait_with_timeout
+        // returns; a slow acknowledgement must not delay a separate inbox job.
+        // Never execute a callback while holding the activity mutex.
+        if let Some(notify) = notify {
+            notify();
         }
         Ok(size)
     }
@@ -147,6 +186,17 @@ impl<T: TimedStream> SetReadTimeout for ObservedStream<T> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn notification_registration_is_removed_on_unwind() {
+        let activity = Arc::new(Mutex::new(MailboxActivity::default()));
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            let _registration = ActivityNotification::register(&activity, Arc::new(|| {})).unwrap();
+            assert!(activity.lock().unwrap().notify_is_registered());
+            panic!("simulated protocol failure");
+        }));
+        assert!(result.is_err());
+        assert!(!activity.lock().unwrap().notify_is_registered());
+    }
     #[test]
     fn tracks_fragmented_notifications_without_syncing_on_keepalive_or_repeated_counts() {
         let mut activity = MailboxActivity::default();
