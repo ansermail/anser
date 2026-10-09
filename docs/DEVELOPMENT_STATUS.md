@@ -4,7 +4,7 @@
 
 ## 当前执行检查点
 
-- **当前用户任务（2026-10-09：分支 / Pages / EML）**：已归档干净的旧发布工作树并删除已合并 `codex/release-0.1.3`，保留有独立 WIP 提交的 `codex/rules03-in-progress`。Pages 修复 Tailwind 漏扫并改为共用主 App、内存虚构数据与禁用原生桥；本地构建及浏览器三栏/设置检查已通过。EML 文件关联、只读查看和附件功能已实现，开发包系统打开样例、正文/日期及 TextEdit 附件预览已通过。最新自动验证、公开部署及提交状态见末节与 [本轮接续点](PAGES_EML_WORKING.md)。完成此任务后再按 SETTINGS_NEXT_WORKING.md 回 RULES-03；公开桌面仍为 0.1.5。
+- **当前用户任务（2026-10-09：分支 / Pages / EML）**：已归档干净的旧发布工作树并删除已合并 `codex/release-0.1.3`，保留有独立 WIP 提交的 `codex/rules03-in-progress`。Pages 修复 Tailwind 漏扫并改为共用主 App、内存虚构数据与禁用原生桥；本地构建及浏览器三栏/设置检查已通过。EML 文件关联、只读查看和附件功能已实现，开发包系统打开样例、正文/日期及 TextEdit 附件预览已通过。195 前端、242 Rust、19 脚本与本地构建通过；ed5b6b1 已推送，公开 Pages 部署及 Checks（含 39 IMAP）均成功，浏览器实际核验通过。详见末节与 [本轮记录](PAGES_EML_WORKING.md)。下一步按 SETTINGS_NEXT_WORKING.md 回 RULES-03，先合入最新 main；公开桌面仍为 0.1.5。
 
 
 - **列表附件标识（2026-10-09）**：小回形针改为 12×12px 并移至信息行最右侧，保留可访问说明。41 项 App 回归、UI/格式/生产构建及虚构示例几何测量通过；后续开发与发布状态不变。
@@ -531,4 +531,5 @@ Thunderbird 历史迁移、Intel Mac、完整 Exchange、日历、移动端及�
 - 分支：`codex/release-0.1.3` 66fd723 已合入 main；其无改动工作树归档后删除分支。仅保留 main 和未合并规则工作分支 54e82fe（1 个 WIP 提交）；远端没有额外可清理的无用分支。
 - Pages：公开旧 CSS 缺少 flex/flex-col/grid/gap-6；修复扫描路径，移除重复预览 App，使用共享 App 及构建时原生桥替换、内存示例隔离和操作禁用。main 自动部署，新增构建回归检查。浏览器本地 1500×794 三栏、图标和设置完整性卡片展示正常，数据为 example.com/example.net 虚构账号。
 - EML：提供打开入口、系统文件关联、启动/运行中打开队列、原始日期/正文/附件、迟到结果保护与 64 MB 限制；不导入邮箱或修改原件。临时虚构 EML 通过 macOS `open -a` 打开到现有开发应用，HTML/日期正确，文本附件由 TextEdit 显示精确内容。未发送邮件、修改真实存档或更改全局默认打开方式。
-- 验证与云端状态：本轮 242 Rust 全量、4 项追加 EML 回归（含原件覆盖保护）、195 前端全量、19 桌面脚本均通过；UI/格式/diff/fmt、桌面生产与 Pages 构建通过。现有大 JS 分包警告保留；真实超大 EML/损坏供应商样本矩阵及正式安装后的默认关联/冷启动仍待验收。公开部署/CI 尚待推送后核验，桌面正式包未发布。
+- 验证与云端状态：本轮 242 Rust 全量、4 项追加 EML 回归（含原件覆盖保护）、195 前端全量、19 桌面脚本均通过；UI/格式/diff/fmt、桌面生产与 Pages 构建通过。现有大 JS 分包警告保留；真实超大 EML/损坏供应商样本矩阵及正式安装后的默认关联/冷启动仍待验收。功能源码 [ed5b6b1](https://github.com/ansermail/anser/commit/ed5b6b1b6dda96da186d00b0441b2c14ba0adfa7) 已推送。21:39 [Pages 部署](https://github.com/ansermail/anser/actions/runs/37938288994) 成功，公开页面实际核验三栏/CSS/图标、虚构账号及正文阅读、最新签名/关于设置；账号连接禁用、原生 IPC 不存在。21:41 [Checks](https://github.com/ansermail/anser/actions/runs/37938289003) 成功，含 195 前端、242 Rust、39 vendored IMAP、19 脚本及 UI/格式/生产构建。桌面正式包未发布。
+- 接续：本轮用户三项任务完成，正式包 EML/default association 验收仍待下版安装；主线回 SETTINGS_NEXT_WORKING.md / codex/rules03-in-progress，先合入 main 最新代码。

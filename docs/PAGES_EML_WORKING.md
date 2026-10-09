@@ -1,6 +1,6 @@
 # 分支、Pages 与 EML 接续点
 
-更新：2026-10-09；分支 main，开始提交 ef6cb2d。此前 RULES-03 分支保留不动。
+更新：2026-10-09；分支 main；功能源码提交 ed5b6b1b6dda96da186d00b0441b2c14ba0adfa7，开始提交 ef6cb2d。此前 RULES-03 分支保留不动。
 
 ## 已完成
 
@@ -15,6 +15,7 @@
 - `npm test`：192 项曾通过，追加 EML 3 项专项通过，最终 195 项全量通过。
 - `npm run test:desktop`：19 项通过。
 - `npm run build`、`npm run build:preview`（含样式/IPC 检查）、`npm run format:check`、UI 检查通过；提交前 diff/fmt 核对通过。
-- 待提交并推送组织 main，核验 Preview Pages 与 Checks，记录提交/流水线地址；公开页面需实际刷新检查共享界面和布局。
+- 已提交并推送组织 main；[Preview Pages 37938288994](https://github.com/ansermail/anser/actions/runs/37938288994) 2026-10-09 21:39（Asia/Shanghai）部署成功；[Checks 37938289003](https://github.com/ansermail/anser/actions/runs/37938289003) 21:41 成功，含 195 前端、242 Rust、39 vendored IMAP、19 脚本及 UI/格式/生产构建。
+- [公开页面](https://ansermail.github.io/anser/) 已浏览器实际核验：共用三栏、图标及完整布局样式，虚构账号、示例正文阅读、最新签名/关于设置均正常；添加账号禁用、原生 IPC 不存在。预览 JS/CSS 基路径为 /anser/，不包含真实邮箱数据。
 - 未发新桌面包；安装后默认打开及冷启动、大文件/供应商损坏 EML 矩阵待验收。不得修改用户默认应用或真实邮件做无关测试。
 - 完成本轮后回 SETTINGS_NEXT_WORKING.md / codex/rules03-in-progress，先合入 main 最新改动再继续规则保存开发。
