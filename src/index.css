@@ -3230,6 +3230,16 @@ kbd {
 .signature-editor-grid.has-preview {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
+.signature-editor-area,
+.signature-preview-frame {
+  height: 320px;
+  min-height: 320px;
+  max-height: 320px;
+}
+.signature-editor-area {
+  resize: none;
+  overflow-y: auto;
+}
 @container signature-content (max-width: 620px) {
   .signature-editor-grid.has-preview {
     grid-template-columns: minmax(0, 1fr);

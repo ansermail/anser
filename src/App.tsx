@@ -100,6 +100,7 @@ import {
   Card,
   CardHeader,
   CardTitle,
+  CardDescription,
   CardAction,
   CardContent,
 } from "./components/ui/card";
@@ -131,6 +132,7 @@ import { RulesPanel } from "./components/rules-panel";
 import { ComposeDialog } from "./components/compose-dialog";
 import { ContactsPanel } from "./components/contacts-panel";
 import { OutboxPanel } from "./components/outbox-panel";
+import { ArchiveIntegrity } from "./components/archive-integrity";
 import { StorageTools } from "./components/storage-tools";
 import { DeleteArchiveDialog } from "./components/delete-archive-dialog";
 import {
@@ -1424,6 +1426,7 @@ export default function App() {
                     <strong>{formatSize(data.stats.bytes)}</strong>
                     <span>原始邮件大小</span>
                   </div>
+                  <ArchiveIntegrity />
                 </div>
                 <ArchiveLocation
                   initialPath={data.dataDir}
@@ -1446,28 +1449,23 @@ export default function App() {
                   />
                 </ArchiveLocation>
               </Card>
+              <StorageTools />
               {page === "settings" && (
                 <MailSignatures accounts={data.accounts} />
               )}
-              <ArchiveJobsPanel />
-              <StorageTools />
-              {page === "settings" && <UpdateSettings updates={updates} />}
+              <ArchiveJobsPanel defaultCollapsed />
               <div className="flex flex-col gap-6">
                 <ServerOperations defaultCollapsed />
-                <FolderHealthPanel />
+                <FolderHealthPanel defaultCollapsed />
                 <DirectoryOperationsPanel defaultCollapsed />
-              </div>
-              <div className="info-strip">
-                <Info size={17} />
-                <span>
-                  关闭窗口后继续收取；退出
-                  App、睡眠或断网时暂停。邮件须在服务器删除前完整下载。
-                </span>
               </div>
               <Collapsible asChild>
                 <Card>
                   <CardHeader>
                     <CardTitle>最近活动</CardTitle>
+                    <CardDescription>
+                      查看邮件收取、发送及规则执行的最近记录。
+                    </CardDescription>
                     <CardAction className="flex items-center gap-2">
                       <CollapsibleTrigger asChild>
                         <Button
@@ -1505,6 +1503,14 @@ export default function App() {
                   </CollapsibleContent>
                 </Card>
               </Collapsible>
+              {page === "settings" && <UpdateSettings updates={updates} />}
+              <div className="info-strip">
+                <Info size={17} />
+                <span>
+                  关闭窗口后继续收取；退出
+                  App、睡眠或断网时暂停。邮件须在服务器删除前完整下载。
+                </span>
+              </div>
               {import.meta.env.DEV && (
                 <Button
                   variant="ghost"

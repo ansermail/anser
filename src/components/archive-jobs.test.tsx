@@ -97,3 +97,19 @@ it("shows load and action failures without pretending a save completed", async (
   expect(document.body.textContent).toContain("不能读取来源");
   expect(document.body.textContent).not.toContain("完整已保存");
 });
+it("collapses records and task actions until the settings section is opened", async () => {
+  items = [job("queued")];
+  await act(async () => root.render(<ArchiveJobsPanel defaultCollapsed />));
+  expect(host.querySelector('[aria-label="完整保存任务记录"]')).toBeNull();
+  const trigger = host.querySelector(
+    '[aria-label="展开或收起完整保存任务"]',
+  ) as HTMLButtonElement;
+  expect(trigger.getAttribute("aria-expanded")).toBe("false");
+  await act(async () => trigger.click());
+  expect(host.textContent).toContain("example");
+  await click("暂停");
+  expect(api.call).toHaveBeenCalledWith("archive_job_action", {
+    id: "queued",
+    action: "pause",
+  });
+});

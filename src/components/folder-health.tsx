@@ -1,9 +1,14 @@
 import { useEffect, useRef, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
-import { AlertCircle, RefreshCw } from "lucide-react";
+import { AlertCircle, RefreshCw, ChevronDown } from "lucide-react";
 import { call, native, isDemo } from "@/lib/api";
 import { coalesceRefresh } from "@/lib/refresh-queue";
 import { Button } from "./ui/button";
+import {
+  Collapsible,
+  CollapsibleTrigger,
+  CollapsibleContent,
+} from "./ui/collapsible";
 import { Badge } from "./ui/badge";
 import {
   Card,
@@ -32,7 +37,9 @@ export type FolderHealthItem = {
   alternateSources: number;
   saved: number;
 };
-export function FolderHealthPanel() {
+export function FolderHealthPanel({
+  defaultCollapsed = false,
+}: { defaultCollapsed?: boolean } = {}) {
   const [items, setItems] = useState<FolderHealthItem[] | null>(null);
   const [error, setError] = useState("");
   const [loadError, setLoadError] = useState("");
@@ -102,85 +109,101 @@ export function FolderHealthPanel() {
     }
   }
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>目录来源检查</CardTitle>
-        <CardDescription>异常目录暂停同步，本地存档保留。</CardDescription>
-        <CardAction>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => void reload.current()}
-          >
-            <RefreshCw />
-            刷新
-          </Button>
-        </CardAction>
-      </CardHeader>
-      <CardContent className="flex flex-col gap-4">
-        {(error || loadError) && (
-          <Alert variant="destructive">
-            <AlertCircle />
-            <AlertTitle>核查未完成</AlertTitle>
-            <AlertDescription>{error || loadError}</AlertDescription>
-          </Alert>
-        )}
-        {!items && !error && !loadError && (
-          <Skeleton className="h-16 w-full" aria-label="正在加载目录检查" />
-        )}
-        {items?.length === 0 && (
-          <p className="text-sm text-muted-foreground">暂无隔离的目录。</p>
-        )}
-        {items?.map((item) => {
-          const key = JSON.stringify([item.accountId, item.folder]);
-          return (
-            <Alert key={key}>
-              <AlertCircle />
-              <AlertTitle className="flex flex-wrap items-center gap-2">
-                {item.displayName}
-                <Badge variant="secondary">来源已隔离</Badge>
-              </AlertTitle>
-              <AlertDescription className="gap-2">
-                <p>{item.accountEmail}</p>
-                <p>{item.reason}</p>
-                <p>
-                  保留 {item.sources} 条旧来源，其中 {item.alternateSources}{" "}
-                  条另有可用来源，{item.saved} 条有完整本地存档。
-                </p>
-                {result?.key === key && (
-                  <p role="status">
-                    {result.evidence.exists === 0 &&
-                    (result.evidence.uidCount || 0) > 0
-                      ? "核查后目录响应仍矛盾，继续隔离。"
-                      : result.evidence.exists === null ||
-                          result.evidence.uidCount === null
-                        ? "仍无法确认目录已打开，继续隔离。"
-                        : "目录响应已恢复，请重新收取此目录以核对旧来源。"}
-                  </p>
-                )}
-                <div className="mt-2 flex flex-wrap items-center gap-3">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    disabled={!!busy}
-                    onClick={() => void probe(item)}
-                    aria-label={`重新核查 ${item.accountEmail} ${item.displayName}`}
-                  >
-                    <RefreshCw className={busy === key ? "animate-spin" : ""} />
-                    {busy === key ? "正在核查…" : "重新核查"}
-                  </Button>
-                  <span className="text-xs text-muted-foreground">
-                    核查时间{" "}
-                    {new Date(item.checkedAt).toLocaleString("zh-CN", {
-                      hour12: false,
-                    })}
-                  </span>
-                </div>
-              </AlertDescription>
-            </Alert>
-          );
-        })}
-      </CardContent>
-    </Card>
+    <Collapsible defaultOpen={!defaultCollapsed} asChild>
+      <Card>
+        <CardHeader>
+          <CardTitle>目录来源检查</CardTitle>
+          <CardDescription>异常目录暂停同步，本地存档保留。</CardDescription>
+          <CardAction className="flex items-center gap-2">
+            <CollapsibleTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                aria-label="展开或收起目录来源检查"
+                className="group"
+              >
+                <ChevronDown className="transition-transform group-data-[state=open]:rotate-180" />
+              </Button>
+            </CollapsibleTrigger>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => void reload.current()}
+            >
+              <RefreshCw />
+              刷新
+            </Button>
+          </CardAction>
+        </CardHeader>
+        <CollapsibleContent asChild>
+          <CardContent className="flex flex-col gap-4">
+            {(error || loadError) && (
+              <Alert variant="destructive">
+                <AlertCircle />
+                <AlertTitle>核查未完成</AlertTitle>
+                <AlertDescription>{error || loadError}</AlertDescription>
+              </Alert>
+            )}
+            {!items && !error && !loadError && (
+              <Skeleton className="h-16 w-full" aria-label="正在加载目录检查" />
+            )}
+            {items?.length === 0 && (
+              <p className="text-sm text-muted-foreground">暂无隔离的目录。</p>
+            )}
+            {items?.map((item) => {
+              const key = JSON.stringify([item.accountId, item.folder]);
+              return (
+                <Alert key={key}>
+                  <AlertCircle />
+                  <AlertTitle className="flex flex-wrap items-center gap-2">
+                    {item.displayName}
+                    <Badge variant="secondary">来源已隔离</Badge>
+                  </AlertTitle>
+                  <AlertDescription className="gap-2">
+                    <p>{item.accountEmail}</p>
+                    <p>{item.reason}</p>
+                    <p>
+                      保留 {item.sources} 条旧来源，其中 {item.alternateSources}{" "}
+                      条另有可用来源，{item.saved} 条有完整本地存档。
+                    </p>
+                    {result?.key === key && (
+                      <p role="status">
+                        {result.evidence.exists === 0 &&
+                        (result.evidence.uidCount || 0) > 0
+                          ? "核查后目录响应仍矛盾，继续隔离。"
+                          : result.evidence.exists === null ||
+                              result.evidence.uidCount === null
+                            ? "仍无法确认目录已打开，继续隔离。"
+                            : "目录响应已恢复，请重新收取此目录以核对旧来源。"}
+                      </p>
+                    )}
+                    <div className="mt-2 flex flex-wrap items-center gap-3">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        disabled={!!busy}
+                        onClick={() => void probe(item)}
+                        aria-label={`重新核查 ${item.accountEmail} ${item.displayName}`}
+                      >
+                        <RefreshCw
+                          className={busy === key ? "animate-spin" : ""}
+                        />
+                        {busy === key ? "正在核查…" : "重新核查"}
+                      </Button>
+                      <span className="text-xs text-muted-foreground">
+                        核查时间{" "}
+                        {new Date(item.checkedAt).toLocaleString("zh-CN", {
+                          hour12: false,
+                        })}
+                      </span>
+                    </div>
+                  </AlertDescription>
+                </Alert>
+              );
+            })}
+          </CardContent>
+        </CollapsibleContent>
+      </Card>
+    </Collapsible>
   );
 }

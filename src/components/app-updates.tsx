@@ -4,6 +4,7 @@ import { getVersion } from "@tauri-apps/api/app";
 import { invoke, isTauri } from "@tauri-apps/api/core";
 import { check, type Update } from "@tauri-apps/plugin-updater";
 import { Download, RefreshCw, RotateCw, Github } from "lucide-react";
+import { toast } from "sonner";
 import { Button } from "./ui/button";
 import {
   Card,
@@ -237,6 +238,15 @@ export function UpdateSettings({ updates }: { updates: Updates }) {
             href="https://github.com/ansermail/anser"
             target="_blank"
             rel="noopener noreferrer"
+            onClick={(event) => {
+              if (!updates.native) return;
+              event.preventDefault();
+              void invoke("open_mail_link", {
+                url: "https://github.com/ansermail/anser",
+              }).catch((error) =>
+                toast.error(`无法打开项目仓库：${String(error)}`),
+              );
+            }}
           >
             <Github data-icon="inline-start" />
             项目仓库

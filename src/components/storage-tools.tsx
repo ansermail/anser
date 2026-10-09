@@ -1,8 +1,8 @@
 import { SelectField, SelectOption } from "@/components/ui/select-field";
 import { useEffect, useState } from "react";
-import { Clock3, LoaderCircle, ShieldCheck, AlertCircle } from "lucide-react";
+import { Clock3 } from "lucide-react";
 import { call, isDemo } from "@/lib/api";
-import type { ArchiveHealth, Preferences } from "@/lib/types";
+import type { Preferences } from "@/lib/types";
 import { Switch } from "./ui/switch";
 import { Label } from "./ui/label";
 import { Card } from "./ui/card";
@@ -22,9 +22,7 @@ export function StorageTools() {
     autoStartAvailable: boolean;
   } | null>(null);
   const [desktopBusy, setDesktopBusy] = useState(false);
-  const [saving, setSaving] = useState(false),
-    [checking, setChecking] = useState(false),
-    [health, setHealth] = useState<ArchiveHealth | null>(null);
+  const [saving, setSaving] = useState(false);
   useEffect(() => {
     let live = true;
     void call<Preferences>("get_preferences")
@@ -85,17 +83,6 @@ export function StorageTools() {
       toast.error(String(e));
     } finally {
       setDesktopBusy(false);
-    }
-  }
-  async function check() {
-    setChecking(true);
-    setHealth(null);
-    try {
-      setHealth(await call<ArchiveHealth>("archive_health"));
-    } catch (e) {
-      toast.error(String(e));
-    } finally {
-      setChecking(false);
     }
   }
   return (
@@ -198,55 +185,6 @@ export function StorageTools() {
           IMAP 优先实时收取；此间隔用于定时补查和
           POP3。关闭窗口后继续运行，唤醒后补收。
         </p>
-      </Card>
-      <Card className="settings-tool">
-        <div className="settings-tool-title">
-          <ShieldCheck size={18} />
-          <h3>存档完整性</h3>
-        </div>
-        <div className="settings-tool-row">
-          <p>
-            {checking
-              ? "正在校验原始邮件与附件…"
-              : health
-                ? `${health.healthy} / ${health.checked} 封校验通过`
-                : "校验本地原件及附件的完整性"}
-          </p>
-          <Button
-            variant="outline"
-            size="sm"
-            disabled={checking}
-            onClick={() => void check()}
-          >
-            {checking && <LoaderCircle className="animate-spin" size={14} />}
-            校验存档
-          </Button>
-        </div>
-        {isDemo() && <p>演示模式仅展示示例校验结果。</p>}
-        {health && (
-          <>
-            <small>
-              最近校验：
-              {new Date(health.checkedAt).toLocaleString("zh-CN", {
-                hour12: false,
-              })}
-            </small>
-            {health.problems.length > 0 && (
-              <div className="archive-problems" role="alert">
-                <p>
-                  <AlertCircle size={14} /> {health.problems.length}{" "}
-                  封需要检查，可从备份恢复
-                </p>
-                {health.problems.map((p) => (
-                  <div key={p.mailId}>
-                    <strong>{p.subject || "（无主题）"}</strong>
-                    <span>{p.error}</span>
-                  </div>
-                ))}
-              </div>
-            )}
-          </>
-        )}
       </Card>
     </div>
   );
