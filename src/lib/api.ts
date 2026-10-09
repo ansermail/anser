@@ -1,3 +1,4 @@
+import { memoryStorage } from "./demo-storage";
 import { emptySignature } from "./signatures";
 import {
   conversationIndex,
@@ -18,7 +19,9 @@ import type {
 import { makeDemo } from "./demo";
 import { parseAddresses } from "./addresses";
 import type { Address, Contact, OutboxRecord } from "./types";
-export const native = isTauri();
+export const publicPreview = import.meta.env.MODE === "preview";
+export const native = !publicPreview && isTauri();
+const demoStorage = publicPreview ? memoryStorage() : localStorage;
 const key = "mail-desktop-demo-v1";
 let demo: Snapshot | null = null;
 export function isDemo() {
@@ -27,32 +30,36 @@ export function isDemo() {
 export function enterDemo() {
   if (native && !import.meta.env.DEV) throw new Error("正式应用不开放示例邮箱");
   demo = makeDemo();
-  localStorage.setItem(key, JSON.stringify(demo));
+  demoStorage.setItem(key, JSON.stringify(demo));
 }
 export function leaveDemo() {
+  if (publicPreview) return;
   demo = null;
-  localStorage.removeItem(key);
-  localStorage.removeItem(key + "-drafts");
-  localStorage.removeItem(key + "-contacts");
-  localStorage.removeItem(key + "-preferences");
-  localStorage.removeItem(key + "-outbox");
-  localStorage.removeItem(key + "-auto-start");
-  for (let i = localStorage.length - 1; i >= 0; i--) {
-    const stored = localStorage.key(i);
-    if (stored?.startsWith(key + "-signature-"))
-      localStorage.removeItem(stored);
+  demoStorage.removeItem(key);
+  demoStorage.removeItem(key + "-drafts");
+  demoStorage.removeItem(key + "-contacts");
+  demoStorage.removeItem(key + "-preferences");
+  demoStorage.removeItem(key + "-outbox");
+  demoStorage.removeItem(key + "-auto-start");
+  for (let i = demoStorage.length - 1; i >= 0; i--) {
+    const stored = demoStorage.key(i);
+    if (stored?.startsWith(key + "-signature-")) demoStorage.removeItem(stored);
   }
 }
 export function restoreDemo() {
+  if (publicPreview) {
+    enterDemo();
+    return;
+  }
   if (native && !import.meta.env.DEV) {
     leaveDemo();
     return;
   }
   try {
-    const data = localStorage.getItem(key);
+    const data = demoStorage.getItem(key);
     if (data) demo = JSON.parse(data);
   } catch {
-    localStorage.removeItem(key);
+    demoStorage.removeItem(key);
   }
 }
 const empty = (): Snapshot => ({
@@ -124,6 +131,29 @@ export async function call<T = void>(
   command: string,
   args: Record<string, unknown> = {},
 ): Promise<T> {
+  if (
+    publicPreview &&
+    [
+      "connect_account",
+      "edit_account",
+      "send_mail",
+      "schedule_mail",
+      "set_auto_start",
+      "test_notification",
+      "delete_local_archives",
+      "export_mail",
+      "save_attachment",
+      "preview_attachment",
+      "backup_archive",
+      "restore_archive",
+      "open_data_folder",
+      "move_archive_location",
+      "cleanup_archive_migration",
+    ].includes(command)
+  )
+    throw new Error(
+      "页面预览不连接邮箱、收发邮件或操作本机文件，请下载 Anser 客户端。",
+    );
   if (demo) {
     let result: unknown;
     switch (command) {
@@ -146,12 +176,11 @@ export async function call<T = void>(
       case "mail_signature":
         result =
           JSON.parse(
-            localStorage.getItem(key + "-signature-" + args.accountId) ||
-              "null",
+            demoStorage.getItem(key + "-signature-" + args.accountId) || "null",
           ) || emptySignature();
         break;
       case "save_mail_signature":
-        localStorage.setItem(
+        demoStorage.setItem(
           key + "-signature-" + args.accountId,
           JSON.stringify(args.signature),
         );
@@ -248,7 +277,7 @@ export async function call<T = void>(
           args,
         );
         const overrides = JSON.parse(
-          localStorage.getItem(`${key}:retention:${args.id}`) || "[]",
+          demoStorage.getItem(`${key}:retention:${args.id}`) || "[]",
         ) as import("./types").FolderRetention[];
         const mails = demo.messages.filter((m) => m.accountId === account.id);
         const saved = mails.filter((m) => m.savedLocally !== false);
@@ -293,7 +322,7 @@ export async function call<T = void>(
           (!Number.isInteger(days) || days < 1 || days > 3650)
         )
           throw new Error("服务器保留期请填写 1–3650 天，未知时留空");
-        localStorage.setItem(
+        demoStorage.setItem(
           `${key}:retention:${account.id}`,
           JSON.stringify(args.overrides),
         );
@@ -339,23 +368,23 @@ export async function call<T = void>(
       }
       case "save_draft": {
         const list = JSON.parse(
-          localStorage.getItem(key + "-drafts") || "[]",
+          demoStorage.getItem(key + "-drafts") || "[]",
         ) as Compose[];
         const draft = args.draft as Compose;
-        localStorage.setItem(
+        demoStorage.setItem(
           key + "-drafts",
           JSON.stringify([draft, ...list.filter((d) => d.id !== draft.id)]),
         );
         break;
       }
       case "list_drafts":
-        result = JSON.parse(localStorage.getItem(key + "-drafts") || "[]");
+        result = JSON.parse(demoStorage.getItem(key + "-drafts") || "[]");
         break;
       case "delete_draft": {
         const list = JSON.parse(
-          localStorage.getItem(key + "-drafts") || "[]",
+          demoStorage.getItem(key + "-drafts") || "[]",
         ) as Compose[];
-        localStorage.setItem(
+        demoStorage.setItem(
           key + "-drafts",
           JSON.stringify(list.filter((d) => d.id !== args.id)),
         );
@@ -379,11 +408,11 @@ export async function call<T = void>(
         break;
       }
       case "list_contacts":
-        result = JSON.parse(localStorage.getItem(key + "-contacts") || "[]");
+        result = JSON.parse(demoStorage.getItem(key + "-contacts") || "[]");
         break;
       case "save_contact": {
         const list = JSON.parse(
-          localStorage.getItem(key + "-contacts") || "[]",
+          demoStorage.getItem(key + "-contacts") || "[]",
         ) as Contact[];
         const c = args.contact as Contact;
         if (
@@ -393,7 +422,7 @@ export async function call<T = void>(
           )
         )
           throw new Error("该邮箱已存在于通讯录中");
-        localStorage.setItem(
+        demoStorage.setItem(
           key + "-contacts",
           JSON.stringify([c, ...list.filter((x) => x.id !== c.id)]),
         );
@@ -401,9 +430,9 @@ export async function call<T = void>(
       }
       case "delete_contact": {
         const list = JSON.parse(
-          localStorage.getItem(key + "-contacts") || "[]",
+          demoStorage.getItem(key + "-contacts") || "[]",
         ) as Contact[];
-        localStorage.setItem(
+        demoStorage.setItem(
           key + "-contacts",
           JSON.stringify(list.filter((x) => x.id !== args.id)),
         );
@@ -411,7 +440,7 @@ export async function call<T = void>(
       }
       case "contact_suggestions": {
         const saved = JSON.parse(
-          localStorage.getItem(key + "-contacts") || "[]",
+          demoStorage.getItem(key + "-contacts") || "[]",
         ) as Contact[];
         const addresses = [
           ...demo.messages.flatMap((m) => parseAddresses(m.sender)),
@@ -443,7 +472,7 @@ export async function call<T = void>(
         result = { pending: 0, blocked: 0, completed: 0, items: [] };
         break;
       case "list_outbox":
-        result = JSON.parse(localStorage.getItem(key + "-outbox") || "[]");
+        result = JSON.parse(demoStorage.getItem(key + "-outbox") || "[]");
         break;
       case "schedule_mail": {
         const draft = args.draft as Compose;
@@ -453,7 +482,7 @@ export async function call<T = void>(
         )
           throw new Error("请选择未来的发送时间");
         const records = JSON.parse(
-          localStorage.getItem(key + "-outbox") || "[]",
+          demoStorage.getItem(key + "-outbox") || "[]",
         ) as OutboxRecord[];
         if (records.some((r) => r.id === draft.id))
           throw new Error("已有发送计划，请在发送记录中检查");
@@ -466,11 +495,11 @@ export async function call<T = void>(
           archived: false,
           error: "",
         });
-        localStorage.setItem(key + "-outbox", JSON.stringify(records));
+        demoStorage.setItem(key + "-outbox", JSON.stringify(records));
         const drafts = JSON.parse(
-          localStorage.getItem(key + "-drafts") || "[]",
+          demoStorage.getItem(key + "-drafts") || "[]",
         ) as Compose[];
-        localStorage.setItem(
+        demoStorage.setItem(
           key + "-drafts",
           JSON.stringify(drafts.filter((d) => d.id !== draft.id)),
         );
@@ -479,7 +508,7 @@ export async function call<T = void>(
       case "reschedule_mail":
       case "cancel_schedule": {
         const records = JSON.parse(
-          localStorage.getItem(key + "-outbox") || "[]",
+          demoStorage.getItem(key + "-outbox") || "[]",
         ) as OutboxRecord[];
         const record = records.find((r) => r.id === args.id);
         if (
@@ -491,9 +520,9 @@ export async function call<T = void>(
           record.status = "cancelled";
           result = { ...record.draft, id: crypto.randomUUID() };
           const drafts = JSON.parse(
-            localStorage.getItem(key + "-drafts") || "[]",
+            demoStorage.getItem(key + "-drafts") || "[]",
           ) as Compose[];
-          localStorage.setItem(
+          demoStorage.setItem(
             key + "-drafts",
             JSON.stringify([result, ...drafts]),
           );
@@ -506,28 +535,28 @@ export async function call<T = void>(
           record.error = "";
         }
         record.updatedAt = new Date().toISOString();
-        localStorage.setItem(key + "-outbox", JSON.stringify(records));
+        demoStorage.setItem(key + "-outbox", JSON.stringify(records));
         break;
       }
       case "desktop_settings":
         result = {
-          autoStart: localStorage.getItem(key + "-auto-start") === "true",
+          autoStart: demoStorage.getItem(key + "-auto-start") === "true",
           autoStartAvailable: true,
         };
         break;
       case "set_auto_start":
-        localStorage.setItem(key + "-auto-start", String(args.enabled));
+        demoStorage.setItem(key + "-auto-start", String(args.enabled));
         break;
       case "test_notification":
         break;
       case "get_preferences":
         result = JSON.parse(
-          localStorage.getItem(key + "-preferences") ||
+          demoStorage.getItem(key + "-preferences") ||
             '{"syncIntervalMinutes":5,"newMailNotifications":true,"sendResultNotifications":true}',
         );
         break;
       case "save_preferences":
-        localStorage.setItem(
+        demoStorage.setItem(
           key + "-preferences",
           JSON.stringify(args.preferences),
         );
@@ -658,7 +687,7 @@ export async function call<T = void>(
         "copy_sources",
       ].includes(command)
     )
-      localStorage.setItem(key, JSON.stringify(demo));
+      demoStorage.setItem(key, JSON.stringify(demo));
     return result as T;
   }
   if (!native) throw new Error("请在 macOS 桌面客户端中使用此功能。");

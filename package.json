@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "vite --host 127.0.0.1",
     "build": "npm run check:ui && tsc -b && vite build",
-    "build:preview": "npm run check:ui && tsc -b && vite build --mode preview",
+    "build:preview": "npm run check:ui && tsc -b && vite build --mode preview && node scripts/check-preview.mjs",
     "preview": "vite preview --host 127.0.0.1",
     "tauri": "tauri",
     "desktop": "node scripts/desktop.mjs",

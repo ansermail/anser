@@ -461,3 +461,10 @@ JSON strategy 标记区分原生与兼容任务，不改变旧日志语义。cle
 新增官方 Tauri updater、HTTPS GitHub Release 端点及固定公钥；更新签名私钥存放仓库外并上传 Actions Secret。更新入口仅有新版本时出现，设置页可检查，shadcn 更新中心显示说明和进度，下载/签名验证后由用户安装并重启。写信和开发预览保护、安装失败及重启失败分别处理；重启前等待 SMTP/同步完成。
 
 GitHub CI 和两架构发布工作流已推送；首次 Checks 已成功，Release 构建/实际安装验收按 DEVELOPMENT_STATUS.md 最新检查点记录。当前没有 Developer ID/公证，更新签名与 Apple 签名分别记录，不声称系统信任和钥匙串授权已解决。详见 UPDATES.md。
+
+
+## 2026-10-09：共用 Pages 界面与外部 EML 阅读
+
+原预览以 `preview/` 为 Vite 根目录，Tailwind 自动扫描未覆盖 `src/` 业务组件，公开 CSS 缺少 flex/grid/gap 等布局工具类。`src/index.css` 明确声明 `@source "./"`，预览入口改为渲染共用 App，删除重复 PreviewApp。Vite 预览构建将 Tauri core/app/event/updater/dialog 导入替换为静态禁用桥；API 使用内存示例存储，无法退出到真实模式，连接/收发及本机操作明确报错。`scripts/check-preview.mjs` 在每次预览构建检查共享布局 CSS、基路径与无原生 IPC 实现；Preview Pages 自动跟随 main 相关修改。
+
+`eml_files` 是独立内存状态，接收 macOS Opened、启动/单实例路径参数及选择器请求；订阅后排空待打开队列，防止启动事件丢失。读取限制为 64 MiB，正文/日期/附件复用 archive MIME 解析，原始字节只保留于当前文件快照，不走 Store、收取、规则或凭据接口。前端串行解析与代际检查防止切换/关闭后的迟到结果，附件用当前令牌提取，预览复用私有缓存与可执行文件保护，另存禁止覆盖源文件。bundle.fileAssociations 声明 EML Viewer/Alternate；稳定开发包从同一配置生成 CFBundleDocumentTypes，不改变应用/钥匙串标识或默认打开方式。

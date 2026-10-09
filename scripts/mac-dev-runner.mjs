@@ -1,10 +1,12 @@
-import { mkdir, writeFile, copyFile, rm } from "node:fs/promises";
+import { mkdir, writeFile, copyFile, rm, readFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   getDevelopmentSigningIdentity,
   signDevelopmentBundle,
 } from "./mac-dev-signing.mjs";
+
+import { documentTypes } from "./mac-document-types.mjs";
 
 const [binary, ...args] = process.argv.slice(2);
 if (!binary) throw new Error("缺少开发版可执行文件");
@@ -14,6 +16,9 @@ if (typeof process.execve !== "function")
   );
 const signingIdentity = await getDevelopmentSigningIdentity();
 const root = fileURLToPath(new URL("../", import.meta.url));
+const config = JSON.parse(
+  await readFile(join(root, "src-tauri/tauri.conf.json"), "utf8"),
+);
 const bundle = join(dirname(resolve(binary)), "dev-app", "雁信.app");
 const contents = join(bundle, "Contents");
 await mkdir(join(contents, "MacOS"), { recursive: true });
@@ -38,6 +43,7 @@ await writeFile(
 <key>CFBundlePackageType</key><string>APPL</string>
 <key>CFBundleIconFile</key><string>icon.icns</string>
 <key>NSHighResolutionCapable</key><true/>
+${documentTypes(config.bundle.fileAssociations)}
 </dict></plist>`,
 );
 await signDevelopmentBundle(bundle, signingIdentity);

@@ -14,7 +14,23 @@ export default defineConfig(({ mode }) => ({
     emptyOutDir: true,
   },
   plugins: [react(), tailwindcss()],
-  resolve: { alias: { "@": path.resolve(__dirname, "src") } },
+  resolve: {
+    alias: [
+      ...(mode === "preview"
+        ? [
+            "@tauri-apps/api/core",
+            "@tauri-apps/api/app",
+            "@tauri-apps/api/event",
+            "@tauri-apps/plugin-updater",
+            "@tauri-apps/plugin-dialog",
+          ].map((find) => ({
+            find,
+            replacement: path.resolve(__dirname, "src/lib/preview-bridge.ts"),
+          }))
+        : []),
+      { find: "@", replacement: path.resolve(__dirname, "src") },
+    ],
+  },
   server: {
     port: 1420,
     strictPort: true,

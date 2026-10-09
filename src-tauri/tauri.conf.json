@@ -40,7 +40,17 @@
       "minimumSystemVersion": "12.0",
       "signingIdentity": "-"
     },
-    "createUpdaterArtifacts": true
+    "createUpdaterArtifacts": true,
+    "fileAssociations": [
+      {
+        "ext": ["eml"],
+        "name": "EML 邮件文件",
+        "mimeType": "message/rfc822",
+        "contentTypes": ["com.apple.mail.email"],
+        "role": "Viewer",
+        "rank": "Alternate"
+      }
+    ]
   },
   "plugins": {
     "updater": {

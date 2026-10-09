@@ -1,3 +1,4 @@
+import { EmlViewer } from "./components/eml-viewer";
 import { ArchiveLocation } from "./components/archive-location";
 import { MailSignatures } from "./components/mail-signatures";
 import { useConfirmation } from "./hooks/use-confirmation";
@@ -146,6 +147,7 @@ import {
   call,
   initialSnapshot,
   native,
+  publicPreview,
   enterDemo,
   leaveDemo,
   isDemo,
@@ -986,8 +988,12 @@ export default function App() {
         closeButton
       />
       <div className="top-actions app-actions">
+        <EmlViewer />
         <UpdateIndicator updates={updates} />
-        {demo && (
+        {publicPreview && (
+          <Badge variant="secondary">页面预览 · 虚构数据</Badge>
+        )}
+        {demo && !publicPreview && (
           <Button variant="ghost" className="demo-badge" onClick={demoMode}>
             演示模式 · 退出
           </Button>
@@ -1019,7 +1025,10 @@ export default function App() {
           <Sidebar variant="inset" collapsible="none" className="mail-sidebar">
             <SidebarHeader className="mail-sidebar-header">
               <div className="brand">
-                <img src="/app-icon.png" alt="雁信应用图标" />
+                <img
+                  src={`${import.meta.env.BASE_URL}app-icon.png`}
+                  alt="雁信应用图标"
+                />
                 <div>
                   <strong>
                     雁信<span>邮件，自在有序</span>
@@ -1061,6 +1070,7 @@ export default function App() {
                 <Button
                   variant="ghost"
                   title="添加邮箱账号"
+                  disabled={publicPreview}
                   onClick={() => setAccountDialog(true)}
                 >
                   <Plus size={15} />
@@ -1277,7 +1287,10 @@ export default function App() {
                   </p>
                 </div>
                 {page === "settings" && (
-                  <Button onClick={() => setAccountDialog(true)}>
+                  <Button
+                    disabled={publicPreview}
+                    onClick={() => setAccountDialog(true)}
+                  >
                     <Plus size={16} />
                     添加账号
                   </Button>
@@ -2285,7 +2298,10 @@ export default function App() {
                 ) : (
                   <div className="reader-welcome">
                     <div className="welcome-art">
-                      <img src="/app-icon.png" alt="雁信" />
+                      <img
+                        src={`${import.meta.env.BASE_URL}app-icon.png`}
+                        alt="雁信"
+                      />
                       <span className="orbit one" />
                       <span className="orbit two" />
                       <span className="art-dot dot-one" />
