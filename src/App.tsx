@@ -18,6 +18,7 @@ import {
   CollapsibleContent,
 } from "./components/ui/collapsible";
 import { Skeleton } from "./components/ui/skeleton";
+import { Separator } from "./components/ui/separator";
 import { FolderHealthPanel } from "./components/folder-health";
 import { Alert, AlertTitle, AlertDescription } from "./components/ui/alert";
 import { ServerOperations } from "./components/server-operations";
@@ -1399,6 +1400,7 @@ export default function App() {
                       <p>支持 Gmail、Outlook、QQ、网易与自定义服务器。</p>
                     </div>
                   )}
+                  <Separator className="settings-section-divider" />
                 </>
               )}
               <Card className="storage-card">
@@ -1449,10 +1451,12 @@ export default function App() {
                   />
                 </ArchiveLocation>
               </Card>
+              <Separator className="settings-section-divider" />
               <StorageTools />
               {page === "settings" && (
                 <MailSignatures accounts={data.accounts} />
               )}
+              <Separator className="settings-section-divider" />
               <ArchiveJobsPanel defaultCollapsed />
               <div className="flex flex-col gap-6">
                 <ServerOperations defaultCollapsed />
@@ -1503,6 +1507,7 @@ export default function App() {
                   </CollapsibleContent>
                 </Card>
               </Collapsible>
+              <Separator className="settings-section-divider" />
               {page === "settings" && <UpdateSettings updates={updates} />}
               <div className="info-strip">
                 <Info size={17} />

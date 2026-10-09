@@ -20,6 +20,8 @@
 
 ## 部署与继续入口
 
+- [x] 设置页间距统一：同组 24px，内容组之间 shadcn Separator 两侧各 32px；清理账号列表、存档/工具卡片和说明条的叠加 margin。41 项 App 回归、UI/格式/生产构建及原生视觉检查通过，未改设置或存档。
+
 - [x] 功能提交 814dfbb 已推送组织 main；Preview Pages 37904590739 构建/部署成功，2026-10-09 16:23:39（Asia/Shanghai）完成。公开 https://ansermail.github.io/anser/ 已检查图标、虚构账号、禁用写信入口、搜索、阅读及主题，未调用真实邮箱接口。桌面 Checks 结果见 DEVELOPMENT_STATUS 本轮末节。
 - [x] Checks 37904590813 成功（176 前端、238 Rust、39 IMAP 解析器、17 脚本及 UI/格式/生产构建）；后续文档提交号以 Git HEAD 为准。
 - 本轮使用说明见 USAGE 的邮件签名/存档保存位置两节。桌面正式包仍待后续版本发布。

@@ -3193,12 +3193,25 @@ kbd {
 }
 
 .settings-workspace {
+  --settings-card-gap: 24px;
   display: flex;
   flex-direction: column;
-  gap: 24px;
+  gap: var(--settings-card-gap);
 }
 .settings-workspace > .panel-heading {
   margin-bottom: 0;
+}
+.settings-workspace .settings-accounts,
+.settings-workspace .storage-tools {
+  gap: var(--settings-card-gap);
+  margin: 0;
+}
+.settings-workspace .storage-card,
+.settings-workspace .info-strip {
+  margin: 0;
+}
+.settings-section-divider {
+  margin-block: 8px;
 }
 
 .preview-shell {
