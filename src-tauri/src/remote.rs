@@ -1,5 +1,34 @@
 use crate::{archive, models::*, network, store::Store};
 use rusqlite::{params, OptionalExtension};
+/// Reuse prepared reads while receiving, without keeping a read transaction or
+/// a snapshot across network requests. Account/retention/source edits remain
+/// visible on the next check; writers never wait for this connection.
+pub(crate) struct ReceiveLookup {
+    db: rusqlite::Connection,
+}
+impl ReceiveLookup {
+    pub fn new(store: &Store) -> Result<Self> {
+        Ok(Self { db: store.db()? })
+    }
+    pub fn account(&self, id: &str) -> Result<Account> {
+        let data: Option<String> = self
+            .db
+            .prepare_cached("SELECT data FROM accounts WHERE id=?1")
+            .map_err(err)?
+            .query_row([id], |r| r.get(0))
+            .optional()
+            .map_err(err)?;
+        serde_json::from_str(&data.ok_or_else(|| "账号不存在".to_string())?).map_err(err)
+    }
+    pub fn source_available(&self, account: &Account, folder: &str, remote: &str) -> Result<bool> {
+        let save = crate::retention::effective_save(&self.db, account, folder)?;
+        let data: Option<String> = self.db.prepare_cached("SELECT m.data FROM sources s JOIN message_listing m ON m.id=s.mail_id AND m.account_id=s.account_id WHERE s.account_id=?1 AND s.folder=?2 AND s.remote_id=?3 AND NOT EXISTS(SELECT 1 FROM folder_health h WHERE h.account_id=s.account_id AND h.folder=s.folder)").map_err(err)?
+            .query_row(params![account.id, folder, remote], |r| r.get(0)).optional().map_err(err)?;
+        Ok(data
+            .and_then(|s| serde_json::from_str::<Mail>(&s).ok())
+            .is_some_and(|m| !save || m.saved_locally))
+    }
+}
 impl Store {
     pub fn save_remote_folders(&self, account: &str, folders: &[RemoteFolder]) -> Result<()> {
         let mut db = self.db()?;
@@ -163,11 +192,7 @@ impl Store {
         .into())
     }
     pub fn source_available(&self, a: &Account, folder: &str, remote: &str) -> Result<bool> {
-        let save = self.should_save_folder(a, folder)?;
-        let data: Option<String> = self.db()?.query_row("SELECT m.data FROM sources s JOIN message_listing m ON m.id=s.mail_id WHERE s.account_id=?1 AND s.folder=?2 AND s.remote_id=?3 AND NOT EXISTS(SELECT 1 FROM folder_health h WHERE h.account_id=s.account_id AND h.folder=s.folder)",params![a.id,folder,remote],|r|r.get(0)).optional().map_err(err)?;
-        Ok(data
-            .and_then(|s| serde_json::from_str::<Mail>(&s).ok())
-            .is_some_and(|m| !save || m.saved_locally))
+        ReceiveLookup::new(self)?.source_available(a, folder, remote)
     }
     pub(crate) fn cached_flag_uids(
         &self,

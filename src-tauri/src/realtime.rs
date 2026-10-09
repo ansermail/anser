@@ -60,6 +60,7 @@ enum EventKind {
 #[derive(Clone, Debug)]
 struct Trigger {
     source: &'static str,
+    push: bool,
     at: Instant,
     time: chrono::DateTime<chrono::Utc>,
 }
@@ -67,6 +68,7 @@ impl Trigger {
     fn new(source: &'static str) -> Self {
         Self {
             source,
+            push: false,
             at: Instant::now(),
             time: chrono::Utc::now(),
         }
@@ -75,10 +77,12 @@ impl Trigger {
         Self::new("定时补查")
     }
     fn signal(signal: network::WatchSignal) -> Self {
-        Self::new(match signal {
+        let mut trigger = Self::new(match signal {
             network::WatchSignal::CatchUp => "监听连接后补查",
             network::WatchSignal::MailboxChanged => "服务器实时通知",
-        })
+        });
+        trigger.push = signal == network::WatchSignal::MailboxChanged;
+        trigger
     }
 }
 struct Event {
@@ -331,6 +335,16 @@ pub fn start(store: Store, app: tauri::AppHandle, control: Arc<RealtimeControl>)
                     }
                     match event.kind {
                         EventKind::Changed(trigger) => {
+                            if trigger.push {
+                                if let Ok(gate) = crate::sync_control::folder_gate(
+                                    &store.root,
+                                    &event.id,
+                                    "INBOX",
+                                ) {
+                                    // Signal without waiting for the held folder lock.
+                                    gate.notify();
+                                }
+                            }
                             enqueue(&mut pending, event.id, event.control, trigger);
                         }
                         EventKind::Status(message) => {

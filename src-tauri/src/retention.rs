@@ -9,6 +9,24 @@ pub struct FolderRetention {
     pub folder: String,
     pub save_locally: bool,
 }
+pub(crate) fn effective_save(
+    db: &rusqlite::Connection,
+    account: &Account,
+    folder: &str,
+) -> Result<bool> {
+    if account.protocol != "imap" {
+        return Ok(account.save_locally);
+    }
+    let value: Option<bool> = db
+        .prepare_cached(
+            "SELECT save_locally FROM folder_retention WHERE account_id=?1 AND folder=?2",
+        )
+        .map_err(err)?
+        .query_row(params![account.id, folder], |r| r.get(0))
+        .optional()
+        .map_err(err)?;
+    Ok(value.unwrap_or(account.save_locally))
+}
 
 #[cfg(test)]
 mod tests {
@@ -62,6 +80,37 @@ mod tests {
         store.edit_account_preferences(&online).unwrap();
         assert!(!store.retention_settings(&a.id).unwrap().default_save);
         assert!(!store.should_save_folder(&online, "INBOX").unwrap());
+    }
+    #[test]
+    fn reused_receive_lookup_sees_committed_preferences_and_isolation_without_snapshot_locks() {
+        let (_dir, store, mut a) = fixture();
+        store.save_retention(&a, &[item("INBOX", false)]).unwrap();
+        store.ingest(&a, "INBOX", "7:1", &raw(), false).unwrap();
+        let lookup = crate::remote::ReceiveLookup::new(&store).unwrap();
+        assert!(lookup
+            .source_available(&lookup.account(&a.id).unwrap(), "INBOX", "7:1")
+            .unwrap());
+        // These separate-connection writers must commit while lookup remains
+        // alive, and the very next lookup must see the new policy.
+        store.save_retention(&a, &[item("INBOX", true)]).unwrap();
+        assert!(!lookup
+            .source_available(&lookup.account(&a.id).unwrap(), "INBOX", "7:1")
+            .unwrap());
+        a.save_locally = false;
+        store.edit_account_preferences(&a).unwrap();
+        store.save_retention(&a, &[]).unwrap();
+        assert!(!lookup.account(&a.id).unwrap().save_locally);
+        assert!(lookup
+            .source_available(&lookup.account(&a.id).unwrap(), "INBOX", "7:1")
+            .unwrap());
+        store
+            .isolate_folder(&a, "INBOX", "test quarantine", &Default::default())
+            .unwrap();
+        assert!(!lookup.source_available(&a, "INBOX", "7:1").unwrap());
+        a.enabled = false;
+        store.save_account(&a).unwrap();
+        assert!(!lookup.account(&a.id).unwrap().enabled);
+        assert!(lookup.account("missing-account").is_err());
     }
     #[test]
     fn invalid_changed_or_pop3_configuration_cannot_partially_replace_scope() {
@@ -243,19 +292,7 @@ impl Store {
         })
     }
     pub fn should_save_folder(&self, account: &Account, folder: &str) -> Result<bool> {
-        if account.protocol != "imap" {
-            return Ok(account.save_locally);
-        }
-        let value: Option<bool> = self
-            .db()?
-            .query_row(
-                "SELECT save_locally FROM folder_retention WHERE account_id=?1 AND folder=?2",
-                params![account.id, folder],
-                |r| r.get(0),
-            )
-            .optional()
-            .map_err(err)?;
-        Ok(value.unwrap_or(account.save_locally))
+        effective_save(&self.db()?, account, folder)
     }
     pub fn save_retention(&self, expected: &Account, overrides: &[FolderRetention]) -> Result<()> {
         // Saving an override completes after any earlier in-flight archive

@@ -123,10 +123,7 @@ impl Store {
             .collect()
     }
     pub fn account(&self, id: &str) -> Result<Account> {
-        self.accounts()?
-            .into_iter()
-            .find(|a| a.id == id)
-            .ok_or("账号不存在".into())
+        crate::remote::ReceiveLookup::new(self)?.account(id)
     }
     pub fn save_account(&self, a: &Account) -> Result<()> {
         a.validate()?;

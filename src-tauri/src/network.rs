@@ -789,6 +789,9 @@ fn sync_imap_scope<T: std::io::Read + Write>(
         let folder_gate = crate::sync_control::folder_gate(&store.root, &a.id, &folder)?;
         let gate_started = std::time::Instant::now();
         let _folder_guard = folder_gate.lock().map_err(err)?;
+        let observed_activity = folder_gate.activity();
+        let should_yield =
+            || folder.eq_ignore_ascii_case("INBOX") && folder_gate.activity() != observed_activity;
         if only.is_some_and(|name| name.eq_ignore_ascii_case("INBOX")) {
             let _ = store.log(&format!(
                 "{} 收件诊断：目录准备 {} 毫秒；等待收件箱任务 {} 毫秒，开始检查邮件",
@@ -851,14 +854,15 @@ fn sync_imap_scope<T: std::io::Read + Write>(
             ids.sort_unstable();
             ids.reverse();
             let mut remote_ids = Vec::with_capacity(ids.len());
+            let lookup = crate::remote::ReceiveLookup::new(store)?;
             for &uid in &ids {
-                let current = store.account(&a.id)?;
+                let current = lookup.account(&a.id)?;
                 if !current.enabled || !current.same_connection(a) {
                     return Err("账号已暂停或连接配置已修改，停止旧收取任务".into());
                 }
                 let stable_remote = validity.map(|v| format!("{v}:{uid}"));
                 if let Some(ref remote) = stable_remote {
-                    if store.source_available(&current, &folder, remote)? {
+                    if lookup.source_available(&current, &folder, remote)? {
                         remote_ids.push(remote.clone());
                         continue;
                     }
@@ -958,6 +962,9 @@ fn sync_imap_scope<T: std::io::Read + Write>(
                     .filter(|uid| prior_cached.contains(uid))
                     .collect::<Vec<_>>();
                 for chunk in cached.chunks(100) {
+                    if should_yield() {
+                        break;
+                    }
                     stage = "回读已读与星标状态".into();
                     let current = store.account(&a.id)?;
                     if !current.enabled || !current.same_connection(a) {
@@ -992,6 +999,9 @@ fn sync_imap_scope<T: std::io::Read + Write>(
                     })
                     .collect::<Vec<_>>();
                 for chunk in missing.chunks(100) {
+                    if should_yield() {
+                        break;
+                    }
                     let set = chunk
                         .iter()
                         .map(u32::to_string)
@@ -1021,9 +1031,18 @@ fn sync_imap_scope<T: std::io::Read + Write>(
             store.reconcile_folder(&a.id, &folder, &remote_ids)?;
             store.restore_folder_trust(a, &folder)?;
             for chunk in cached_flags.chunks(100) {
+                if should_yield() {
+                    break;
+                }
                 if store.merge_remote_flags(a, &folder, chunk)? > 0 {
                     updated();
                 }
+            }
+            if should_yield() {
+                let _ = store.log(&format!(
+                    "{} 新实时通知已到达，旧邮件状态回读让出收件箱；未检查部分下轮继续",
+                    a.email
+                ));
             }
             Ok(())
         };
@@ -2169,6 +2188,101 @@ mod tests {
             written.find("UID FETCH 13").unwrap()
                 < written.find("UID FETCH 12 (UID FLAGS)").unwrap()
         );
+        assert!(!written.contains("STORE") && !written.contains("EXPUNGE"));
+    }
+
+    #[test]
+    fn a_push_during_old_flags_yields_remaining_batches_without_erasing_sources() {
+        struct NotifyingTranscript {
+            inner: ImapTranscript,
+            gate: Arc<crate::sync_control::FolderGate>,
+            notified: bool,
+        }
+        impl Read for NotifyingTranscript {
+            fn read(&mut self, buffer: &mut [u8]) -> std::io::Result<usize> {
+                self.inner.read(buffer)
+            }
+        }
+        impl Write for NotifyingTranscript {
+            fn write(&mut self, buffer: &[u8]) -> std::io::Result<usize> {
+                let size = self.inner.write(buffer)?;
+                let old_flags = self
+                    .inner
+                    .commands
+                    .lock()
+                    .unwrap()
+                    .windows(b"(UID FLAGS)".len())
+                    .any(|part| part == b"(UID FLAGS)");
+                if old_flags && !self.notified {
+                    self.notified = true;
+                    self.gate.notify();
+                }
+                Ok(size)
+            }
+            fn flush(&mut self) -> std::io::Result<()> {
+                self.inner.flush()
+            }
+        }
+        let temp = tempfile::tempdir().unwrap();
+        let store = Store::new(temp.path().into()).unwrap();
+        let account = crate::tests::account();
+        store.save_account(&account).unwrap();
+        for uid in 1..=101 {
+            store
+                .ingest(
+                    &account,
+                    "INBOX",
+                    &format!("7:{uid}"),
+                    &crate::tests::raw(),
+                    false,
+                )
+                .unwrap();
+        }
+        let ids = (1..=102)
+            .map(|uid| uid.to_string())
+            .collect::<Vec<_>>()
+            .join(" ");
+        let raw = b"From: new@example.com\r\nSubject: Priority new mail\r\nMessage-ID: <busy-sync@example.com>\r\nDate: Fri, 9 Oct 2026 01:00:00 +0000\r\n\r\nNew mail before old flags.\r\n";
+        let mut response = format!("a1 OK Login\r\n* CAPABILITY IMAP4rev1\r\na2 OK Caps\r\n* LIST () \"/\" \"INBOX\"\r\na3 OK Listed\r\n* 102 EXISTS\r\n* OK [UIDVALIDITY 7] Valid\r\na4 OK Opened\r\n* SEARCH {ids}\r\na5 OK Searched\r\n* 102 FETCH (UID 102 FLAGS () RFC822.SIZE {} BODY[] {{{}}}\r\n", raw.len(), raw.len()).into_bytes();
+        response.extend(raw);
+        response.extend(b")\r\na6 OK New mail\r\n* 101 FETCH (UID 101 FLAGS (\\Seen))\r\na7 OK First old flags\r\n");
+        let commands = Arc::new(Mutex::new(Vec::new()));
+        let gate = crate::sync_control::folder_gate(&store.root, &account.id, "INBOX").unwrap();
+        let stream = NotifyingTranscript {
+            inner: ImapTranscript {
+                responses: Cursor::new(response),
+                commands: commands.clone(),
+            },
+            gate,
+            notified: false,
+        };
+        let mut session = imap::Client::new(stream)
+            .login("test", "fixture-only")
+            .map_err(|(error, _)| error)
+            .unwrap();
+        assert_eq!(
+            sync_imap_scope(&store, &account, &mut session, &|| {}, Some("INBOX")).unwrap(),
+            1
+        );
+        let written = String::from_utf8(commands.lock().unwrap().clone()).unwrap();
+        assert_eq!(written.matches("(UID FLAGS)").count(), 1);
+        assert!(store.has_source(&account.id, "INBOX", "7:102").unwrap());
+        let active: u32 = store
+            .db()
+            .unwrap()
+            .query_row(
+                "SELECT COUNT(*) FROM sources WHERE account_id=?1 AND folder='INBOX' AND active=1",
+                [&account.id],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(active, 102);
+        assert!(store
+            .snapshot(&crate::tests::query())
+            .unwrap()
+            .logs
+            .iter()
+            .any(|line| line.contains("旧邮件状态回读让出收件箱")));
         assert!(!written.contains("STORE") && !written.contains("EXPUNGE"));
     }
 
