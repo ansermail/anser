@@ -73,6 +73,6 @@ v0.1.5 已在 ansermail/anser 正式发布为 latest。Checks 与 Release macOS 
 本地检查可运行 `npx vite preview --mode preview --host 127.0.0.1 --port 4174`，访问 `http://127.0.0.1:4174/anser/`。Pages 发布与桌面 Release 独立；网页部署成功不表示新版桌面包已发布。
 
 
-## 0.1.6 云端发布（进行中）
+## 0.1.6 云端发布结果
 
-0.1.6 使用组织仓库 GitHub Actions 双架构流水线，包含邮件签名、存档保存位置、设置/写信体验与 EML 文件查看；版本同步五处，发布说明见 [v0.1.6](releases/v0.1.6.md)。本机只执行门槛检查，不提供本地桌面构建作为本次交付。源码/Actions、草稿资源核验、正式发布及实际安装分别记录于 [发布工作点](RELEASE_016_WORKING.md)。目前公开 latest 仍为 0.1.5。
+0.1.6 使用组织仓库 GitHub Actions 双架构流水线，包含邮件签名、存档保存位置、设置/写信体验与 EML 文件查看；版本同步五处，发布说明见 [v0.1.6](releases/v0.1.6.md)。本机只执行门槛检查，不提供本地桌面构建作为本次交付。源码 e8e049d，[双架构流水线](https://github.com/ansermail/anser/actions/runs/37940050741) 全部成功。2026-10-09 22:13:59（Asia/Shanghai）[v0.1.6](https://github.com/ansermail/anser/releases/tag/v0.1.6) 已发布为 latest；七个资源 SHA-256、架构/版本/EML 声明、完整 codesign、DMG/更新包二进制及更新签名已核验，公开 latest.json 与验证清单相同。实际正式安装、默认 EML/冷启动与原位升级未在本轮执行，详见 [发布记录](RELEASE_016_WORKING.md)。

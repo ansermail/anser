@@ -4,10 +4,10 @@
 
 ## 当前执行检查点
 
-- **当前发布任务（2026-10-09：0.1.6 Alpha）**：以 main 的 1bb3843 为功能基线，纳入邮件签名、存档路径选择、设置/写信/列表调整、外部 EML 打开及 Pages 共用界面。版本已同步五处，正在执行发布门槛，随后推送新标签并启动组织双架构流水线。此刻公开桌面仍为 0.1.5；构建、签名资源、正式发布与实际安装分别核验，结果及下一步见 [发布工作点](RELEASE_016_WORKING.md)。规则 WIP 分支不合入此版本。
+- **最新发布（2026-10-09：0.1.6 Alpha）**：用户指定的 GitHub 云端双架构构建与发版已完成，源码 e8e049d、[流水线](https://github.com/ansermail/anser/actions/runs/37940050741)、[Release](https://github.com/ansermail/anser/releases/tag/v0.1.6)。2026-10-09 22:13:59（Asia/Shanghai）发布为 latest，七个资源、更新签名、公钥、版本/架构/EML 声明、完整 codesign 与公开更新端点核验通过。195 前端、242 Rust、19 脚本、39 IMAP 及 UI/格式/构建通过；实际安装/默认 EML/冷启动及原位升级仍待验收。详见 [发布记录](RELEASE_016_WORKING.md)。下一步回 RULES-03，先合入最新 main。
 
 
-- **当前用户任务（2026-10-09：分支 / Pages / EML）**：已归档干净的旧发布工作树并删除已合并 `codex/release-0.1.3`，保留有独立 WIP 提交的 `codex/rules03-in-progress`。Pages 修复 Tailwind 漏扫并改为共用主 App、内存虚构数据与禁用原生桥；本地构建及浏览器三栏/设置检查已通过。EML 文件关联、只读查看和附件功能已实现，开发包系统打开样例、正文/日期及 TextEdit 附件预览已通过。195 前端、242 Rust、19 脚本与本地构建通过；ed5b6b1 已推送，公开 Pages 部署及 Checks（含 39 IMAP）均成功，浏览器实际核验通过。详见末节与 [本轮记录](PAGES_EML_WORKING.md)。下一步按 SETTINGS_NEXT_WORKING.md 回 RULES-03，先合入最新 main；公开桌面仍为 0.1.5。
+- **当前用户任务（2026-10-09：分支 / Pages / EML）**：已归档干净的旧发布工作树并删除已合并 `codex/release-0.1.3`，保留有独立 WIP 提交的 `codex/rules03-in-progress`。Pages 修复 Tailwind 漏扫并改为共用主 App、内存虚构数据与禁用原生桥；本地构建及浏览器三栏/设置检查已通过。EML 文件关联、只读查看和附件功能已实现，开发包系统打开样例、正文/日期及 TextEdit 附件预览已通过。195 前端、242 Rust、19 脚本与本地构建通过；ed5b6b1 已推送，公开 Pages 部署及 Checks（含 39 IMAP）均成功，浏览器实际核验通过。详见末节与 [本轮记录](PAGES_EML_WORKING.md)。该功能阶段当时未发桌面包；随后已由本页最新发布阶段纳入 0.1.6。下一步按 SETTINGS_NEXT_WORKING.md 回 RULES-03，先合入最新 main。
 
 
 - **列表附件标识（2026-10-09）**：小回形针改为 12×12px 并移至信息行最右侧，保留可访问说明。41 项 App 回归、UI/格式/生产构建及虚构示例几何测量通过；后续开发与发布状态不变。
@@ -536,3 +536,14 @@ Thunderbird 历史迁移、Intel Mac、完整 Exchange、日历、移动端及�
 - EML：提供打开入口、系统文件关联、启动/运行中打开队列、原始日期/正文/附件、迟到结果保护与 64 MB 限制；不导入邮箱或修改原件。临时虚构 EML 通过 macOS `open -a` 打开到现有开发应用，HTML/日期正确，文本附件由 TextEdit 显示精确内容。未发送邮件、修改真实存档或更改全局默认打开方式。
 - 验证与云端状态：本轮 242 Rust 全量、4 项追加 EML 回归（含原件覆盖保护）、195 前端全量、19 桌面脚本均通过；UI/格式/diff/fmt、桌面生产与 Pages 构建通过。现有大 JS 分包警告保留；真实超大 EML/损坏供应商样本矩阵及正式安装后的默认关联/冷启动仍待验收。功能源码 [ed5b6b1](https://github.com/ansermail/anser/commit/ed5b6b1b6dda96da186d00b0441b2c14ba0adfa7) 已推送。21:39 [Pages 部署](https://github.com/ansermail/anser/actions/runs/37938288994) 成功，公开页面实际核验三栏/CSS/图标、虚构账号及正文阅读、最新签名/关于设置；账号连接禁用、原生 IPC 不存在。21:41 [Checks](https://github.com/ansermail/anser/actions/runs/37938289003) 成功，含 195 前端、242 Rust、39 vendored IMAP、19 脚本及 UI/格式/生产构建。桌面正式包未发布。
 - 接续：本轮用户三项任务完成，正式包 EML/default association 验收仍待下版安装；主线回 SETTINGS_NEXT_WORKING.md / codex/rules03-in-progress，先合入 main 最新代码。
+
+
+## 2026-10-09：GitHub 0.1.6 Alpha 正式发布
+
+- 用户明确要求 GitHub Actions 云端构建发版；本机仅执行门槛检查及下载资源核验，没有构建、安装或覆盖本地桌面发布应用。
+- 源码提交 [e8e049d](https://github.com/ansermail/anser/commit/e8e049d219f529d32be1714e828ed7fa9e1d098b)，新标签 v0.1.6；[Release macOS 37940050741](https://github.com/ansermail/anser/actions/runs/37940050741) 的检查、Apple Silicon/Intel 构建、签名检查和草稿汇总全部成功。main Checks 37940041850、Preview Pages 37940041962 也成功。
+- 本轮与云端门槛：195 前端、242 Rust、19 脚本、39 vendored IMAP；UI/格式/diff/fmt、release:check、生产构建通过，本地 Pages 构建及隔离检查也通过。
+- 七个资源名称、大小与 GitHub SHA-256 全部一致；两份更新归档由与 Tauri 相同的 minisign-verify 库以既有公钥验证成功，清单签名与独立 sig 一致。两种 app 的版本均为 0.1.6、架构分别 arm64/x86_64、应用标识 dev.maildesk.desktop、EML Viewer/Alternate 关联正确；codesign 深度验证与 DMG 校验通过。只读挂载 DMG 检查包内 app，两架构的 DMG/更新归档二进制分别一致。
+- 2026-10-09 22:13:59（Asia/Shanghai）[v0.1.6](https://github.com/ansermail/anser/releases/tag/v0.1.6) 从草稿发布为 latest。匿名 HTTPS 公开 latest.json 返回 0.1.6、darwin-aarch64/darwin-x86_64，与已验证清单逐字节相同；公开资源链接使用组织 v0.1.6 地址。
+- 应用数据/钥匙串标识与更新公钥不变，本机 OAuth 测试配置未进入流水线或公开包。无 Apple Developer ID 签名/公证；实际正式安装、默认 EML 打开及冷启动、0.1.5→0.1.6 原位更新和其他 Mac 矩阵仍未验收。不能以归档检查代替实际安装结果。
+- 本轮发布任务完成。后续主线从 SETTINGS_NEXT_WORKING.md / codex/rules03-in-progress 接续，先合入 main 最新命名/版本/签名/存档/EML 变化，再继续 RULES-03；其他存档故障、大邮箱与服务商矩阵仍待完成。
