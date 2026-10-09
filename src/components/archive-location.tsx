@@ -1,16 +1,9 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { FolderOpen, HardDrive, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 import { call, native, isDemo } from "@/lib/api";
 import { useConfirmation } from "@/hooks/use-confirmation";
 import { Button } from "./ui/button";
-import {
-  Card,
-  CardHeader,
-  CardTitle,
-  CardDescription,
-  CardContent,
-} from "./ui/card";
 import { Alert, AlertDescription } from "./ui/alert";
 import { Progress } from "./ui/progress";
 export interface ArchiveLocationStatus {
@@ -24,7 +17,15 @@ export interface ArchiveLocationStatus {
   completed: number;
   total: number;
 }
-export function ArchiveLocation({ onChanged }: { onChanged: () => void }) {
+export function ArchiveLocation({
+  onChanged,
+  initialPath,
+  children,
+}: {
+  onChanged: () => void;
+  initialPath?: string;
+  children?: ReactNode;
+}) {
   const [status, setStatus] = useState<ArchiveLocationStatus | null>(null),
     [busy, setBusy] = useState(false),
     [error, setError] = useState("");
@@ -118,107 +119,98 @@ export function ArchiveLocation({ onChanged }: { onChanged: () => void }) {
   }
   return (
     <>
-      <Card>
-        <CardHeader>
-          <CardTitle>存档保存位置</CardTitle>
-          <CardDescription>
-            邮件原件包含正文和附件，可以放到外置磁盘。账号配置和邮件索引保留在本机。
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="flex flex-col gap-4">
-          <p className="break-all text-sm">
-            {status?.path || "正在读取存档位置…"}
-          </p>
-          {(error || status?.error) && (
-            <Alert variant="destructive">
-              <AlertDescription>{error || status?.error}</AlertDescription>
-            </Alert>
-          )}
+      <div className="flex flex-col gap-4" role="group" aria-label="存档管理">
+        <div className="storage-actions flex-wrap">
+          {children}
+          <Button
+            variant="outline"
+            disabled={
+              !native ||
+              isDemo() ||
+              busy ||
+              !!status?.migrating ||
+              !status?.available
+            }
+            onClick={() => void select()}
+          >
+            <HardDrive data-icon="inline-start" />
+            修改存档位置
+          </Button>
           {status?.external && (
-            <p className="text-sm text-muted-foreground">
-              请保持存档磁盘连接。未连接时可以查看邮件列表，完整原件读取、备份和保存会暂停，不会自动改存到本机。
-            </p>
-          )}
-          {(busy || status?.migrating) && (
-            <div className="flex flex-col gap-2">
-              <Progress
-                value={
-                  status?.total ? (status.completed / status.total) * 100 : null
-                }
-              />
-              <p className="text-sm text-muted-foreground">
-                正在迁移与校验：{status?.completed || 0} / {status?.total || 0}{" "}
-                个原件。完成后自动切换位置。
-              </p>
-            </div>
-          )}
-          {status?.cleanupPending && (
-            <Alert>
-              <AlertDescription>
-                新位置已保留完整原件，原位置还有待清理文件。连接相关磁盘后可继续清理。
-                <Button
-                  variant="outline"
-                  size="sm"
-                  disabled={busy || status.migrating}
-                  onClick={() => void cleanup()}
-                >
-                  继续清理原位置
-                </Button>
-              </AlertDescription>
-            </Alert>
-          )}
-          <div className="flex flex-wrap gap-2">
             <Button
               variant="outline"
-              disabled={
-                !native ||
-                isDemo() ||
-                busy ||
-                !!status?.migrating ||
-                !status?.available
-              }
-              onClick={() => void select()}
+              disabled={busy || status.migrating || !status.available}
+              onClick={() => void move("")}
             >
-              <HardDrive data-icon="inline-start" />
-              选择存档位置
+              恢复默认位置
             </Button>
-            {status?.external && (
+          )}
+          <Button
+            variant="ghost"
+            disabled={!status?.available}
+            onClick={() =>
+              void call("open_data_folder").catch((e) => toast.error(String(e)))
+            }
+          >
+            <FolderOpen data-icon="inline-start" />
+            打开存储位置
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            aria-label="刷新存档位置"
+            onClick={() => void reload()}
+          >
+            <RefreshCw />
+          </Button>
+        </div>
+        <p className="break-all text-xs text-muted-foreground">
+          {status?.path || initialPath || "正在读取存档位置…"}
+        </p>
+        {(error || status?.error) && (
+          <Alert variant="destructive">
+            <AlertDescription>{error || status?.error}</AlertDescription>
+          </Alert>
+        )}
+        {status?.external && (
+          <p className="text-sm text-muted-foreground">
+            请保持存档磁盘连接。未连接时可以查看邮件列表，完整原件读取、备份和保存会暂停，不会自动改存到本机。
+          </p>
+        )}
+        {(busy || status?.migrating) && (
+          <div className="flex flex-col gap-2">
+            <Progress
+              value={
+                status?.total ? (status.completed / status.total) * 100 : null
+              }
+            />
+            <p className="text-sm text-muted-foreground">
+              正在迁移与校验：{status?.completed || 0} / {status?.total || 0}{" "}
+              个原件。完成后自动切换位置。
+            </p>
+          </div>
+        )}
+        {status?.cleanupPending && (
+          <Alert>
+            <AlertDescription>
+              新位置已保留完整原件，原位置还有待清理文件。连接相关磁盘后可继续清理。
               <Button
                 variant="outline"
-                disabled={busy || status.migrating || !status.available}
-                onClick={() => void move("")}
+                size="sm"
+                disabled={busy || status.migrating}
+                onClick={() => void cleanup()}
               >
-                恢复默认位置
+                继续清理原位置
               </Button>
-            )}
-            <Button
-              variant="ghost"
-              disabled={!status?.available}
-              onClick={() =>
-                void call("open_data_folder").catch((e) =>
-                  toast.error(String(e)),
-                )
-              }
-            >
-              <FolderOpen data-icon="inline-start" />
-              打开存档位置
-            </Button>
-            <Button
-              variant="ghost"
-              size="icon-sm"
-              aria-label="刷新存档位置"
-              onClick={() => void reload()}
-            >
-              <RefreshCw />
-            </Button>
-          </div>
-          {(!native || isDemo()) && (
-            <p className="text-sm text-muted-foreground">
-              网页预览与示例邮箱不迁移本机文件，请在桌面应用中选择位置。
-            </p>
-          )}
-        </CardContent>
-      </Card>
+            </AlertDescription>
+          </Alert>
+        )}
+        {(!native || isDemo()) && (
+          <p className="text-sm text-muted-foreground">
+            网页预览与示例邮箱不迁移本机文件，请在桌面应用中选择位置。
+          </p>
+        )}
+      </div>
       {confirmationDialog}
     </>
   );

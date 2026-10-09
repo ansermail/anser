@@ -52,7 +52,7 @@ afterEach(async () => {
   vi.restoreAllMocks();
 });
 it("requires reviewing the destination and cancellation never starts a migration", async () => {
-  await click("选择存档位置");
+  await click("修改存档位置");
   expect(document.body.textContent).toContain(
     "/External/Anser-Archive/archive",
   );
@@ -65,7 +65,7 @@ it("requires reviewing the destination and cancellation never starts a migration
   expect(host.textContent).toContain("/Old/archive");
 });
 it("shows a migration failure and rereads the active path instead of claiming completion", async () => {
-  await click("选择存档位置");
+  await click("修改存档位置");
   await click("开始迁移");
   expect(mocks.call).toHaveBeenCalledWith("move_archive_location", {
     parent: "/External",
@@ -81,7 +81,7 @@ it("disables migration while the configured disk is disconnected", async () => {
   );
   expect(
     [...host.querySelectorAll("button")].find(
-      (b) => b.textContent === "选择存档位置",
+      (b) => b.textContent === "修改存档位置",
     )?.disabled,
   ).toBe(true);
   expect(host.textContent).toContain("磁盘未连接");

@@ -53,7 +53,6 @@ import {
   Cloud,
   FileText,
   Folder,
-  FolderOpen,
   HardDrive,
   Inbox,
   Info,
@@ -1426,7 +1425,10 @@ export default function App() {
                     <span>原始邮件大小</span>
                   </div>
                 </div>
-                <div className="storage-actions">
+                <ArchiveLocation
+                  initialPath={data.dataDir}
+                  onChanged={() => void refresh()}
+                >
                   <Button variant="outline" onClick={() => void backup()}>
                     <ArrowDownToLine size={15} />
                     备份存档
@@ -1442,24 +1444,11 @@ export default function App() {
                       void refresh();
                     }}
                   />
-                  <Button
-                    variant="ghost"
-                    onClick={() =>
-                      void call("open_data_folder").catch((e) =>
-                        toast.error(String(e)),
-                      )
-                    }
-                  >
-                    <FolderOpen size={15} />
-                    打开存储位置
-                  </Button>
-                </div>
-                <p className="storage-path">{data.dataDir}</p>
+                </ArchiveLocation>
               </Card>
               {page === "settings" && (
                 <MailSignatures accounts={data.accounts} />
               )}
-              <ArchiveLocation onChanged={() => void refresh()} />
               <ArchiveJobsPanel />
               <StorageTools />
               {page === "settings" && <UpdateSettings updates={updates} />}

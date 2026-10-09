@@ -29,6 +29,7 @@
 - 自动补全用 `Command` + `Popover`，禁止原生 `datalist` 或自行绘制建议菜单。
 - 确认/输入弹层使用 shadcn `AlertDialog` / `Dialog`，禁止业务界面的原生 `confirm` / `prompt` / `alert`。分栏使用现有 shadcn `Resizable` 组合，保留各区域宽度边界；普通拖动不能让区域消失，主动折叠或正文展开另按现有行为处理。
 - `src/components/ui/` 中官方组件内部的原生元素属于正常实现；业务代码中的 HTML 语义结构、邮件正文 iframe、富文本编辑内容不属于另造 UI 组件。
+- 设置页同一资源的统计、路径与管理入口集中呈现；本地存档的数量/大小、当前位置及修改位置操作共用一张卡片，不另增重复的存档位置卡片。
 - 修改 UI 后运行 `npm run check:ui`、相关交互测试及 `npm run build`，在开发预览中检查效果。
 
 ## 开发预览
