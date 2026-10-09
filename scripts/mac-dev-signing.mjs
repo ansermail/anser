@@ -2,7 +2,7 @@ import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 
 const run = promisify(execFile);
-const identityVariable = "YANXIN_DEV_SIGNING_IDENTITY";
+const identityVariable = "ANSER_DEV_SIGNING_IDENTITY";
 export const bundleIdentifier = "dev.maildesk.desktop";
 
 export function parseSigningIdentities(output) {
@@ -48,7 +48,7 @@ export async function getDevelopmentSigningIdentity(
   ]);
   return selectSigningIdentity(
     parseSigningIdentities(stdout),
-    env[identityVariable],
+    env[identityVariable] || env.YANXIN_DEV_SIGNING_IDENTITY,
   );
 }
 

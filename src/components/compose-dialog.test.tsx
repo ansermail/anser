@@ -3,6 +3,8 @@ import { act, useState } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { beforeEach, afterEach, describe, expect, it, vi } from "vitest";
 import { ComposeDialog } from "./compose-dialog";
+import * as api from "@/lib/api";
+import { toast } from "sonner";
 import { call, enterDemo, leaveDemo, newDraft, snapshot } from "@/lib/api";
 import type { Compose, OutboxRecord } from "@/lib/types";
 import { localDateTime } from "@/lib/schedule-time";
@@ -288,4 +290,156 @@ it("uses a shadcn confirmation for an empty subject and cancellation keeps the d
   expect(document.querySelector('[role="alertdialog"]')).toBeNull();
   expect(document.querySelector(".compose-dialog")).toBeTruthy();
   expect(document.body.textContent).not.toContain("撤销发送 · 8s");
+});
+
+describe("signature composition", () => {
+  it("loads the account signature, saves a disabled choice and retains the draft snapshot", async () => {
+    await call("save_mail_signature", {
+      accountId: seed.accountId,
+      signature: {
+        enabled: true,
+        useHtml: false,
+        text: "Snapshot signature",
+        fileName: "",
+        fileText: "",
+        fileHtml: "",
+      },
+    });
+    seed = { ...seed, id: "signature-test", signature: undefined };
+    await renderHarness();
+    expect(
+      document
+        .querySelector('iframe[title="本封邮件签名"]')
+        ?.getAttribute("srcdoc"),
+    ).toContain("Snapshot signature");
+    await act(async () =>
+      (
+        document.querySelector(
+          '[id^="include-signature-"]',
+        ) as HTMLButtonElement
+      ).click(),
+    );
+    await click("保存草稿并关闭");
+    const saved = (await call<Compose[]>("list_drafts")).find(
+      (d) => d.id === seed.id,
+    )!;
+    expect(saved.body).toBe(seed.body);
+    expect(saved.signature?.included).toBe(false);
+    expect(saved.signature?.body).toBe("Snapshot signature");
+    await call("save_mail_signature", {
+      accountId: seed.accountId,
+      signature: {
+        enabled: true,
+        useHtml: false,
+        text: "Changed settings",
+        fileName: "",
+        fileText: "",
+        fileHtml: "",
+      },
+    });
+    seed = { ...saved, id: "signature-reopen" };
+    await renderHarness();
+    expect(document.querySelector('iframe[title="本封邮件签名"]')).toBeNull();
+    await act(async () =>
+      (
+        document.querySelector(
+          '[id^="include-signature-"]',
+        ) as HTMLButtonElement
+      ).click(),
+    );
+    expect(
+      document
+        .querySelector('iframe[title="本封邮件签名"]')
+        ?.getAttribute("srcdoc"),
+    ).toContain("Snapshot signature");
+    expect(
+      document
+        .querySelector('iframe[title="本封邮件签名"]')
+        ?.getAttribute("srcdoc"),
+    ).not.toContain("Changed settings");
+  });
+});
+describe("empty drafts", () => {
+  it("never autosaves a new empty message with an automatic signature and discards it on close", async () => {
+    seed = {
+      ...newDraft(seed.accountId),
+      id: "blank-new",
+      signature: {
+        accountId: seed.accountId,
+        included: true,
+        body: "Automatic signature",
+        html: "<p>Automatic signature</p>",
+      },
+    };
+    await renderHarness();
+    expect(document.body.textContent).toContain("空白邮件不会保存");
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 700));
+    });
+    expect(await call<Compose[]>("list_drafts")).toEqual([]);
+    await click("舍弃空白邮件");
+    expect(document.querySelector('[role="dialog"]')).toBeNull();
+    expect(await call<Compose[]>("list_drafts")).toEqual([]);
+  });
+  it("still saves a message that only has a recipient", async () => {
+    seed = {
+      ...newDraft(seed.accountId),
+      id: "recipient-only",
+      to: "recipient@example.com",
+    };
+    await renderHarness();
+    await click("保存草稿并关闭");
+    expect(
+      (await call<Compose[]>("list_drafts")).find((d) => d.id === seed.id)?.to,
+    ).toBe("recipient@example.com");
+  });
+  it("waits for an in-flight autosave before deleting content that was cleared, so the draft cannot reappear", async () => {
+    seed = { ...newDraft(seed.accountId), id: "blank-after-edit" };
+    await renderHarness();
+    const original = api.call;
+    let finishSave!: () => Promise<void>;
+    vi.spyOn(api, "call").mockImplementation(
+      async <T,>(command: string, args: Record<string, unknown> = {}) => {
+        if (command === "save_draft")
+          return new Promise<T>((resolve) => {
+            finishSave = async () => {
+              const result = await original<T>(command, args);
+              resolve(result);
+            };
+          });
+        return original<T>(command, args);
+      },
+    );
+    await input('textarea[aria-label="邮件正文"]', "Temporary content");
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 700));
+    });
+    expect(finishSave).toBeTypeOf("function");
+    await input('textarea[aria-label="邮件正文"]', "");
+    await click("舍弃空白邮件");
+    expect(document.querySelector('[role="dialog"]')).not.toBeNull();
+    await act(async () => finishSave());
+    expect(document.querySelector('[role="dialog"]')).toBeNull();
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 700));
+    });
+    expect(await call<Compose[]>("list_drafts")).toEqual([]);
+  });
+  it("keeps the editor open and reports a failure when empty-draft cleanup fails", async () => {
+    seed = { ...newDraft(seed.accountId), id: "blank-delete-fails" };
+    await renderHarness();
+    const original = api.call;
+    const error = vi.spyOn(toast, "error").mockReturnValue(0);
+    vi.spyOn(api, "call").mockImplementation(
+      async <T,>(command: string, args: Record<string, unknown> = {}) => {
+        if (command === "delete_draft") throw new Error("database unavailable");
+        return original<T>(command, args);
+      },
+    );
+    await click("舍弃空白邮件");
+    expect(document.querySelector('[role="dialog"]')).not.toBeNull();
+    expect(error).toHaveBeenCalledWith(
+      "空白邮件舍弃失败：Error: database unavailable",
+    );
+  });
 });

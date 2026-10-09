@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
 import { spawnSync } from "node:child_process";
-const repository = "yn-zxj/yanxin";
+const repository = "ansermail/anser";
 const key = path.join(os.homedir(), ".config/yanxin-release/updater.key");
 const publicKey = fs.readFileSync(key + ".pub", "utf8").trim();
 const config = JSON.parse(fs.readFileSync("src-tauri/tauri.conf.json", "utf8"));

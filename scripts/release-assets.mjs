@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import assert from "node:assert/strict";
 import { fileURLToPath } from "node:url";
-export const repository = "yn-zxj/yanxin";
+export const repository = "ansermail/anser";
 export const targets = ["aarch64-apple-darwin", "x86_64-apple-darwin"];
 export function validateVersion(root = ".") {
   const config = JSON.parse(
@@ -25,6 +25,17 @@ export function validateVersion(root = ".") {
     "Rust and Tauri versions must match",
   );
   assert.equal(config.identifier, "dev.maildesk.desktop");
+  assert.equal(pkg.name, "anser", "npm project name must be anser");
+  assert.equal(
+    cargo.match(/^name = "([^"]+)"/m)?.[1],
+    "anser",
+    "Rust project name must be anser",
+  );
+  assert.deepEqual(
+    config.plugins.updater.endpoints,
+    [`https://github.com/${repository}/releases/latest/download/latest.json`],
+    "Updater must use the organization repository",
+  );
   assert.ok(config.plugins.updater.pubkey);
   assert.ok(
     fs
@@ -45,7 +56,7 @@ export function collect(target, output, root = ".") {
   const signature = fs.readFileSync(archive + ".sig", "utf8").trim();
   assert.ok(signature, "Missing update signature");
   fs.mkdirSync(output, { recursive: true });
-  const name = `Yanxin_${version}_${arch}.app.tar.gz`;
+  const name = `Anser_${version}_${arch}.app.tar.gz`;
   fs.copyFileSync(archive, path.join(output, name));
   fs.copyFileSync(archive + ".sig", path.join(output, name + ".sig"));
   const dmgs = fs
@@ -54,7 +65,7 @@ export function collect(target, output, root = ".") {
   assert.equal(dmgs.length, 1);
   fs.copyFileSync(
     path.join(bundles, "dmg", dmgs[0]),
-    path.join(output, `Yanxin_${version}_${arch}.dmg`),
+    path.join(output, `Anser_${version}_${arch}.dmg`),
   );
 }
 export function manifest(output, root = ".") {
@@ -62,10 +73,10 @@ export function manifest(output, root = ".") {
     platforms = {};
   for (const target of targets) {
     const arch = target.split("-")[0],
-      name = `Yanxin_${version}_${arch}.app.tar.gz`;
+      name = `Anser_${version}_${arch}.app.tar.gz`;
     assert.ok(fs.statSync(path.join(output, name)).size > 0);
     assert.ok(
-      fs.statSync(path.join(output, `Yanxin_${version}_${arch}.dmg`)).size > 0,
+      fs.statSync(path.join(output, `Anser_${version}_${arch}.dmg`)).size > 0,
     );
     const signature = fs
       .readFileSync(path.join(output, name + ".sig"), "utf8")

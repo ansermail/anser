@@ -14,7 +14,7 @@
 - `.github/workflows/release.yml`：推送 `v*` tag，或 Actions 手动运行；验证版本、发布说明和测试后，分别构建 Apple Silicon 与 Intel Mac 的 DMG、app.tar.gz 与签名。
 - 构建任务只产出架构独立的 artifacts；汇总任务检查两个架构文件齐全，统一生成 latest.json 并创建草稿 Release，避免并行写清单丢失架构。
 - 发布后的同版本不可覆盖。草稿可重跑上传；`releases/latest/download/latest.json` 只有正式发布后才可用。用户检查不读取草稿。
-- 仓库是公开的 `yn-zxj/yanxin`；客户端不包含 GitHub token。端点仅 HTTPS，签名必须有效；失败时保留当前安装，不执行重启。
+- 仓库是公开的 `ansermail/anser`；客户端不包含 GitHub token。端点仅 HTTPS，签名必须有效；失败时保留当前安装，不执行重启。
 
 ## 签名密钥
 
@@ -27,7 +27,7 @@
 1. 同步修改 package.json、package-lock.json（npm install --package-lock-only）、src-tauri/Cargo.toml、Cargo.lock 和 tauri.conf.json 的版本。
 2. 写 `docs/releases/v版本.md`，运行 `npm run release:check` 和回归，提交并推送。
 3. 推送对应 `v版本` tag，或者运行 `gh workflow run release.yml --ref main`。
-4. 等待两架构构建和草稿生成，核验 DMG、app.tar.gz、sig、latest.json 和版本说明；再发布草稿。当前 v0.1.2 仍属于 Alpha，不代表开发计划全部完成。
+4. 等待两架构构建和草稿生成，核验 DMG、app.tar.gz、sig、latest.json 和版本说明；再发布草稿。当前仍属于 Alpha，不代表开发计划全部完成。
 5. 用含更新器的旧正式版检查新版本、下载安装并重启，确认账号、本地存档、窗口及新版本号。
 
 ## 验收记录
@@ -47,3 +47,32 @@
 ## 0.1.2 验收结果
 
 双架构流水线、发布文件/清单及签名验证通过，0.1.2 已作为 latest 发布。从实际 GitHub 0.1.1 包完成应用内下载、原位替换和新进程启动；新二进制与 GitHub 包逐字节一致，启动日志记录主窗口已显示，账号与存档保留。自动重启后工具不能读取窗口；另行正常打开同一更新后的包确认 0.1.2/Alpha，具体限制和待办保留在开发检查点。不能把正常重新打开视为自动重启时的视觉验收。
+
+## 0.1.3 发布范围
+
+0.1.3 包含已验收的收取优化、补存、保存引导和此前阅读/服务器操作功能，仍为 Alpha。正在开发的异步规则扩展另存分支，没有进入这个版本；本机 Google OAuth 测试配置也不进入公开包。发布说明见 docs/releases/v0.1.3.md，发布与原位升级的实际验收状态见 DEVELOPMENT_STATUS.md。
+
+## Anser 与组织仓库迁移
+
+项目英文名为 Anser，中文名为雁信。后续代码和发布使用 ansermail/anser，安装包以 Anser_版本_架构命名。0.1.5 发布的更新器与发布页使用组织仓库。
+
+存储/钥匙串标识 dev.maildesk.desktop、已有布局/草稿格式标记和更新公钥继续保留。发布密钥仍沿用 ~/.config/yanxin-release/updater.key，避免生成另一把密钥导致旧客户端不能验证更新；开发签名优先读取 ANSER_DEV_SIGNING_IDENTITY，也兼容此前变量名。
+
+个人仓库中已构建的 0.1.3 草稿没有发布。旧安装包仍请求旧仓库的更新端点；代码克隆不会产生 GitHub 转移重定向。需要一次迁移更新或安装组织版后，客户端才改用新端点。删除个人仓库前先完成这一步。
+
+## 组织版 0.1.5 发布结果
+
+v0.1.5 已在 ansermail/anser 正式发布为 latest。Checks 与 Release macOS 全部通过，Apple Silicon 与 Intel 的 DMG、更新归档、签名和统一清单均核验。公开 latest 端点已可读取；应用标识与更新公钥沿用原值。详细运行、签名和存档证据见 DEVELOPMENT_STATUS.md。
+
+旧个人仓库地址不会因克隆自动重定向；旧安装包迁移和新正式包原位更新矩阵仍待验收，不以开发实例显示新版本代替。
+
+## 独立界面预览
+
+公开地址为 https://ansermail.github.io/anser/ 。组织仓库 Pages 使用 GitHub Actions 发布源，`.github/workflows/preview.yml` 在 main 的前端相关变更后构建并部署，也支持手动启动。`npm run build:preview` 生成 `dist-preview`，仅包含虚构示例与展示组件，不包含真实账号连接、桌面命令或发信接口。
+
+本地检查可运行 `npx vite preview --mode preview --host 127.0.0.1 --port 4174`，访问 `http://127.0.0.1:4174/anser/`。Pages 发布与桌面 Release 独立；网页部署成功不表示新版桌面包已发布。
+
+
+## 0.1.6 云端发布结果
+
+0.1.6 使用组织仓库 GitHub Actions 双架构流水线，包含邮件签名、存档保存位置、设置/写信体验与 EML 文件查看；版本同步五处，发布说明见 [v0.1.6](releases/v0.1.6.md)。本机只执行门槛检查，不提供本地桌面构建作为本次交付。源码 e8e049d，[双架构流水线](https://github.com/ansermail/anser/actions/runs/37940050741) 全部成功。2026-10-09 22:13:59（Asia/Shanghai）[v0.1.6](https://github.com/ansermail/anser/releases/tag/v0.1.6) 已发布为 latest；七个资源 SHA-256、架构/版本/EML 声明、完整 codesign、DMG/更新包二进制及更新签名已核验，公开 latest.json 与验证清单相同。实际正式安装、默认 EML/冷启动与原位升级未在本轮执行，详见 [发布记录](RELEASE_016_WORKING.md)。

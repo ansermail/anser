@@ -356,6 +356,9 @@ describe("reading across loaded page boundaries", () => {
           .disabled,
       ).toBe(true);
     },
+    // This integration case renders 205 mails and performs several navigations.
+    // Shared macOS runners can exceed Vitest's default five-second budget.
+    15_000,
   );
   it("extends an unread boundary when the opened mail disappears from its filter", async () => {
     await seedLargeMailbox();

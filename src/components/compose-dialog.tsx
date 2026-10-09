@@ -1,3 +1,6 @@
+import { Alert, AlertDescription } from "./ui/alert";
+import { signatureContent } from "@/lib/signatures";
+import type { MailSignature } from "@/lib/types";
 import { useConfirmation } from "@/hooks/use-confirmation";
 import { MailContent } from "./mail-content";
 import { Switch } from "./ui/switch";
@@ -34,6 +37,7 @@ import type { Account, Address, Compose } from "@/lib/types";
 import {
   textToHtml,
   composeFormat,
+  hasDraftContent,
   compileSource,
   prepareCompose,
   prepareEditorCompose,
@@ -65,7 +69,10 @@ export function ComposeDialog({
     [saved, setSaved] = useState(false),
     [countdown, setCountdown] = useState<number | null>(null),
     [sending, setSending] = useState(false),
+    [closing, setClosing] = useState(false),
     [extra, setExtra] = useState(false);
+  const [signatureError, setSignatureError] = useState("");
+  const [signatureReload, setSignatureReload] = useState(0);
   const [suggestions, setSuggestions] = useState<Address[]>([]);
   const [deliveryPreview, setDeliveryPreview] = useState(false);
   const previewContent = useMemo(
@@ -76,6 +83,9 @@ export function ComposeDialog({
     [preview, setPreview] = useState(true),
     [planning, setPlanning] = useState(false),
     [planTime, setPlanTime] = useState(localDateTime);
+  const persistence = useRef<Promise<void>>(Promise.resolve());
+  const closingNow = useRef(false);
+  const autosaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const latest = useRef(value);
   latest.current = value;
   const timer = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -89,15 +99,46 @@ export function ComposeDialog({
     cancelConfirmation();
     if (timer.current) clearInterval(timer.current);
     timer.current = null;
+    closingNow.current = false;
+    setClosing(false);
     setValue(draft);
     setCountdown(null);
     setSaved(false);
+    setSignatureError("");
     setExtra(!!draft?.cc || !!draft?.bcc);
     setExpanded(false);
     setPlanning(false);
     setDeliveryPreview(false);
     setPlanTime(localDateTime());
   }, [draft, cancelConfirmation]);
+  useEffect(() => {
+    if (!value?.accountId || value.signature?.accountId === value.accountId)
+      return;
+    setSignatureError("");
+    const accountId = value.accountId,
+      id = value.id;
+    let live = true;
+    void call<MailSignature>("mail_signature", { accountId })
+      .then((config) => {
+        if (live)
+          setValue((current) =>
+            current?.id === id && current.accountId === accountId
+              ? { ...current, signature: signatureContent(accountId, config) }
+              : current,
+          );
+      })
+      .catch((e) => {
+        if (live) setSignatureError(String(e));
+      });
+    return () => {
+      live = false;
+    };
+  }, [
+    value?.id,
+    value?.accountId,
+    value?.signature?.accountId,
+    signatureReload,
+  ]);
   useEffect(() => {
     if (!draft) return;
     let live = true;
@@ -110,16 +151,29 @@ export function ComposeDialog({
       live = false;
     };
   }, [draft?.id]);
+  function persist(action: () => Promise<void>) {
+    const next = persistence.current.then(action);
+    persistence.current = next.catch(() => {});
+    return next;
+  }
   useEffect(() => {
-    if (!value || sending || countdown !== null) return;
+    if (!value || sending || closing || countdown !== null) return;
     setSaved(false);
+    if (!hasDraftContent(value)) return;
+    const snapshot = value;
     const t = setTimeout(() => {
-      void call("save_draft", { draft: value })
-        .then(() => setSaved(true))
-        .catch((e) => toast.error(String(e)));
+      void persist(async () => {
+        if (closingNow.current || latest.current?.id !== snapshot.id) return;
+        await call("save_draft", { draft: snapshot });
+        if (latest.current === snapshot && !closingNow.current) setSaved(true);
+      }).catch((e) => toast.error(String(e)));
     }, 600);
-    return () => clearTimeout(t);
-  }, [value, sending, countdown]);
+    autosaveTimer.current = t;
+    return () => {
+      clearTimeout(t);
+      if (autosaveTimer.current === t) autosaveTimer.current = null;
+    };
+  }, [value, sending, closing, countdown]);
   useEffect(
     () => () => {
       if (timer.current) clearInterval(timer.current);
@@ -130,24 +184,38 @@ export function ComposeDialog({
     setValue((v) => (v ? { ...v, ...p } : null));
   }
   async function close() {
-    if (sending) return;
+    if (sending || closingNow.current) return;
+    const current = latest.current;
+    closingNow.current = true;
+    setClosing(true);
+    if (autosaveTimer.current) clearTimeout(autosaveTimer.current);
     if (timer.current) clearInterval(timer.current);
+    timer.current = null;
     setCountdown(null);
-    if (latest.current)
-      try {
-        await call("save_draft", { draft: latest.current });
-      } catch (e) {
-        toast.error(`草稿保存失败：${e}`);
-        return;
-      }
-    onClose();
+    try {
+      if (current)
+        await persist(async () => {
+          if (hasDraftContent(current))
+            await call("save_draft", { draft: current });
+          else await call("delete_draft", { id: current.id });
+        });
+      onClose();
+    } catch (e) {
+      toast.error(
+        `${current && !hasDraftContent(current) ? "空白邮件舍弃" : "草稿保存"}失败：${e}`,
+      );
+    } finally {
+      closingNow.current = false;
+      setClosing(false);
+    }
   }
   async function send() {
     const current = latest.current;
-    if (!current) return;
+    if (!current || closingNow.current) return;
     setSending(true);
     setCountdown(null);
     try {
+      await persistence.current;
       const result = await call<string>("send_mail", {
         draft: prepareCompose(current),
       });
@@ -163,6 +231,14 @@ export function ComposeDialog({
   async function valid() {
     if (!value?.accountId || !value.to.trim()) {
       toast.error("请选择发件账号并填写收件人");
+      return false;
+    }
+    if (value.signature?.accountId !== value.accountId) {
+      toast.error(
+        signatureError
+          ? "签名读取失败，请重试或选择本封不使用签名"
+          : "正在读取发件账号签名，请稍后发送",
+      );
       return false;
     }
     for (const [name, addresses] of [
@@ -215,6 +291,7 @@ export function ComposeDialog({
     }
     setSending(true);
     try {
+      await persistence.current;
       await call("schedule_mail", {
         draft: prepareCompose(latest.current),
         scheduledAt,
@@ -265,6 +342,7 @@ export function ComposeDialog({
     }
   }
   const format = value ? composeFormat(value) : "plain";
+  const hasContent = !!value && hasDraftContent(value);
   async function attach() {
     if (!native || isDemo()) {
       toast.info("请在桌面客户端中添加真实附件");
@@ -292,7 +370,7 @@ export function ComposeDialog({
         showCloseButton={false}
         onInteractOutside={(e) => e.preventDefault()}
         onEscapeKeyDown={(e) => {
-          if (sending) e.preventDefault();
+          if (sending || closing) e.preventDefault();
           else if (expanded) {
             e.preventDefault();
             setExpanded(false);
@@ -322,8 +400,8 @@ export function ComposeDialog({
                 type="button"
                 variant="ghost"
                 size="icon-sm"
-                aria-label="保存草稿并关闭"
-                disabled={sending}
+                aria-label={hasContent ? "保存草稿并关闭" : "舍弃空白邮件"}
+                disabled={sending || closing}
                 onClick={() => void close()}
               >
                 <X size={18} />
@@ -331,12 +409,12 @@ export function ComposeDialog({
             </div>
           </div>
           <DialogDescription className="sr-only">
-            编辑邮件，草稿会自动保存在本机。
+            有内容的邮件会自动保存草稿，空白邮件关闭时直接舍弃。
           </DialogDescription>
         </DialogHeader>
         {value && (
           <>
-            <fieldset disabled={sending || countdown !== null}>
+            <fieldset disabled={sending || closing || countdown !== null}>
               <div className="compose-row">
                 <Label>发件人</Label>
                 <SelectField
@@ -426,7 +504,7 @@ export function ComposeDialog({
                     <Switch
                       id={`include-original-${value.id}`}
                       checked={value.quote.included}
-                      disabled={sending || countdown !== null}
+                      disabled={sending || closing || countdown !== null}
                       onCheckedChange={(included) =>
                         update({ quote: { ...value.quote!, included } })
                       }
@@ -492,7 +570,7 @@ export function ComposeDialog({
                       key={`${value.id}-${format}`}
                       body={value.body}
                       html={value.html || textToHtml(value.body)}
-                      disabled={sending || countdown !== null}
+                      disabled={sending || closing || countdown !== null}
                       onChange={(body, html) => update({ body, html })}
                     />
                   </Suspense>
@@ -548,6 +626,56 @@ export function ComposeDialog({
                   />
                 )}
               </div>
+              {signatureError && (
+                <Alert variant="destructive" className="mx-6 w-auto">
+                  <AlertDescription className="flex flex-wrap items-center gap-2">
+                    <span className="text-sm text-destructive">
+                      无法读取签名：{signatureError}
+                    </span>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setSignatureReload((v) => v + 1)}
+                    >
+                      重新读取签名
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => {
+                        setSignatureError("");
+                        update({
+                          signature: {
+                            accountId: value.accountId,
+                            included: false,
+                            body: "",
+                            html: "",
+                          },
+                        });
+                      }}
+                    >
+                      本封不使用签名
+                    </Button>
+                  </AlertDescription>
+                </Alert>
+              )}
+              {value.signature &&
+                value.signature.accountId === value.accountId &&
+                (value.signature.body || value.signature.html) &&
+                value.signature.included && (
+                  <section className="px-6 py-4 flex flex-col gap-3">
+                    {value.signature.included && (
+                      <MailContent
+                        html={
+                          value.signature.html ||
+                          textToHtml(value.signature.body)
+                        }
+                        title="本封邮件签名"
+                        onOpenLink={() => {}}
+                      />
+                    )}
+                  </section>
+                )}
               {value.quote?.included && (
                 <section
                   className="compose-quoted-original"
@@ -593,12 +721,12 @@ export function ComposeDialog({
                 onChange={setPlanTime}
                 onConfirm={(time) => void schedule(time)}
                 onCancel={() => setPlanning(false)}
-                busy={sending}
+                busy={sending || closing}
               />
             )}
             <div className="compose-footer">
               <Button
-                disabled={sending || isDemo() || !native}
+                disabled={sending || closing || isDemo() || !native}
                 onClick={
                   countdown !== null
                     ? () => {
@@ -625,25 +753,54 @@ export function ComposeDialog({
               <Button
                 variant="outline"
                 disabled={
-                  sending || countdown !== null || (!native && !isDemo())
+                  sending ||
+                  closing ||
+                  countdown !== null ||
+                  (!native && !isDemo())
                 }
                 onClick={() => setPlanning(!planning)}
               >
                 <Clock3 size={16} />
                 定时发送
               </Button>
+              {value.signature &&
+                value.signature.accountId === value.accountId &&
+                (value.signature.body || value.signature.html) && (
+                  <Label
+                    htmlFor={`include-signature-${value.id}`}
+                    className="flex shrink-0 items-center gap-2 whitespace-nowrap"
+                  >
+                    <Switch
+                      id={`include-signature-${value.id}`}
+                      checked={value.signature.included}
+                      disabled={sending || closing || countdown !== null}
+                      onCheckedChange={(included) =>
+                        update({
+                          signature: { ...value.signature!, included },
+                        })
+                      }
+                    />
+                    附加邮件签名
+                  </Label>
+                )}
               <Button
                 variant="ghost"
                 size="icon"
                 onClick={() => void attach()}
-                disabled={sending || countdown !== null}
+                disabled={sending || closing || countdown !== null}
                 title="添加附件"
               >
                 <Paperclip size={18} />
               </Button>
               <span>
-                {saved && <Check size={13} />}{" "}
-                {saved ? "草稿已保存" : "正在保存草稿…"}
+                {hasContent && saved && <Check size={13} />}{" "}
+                {closing
+                  ? "正在关闭…"
+                  : !hasContent
+                    ? "空白邮件不会保存"
+                    : saved
+                      ? "草稿已保存"
+                      : "正在保存草稿…"}
               </span>
               {isDemo() && <small>演示模式不会发送邮件</small>}
             </div>

@@ -1,0 +1,331 @@
+import { useEffect, useRef, useState } from "react";
+import { AlertCircle, FileUp, X } from "lucide-react";
+import { toast } from "sonner";
+import { call } from "@/lib/api";
+import type { Account, MailSignature } from "@/lib/types";
+import {
+  emptySignature,
+  importSignature,
+  signatureContent,
+} from "@/lib/signatures";
+import { textToHtml } from "@/lib/compose-format";
+import { cn } from "@/lib/utils";
+import { MailContent } from "./mail-content";
+import { Button } from "./ui/button";
+import {
+  Card,
+  CardHeader,
+  CardTitle,
+  CardDescription,
+  CardContent,
+  CardAction,
+} from "./ui/card";
+import { Field, FieldGroup, FieldLabel, FieldDescription } from "./ui/field";
+import { Textarea } from "./ui/textarea";
+import { Input } from "./ui/input";
+import { Checkbox } from "./ui/checkbox";
+import { Switch } from "./ui/switch";
+import { Alert, AlertTitle, AlertDescription } from "./ui/alert";
+import { Collapsible, CollapsibleContent } from "./ui/collapsible";
+import { SelectField, SelectOption } from "./ui/select-field";
+export function MailSignatures({ accounts }: { accounts: Account[] }) {
+  const [accountId, setAccountId] = useState(accounts[0]?.id || "");
+  const [signature, setSignature] = useState(emptySignature);
+  const [busy, setBusy] = useState(false),
+    [loading, setLoading] = useState(false),
+    [error, setError] = useState("");
+  const file = useRef<HTMLInputElement>(null),
+    revision = useRef(0),
+    fileRevision = useRef(0);
+  const [loadedAccountId, setLoadedAccountId] = useState("");
+  const savedSignature = useRef(emptySignature());
+  const selected = useRef(accountId);
+  selected.current = accountId;
+  useEffect(() => {
+    if (!accounts.some((a) => a.id === accountId))
+      setAccountId(accounts[0]?.id || "");
+  }, [accounts, accountId]);
+  useEffect(() => {
+    const current = ++revision.current;
+    fileRevision.current++;
+    setError("");
+    setSignature(emptySignature());
+    setLoadedAccountId("");
+    if (!accountId) return;
+    setLoading(true);
+    void call<MailSignature>("mail_signature", { accountId })
+      .then((value) => {
+        if (revision.current === current) {
+          savedSignature.current = value;
+          setSignature(value);
+          setLoadedAccountId(accountId);
+        }
+      })
+      .catch((e) => {
+        if (revision.current === current) setError(String(e));
+      })
+      .finally(() => {
+        if (revision.current === current) setLoading(false);
+      });
+    return () => {
+      revision.current++;
+    };
+  }, [accountId]);
+  async function save() {
+    if (busy || loading || !accountId || loadedAccountId !== accountId) return;
+    const id = accountId;
+    setBusy(true);
+    setError("");
+    try {
+      await call("save_mail_signature", { accountId: id, signature });
+      if (selected.current === id) {
+        savedSignature.current = signature;
+        toast.success("邮件签名已保存，新邮件和回复将使用此签名");
+      }
+    } catch (e) {
+      if (selected.current === id) setError(String(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+  async function toggle(enabled: boolean) {
+    if (busy || loading || !accountId || loadedAccountId !== accountId) return;
+    const id = accountId;
+    // Toggle only the persisted enabled flag; keep unsaved edits in the editor.
+    const config = { ...savedSignature.current, enabled };
+    setBusy(true);
+    setError("");
+    try {
+      await call("save_mail_signature", { accountId: id, signature: config });
+      if (selected.current === id) {
+        savedSignature.current = config;
+        setSignature((current) => ({ ...current, enabled }));
+      }
+    } catch (e) {
+      if (selected.current === id) setError(String(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+  const content = signatureContent(accountId, signature);
+  return (
+    <Collapsible open={signature.enabled} asChild>
+      <Card>
+        <CardHeader>
+          <CardTitle>邮件签名</CardTitle>
+          <CardDescription>
+            按发件账号设置。签名与正文分开保存，切换账号会换用对应签名；已保存的草稿保留自己的签名。
+          </CardDescription>
+          <CardAction className="flex flex-wrap items-center gap-3">
+            <Field className="w-56 max-w-full">
+              <FieldLabel className="sr-only">发件账号</FieldLabel>
+              <SelectField
+                aria-label="签名所属账号"
+                value={accountId}
+                disabled={busy || !accounts.length}
+                onValueChange={setAccountId}
+              >
+                {accounts.map((a) => (
+                  <SelectOption key={a.id} value={a.id}>
+                    {a.name} · {a.email}
+                  </SelectOption>
+                ))}
+              </SelectField>
+            </Field>
+
+            <Switch
+              id="signature-enabled"
+              aria-label="启用邮件签名"
+              aria-controls="signature-settings-content"
+              aria-expanded={signature.enabled}
+              checked={signature.enabled}
+              disabled={
+                busy || loading || loadedAccountId !== accountId || !accountId
+              }
+              onCheckedChange={(enabled) => void toggle(enabled)}
+            />
+          </CardAction>
+        </CardHeader>
+        {error && (
+          <CardContent>
+            <Alert variant="destructive">
+              <AlertCircle />
+              <AlertTitle>签名未保存</AlertTitle>
+              <AlertDescription>{error}</AlertDescription>
+            </Alert>
+          </CardContent>
+        )}
+        <CollapsibleContent id="signature-settings-content" asChild>
+          <CardContent className="mail-signature-layout">
+            <div className="mail-signature-columns">
+              <div className="flex min-w-0 flex-col gap-6">
+                <FieldGroup>
+                  <Field orientation="horizontal">
+                    <Checkbox
+                      id="signature-html"
+                      checked={signature.useHtml}
+                      disabled={!accountId || busy || loading}
+                      onCheckedChange={(checked) =>
+                        setSignature((v) => ({
+                          ...v,
+                          useHtml: checked === true,
+                        }))
+                      }
+                    />
+                    <FieldLabel htmlFor="signature-html">使用 HTML</FieldLabel>
+                  </Field>
+                  <Field>
+                    <FieldLabel>签名文件</FieldLabel>
+                    <FieldDescription>
+                      可以附加文本、HTML
+                      或图片。导入后保存文件内容，原文件移走后签名仍可使用。
+                    </FieldDescription>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Button
+                        variant="outline"
+                        disabled={!accountId || busy || loading}
+                        onClick={() => file.current?.click()}
+                      >
+                        <FileUp data-icon="inline-start" />
+                        选择文件
+                      </Button>
+                      {signature.fileName && (
+                        <>
+                          <span className="text-sm text-muted-foreground">
+                            {signature.fileName}
+                          </span>
+                          <Button
+                            variant="ghost"
+                            size="icon-sm"
+                            aria-label="移除签名文件"
+                            disabled={busy || loading}
+                            onClick={() => {
+                              fileRevision.current++;
+                              setSignature((v) => ({
+                                ...v,
+                                fileName: "",
+                                fileText: "",
+                                fileHtml: "",
+                              }));
+                            }}
+                          >
+                            <X />
+                          </Button>
+                        </>
+                      )}
+                    </div>
+                    <Input
+                      ref={file}
+                      type="file"
+                      className="sr-only"
+                      aria-label="导入签名文件"
+                      disabled={!accountId || busy || loading}
+                      accept=".txt,.html,.htm,.png,.jpg,.jpeg,.gif,.webp"
+                      onChange={(e) => {
+                        const input = e.target.files?.[0],
+                          id = accountId;
+                        const fileEpoch = ++fileRevision.current;
+                        e.target.value = "";
+                        if (input)
+                          void importSignature(input)
+                            .then((value) => {
+                              if (
+                                selected.current === id &&
+                                fileRevision.current === fileEpoch
+                              )
+                                setSignature((v) => ({ ...v, ...value }));
+                            })
+                            .catch((e) => toast.error(String(e)));
+                      }}
+                    />
+                  </Field>
+                </FieldGroup>
+                <Button
+                  className="self-start"
+                  disabled={
+                    !accountId ||
+                    busy ||
+                    loading ||
+                    loadedAccountId !== accountId
+                  }
+                  onClick={() => void save()}
+                >
+                  {busy ? "正在保存…" : "保存签名"}
+                </Button>
+              </div>
+              <div className="mail-signature-content">
+                <div
+                  className={cn("signature-editor-grid", {
+                    "has-preview": signature.useHtml || !!signature.fileHtml,
+                  })}
+                >
+                  <FieldGroup>
+                    <Field data-disabled={!accountId || busy || loading}>
+                      <FieldLabel htmlFor="signature-text">
+                        {signature.useHtml ? "HTML 源码" : "签名内容"}
+                      </FieldLabel>
+                      <Textarea
+                        id="signature-text"
+                        rows={14}
+                        className="signature-editor-area"
+                        disabled={!accountId || busy || loading}
+                        value={signature.text}
+                        onChange={(e) =>
+                          setSignature((v) => ({ ...v, text: e.target.value }))
+                        }
+                        placeholder={
+                          signature.useHtml
+                            ? "<p>祝工作愉快！<br><strong>姓名 · 公司</strong></p>"
+                            : "祝工作愉快！\n姓名 · 公司\n联系方式"
+                        }
+                      />
+                    </Field>
+                    {signature.fileName && !signature.fileHtml && (
+                      <Field>
+                        <FieldLabel htmlFor="signature-file-content">
+                          已导入的文本
+                        </FieldLabel>
+                        <Textarea
+                          id="signature-file-content"
+                          readOnly
+                          value={signature.fileText}
+                          rows={5}
+                        />
+                        <FieldDescription>
+                          文件内容附加在签名文字之后，重新导入可替换。
+                        </FieldDescription>
+                      </Field>
+                    )}
+                  </FieldGroup>
+                  {(signature.useHtml || signature.fileHtml) && (
+                    <Field>
+                      <FieldLabel id="signature-preview-label">
+                        签名预览
+                      </FieldLabel>
+                      <Card
+                        className="signature-preview-frame min-w-0"
+                        role="region"
+                        aria-labelledby="signature-preview-label"
+                      >
+                        <CardContent className="min-h-0 flex-1 overflow-auto">
+                          <MailContent
+                            html={content.html || textToHtml(content.body)}
+                            title="签名预览"
+                            onOpenLink={() => {}}
+                          />
+                        </CardContent>
+                      </Card>
+                      <FieldDescription>
+                        编辑内容后实时更新显示效果
+                      </FieldDescription>
+                    </Field>
+                  )}
+                </div>
+              </div>
+            </div>
+          </CardContent>
+        </CollapsibleContent>
+      </Card>
+    </Collapsible>
+  );
+}

@@ -59,6 +59,13 @@ pub fn validate(rule: &Rule) -> Result<()> {
     Ok(())
 }
 pub fn matches(rule: &Rule, mail: &Mail) -> bool {
+    let decoded = !mail.parse_warnings.iter().any(|warning| {
+        warning.starts_with("text/plain 正文片段无法解码：")
+            || warning.starts_with("text/html 正文片段无法解码：")
+    });
+    matches_with_body(rule, mail, mail.saved_locally && decoded)
+}
+pub fn matches_with_body(rule: &Rule, mail: &Mail, body_available: bool) -> bool {
     if !rule.enabled
         || (!rule.account_id.is_empty() && rule.account_id != mail.account_id)
         || rule.conditions.is_empty()
@@ -66,6 +73,9 @@ pub fn matches(rule: &Rule, mail: &Mail) -> bool {
         return false;
     }
     let test = |c: &Condition| {
+        if c.field == "body" && !body_available {
+            return false;
+        }
         let text = match c.field.as_str() {
             "sender" => &mail.sender,
             "recipients" => &mail.recipients,
@@ -90,6 +100,51 @@ pub fn matches(rule: &Rule, mail: &Mail) -> bool {
         rule.conditions.iter().any(test)
     } else {
         rule.conditions.iter().all(test)
+    }
+}
+
+#[cfg(test)]
+mod body_tests {
+    use super::*;
+    #[test]
+    fn online_empty_body_never_matches_negative_conditions_and_known_any_header_still_matches() {
+        let account = crate::tests::account();
+        let mut mail = crate::archive::parse(&crate::tests::raw(), &account, "INBOX")
+            .unwrap()
+            .0;
+        mail.saved_locally = false;
+        mail.body.clear();
+        let mut rule = Rule {
+            id: "body".into(),
+            name: "body".into(),
+            account_id: account.id,
+            enabled: true,
+            mode: "all".into(),
+            conditions: vec![Condition {
+                field: "body".into(),
+                operator: "notContains".into(),
+                value: "missing".into(),
+            }],
+            action: "trash".into(),
+            destination: String::new(),
+            source_folder: String::new(),
+            stop: true,
+        };
+        assert!(!matches(&rule, &mail));
+        mail.saved_locally = true;
+        assert!(matches(&rule, &mail));
+        mail.parse_warnings
+            .push("text/plain 正文片段无法解码：fixture".into());
+        assert!(!matches(&rule, &mail));
+        mail.parse_warnings.clear();
+        mail.saved_locally = false;
+        rule.mode = "any".into();
+        rule.conditions.push(Condition {
+            field: "subject".into(),
+            operator: "contains".into(),
+            value: "invoice".into(),
+        });
+        assert!(matches(&rule, &mail));
     }
 }
 

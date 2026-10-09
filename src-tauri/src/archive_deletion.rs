@@ -290,8 +290,7 @@ impl Store {
             )
             .map_err(err)?;
         }
-        let stage = self
-            .root
+        let stage = crate::archive_location::physical_root(&self.root)?
             .join(".archive-deletion")
             .join(uuid::Uuid::new_v4().to_string());
         fs::create_dir_all(&stage).map_err(err)?;
@@ -302,7 +301,9 @@ impl Store {
                 if used {
                     continue;
                 } // Other accounts may share the same MIME file.
-                let from = self.root.join("archive").join(format!("{hash}.eml"));
+                let from = crate::archive_location::physical_root(&self.root)?
+                    .join("archive")
+                    .join(format!("{hash}.eml"));
                 match fs::symlink_metadata(&from) {
                     Ok(metadata) if metadata.is_file() => {
                         fs::rename(&from, stage.join(format!("{hash}.eml"))).map_err(err)?;
@@ -343,7 +344,7 @@ impl Store {
         })
     }
     pub(crate) fn recover_archive_deletion(&self) -> Result<()> {
-        let staging = self.root.join(".archive-deletion");
+        let staging = crate::archive_location::physical_root(&self.root)?.join(".archive-deletion");
         if !staging.exists() {
             return Ok(());
         }
@@ -365,7 +366,9 @@ impl Store {
                 }
                 let used: bool = db.query_row("SELECT EXISTS(SELECT 1 FROM messages WHERE hash=?1 AND COALESCE(json_extract(data,'$.savedLocally'),1)=1)", [hash], |r| r.get(0)).map_err(err)?;
                 if used {
-                    let target = self.root.join("archive").join(Path::new(&name));
+                    let target = crate::archive_location::physical_root(&self.root)?
+                        .join("archive")
+                        .join(Path::new(&name));
                     if !target.exists() {
                         fs::rename(file.path(), target).map_err(err)?;
                     } else {

@@ -213,12 +213,12 @@ export function AccountDialog({
               <Button
                 variant="ghost"
                 type="button"
-                className="text-link"
+                className="text-link self-start justify-start"
                 onClick={() => setAccount(null)}
                 disabled={busy}
               >
                 <ArrowLeft size={14} />
-                选择其他邮箱
+                返回其他邮箱
               </Button>
             )}
             <fieldset disabled={busy}>

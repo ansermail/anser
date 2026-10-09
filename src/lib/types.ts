@@ -136,7 +136,22 @@ export interface QuotedMail {
   body: string;
   html: string;
 }
+export interface MailSignature {
+  enabled: boolean;
+  useHtml: boolean;
+  text: string;
+  fileName: string;
+  fileText: string;
+  fileHtml: string;
+}
+export interface ComposeSignature {
+  accountId: string;
+  included: boolean;
+  body: string;
+  html: string;
+}
 export interface Compose {
+  signature?: ComposeSignature | null;
   id: string;
   accountId: string;
   to: string;

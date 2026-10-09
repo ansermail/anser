@@ -2,6 +2,7 @@
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { beforeEach, afterEach, it, expect, vi } from "vitest";
+import { toast } from "sonner";
 import {
   useAppUpdate,
   UpdateDialog,
@@ -148,4 +149,30 @@ it("does not install into the development app", async () => {
   await click("检查更新");
   expect(button("下载更新").disabled).toBe(true);
   expect(next.download).not.toHaveBeenCalled();
+});
+it("opens the project repository through the desktop's default browser command", async () => {
+  const link = host.querySelector<HTMLAnchorElement>(
+    'a[href="https://github.com/ansermail/anser"]',
+  )!;
+  const event = new MouseEvent("click", { bubbles: true, cancelable: true });
+  await act(async () => link.dispatchEvent(event));
+  expect(event.defaultPrevented).toBe(true);
+  expect(mocks.invoke).toHaveBeenCalledWith("open_mail_link", {
+    url: "https://github.com/ansermail/anser",
+  });
+});
+it("reports a browser opening failure instead of silently ignoring the repository click", async () => {
+  const error = vi.spyOn(toast, "error").mockReturnValue(0);
+  mocks.invoke.mockRejectedValueOnce(new Error("browser unavailable"));
+  await act(async () =>
+    host
+      .querySelector<HTMLAnchorElement>(
+        'a[href="https://github.com/ansermail/anser"]',
+      )!
+      .click(),
+  );
+  expect(error).toHaveBeenCalledWith(
+    "无法打开项目仓库：Error: browser unavailable",
+  );
+  error.mockRestore();
 });

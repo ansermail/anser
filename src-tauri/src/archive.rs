@@ -33,6 +33,10 @@ pub fn atomic_write(path: &Path, data: &[u8]) -> Result<()> {
     result
 }
 pub fn store_raw(root: &Path, raw: &[u8]) -> Result<String> {
+    let runtime = crate::archive_location::runtime(root);
+    let _guard = runtime.gate.read().map_err(err)?;
+    let actual = crate::archive_location::physical_root(root)?;
+    let root = actual.as_path();
     let hash = digest(raw);
     let path = root.join("archive").join(format!("{hash}.eml"));
     if path.exists() {
@@ -45,6 +49,10 @@ pub fn store_raw(root: &Path, raw: &[u8]) -> Result<String> {
     Ok(hash)
 }
 pub fn read_raw(root: &Path, hash: &str) -> Result<Vec<u8>> {
+    let runtime = crate::archive_location::runtime(root);
+    let _guard = runtime.gate.read().map_err(err)?;
+    let actual = crate::archive_location::physical_root(root)?;
+    let root = actual.as_path();
     if hash.len() != 64 || !hash.bytes().all(|x| x.is_ascii_hexdigit()) {
         return Err("无效存档标识".into());
     }

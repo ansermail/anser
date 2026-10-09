@@ -1,3 +1,6 @@
+import { EmlViewer } from "./components/eml-viewer";
+import { ArchiveLocation } from "./components/archive-location";
+import { MailSignatures } from "./components/mail-signatures";
 import { useConfirmation } from "./hooks/use-confirmation";
 import {
   useAppUpdate,
@@ -16,6 +19,7 @@ import {
   CollapsibleContent,
 } from "./components/ui/collapsible";
 import { Skeleton } from "./components/ui/skeleton";
+import { Separator } from "./components/ui/separator";
 import { FolderHealthPanel } from "./components/folder-health";
 import { Alert, AlertTitle, AlertDescription } from "./components/ui/alert";
 import { ServerOperations } from "./components/server-operations";
@@ -51,7 +55,6 @@ import {
   Cloud,
   FileText,
   Folder,
-  FolderOpen,
   HardDrive,
   Inbox,
   Info,
@@ -95,7 +98,14 @@ import {
   SidebarProvider,
   SidebarTrigger,
 } from "./components/ui/sidebar";
-import { Card } from "./components/ui/card";
+import {
+  Card,
+  CardHeader,
+  CardTitle,
+  CardDescription,
+  CardAction,
+  CardContent,
+} from "./components/ui/card";
 import { Badge } from "./components/ui/badge";
 import { Checkbox } from "./components/ui/checkbox";
 import {
@@ -124,6 +134,7 @@ import { RulesPanel } from "./components/rules-panel";
 import { ComposeDialog } from "./components/compose-dialog";
 import { ContactsPanel } from "./components/contacts-panel";
 import { OutboxPanel } from "./components/outbox-panel";
+import { ArchiveIntegrity } from "./components/archive-integrity";
 import { StorageTools } from "./components/storage-tools";
 import { DeleteArchiveDialog } from "./components/delete-archive-dialog";
 import {
@@ -136,6 +147,7 @@ import {
   call,
   initialSnapshot,
   native,
+  publicPreview,
   enterDemo,
   leaveDemo,
   isDemo,
@@ -976,8 +988,12 @@ export default function App() {
         closeButton
       />
       <div className="top-actions app-actions">
+        <EmlViewer />
         <UpdateIndicator updates={updates} />
-        {demo && (
+        {publicPreview && (
+          <Badge variant="secondary">页面预览 · 虚构数据</Badge>
+        )}
+        {demo && !publicPreview && (
           <Button variant="ghost" className="demo-badge" onClick={demoMode}>
             演示模式 · 退出
           </Button>
@@ -1009,7 +1025,10 @@ export default function App() {
           <Sidebar variant="inset" collapsible="none" className="mail-sidebar">
             <SidebarHeader className="mail-sidebar-header">
               <div className="brand">
-                <img src="/app-icon.png" alt="雁信应用图标" />
+                <img
+                  src={`${import.meta.env.BASE_URL}app-icon.png`}
+                  alt="雁信应用图标"
+                />
                 <div>
                   <strong>
                     雁信<span>邮件，自在有序</span>
@@ -1051,6 +1070,7 @@ export default function App() {
                 <Button
                   variant="ghost"
                   title="添加邮箱账号"
+                  disabled={publicPreview}
                   onClick={() => setAccountDialog(true)}
                 >
                   <Plus size={15} />
@@ -1243,7 +1263,7 @@ export default function App() {
               onShowTasks={() => setPage("settings")}
             />
           ) : page === "settings" || page === "storage" ? (
-            <section className="workspace-panel">
+            <section className="workspace-panel settings-workspace">
               <div className="panel-heading">
                 <div>
                   <span className="eyebrow">
@@ -1267,7 +1287,10 @@ export default function App() {
                   </p>
                 </div>
                 {page === "settings" && (
-                  <Button onClick={() => setAccountDialog(true)}>
+                  <Button
+                    disabled={publicPreview}
+                    onClick={() => setAccountDialog(true)}
+                  >
                     <Plus size={16} />
                     添加账号
                   </Button>
@@ -1390,6 +1413,7 @@ export default function App() {
                       <p>支持 Gmail、Outlook、QQ、网易与自定义服务器。</p>
                     </div>
                   )}
+                  <Separator className="settings-section-divider" />
                 </>
               )}
               <Card className="storage-card">
@@ -1417,8 +1441,12 @@ export default function App() {
                     <strong>{formatSize(data.stats.bytes)}</strong>
                     <span>原始邮件大小</span>
                   </div>
+                  <ArchiveIntegrity />
                 </div>
-                <div className="storage-actions">
+                <ArchiveLocation
+                  initialPath={data.dataDir}
+                  onChanged={() => void refresh()}
+                >
                   <Button variant="outline" onClick={() => void backup()}>
                     <ArrowDownToLine size={15} />
                     备份存档
@@ -1434,28 +1462,66 @@ export default function App() {
                       void refresh();
                     }}
                   />
-                  <Button
-                    variant="ghost"
-                    onClick={() =>
-                      void call("open_data_folder").catch((e) =>
-                        toast.error(String(e)),
-                      )
-                    }
-                  >
-                    <FolderOpen size={15} />
-                    打开存储位置
-                  </Button>
-                </div>
-                <p className="storage-path">{data.dataDir}</p>
+                </ArchiveLocation>
               </Card>
-              <ArchiveJobsPanel />
+              <Separator className="settings-section-divider" />
               <StorageTools />
-              {page === "settings" && <UpdateSettings updates={updates} />}
+              {page === "settings" && (
+                <MailSignatures accounts={data.accounts} />
+              )}
+              <Separator className="settings-section-divider" />
+              <ArchiveJobsPanel defaultCollapsed />
               <div className="flex flex-col gap-6">
-                <ServerOperations />
-                <FolderHealthPanel />
-                <DirectoryOperationsPanel />
+                <ServerOperations defaultCollapsed />
+                <FolderHealthPanel defaultCollapsed />
+                <DirectoryOperationsPanel defaultCollapsed />
               </div>
+              <Collapsible asChild>
+                <Card>
+                  <CardHeader>
+                    <CardTitle>最近活动</CardTitle>
+                    <CardDescription>
+                      查看邮件收取、发送及规则执行的最近记录。
+                    </CardDescription>
+                    <CardAction className="flex items-center gap-2">
+                      <CollapsibleTrigger asChild>
+                        <Button
+                          variant="ghost"
+                          size="icon-sm"
+                          aria-label="展开或收起最近活动"
+                          className="group"
+                        >
+                          <ChevronDown className="transition-transform group-data-[state=open]:rotate-180" />
+                        </Button>
+                      </CollapsibleTrigger>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => void refresh()}
+                      >
+                        <RefreshCw size={14} />
+                        刷新
+                      </Button>
+                    </CardAction>
+                  </CardHeader>
+                  <CollapsibleContent asChild>
+                    <CardContent className="activity-list">
+                      {data.logs.length ? (
+                        data.logs.map((l, i) => (
+                          <p key={i}>
+                            <Check size={13} />
+                            {l}
+                          </p>
+                        ))
+                      ) : (
+                        <p>连接邮箱后，这里会显示收取和规则执行记录。</p>
+                      )}
+                    </CardContent>
+                  </CollapsibleContent>
+                </Card>
+              </Collapsible>
+              <Separator className="settings-section-divider" />
+              {page === "settings" && <UpdateSettings updates={updates} />}
               <div className="info-strip">
                 <Info size={17} />
                 <span>
@@ -1463,43 +1529,16 @@ export default function App() {
                   App、睡眠或断网时暂停。邮件须在服务器删除前完整下载。
                 </span>
               </div>
-              <div className="section-title">
-                <h3>最近活动</h3>
+              {import.meta.env.DEV && (
                 <Button
                   variant="ghost"
-                  size="sm"
-                  onClick={() => void refresh()}
-                >
-                  <RefreshCw size={14} />
-                  刷新
-                </Button>
-              </div>
-              <div className="activity-list">
-                {data.logs.length ? (
-                  data.logs.map((l, i) => (
-                    <p key={i}>
-                      <Check size={13} />
-                      {l}
-                    </p>
-                  ))
-                ) : (
-                  <p>连接邮箱后，这里会显示收取和规则执行记录。</p>
-                )}
-              </div>
-              <div className="dev-note">
-                <span>
-                  雁信 {updates.version} ·{" "}
-                  {updates.preview ? "开发预览" : "Alpha"}
-                </span>
-                <Button
-                  variant="ghost"
-                  className="text-link"
+                  className="text-link self-start"
                   onClick={demoMode}
                 >
                   {demo ? "退出演示" : "体验示例邮箱"}
-                  <ArrowRight size={14} />
+                  <ArrowRight data-icon="inline-end" />
                 </Button>
-              </div>
+              )}
             </section>
           ) : page === "drafts" ? (
             <section className="workspace-panel">
@@ -1869,10 +1908,15 @@ export default function App() {
                               {m.localFolder !== "全部存档" && (
                                 <small>{m.localFolder}</small>
                               )}
-                              {m.hasAttachments && <Paperclip size={12} />}
                               <span className="row-spacer" />
                               {m.starred && (
                                 <Star size={13} className="star-on" />
+                              )}
+                              {m.hasAttachments && (
+                                <Paperclip
+                                  className="size-3 shrink-0"
+                                  aria-label="包含附件"
+                                />
                               )}
                             </div>
                           </Button>
@@ -2254,7 +2298,10 @@ export default function App() {
                 ) : (
                   <div className="reader-welcome">
                     <div className="welcome-art">
-                      <img src="/app-icon.png" alt="雁信" />
+                      <img
+                        src={`${import.meta.env.BASE_URL}app-icon.png`}
+                        alt="雁信"
+                      />
                       <span className="orbit one" />
                       <span className="orbit two" />
                       <span className="art-dot dot-one" />
@@ -2340,7 +2387,10 @@ export default function App() {
       />
       <ComposeDialog
         draft={draft}
-        onClose={() => setDraft(null)}
+        onClose={() => {
+          setDraft(null);
+          void refresh();
+        }}
         accounts={data.accounts}
         onSent={() => void refresh()}
       />

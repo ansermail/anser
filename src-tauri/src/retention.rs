@@ -446,7 +446,7 @@ impl Store {
             folders,
             overrides,
             summary: RetentionSummary {
-                data_dir: self.root.to_string_lossy().into_owned(),
+                data_dir: crate::archive_location::display_path(&self.root),
                 known,
                 saved,
                 saved_bytes,

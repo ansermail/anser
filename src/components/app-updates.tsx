@@ -3,7 +3,8 @@ import { version as buildVersion } from "../../package.json";
 import { getVersion } from "@tauri-apps/api/app";
 import { invoke, isTauri } from "@tauri-apps/api/core";
 import { check, type Update } from "@tauri-apps/plugin-updater";
-import { Download, RefreshCw, RotateCw } from "lucide-react";
+import { Download, RefreshCw, RotateCw, Github } from "lucide-react";
+import { toast } from "sonner";
 import { Button } from "./ui/button";
 import {
   Card,
@@ -23,7 +24,7 @@ import {
 import { Progress } from "./ui/progress";
 import { Alert, AlertDescription } from "./ui/alert";
 
-const releasePage = "https://github.com/yn-zxj/yanxin/releases";
+const releasePage = "https://github.com/ansermail/anser/releases";
 type Phase =
   | "idle"
   | "checking"
@@ -207,7 +208,7 @@ export function UpdateSettings({ updates }: { updates: Updates }) {
       <CardHeader>
         <CardTitle>关于与更新</CardTitle>
         <CardDescription>
-          雁信 {updates.version || "—"} · 从 GitHub Release 获取更新
+          Anser · 雁信 {updates.version || "—"} · 从 GitHub Release 获取更新
         </CardDescription>
       </CardHeader>
       <CardContent className="flex flex-wrap items-center gap-3">
@@ -231,6 +232,25 @@ export function UpdateSettings({ updates }: { updates: Updates }) {
         >
           <RefreshCw data-icon="inline-start" />
           检查更新
+        </Button>
+        <Button variant="ghost" asChild>
+          <a
+            href="https://github.com/ansermail/anser"
+            target="_blank"
+            rel="noopener noreferrer"
+            onClick={(event) => {
+              if (!updates.native) return;
+              event.preventDefault();
+              void invoke("open_mail_link", {
+                url: "https://github.com/ansermail/anser",
+              }).catch((error) =>
+                toast.error(`无法打开项目仓库：${String(error)}`),
+              );
+            }}
+          >
+            <Github data-icon="inline-start" />
+            项目仓库
+          </a>
         </Button>
         {updates.update && (
           <Button variant="ghost" onClick={() => updates.setOpen(true)}>

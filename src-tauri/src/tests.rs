@@ -801,6 +801,7 @@ fn older_snapshot_queries_default_to_all_read_states() {
 
 pub(super) fn draft() -> Compose {
     Compose {
+        signature: None,
         id: "draft-1".into(),
         account_id: account().id,
         to: "\"Doe, Alex\" <alex@example.com>".into(),
@@ -928,7 +929,7 @@ fn quoted_delivery_keeps_html_and_embedded_images_in_mime() {
         .unwrap();
     assert!(html_part.contains("<table>"));
     assert!(html_part.contains(".report{color:red}"));
-    assert!(html_part.contains("cid:yanxin-"));
+    assert!(html_part.contains("cid:anser-"));
     assert!(!html_part.contains("data:image/"));
     let images: Vec<_> = parts
         .iter()

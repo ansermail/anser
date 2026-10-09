@@ -7,6 +7,16 @@ export function ruleMatches(rule: Rule, mail: Mail): boolean {
   )
     return false;
   const results = rule.conditions.map((c) => {
+    if (
+      c.field === "body" &&
+      (mail.savedLocally === false ||
+        mail.parseWarnings?.some(
+          (w) =>
+            w.startsWith("text/plain 正文片段无法解码：") ||
+            w.startsWith("text/html 正文片段无法解码："),
+        ))
+    )
+      return false;
     if (c.field === "attachment")
       return mail.hasAttachments === (c.value !== "false");
     const values: Record<string, string> = {

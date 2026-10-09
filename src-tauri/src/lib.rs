@@ -1,10 +1,12 @@
 mod archive;
 mod archive_deletion;
 mod archive_jobs;
+mod archive_location;
 mod attachment_preview;
 mod auth;
 mod conversation;
 mod directory_operations;
+mod eml_files;
 mod folder_health;
 mod idle;
 mod models;
@@ -20,6 +22,7 @@ mod rule_runs;
 mod rules;
 mod scheduling;
 mod sent_uploads;
+mod signatures;
 mod store;
 mod sync_control;
 use models::*;
@@ -55,6 +58,21 @@ async fn restart_for_update(
     })
     .await
     .map_err(err)?
+}
+#[tauri::command]
+fn mail_signature(
+    state: tauri::State<AppState>,
+    account_id: String,
+) -> Result<signatures::MailSignature> {
+    state.store.mail_signature(&account_id)
+}
+#[tauri::command]
+fn save_mail_signature(
+    state: tauri::State<AppState>,
+    account_id: String,
+    signature: signatures::MailSignature,
+) -> Result<()> {
+    state.store.save_mail_signature(&account_id, &signature)
 }
 #[tauri::command]
 async fn snapshot(state: tauri::State<'_, AppState>, query: Query) -> Result<Snapshot> {
@@ -934,8 +952,31 @@ async fn restore_archive(state: tauri::State<'_, AppState>, path: String) -> Res
     .map_err(err)?
 }
 #[tauri::command]
+fn archive_location(state: tauri::State<AppState>) -> archive_location::LocationStatus {
+    state.store.archive_location()
+}
+#[tauri::command]
+async fn move_archive_location(
+    state: tauri::State<'_, AppState>,
+    parent: String,
+) -> Result<archive_location::LocationStatus> {
+    let store = state.store.clone();
+    tauri::async_runtime::spawn_blocking(move || store.move_archive_location(&parent))
+        .await
+        .map_err(err)?
+}
+#[tauri::command]
+async fn cleanup_archive_migration(
+    state: tauri::State<'_, AppState>,
+) -> Result<archive_location::LocationStatus> {
+    let store = state.store.clone();
+    tauri::async_runtime::spawn_blocking(move || store.cleanup_archive_migration())
+        .await
+        .map_err(err)?
+}
+#[tauri::command]
 fn open_data_folder(state: tauri::State<AppState>) -> Result<()> {
-    open::that(&state.store.root).map_err(err)
+    open::that(archive_location::physical_root(&state.store.root)?).map_err(err)
 }
 fn web_link(url: &str) -> Result<url::Url> {
     let parsed = url::Url::parse(url).map_err(err)?;
@@ -978,8 +1019,69 @@ fn window_state_flags() -> tauri_plugin_window_state::StateFlags {
     // Fullscreen is a separate macOS Space; preserve zoom/maximized only.
     StateFlags::SIZE | StateFlags::POSITION | StateFlags::MAXIMIZED
 }
+#[tauri::command]
+fn take_eml_paths(state: tauri::State<eml_files::EmlFiles>) -> Result<Vec<String>> {
+    state.take_pending()
+}
+#[tauri::command]
+async fn open_eml_file(
+    state: tauri::State<'_, eml_files::EmlFiles>,
+    path: String,
+) -> Result<eml_files::EmlDocument> {
+    let docs = state.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || docs.open(Path::new(&path)))
+        .await
+        .map_err(err)?
+}
+#[tauri::command]
+fn close_eml_file(state: tauri::State<eml_files::EmlFiles>, token: String) -> Result<()> {
+    state.close(&token)
+}
+#[tauri::command]
+async fn preview_eml_attachment(
+    state: tauri::State<'_, eml_files::EmlFiles>,
+    app: tauri::AppHandle,
+    token: String,
+    index: usize,
+) -> Result<()> {
+    let raw = state.raw(&token)?;
+    let cache = app
+        .path()
+        .app_cache_dir()
+        .map_err(err)?
+        .join("attachment-previews");
+    tauri::async_runtime::spawn_blocking(move || {
+        let path = attachment_preview::prepare(&cache, &raw, &eml_files::account(), index)?;
+        open::that(path).map_err(|e| format!("无法打开附件，请确认已安装对应应用：{e}"))
+    })
+    .await
+    .map_err(err)?
+}
+#[tauri::command]
+async fn save_eml_attachment(
+    state: tauri::State<'_, eml_files::EmlFiles>,
+    token: String,
+    index: usize,
+    path: String,
+) -> Result<()> {
+    let docs = state.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        docs.save_attachment(&token, index, Path::new(&path))
+    })
+    .await
+    .map_err(err)?
+}
+
+fn queue_eml_arguments(app: &tauri::AppHandle, args: Vec<String>, cwd: &Path) {
+    if let Some(docs) = app.try_state::<eml_files::EmlFiles>() {
+        docs.queue_args(args, cwd);
+        let _ = app.emit("eml-files-available", ());
+    }
+}
+
 pub fn run() {
     tauri::Builder::default()
+        .manage(eml_files::EmlFiles::default())
         .plugin(
             tauri::plugin::Builder::<tauri::Wry, ()>::new("mail-links")
                 .on_navigation(|webview, url| {
@@ -993,7 +1095,8 @@ pub fn run() {
                 })
                 .build(),
         )
-        .plugin(tauri_plugin_single_instance::init(|app, _, _| {
+        .plugin(tauri_plugin_single_instance::init(|app, args, cwd| {
+            queue_eml_arguments(app, args, Path::new(&cwd));
             show_main_window(app)
         }))
         .plugin(tauri_plugin_dialog::init())
@@ -1012,8 +1115,13 @@ pub fn run() {
                 .build(),
         )
         .setup(|app| {
+            queue_eml_arguments(
+                app.handle(),
+                std::env::args().skip(1).collect(),
+                &std::env::current_dir()?,
+            );
             // The standard plugin uses Terminal in dev mode. This preview already
-            // runs inside a real .app bundle, so retain Yanxin's own identity.
+            // runs inside a real .app bundle, so retain Anser's own identity.
             #[cfg(target_os = "macos")]
             let _ = notify_rust::set_application(&app.config().identifier);
             if std::env::args().any(|arg| arg == "--autostart") {
@@ -1118,7 +1226,14 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             restart_for_update,
+            take_eml_paths,
+            open_eml_file,
+            close_eml_file,
+            preview_eml_attachment,
+            save_eml_attachment,
             snapshot,
+            mail_signature,
+            save_mail_signature,
             account_folders,
             folder_settings,
             retention_settings,
@@ -1182,10 +1297,13 @@ pub fn run() {
             delete_local_archives,
             restore_archive,
             open_data_folder,
+            archive_location,
+            move_archive_location,
+            cleanup_archive_migration,
             open_mail_link
         ])
         .build(tauri::generate_context!())
-        .expect("failed to build Yanxin")
+        .expect("failed to build Anser")
         .run(|app, event| {
             if matches!(event, tauri::RunEvent::Ready)
                 && !std::env::args().any(|arg| arg == "--autostart")
@@ -1201,6 +1319,18 @@ pub fn run() {
                         app.package_info().version,
                         if visible { "已显示" } else { "尚未显示" }
                     ));
+                }
+            }
+            #[cfg(target_os = "macos")]
+            if let tauri::RunEvent::Opened { ref urls } = event {
+                if let Some(docs) = app.try_state::<eml_files::EmlFiles>() {
+                    for url in urls {
+                        if let Ok(path) = url.to_file_path() {
+                            docs.queue(path);
+                        }
+                    }
+                    let _ = app.emit("eml-files-available", ());
+                    show_main_window(app);
                 }
             }
             #[cfg(target_os = "macos")]

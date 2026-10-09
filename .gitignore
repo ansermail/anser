@@ -25,3 +25,5 @@ src-tauri/gen/
 *.pfx
 /archive/
 /backups/
+
+dist-preview/

@@ -7,6 +7,30 @@ export function composeFormat(draft: Compose): ComposeFormat {
   return draft.format || (draft.html ? "rich" : "plain");
 }
 
+export function hasDraftContent(draft: Compose): boolean {
+  if (
+    [
+      draft.to,
+      draft.cc,
+      draft.bcc,
+      draft.subject,
+      draft.body,
+      draft.source,
+    ].some((text) => !!text?.trim()) ||
+    draft.attachments.length ||
+    draft.quote ||
+    draft.replyAnchorId ||
+    draft.inReplyTo
+  )
+    return true;
+  if (!draft.html) return false;
+  if (htmlToText(draft.html).trim()) return true;
+  const doc = new DOMParser().parseFromString(draft.html, "text/html");
+  return !!doc.body.querySelector(
+    "img,video,audio,svg,canvas,object,embed,iframe,hr",
+  );
+}
+
 export function sanitizeComposeHtml(source: string) {
   return DOMPurify.sanitize(source, {
     WHOLE_DOCUMENT: true,
@@ -121,16 +145,45 @@ function quoteHeader(draft: Compose) {
   ].join("\n");
 }
 
+function withSignature(editor: Compose) {
+  if (!editor.signature?.included)
+    return { body: editor.body, html: editor.html || "" };
+  const signature = editor.signature;
+  const body = [editor.body, signature.body].filter(Boolean).join("\n\n");
+  if (!editor.html && !signature.html) return { body, html: "" };
+  const doc = new DOMParser().parseFromString(
+    sanitizeComposeHtml(editor.html || textToHtml(editor.body)),
+    "text/html",
+  );
+  const part = doc.createElement("div");
+  const content = new DOMParser().parseFromString(
+    sanitizeComposeHtml(signature.html || textToHtml(signature.body)),
+    "text/html",
+  );
+  for (const attribute of content.body.attributes)
+    part.setAttribute(attribute.name, attribute.value);
+  for (const style of content.head.querySelectorAll("style"))
+    doc.head.append(doc.importNode(style, true));
+  part.setAttribute("data-anser-signature", "true");
+  part.style.marginTop = "24px";
+  part.replaceChildren(
+    ...[...content.body.childNodes].map((n) => doc.importNode(n, true)),
+  );
+  doc.body.append(part);
+  return { body, html: sanitizeComposeHtml(doc.documentElement.outerHTML) };
+}
+
 // Preserve the editable text separately; scheduling/cancellation must not quote twice.
 export function prepareCompose(draft: Compose): Compose {
   const editor = prepareEditorCompose(draft);
-  const ownHtml = editor.html ? sanitizeComposeHtml(editor.html) : "";
+  const signed = withSignature(editor);
+  const ownHtml = signed.html ? sanitizeComposeHtml(signed.html) : "";
   if (!draft.quote?.included)
-    return { ...editor, deliveryBody: editor.body, deliveryHtml: ownHtml };
+    return { ...editor, deliveryBody: signed.body, deliveryHtml: ownHtml };
   const quote = draft.quote;
   const header = quoteHeader(draft);
   const deliveryBody = [
-    editor.body,
+    signed.body,
     header,
     quote.body || htmlToText(quote.html),
   ]
@@ -144,7 +197,7 @@ export function prepareCompose(draft: Compose): Compose {
     "text/html",
   );
   const authored = parser.parseFromString(
-    ownHtml || textToHtml(editor.body),
+    ownHtml || textToHtml(signed.body),
     "text/html",
   );
   const content = original.createElement("div");

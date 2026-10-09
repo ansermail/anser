@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   compileSource,
   composeFormat,
+  hasDraftContent,
   prepareCompose,
   prepareEditorCompose,
 } from "./compose-format";
@@ -115,5 +116,86 @@ describe("mail source formats", () => {
     expect(result.source).toBe("**回复内容**");
     expect(result.body).toBe("回复内容");
     expect(result.html).not.toContain("原文");
+  });
+});
+
+describe("account signatures", () => {
+  it("adds signature before the quote, preserves editable content and never doubles it", () => {
+    const draft = {
+      ...newDraft("a"),
+      body: "Reply text",
+      signature: {
+        accountId: "a",
+        included: true,
+        body: "Regards\nAlex",
+        html: '<p><b>Regards</b><br>Alex</p><img src="data:image/png;base64,aGVsbG8=">',
+      },
+      quote: {
+        kind: "reply" as const,
+        included: true,
+        sender: "other@example.com",
+        recipients: "",
+        date: "2026-10-01T00:00:00Z",
+        subject: "Example",
+        body: "Original",
+        html: "<p>Original</p>",
+      },
+    };
+    const result = prepareCompose(draft);
+    expect(result.body).toBe("Reply text");
+    expect(result.deliveryBody!.indexOf("Alex")).toBeLessThan(
+      result.deliveryBody!.indexOf("Original"),
+    );
+    expect(result.deliveryHtml).toContain("data-anser-signature");
+    expect(result.deliveryHtml).toContain("data:image/png;base64,aGVsbG8=");
+    expect(prepareCompose(result)).toEqual(result);
+    const excluded = prepareCompose({
+      ...result,
+      signature: { ...result.signature!, included: false },
+    });
+    expect(excluded.deliveryBody).not.toContain("Alex");
+    expect(excluded.deliveryHtml).not.toContain("data-anser-signature");
+  });
+  it("keeps a plain signature plain and escapes user markup in the HTML alternative", () => {
+    const draft = {
+      ...newDraft("a"),
+      body: "<Authored>",
+      signature: { accountId: "a", included: true, body: "<Name>", html: "" },
+    };
+    expect(prepareCompose(draft).deliveryBody).toBe("<Authored>\n\n<Name>");
+    expect(prepareCompose(draft).deliveryHtml).toBe("");
+    expect(
+      prepareCompose({ ...draft, html: "<p>Authored</p>" }).deliveryHtml,
+    ).toContain("&lt;Name&gt;");
+  });
+});
+describe("draft content detection", () => {
+  it("ignores the selected sender, automatic signature and empty rich text markup", () => {
+    const draft = newDraft("work");
+    draft.signature = {
+      accountId: "work",
+      included: true,
+      body: "Automatic signature",
+      html: "<p>Automatic signature</p>",
+    };
+    expect(hasDraftContent(draft)).toBe(false);
+    expect(
+      hasDraftContent({ ...draft, body: " \n\t ", html: "<p>&nbsp;<br></p>" }),
+    ).toBe(false);
+  });
+  it("preserves recipients, subject, attachments, visible HTML resources and reply context", () => {
+    const draft = newDraft("work");
+    for (const fields of [
+      { to: "recipient@example.com" },
+      { cc: "copy@example.com" },
+      { bcc: "hidden@example.com" },
+      { subject: "Subject" },
+      { body: "Content" },
+      { attachments: ["/test/attachment.txt"] },
+      { html: '<img src="data:image/png;base64,aA==">' },
+      { inReplyTo: "<reply@example.com>" },
+      { format: "html" as const, source: "<p></p>" },
+    ])
+      expect(hasDraftContent({ ...draft, ...fields })).toBe(true);
   });
 });

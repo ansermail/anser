@@ -115,3 +115,14 @@ describe("isolated folder feedback", () => {
     expect(host.textContent).toContain("保留 2 条旧来源");
   });
 });
+it("collapses isolated source details and reveals the existing probe controls on expansion", async () => {
+  await act(async () => root.render(<FolderHealthPanel defaultCollapsed />));
+  expect(probeButton()).toBeNull();
+  const trigger = host.querySelector(
+    '[aria-label="展开或收起目录来源检查"]',
+  ) as HTMLButtonElement;
+  expect(trigger.getAttribute("aria-expanded")).toBe("false");
+  await act(async () => trigger.click());
+  expect(host.textContent).toContain("保留 2 条旧来源");
+  expect(probeButton()).not.toBeNull();
+});

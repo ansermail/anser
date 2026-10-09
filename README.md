@@ -1,18 +1,22 @@
-# 雁信 Yanxin
+# Anser（雁信）
 
 **邮件，自在有序。**
 
 雁信是一款面向 macOS 的多账号邮件客户端。它将不同邮箱的邮件集中呈现，提供清晰的阅读与回复体验，并支持将完整邮件和附件独立保存在本机。
 
-[下载最新版本](https://github.com/yn-zxj/yanxin/releases/latest) · [使用说明](docs/USAGE.md) · [开发进度](docs/DEVELOPMENT_STATUS.md) · [反馈问题](https://github.com/yn-zxj/yanxin/issues)
+网页预览与桌面共用界面，相关代码推送到 `main` 后自动部署；只展示虚构邮箱，不能实际连接或收发邮件。
 
-> 当前版本为 **0.1.2 Alpha**，支持 Apple Silicon 与 Intel Mac。核心功能已实现，长期稳定性、部分服务商兼容性及完整发布验收仍在持续完善。
+[下载最新版本](https://github.com/ansermail/anser/releases/latest) · [界面预览](https://ansermail.github.io/anser/) · [使用说明](docs/USAGE.md) · [开发进度](docs/DEVELOPMENT_STATUS.md) · [反馈问题](https://github.com/ansermail/anser/issues)
+
+> 当前版本为 **0.1.6 Alpha**，支持 Apple Silicon 与 Intel Mac。核心功能已实现，长期稳定性、部分服务商兼容性及完整发布验收仍在持续完善。
 
 ![雁信的多账号收件箱与邮件阅读界面](docs/screenshots/inbox-demo.png)
 
 _所有展示截图均来自浏览器演示模式，使用项目内置的虚构账号和示例邮件，不包含真实邮箱信息。_
 
-开发版已增加“按对话 / 逐封邮件”显示方式切换和连续阅读到列表末尾时自动加载，可记住显示方式，并增加了服务器已发送副本保存与结果核对；这些功能将在后续版本发布。具体完成项与待办见[开发进度](docs/DEVELOPMENT_STATUS.md)。
+[在线界面预览](https://ansermail.github.io/anser/)使用虚构邮件，可阅读、搜索、切换主题和调整分栏；不连接真实邮箱、不保存邮件或发送消息。正式桌面包隐藏示例邮箱入口。
+
+0.1.6 已包含按账号设置的邮件签名、可选择的存档保存位置、EML 文件查看和设置页整理，并保留“按对话 / 逐封邮件”切换、连续阅读及服务器已发送副本核对。具体完成项与待办见[开发进度](docs/DEVELOPMENT_STATUS.md)。
 
 ## 主要功能
 
@@ -41,7 +45,7 @@ _所有展示截图均来自浏览器演示模式，使用项目内置的虚构�
 
 ## 下载与安装
 
-1. 前往 [GitHub Releases](https://github.com/yn-zxj/yanxin/releases/latest) 下载 DMG。
+1. 前往 [GitHub Releases](https://github.com/ansermail/anser/releases/latest) 下载 DMG。
 2. Apple Silicon Mac 选择文件名含 `aarch64` 的版本；Intel Mac 选择含 `x86_64` 的版本。
 3. 打开 DMG，将「雁信」拖入「应用程序」，再启动应用。
 4. 添加邮箱账号，按服务商要求填写密码、授权码或 OAuth 配置。

@@ -1,5 +1,6 @@
 @import "tailwindcss";
 @import "tw-animate-css";
+@source "./";
 @custom-variant dark (&:is(.dark *));
 @theme inline {
   --color-background: var(--background);
@@ -3190,4 +3191,76 @@ kbd {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.settings-workspace {
+  --settings-card-gap: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: var(--settings-card-gap);
+}
+.settings-workspace > .panel-heading {
+  margin-bottom: 0;
+}
+.settings-workspace .settings-accounts,
+.settings-workspace .storage-tools {
+  gap: var(--settings-card-gap);
+  margin: 0;
+}
+.settings-workspace .storage-card,
+.settings-workspace .info-strip {
+  margin: 0;
+}
+.settings-section-divider {
+  margin-block: 8px;
+}
+
+.preview-shell {
+  min-width: 980px;
+}
+.preview-sidebar {
+  background: var(--sidebar);
+}
+
+.mail-signature-layout {
+  container: signature-settings / inline-size;
+}
+.mail-signature-columns {
+  display: grid;
+  grid-template-columns: minmax(220px, 260px) minmax(0, 1fr);
+  gap: 28px;
+  align-items: start;
+}
+.mail-signature-content {
+  min-width: 0;
+  container: signature-content / inline-size;
+}
+.signature-editor-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 20px;
+  align-items: start;
+}
+.signature-editor-grid.has-preview {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+.signature-editor-area,
+.signature-preview-frame {
+  height: 320px;
+  min-height: 320px;
+  max-height: 320px;
+}
+.signature-editor-area {
+  resize: none;
+  overflow-y: auto;
+}
+@container signature-content (max-width: 620px) {
+  .signature-editor-grid.has-preview {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+@container signature-settings (max-width: 650px) {
+  .mail-signature-columns {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }

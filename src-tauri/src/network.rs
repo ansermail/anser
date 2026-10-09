@@ -137,7 +137,7 @@ fn imap_session_using<T: std::io::Read + Write>(
     }?;
     if a.provider == "netease" || a.provider == "neteaseWork" {
         let _ = session.run_command_and_check_ok(concat!(
-            "ID (\"name\" \"Yanxin\" \"version\" \"",
+            "ID (\"name\" \"Anser\" \"version\" \"",
             env!("CARGO_PKG_VERSION"),
             "\")"
         ));
@@ -1150,7 +1150,7 @@ fn inline_images(html: &str) -> Result<(String, Vec<SinglePart>, usize)> {
         if total > 50 * 1024 * 1024 {
             return Err("开发版单封附件总大小上限为 50 MB".into());
         }
-        let cid = format!("yanxin-{}@local", uuid::Uuid::new_v4());
+        let cid = format!("anser-{}@local", uuid::Uuid::new_v4());
         output = output.replace(source, &format!("cid:{cid}"));
         let encoded = Body::new_with_encoding(bytes, ContentTransferEncoding::Base64)
             .map_err(|_| "内嵌图片编码失败")?;
@@ -1165,7 +1165,7 @@ pub(crate) fn build_message(a: &Account, c: &Compose) -> Result<Message> {
         .message_id(Some(format!(
             "<{}@{}>",
             archive::digest(format!("{}\0{}", a.id, c.id).as_bytes()),
-            a.email.rsplit('@').next().unwrap_or("yanxin.local")
+            a.email.rsplit('@').next().unwrap_or("anser.local")
         )))
         .subject(&c.subject);
     if !c.in_reply_to.is_empty() {

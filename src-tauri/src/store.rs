@@ -102,7 +102,12 @@ impl Store {
         crate::archive_jobs::initialize(&db)?;
         crate::rule_runs::initialize(&db)?;
         s.migrate_folder_roles()?;
-        s.recover_archive_deletion()?;
+        if let Err(error) = s.cleanup_archive_migration() {
+            s.log(&format!("存档迁移清理待完成：{error}"))?;
+        }
+        if crate::archive_location::physical_root(&s.root).is_ok() {
+            s.recover_archive_deletion()?;
+        }
         s.refresh_archive_metadata()?;
         Ok(s)
     }
@@ -735,7 +740,7 @@ impl Store {
             folders,
             stats,
             logs,
-            data_dir: self.root.to_string_lossy().into(),
+            data_dir: crate::archive_location::display_path(&self.root),
             matched,
             remote_folders: self.remote_folders(None)?,
         })

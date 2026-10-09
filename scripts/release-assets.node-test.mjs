@@ -14,16 +14,23 @@ function fixture(t) {
     JSON.stringify({
       version: "1.2.3",
       identifier: "dev.maildesk.desktop",
-      plugins: { updater: { pubkey: "test-public-key" } },
+      plugins: {
+        updater: {
+          pubkey: "test-public-key",
+          endpoints: [
+            "https://github.com/ansermail/anser/releases/latest/download/latest.json",
+          ],
+        },
+      },
     }),
   );
   fs.writeFileSync(
     path.join(root, "package.json"),
-    JSON.stringify({ version: "1.2.3" }),
+    JSON.stringify({ name: "anser", version: "1.2.3" }),
   );
   fs.writeFileSync(
     path.join(root, "src-tauri/Cargo.toml"),
-    '[package]\nversion = "1.2.3"\n',
+    '[package]\nname = "anser"\nversion = "1.2.3"\n',
   );
   fs.writeFileSync(path.join(root, "docs/releases/v1.2.3.md"), "Release notes");
   return root;
@@ -43,12 +50,12 @@ test("manifest requires both CPU packages and signatures before publication", (t
   assert.throws(() => manifest(out, root));
   for (const arch of ["aarch64", "x86_64"]) {
     fs.writeFileSync(
-      path.join(out, `Yanxin_1.2.3_${arch}.app.tar.gz`),
+      path.join(out, `Anser_1.2.3_${arch}.app.tar.gz`),
       "archive",
     );
-    fs.writeFileSync(path.join(out, `Yanxin_1.2.3_${arch}.dmg`), "installer");
+    fs.writeFileSync(path.join(out, `Anser_1.2.3_${arch}.dmg`), "installer");
     fs.writeFileSync(
-      path.join(out, `Yanxin_1.2.3_${arch}.app.tar.gz.sig`),
+      path.join(out, `Anser_1.2.3_${arch}.app.tar.gz.sig`),
       `signature-${arch}`,
     );
   }
@@ -60,6 +67,16 @@ test("manifest requires both CPU packages and signatures before publication", (t
   assert.equal(m.platforms["darwin-aarch64"].signature, "signature-aarch64");
   assert.match(
     m.platforms["darwin-x86_64"].url,
-    /releases\/download\/v1.2.3\/Yanxin_1.2.3_x86_64.app.tar.gz$/,
+    /releases\/download\/v1.2.3\/Anser_1.2.3_x86_64.app.tar.gz$/,
   );
+});
+test("release cannot silently ship the legacy repository update endpoint", (t) => {
+  const root = fixture(t);
+  const file = path.join(root, "src-tauri/tauri.conf.json");
+  const config = JSON.parse(fs.readFileSync(file));
+  config.plugins.updater.endpoints = [
+    "https://github.com/yn-zxj/yanxin/releases/latest/download/latest.json",
+  ];
+  fs.writeFileSync(file, JSON.stringify(config));
+  assert.throws(() => validateVersion(root), /organization repository/);
 });
