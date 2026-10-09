@@ -44,14 +44,28 @@ impl Store {
     }
     pub fn apply_remote_rule(&self, rule: &Rule, mail: &Mail, retry: bool) -> Result<bool> {
         rules::validate(rule)?;
-        if !rules::remote(rule) || !rules::matches(rule, mail) {
+        if !rules::remote(rule)
+            || rules::match_state(rule, mail, rules::body_available(&mail))
+                != rules::MatchState::Match
+        {
             return Err("邮件不匹配此服务器规则".into());
         }
-        let frozen = fingerprint(rule)?;
         let mut db = self.db()?;
         let tx = db
             .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
             .map_err(err)?;
+        let result = Self::apply_remote_rule_in(&tx, rule, mail, retry)?;
+        tx.commit().map_err(err)?;
+        Ok(result)
+    }
+    pub(crate) fn apply_remote_rule_in(
+        tx: &rusqlite::Connection,
+        rule: &Rule,
+        mail: &Mail,
+        retry: bool,
+    ) -> Result<bool> {
+        rules::validate(rule)?;
+        let frozen = fingerprint(rule)?;
         let has_source: bool = tx.query_row("SELECT EXISTS(SELECT 1 FROM sources WHERE account_id=?1 AND mail_id=?2 AND folder=?3 AND active=1)",params![mail.account_id,mail.id,rule.source_folder],|r|r.get(0)).map_err(err)?;
         let existing: Option<(String, Option<String>, String)> = tx.query_row("SELECT id,operation_id,status FROM rule_executions WHERE rule_id=?1 AND mail_id=?2 AND fingerprint=?3",params![rule.id,mail.id,frozen],|r|Ok((r.get(0)?,r.get(1)?,r.get(2)?))).optional().map_err(err)?;
         if !has_source {
@@ -123,7 +137,6 @@ impl Store {
             updated_at: chrono::Utc::now().to_rfc3339(),
         };
         tx.execute("INSERT INTO rule_executions(id,rule_id,mail_id,fingerprint,rule_data,data,operation_id,status,error,updated_at) VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,?10) ON CONFLICT(rule_id,mail_id,fingerprint) DO UPDATE SET operation_id=excluded.operation_id,status=excluded.status,error=excluded.error,updated_at=excluded.updated_at",params![execution.id,rule.id,mail.id,frozen,serde_json::to_string(rule).map_err(err)?,serde_json::to_string(&execution).map_err(err)?,operation_id,status,error,execution.updated_at]).map_err(err)?;
-        tx.commit().map_err(err)?;
         Ok(true)
     }
     pub fn retry_rule_execution(&self, id: &str) -> Result<()> {

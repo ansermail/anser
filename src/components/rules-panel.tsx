@@ -31,6 +31,7 @@ import { toast } from "sonner";
 import { SelectGroup } from "./ui/select";
 import { RuleServerFolders } from "./rule-server-folders";
 import { RuleExecutions } from "./rule-executions";
+import { RuleRunsPanel } from "./rule-runs";
 
 const fields: { [key: string]: string } = {
   sender: "发件人",
@@ -42,6 +43,8 @@ const fields: { [key: string]: string } = {
 };
 const actions: { [key: string]: string } = {
   folder: "归入本地文件夹",
+  save: "完整保存到本地",
+  saveFolder: "完整保存并归入本地文件夹",
   read: "标记为已读",
   unread: "标记为未读",
   star: "添加星标",
@@ -105,7 +108,9 @@ export function RulesPanel({
     setBusy(true);
     try {
       const n = await call<number>("run_rules");
-      toast.success(`规则已处理，共匹配 ${n} 次；服务器动作结果见执行记录`);
+      toast.success(
+        `已处理或安排 ${n} 项规则；异步结果见规则处理任务和执行记录`,
+      );
       onChange();
     } catch (e) {
       toast.error(String(e));
@@ -196,7 +201,9 @@ export function RulesPanel({
                   <MailCheck size={14} />
                 )}{" "}
                 {actions[r.action]}{" "}
-                {r.action === "folder" && <strong>{r.destination}</strong>}
+                {["folder", "saveFolder"].includes(r.action) && (
+                  <strong>{r.destination}</strong>
+                )}
               </div>
             </div>
             <div className="rule-controls">
@@ -255,6 +262,7 @@ export function RulesPanel({
         无需保持邮箱网页打开。雁信在这台 Mac 上运行时，会自动处理新收到的邮件。
       </div>
       <RuleExecutions onShowTasks={onShowTasks} />
+      <RuleRunsPanel onShowTasks={onShowTasks} />
       <Dialog
         open={!!editing}
         onOpenChange={(v) => {
@@ -376,11 +384,7 @@ export function RulesPanel({
                     >
                       <SelectGroup>
                         {Object.entries(fields).map(([k, v]) => (
-                          <SelectOption
-                            key={k}
-                            value={k}
-                            disabled={remote(editing) && k === "body"}
-                          >
+                          <SelectOption key={k} value={k}>
                             {v}
                           </SelectOption>
                         ))}
@@ -504,7 +508,7 @@ export function RulesPanel({
                   onChange={setEditing}
                 />
               )}
-              {editing.action === "folder" && (
+              {["folder", "saveFolder"].includes(editing.action) && (
                 <div className="field">
                   <Label>本地文件夹</Label>
                   <Input
@@ -541,7 +545,8 @@ export function RulesPanel({
               </Button>
               {preview && (
                 <div className="rule-preview">
-                  本次预览匹配 {preview.length} 封
+                  本次预览 {preview.length}{" "}
+                  项；标注“等待正文核对”的条目尚未确认匹配。
                   {preview.slice(0, 3).map((s, i) => (
                     <p key={i}>{s}</p>
                   ))}
@@ -577,7 +582,6 @@ export function RulesPanel({
                   disabled={
                     remote(editing) &&
                     (!editing.accountId ||
-                      editing.conditions.some((c) => c.field === "body") ||
                       !editing.sourceFolder ||
                       !editing.destination ||
                       !data.accounts.some(

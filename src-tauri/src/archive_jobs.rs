@@ -46,7 +46,7 @@ fn decode(row: &rusqlite::Row<'_>) -> rusqlite::Result<ArchiveJob> {
     Ok(job)
 }
 const COLUMNS: &str = "data,status,revision,error,updated_at";
-fn proof(db: &rusqlite::Connection, job: &ArchiveJob) -> Result<(Account, Mail)> {
+pub(crate) fn proof(db: &rusqlite::Connection, job: &ArchiveJob) -> Result<(Account, Mail)> {
     let data: String = db
         .query_row(
             "SELECT data FROM accounts WHERE id=?1",
@@ -149,7 +149,7 @@ impl Store {
         tx.commit().map_err(err)?;
         Ok(result)
     }
-    fn queue_archive_in(tx: &rusqlite::Connection, id: &str) -> Result<&'static str> {
+    pub(crate) fn queue_archive_in(tx: &rusqlite::Connection, id: &str) -> Result<&'static str> {
         let data: String = tx
             .query_row("SELECT data FROM messages WHERE id=?1", [id], |r| r.get(0))
             .map_err(err)?;
@@ -258,6 +258,26 @@ impl Store {
         let tx = db
             .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
             .map_err(err)?;
+        self.complete_archive_in(&tx, job, raw)?;
+        tx.commit().map_err(err)
+    }
+    pub(crate) fn archive_job_for_mail_in(
+        db: &rusqlite::Connection,
+        id: &str,
+    ) -> Result<ArchiveJob> {
+        db.query_row(
+            &format!("SELECT {COLUMNS} FROM archive_jobs WHERE mail_id=?1"),
+            [id],
+            decode,
+        )
+        .map_err(err)
+    }
+    pub(crate) fn complete_archive_in(
+        &self,
+        tx: &rusqlite::Connection,
+        job: &ArchiveJob,
+        raw: &[u8],
+    ) -> Result<()> {
         let current = tx
             .query_row(
                 &format!("SELECT {COLUMNS} FROM archive_jobs WHERE id=?1"),
@@ -334,7 +354,7 @@ impl Store {
             params![job.id, chrono::Utc::now().to_rfc3339()],
         )
         .map_err(err)?;
-        tx.commit().map_err(err)
+        Ok(())
     }
     fn fail_archive(&self, job: &ArchiveJob, error: &str) -> Result<()> {
         self.db()?.execute("UPDATE archive_jobs SET status='blocked',error=?3,updated_at=?4 WHERE id=?1 AND revision=?2 AND status='running'",params![job.id,job.revision,error,chrono::Utc::now().to_rfc3339()]).map_err(err)?;

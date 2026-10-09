@@ -111,6 +111,8 @@ pub struct Mail {
     pub local_folder: String,
     pub trashed: bool,
     pub has_attachments: bool,
+    #[serde(default)]
+    pub attachment_metadata_known: bool,
     pub hash: String,
     pub size: u64,
     pub saved_at: String,

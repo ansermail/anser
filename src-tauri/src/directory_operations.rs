@@ -112,6 +112,18 @@ fn check(db: &rusqlite::Connection, op: &DirectoryOperation) -> Result<Account> 
     if !a.enabled || a.protocol != "imap" || operations::identity(&a) != op.identity {
         return Err("账号已暂停或连接配置已变化，请重新收取后操作".into());
     }
+    if op.kind == "move"
+        && matches!(
+            op.status.as_str(),
+            "queued" | "preparing" | "cleanup_pending" | "cleanup_running"
+        )
+        && crate::retention::effective_save(db, &a, &op.folder)?
+    {
+        let saved:bool=db.query_row("SELECT COALESCE(json_extract(data,'$.savedLocally'),1)=1 FROM messages WHERE id=?1",[&op.mail_id],|r|r.get(0)).map_err(err)?;
+        if !saved {
+            return Err("来源目录要求完整保存，请先完成本地保存后再移动".into());
+        }
+    }
     for folder in [&op.folder, &op.target] {
         let isolated: bool = db
             .query_row(
@@ -387,8 +399,8 @@ impl Store {
         Ok(self
             .db()?
             .execute(
-                "UPDATE directory_operations SET status=?3 WHERE id=?1 AND status=?2",
-                params![op.id, op.status, next],
+                "UPDATE directory_operations SET status=?3 WHERE id=?1 AND status=?2 AND (?4=0 OR NOT EXISTS(SELECT 1 FROM rule_runs WHERE mail_id=?5 AND status NOT IN ('completed','cancelled')))",
+                params![op.id, op.status, next,op.kind=="move" && matches!(op.status.as_str(),"queued"|"cleanup_pending"),op.mail_id],
             )
             .map_err(err)?
             == 1)
@@ -412,6 +424,9 @@ impl Store {
             .map_err(err)?;
         check(&tx, op)?;
         check_other_move(&tx, op)?;
+        if op.kind == "move" && Self::rule_blocks_move(&tx, &op.mail_id)? {
+            return Err("规则尚未完成正文核对或保存，未提交移动".into());
+        }
         if compatibility && op.kind != "move" {
             return Err("兼容移动类型无效".into());
         }
@@ -444,6 +459,16 @@ impl Store {
             || current.content_hash.is_empty()
         {
             return Err("缺少已保存的目标回执，不能移除原目录邮件".into());
+        }
+        if Self::rule_blocks_move(&tx, &current.mail_id)? {
+            return Err("规则尚未完成正文核对或保存，未移除原目录".into());
+        }
+        let a = check(&tx, &current)?;
+        if crate::retention::effective_save(&tx, &a, &current.folder)? {
+            let saved:bool=tx.query_row("SELECT COALESCE(json_extract(data,'$.savedLocally'),1)=1 FROM messages WHERE id=?1",[&current.mail_id],|r|r.get(0)).map_err(err)?;
+            if !saved {
+                return Err("请先完成本地保存，未移除原目录".into());
+            }
         }
         let receipt = current.receipt.as_ref().unwrap();
         if current.content_hash != op.content_hash

@@ -12,12 +12,15 @@ pub fn validate(rule: &Rule) -> Result<()> {
             "trash",
             "serverCopy",
             "serverMove",
+            "save",
+            "saveFolder",
         ]
         .contains(&rule.action.as_str())
     {
         return Err("无效的规则配置".into());
     }
-    if rule.action == "folder" && rule.destination.trim().is_empty() {
+    if matches!(rule.action.as_str(), "folder" | "saveFolder") && rule.destination.trim().is_empty()
+    {
         return Err("请输入本地目标文件夹".into());
     }
     if remote(rule)
@@ -32,9 +35,6 @@ pub fn validate(rule: &Rule) -> Result<()> {
         return Err("服务器规则需要指定账号、来源目录和不同的目标目录".into());
     }
     for c in &rule.conditions {
-        if remote(rule) && c.field == "body" {
-            return Err("服务器动作暂不支持正文条件，请先使用主题、发件人等条件".into());
-        }
         if ![
             "sender",
             "recipients",
@@ -95,4 +95,59 @@ pub fn matches(rule: &Rule, mail: &Mail) -> bool {
 
 pub fn remote(rule: &Rule) -> bool {
     matches!(rule.action.as_str(), "serverCopy" | "serverMove")
+}
+pub fn saves(rule: &Rule) -> bool {
+    matches!(rule.action.as_str(), "save" | "saveFolder")
+}
+pub fn body_decode_failed(mail: &Mail) -> bool {
+    mail.parse_warnings.iter().any(|warning| {
+        warning.starts_with("text/plain 正文片段无法解码：")
+            || warning.starts_with("text/html 正文片段无法解码：")
+    })
+}
+pub fn body_available(mail: &Mail) -> bool {
+    mail.saved_locally && !body_decode_failed(mail)
+}
+#[derive(Debug, PartialEq, Eq)]
+pub enum MatchState {
+    Match,
+    NoMatch,
+    NeedsBody,
+}
+pub fn match_state(rule: &Rule, mail: &Mail, body_available: bool) -> MatchState {
+    if !rule.enabled
+        || rule.conditions.is_empty()
+        || (!rule.account_id.is_empty() && rule.account_id != mail.account_id)
+    {
+        return MatchState::NoMatch;
+    }
+    let mut unknown = false;
+    for condition in &rule.conditions {
+        if (condition.field == "body" && !body_available)
+            || (condition.field == "attachment"
+                && !body_available
+                && !mail.attachment_metadata_known
+                && !mail.has_attachments)
+        {
+            unknown = true;
+            continue;
+        }
+        let mut one = rule.clone();
+        one.mode = "all".into();
+        one.conditions = vec![condition.clone()];
+        let matched = matches(&one, mail);
+        if rule.mode == "all" && !matched {
+            return MatchState::NoMatch;
+        }
+        if rule.mode == "any" && matched {
+            return MatchState::Match;
+        }
+    }
+    if unknown {
+        MatchState::NeedsBody
+    } else if rule.mode == "all" {
+        MatchState::Match
+    } else {
+        MatchState::NoMatch
+    }
 }

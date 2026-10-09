@@ -16,6 +16,7 @@ mod realtime;
 mod remote;
 mod retention;
 mod rule_operations;
+mod rule_runs;
 mod rules;
 mod scheduling;
 mod sent_uploads;
@@ -197,6 +198,24 @@ async fn rule_executions(
 ) -> Result<Vec<rule_operations::RuleExecution>> {
     let store = state.store.clone();
     tauri::async_runtime::spawn_blocking(move || store.rule_executions())
+        .await
+        .map_err(err)?
+}
+#[tauri::command]
+async fn rule_runs(state: tauri::State<'_, AppState>) -> Result<Vec<rule_runs::RuleRunView>> {
+    let store = state.store.clone();
+    tauri::async_runtime::spawn_blocking(move || store.rule_runs())
+        .await
+        .map_err(err)?
+}
+#[tauri::command]
+async fn rule_run_action(
+    state: tauri::State<'_, AppState>,
+    id: String,
+    action: String,
+) -> Result<()> {
+    let store = state.store.clone();
+    tauri::async_runtime::spawn_blocking(move || store.rule_run_action(&id, &action))
         .await
         .map_err(err)?
 }
@@ -1017,6 +1036,7 @@ pub fn run() {
             directory_operations::start(store.clone(), app.handle().clone());
             sent_uploads::start(store.clone(), app.handle().clone());
             archive_jobs::start(store.clone(), app.handle().clone());
+            rule_runs::start(store.clone(), app.handle().clone());
             let menu = tauri::menu::Menu::default(app.handle())?;
             app.set_menu(menu)?;
             tauri::tray::TrayIconBuilder::new()
@@ -1123,6 +1143,8 @@ pub fn run() {
             retry_server_operation,
             save_rules,
             rule_executions,
+            rule_runs,
+            rule_run_action,
             retry_rule_execution,
             preview_rule,
             run_rules,

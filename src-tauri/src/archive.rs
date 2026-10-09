@@ -315,6 +315,11 @@ pub fn parse(
         local_folder: "全部存档".into(),
         trashed: false,
         has_attachments: !attachments.is_empty(),
+        attachment_metadata_known: account.save_locally
+            || raw
+                .windows(4)
+                .position(|p| p == b"\r\n\r\n")
+                .is_some_and(|p| p + 4 < raw.len()),
         hash: digest(raw),
         size: raw.len() as u64,
         saved_at: now,

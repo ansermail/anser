@@ -100,6 +100,7 @@ impl Store {
         crate::rule_operations::initialize(&db)?;
         crate::retention::initialize(&db)?;
         crate::archive_jobs::initialize(&db)?;
+        crate::rule_runs::initialize(&db)?;
         s.migrate_folder_roles()?;
         s.recover_archive_deletion()?;
         s.refresh_archive_metadata()?;
@@ -271,6 +272,7 @@ impl Store {
         tx.execute("DELETE FROM folder_retention WHERE account_id=?1", [id])
             .map_err(err)?;
         tx.execute("UPDATE archive_jobs SET status='cancelled',revision=revision+1,error='账号已移除，本地存档保留' WHERE json_extract(data,'$.accountId')=?1 AND status!='completed'",[id]).map_err(err)?;
+        crate::rule_runs::cancel_account_in(&tx, id)?;
         tx.execute("UPDATE server_operations SET status='blocked',revision=revision+1,error='账号已移除，本地存档保留' WHERE account_id=?1 AND status!='completed'", [id]).map_err(err)?;
         tx.execute("DELETE FROM accounts WHERE id=?1", [id])
             .map_err(err)?;
@@ -302,6 +304,16 @@ impl Store {
             )
             .map_err(err)?;
         }
+        let hash = crate::rule_runs::configuration(rs)?;
+        let ids = {
+            let mut q = tx.prepare("SELECT id FROM rule_runs WHERE status NOT IN ('completed','cancelled') AND json_extract(data,'$.configuration')!=?1").map_err(err)?;
+            let rows = q
+                .query_map([hash], |row| row.get::<_, String>(0))
+                .map_err(err)?;
+            rows.collect::<std::result::Result<Vec<_>, _>>()
+                .map_err(err)?
+        };
+        crate::rule_runs::cancel_in(&tx, &ids)?;
         tx.commit().map_err(err)
     }
     pub fn mail(&self, id: &str) -> Result<Mail> {
@@ -469,18 +481,44 @@ impl Store {
         configured: &[Rule],
         remote_only: bool,
     ) -> Result<u32> {
+        if Self::rule_blocks_move(&self.db()?, &m.id)? {
+            return Ok(0);
+        }
         if m.saved_locally && !remote_only {
             archive::read_raw(&self.root, &m.hash)?;
         }
         let mut count = 0;
-        for r in configured {
+        for (position, r) in configured.iter().enumerate() {
+            let state = rules::match_state(r, &m, rules::body_available(&m));
+            if state == rules::MatchState::NeedsBody
+                && (!remote_only || rules::remote(r) || rules::saves(r) || r.stop)
+            {
+                self.defer_rules(&m, configured, position, remote_only)?;
+                count += 1;
+                break;
+            }
             if remote_only && !rules::remote(&r) {
-                if rules::matches(&r, &m) && r.stop {
+                if state == rules::MatchState::Match && rules::saves(r) && !m.saved_locally {
+                    self.defer_rules(&m, configured, position, remote_only)?;
+                    count += 1;
+                    break;
+                }
+                if state == rules::MatchState::Match && r.stop {
                     break;
                 }
                 continue;
             }
-            if rules::matches(&r, &m) {
+            if state == rules::MatchState::Match {
+                if (rules::saves(r)
+                    || (r.action == "serverMove"
+                        && self
+                            .should_save_folder(&self.account(&m.account_id)?, &r.source_folder)?))
+                    && !m.saved_locally
+                {
+                    self.defer_rules(&m, configured, position, remote_only)?;
+                    count += 1;
+                    break;
+                }
                 if rules::remote(&r) {
                     if self.apply_remote_rule(&r, &m, false)? {
                         count += 1;
@@ -494,6 +532,8 @@ impl Store {
                 }
                 match r.action.as_str() {
                     "folder" => m.local_folder = r.destination.clone(),
+                    "saveFolder" => m.local_folder = r.destination.clone(),
+                    "save" => {}
                     "read" => {
                         m.is_read = true;
                         m.local_read_override = Some(true);
@@ -541,7 +581,7 @@ impl Store {
             )
             .map_err(err)?;
         }
-        tx.execute("DELETE FROM messages WHERE account_id=?1 AND json_extract(data,'$.savedLocally')=0 AND NOT EXISTS(SELECT 1 FROM sources WHERE mail_id=messages.id AND active=1) AND NOT EXISTS(SELECT 1 FROM directory_operations d WHERE d.account_id=messages.account_id AND json_extract(d.data,'$.mailId')=messages.id AND d.status NOT IN ('completed','cancelled'))", [account]).map_err(err)?;
+        tx.execute("DELETE FROM messages WHERE account_id=?1 AND json_extract(data,'$.savedLocally')=0 AND NOT EXISTS(SELECT 1 FROM sources WHERE mail_id=messages.id AND active=1) AND NOT EXISTS(SELECT 1 FROM rule_runs r WHERE r.mail_id=messages.id AND r.status NOT IN ('completed','cancelled')) AND NOT EXISTS(SELECT 1 FROM directory_operations d WHERE d.account_id=messages.account_id AND json_extract(d.data,'$.mailId')=messages.id AND d.status NOT IN ('completed','cancelled'))", [account]).map_err(err)?;
         tx.commit().map_err(err)
     }
     pub fn preview_rule(&self, rule: &Rule) -> Result<Vec<String>> {
@@ -553,10 +593,15 @@ impl Store {
         let mut matches = Vec::new();
         for row in q.query_map([], |r| r.get::<_, String>(0)).map_err(err)? {
             let m: Mail = serde_json::from_str(&row.map_err(err)?).map_err(err)?;
-            if rules::matches(&rule, &m)
+            let state = rules::match_state(&rule, &m, rules::body_available(&m));
+            if state != rules::MatchState::NoMatch
                 && (!rules::remote(&rule) || self.rule_has_source(&rule, &m)?)
             {
-                matches.push(m.subject);
+                matches.push(if state == rules::MatchState::NeedsBody {
+                    format!("{}（等待正文核对）", m.subject)
+                } else {
+                    m.subject
+                });
             }
         }
         Ok(matches)
@@ -591,7 +636,10 @@ impl Store {
         let mut n = 0;
         for data in candidates {
             let mail: Mail = serde_json::from_str(&data).map_err(err)?;
-            if configured.iter().any(|rule| rules::matches(rule, &mail)) {
+            if configured.iter().any(|rule| {
+                rules::match_state(rule, &mail, rules::body_available(&mail))
+                    != rules::MatchState::NoMatch
+            }) {
                 // Load the current full record only for candidates. Conditions
                 // and stop ordering are evaluated again before any mutation.
                 n += self.apply_configured_rules(self.mail(&mail.id)?, &configured, false)?;
@@ -843,7 +891,7 @@ impl Store {
             )?;
         }
         drop(stmt);
-        snap.execute_batch("DELETE FROM accounts; DELETE FROM folder_retention; DELETE FROM archive_jobs; DELETE FROM drafts; DELETE FROM outbox; DELETE FROM sent_uploads; DELETE FROM logs; DELETE FROM server_operations; DELETE FROM folder_health; DELETE FROM directory_operations; DELETE FROM rule_executions; VACUUM;").map_err(err)?;
+        snap.execute_batch("DELETE FROM accounts; DELETE FROM folder_retention; DELETE FROM archive_jobs; DELETE FROM rule_runs; DELETE FROM drafts; DELETE FROM outbox; DELETE FROM sent_uploads; DELETE FROM logs; DELETE FROM server_operations; DELETE FROM folder_health; DELETE FROM directory_operations; DELETE FROM rule_executions; VACUUM;").map_err(err)?;
         archive::atomic_write(
             &folder.join("manifest.json"),
             br#"{"format":"mail-desktop-archive","version":1}"#,
