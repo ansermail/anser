@@ -65,3 +65,9 @@
 v0.1.5 已在 ansermail/anser 正式发布为 latest。Checks 与 Release macOS 全部通过，Apple Silicon 与 Intel 的 DMG、更新归档、签名和统一清单均核验。公开 latest 端点已可读取；应用标识与更新公钥沿用原值。详细运行、签名和存档证据见 DEVELOPMENT_STATUS.md。
 
 旧个人仓库地址不会因克隆自动重定向；旧安装包迁移和新正式包原位更新矩阵仍待验收，不以开发实例显示新版本代替。
+
+## 独立界面预览
+
+公开地址为 https://ansermail.github.io/anser/ 。组织仓库 Pages 使用 GitHub Actions 发布源，`.github/workflows/preview.yml` 在 main 的前端相关变更后构建并部署，也支持手动启动。`npm run build:preview` 生成 `dist-preview`，仅包含虚构示例与展示组件，不包含真实账号连接、桌面命令或发信接口。
+
+本地检查可运行 `npx vite preview --mode preview --host 127.0.0.1 --port 4174`，访问 `http://127.0.0.1:4174/anser/`。Pages 发布与桌面 Release 独立；网页部署成功不表示新版桌面包已发布。
