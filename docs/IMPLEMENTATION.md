@@ -495,3 +495,11 @@ QQ 的 literal 前精确拒绝 `Mail has saved by smtp!` 不表示副本已核�
 IDLE 60 秒绝对周期结束并确认 DONE 后在选中会话发 NOOP，重复 keepalive 不续期；NOOP 再有独立 45 秒响应截止及 RAII 清理，持续非终结响应也需退出。回调在 tagged 确认前可排队，不跨 I/O 持有活动锁。ProbeChanged 与 MailboxChanged/CatchUp 分开记录，新变化可让出同账号旧只读历史下载；无变化不 FETCH、不重复认证，失败丢弃旧连接并沿用退避。该补查基于 [IMAP NOOP](https://www.rfc-editor.org/rfc/rfc3501#section-6.1.2) 与 [IDLE](https://www.rfc-editor.org/rfc/rfc2177)，不等于服务器推送或投递时间承诺。
 
 协议/状态与真实样本分别见 SENT_IDLE_RELIABILITY_WORKING.md；发布全量结果见 RELEASE_019_WORKING.md，静默 NOOP 真实连接和弱网/睡眠矩阵未完成。
+
+## 2026-10-10 SEARCH-01 事务检索投影（未发布）
+
+开发分支 codex/search-scale，正式包仍为0.1.9/220f4cc。search.rs 建立 typed search_documents 和 external-content trigram search_fts；schema2及对象清单核对在 IMMEDIATE 事务内读写，缺失/版本迁移原子重建派生表与触发器，未知较新 schema 明确报错。原始 messages/MIME 不因重建修改。消息触发器从 search_source 更新日期/标记/正文覆盖和检索字段，文本未改变时跳过FTS delete/insert。
+
+snapshot 使用参数化 phrase筛候选，再对投影指定字段执行原ASCII-insensitive literal子串核对；默认拼接仍为标题/发件人/收件人/正文。短词/NUL输入回退扫描，记录里的NUL也因FTS截断行为回退，以免漏掉尾部关键词。仅readonly派生字段参与检索，readable_listing/trusted_sources仍控制可见性，索引不是来源认证或正文下载入口。
+
+288 Rust全量与原生联调标题搜索通过；参见SEARCH_SCALE_WORKING.md。本阶段尚未替换全匹配反序列化/会话聚合及前缀分页，SQL真分页、时间筛选/覆盖提示、产品五万封性能验收与下一版云端包未完成。

@@ -22,6 +22,7 @@ mod rule_operations;
 mod rule_runs;
 mod rules;
 mod scheduling;
+mod search;
 mod sent_uploads;
 mod signatures;
 mod store;

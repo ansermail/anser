@@ -1,6 +1,6 @@
 # SEARCH / SCALE 后续工作点
 
-2026-10-10，当前功能基线 220f4cc，0.1.9 已完成云端构建/资源核验与正式发布。这里记录实码核查与下一阶段入口，不标记搜索开发完成。
+2026-10-10，当前功能基线 220f4cc，0.1.9 已完成云端构建/资源核验与正式发布。当前开发分支 `codex/search-scale`（从 main / 7e4b122 接续）。索引子阶段已接入，分页/时间筛选与整体规模验收仍未完成；正式 0.1.9 不含本分支。
 
 ## 未完成要求
 
@@ -26,7 +26,7 @@
 
 ## 当前接续
 
-RELEASE_019_WORKING.md 云端发布已完成。QQ 自动副本核对和 C 实时收件通过，真实大附件繁忙/断网睡眠矩阵仍按 SYNC_02B2_WORKING.md 单独保留。Microsoft 注册/默认发布配置已完成，实际邮箱 SMTP/刷新未完成。下一步按下方设计接入产品事务性检索投影与两种列表分页，不把虚构实验计作功能完成。
+RELEASE_019_WORKING.md 云端发布已完成。QQ 自动副本核对和 C 实时收件通过，真实大附件繁忙/断网睡眠矩阵仍按 SYNC_02B2_WORKING.md 单独保留。Microsoft 注册/默认发布配置已完成，实际邮箱 SMTP/刷新未完成。事务性检索投影已按下方 SEARCH-01 子阶段接入。下一步 SQL 对话成员/摘要投影与页协议，再前端分页/时间筛选/覆盖提示；虚构实验不计作生产性能完成。
 
 ## 2026-10-10 0.1.9 构建期间的索引方案实测
 
@@ -75,3 +75,30 @@ hot conversation_count_and_page_ms=56
 实验代码已保存为 `docs/experiments/search-scale-probe.rs`，不接入产品与真实数据库。重现时在仓库外新建仅含 `rusqlite = { version = "0.32", features = ["bundled"] }` 的临时 Cargo crate，复制此文件为 src/main.rs，执行 `cargo run --release -- /一个不存在的临时路径/fictional.sqlite3`；程序拒绝覆盖既有文件，只创建虚构实验库。测量前检查编译工具链/SQLite版本，环境漂移不可沿用本轮数值。
 
 复现代码在保存后再次以相同 bundled 依赖编译/运行成功；所有虚构 literal 比较与200条SQL页断言通过。0.1.9 已发布，下一生产改动从此工作点推进，不能沿用本实验作为产品性能门槛。
+
+## SEARCH-01 索引子阶段（2026-10-10，codex/search-scale）
+
+### 已完成代码
+
+- 新 `src-tauri/src/search.rs`：search_documents typed 日期/状态/正文覆盖投影、外部内容 FTS5 trigram、schema marker 和原子升级/缺失索引恢复。只重建派生对象，不读写 MIME 原件。
+- messages 插入/更新/删除通过 SQLite triggers 原子维护投影及 FTS；已读/星标等不改变 all_text 时不重写全文索引。恢复/解析修复沿用同一触发入口，失败回滚不会留下“成功”标记或半索引。
+- Store 初始化在后续解析修复前建立索引；snapshot 搜索不再扫描原始 messages JSON 正文，改为 FTS 候选与投影字段 literal 确认。保留原默认字段拼接、中文/Unicode/标点/大小写语义，MATCH 使用参数化转义 phrase，不执行用户布尔语法。
+- 一/两字和含 NUL 的查询直接扫描；含 NUL 的记录加入候选扫描回退。实际回归发现 FTS 截断 NUL 后文本，已修复并覆盖索引安全/不安全两种记录，未删字符或改写原件。
+- 检索结果仍由 readable_listing/trusted_sources 过滤；body_known 标注完整且未解码失败的已保存正文，未知正文不下载/不冒充已知。
+
+### 实际验证
+
+- `cargo test --manifest-path src-tauri/Cargo.toml`：288 项全量通过（含5项新搜索专项）；`cargo fmt --manifest-path src-tauri/Cargo.toml -- --check` / `git diff --check` 通过。
+- 专项：旧记录迁移、缺失 FTS 恢复、初始化幂等；增改删与回滚；多字段中文/短词/引号/%/_/Unicode/跨字段子串/NUL；未知正文与隔离来源；解析修复和标记/原件保持。FTS integrity-check 与 external content 核对通过。
+- 首轮专项失败为测试 TempDir 被 `_` 立即释放和误用 body-free 列表摘要比较全文元数据，已修正；随后发现真实 FTS NUL 截断行为并加回退，最终全量通过。未把失败过程藏成一次通过。
+- 原生稳定启动器重编译 Running 后（应用父进程仍为 Tauri）复用开发预览，搜索既有 `雁信联调 20261010-SYNC-NOOP` 返回 C/D 两封联调样本；恢复空搜索，未打开/标记/发送邮件、未改真实保存范围或提交真实截图/数据库。
+- 本轮只改 Rust，无前端/脚本/Pages 代码，未重复它们的检查；没有生产性能数字、云端构建或正式发布，不能沿用0.1.9结果为本阶段发布证明。
+
+### 当前未完成与下一入口
+
+1. `snapshot` 仍把所有匹配记录反序列化再对话汇总/truncate，原累计5000限制尚在；不能把 FTS 接入记作真正分页。
+2. 继续 typed 投影的查询 revision/引用图 revision 拆分，SQL 对话成员/去重计数/范围内状态合并，固定页与游标。读取版本/图/筛选/页在同一 SQL 快照，旧范围响应废弃。
+3. 接入前端页追加/重置与连续阅读；Pages 内存数据对应同一协议。日期界面使用 shadcn Calendar/Popover，解释现有正文检索范围，不自动下载未知正文。
+4. 完整 Store 两模式五万封冷/热首屏/首批测量，真正脱离前缀重载；随后全量门槛、版本更新、合入main并删除完成分支，关键节点先远程构建下一新版。
+
+阶段文件：src-tauri/src/search.rs、store.rs、lib.rs 与 AGENTS/USAGE/IMPLEMENTATION/本工作点/DEVELOPMENT_STATUS。源码提交以本分支最新 SEARCH-01 提交为准；后续继续此分支，不能把未完成分页功能混入正式包。
