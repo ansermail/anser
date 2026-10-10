@@ -23,13 +23,12 @@
 
 - 5a0b09b 合并并推送 origin/main；远端/本地 codex/rules03-in-progress 已删除，托管工作树已归档，Git 当前仅 main。主工作区 `npm run desktop` 已重新运行，新进程由主工作区 Tauri 管理，账号/存档 ID 不变。
 - 源码 5a0b09b 的 Pages [38014860415](https://github.com/ansermail/anser/actions/runs/38014860415) 部署与 Checks [38014860407](https://github.com/ansermail/anser/actions/runs/38014860407) 均成功。后续提交只记录验收结论，不重复构建。
-- 下一主线从 main 接续 SAVE-01B2 / SYNC-02B2；不恢复旧规则分支。
+- 下一主线从 main 接续 SAVE-01B2 保存范围/预算与 SYNC-02B2 繁忙收件/下载抢占；兼容移动冲突另属 SYNC-01B2B2B。不恢复旧规则分支。
 - 不另发新版 Release。真实外置盘/磁盘满/权限/Gmail 标签/兼容 MOVE/大邮箱等矩阵仍在开发计划待办。
 
 ## 原始中断记录（保留）
 
 以下是归档前原始文字，旧“未完成/下一步”已被上面完成记录替代，不再作为工作入口。
-
 
 用户 2026-10-09 要求先构建、提交并发布新版本。0.1.3 从最后已通过完整验收的 0f00456 发布；当前规则扩展没有进入该版本。源代码仍在主工作目录未提交，继续时先检查 git status，不能覆盖或当成正式发布功能。
 
