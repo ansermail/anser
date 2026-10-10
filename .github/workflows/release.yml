@@ -91,6 +91,10 @@ jobs:
           APP="src-tauri/target/$BUILD_TARGET/release/bundle/macos/雁信.app"
           test -s "$APP/Contents/_CodeSignature/CodeResources"
           codesign --verify --strict --deep "$APP"
+          test -s "$APP/Contents/Resources/LICENSE"
+          test -s "$APP/Contents/Resources/NOTICE"
+          test -s "$APP/Contents/Resources/LICENSING.md"
+          test -s "$APP/Contents/Resources/licenses/shadcn-ui-MIT.txt"
       - run: node scripts/release-assets.mjs collect ${{ matrix.target }} release-assets
       - uses: actions/upload-artifact@v6
         with:

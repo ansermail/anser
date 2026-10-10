@@ -2,6 +2,7 @@
 name = "anser"
 version = "0.1.7"
 edition = "2021"
+license-file = "../LICENSE"
 [lib]
 name = "anser_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]

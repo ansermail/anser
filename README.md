@@ -8,7 +8,7 @@
 
 [下载最新版本](https://github.com/ansermail/anser/releases/latest) · [界面预览](https://ansermail.github.io/anser/) · [使用说明](docs/USAGE.md) · [开发进度](docs/DEVELOPMENT_STATUS.md) · [反馈问题](https://github.com/ansermail/anser/issues)
 
-> 当前版本为 **0.1.6 Alpha**，支持 Apple Silicon 与 Intel Mac。核心功能已实现，长期稳定性、部分服务商兼容性及完整发布验收仍在持续完善。
+> 当前版本为 **0.1.7 Alpha**，支持 Apple Silicon 与 Intel Mac。核心功能已实现，长期稳定性、部分服务商兼容性及完整发布验收仍在持续完善。
 
 ![雁信的多账号收件箱与邮件阅读界面](docs/screenshots/inbox-demo.png)
 
@@ -18,7 +18,7 @@ _所有展示截图均来自浏览器演示模式，使用项目内置的虚构�
 
 0.1.6 已包含按账号设置的邮件签名、可选择的存档保存位置、EML 文件查看和设置页整理，并保留“按对话 / 逐封邮件”切换、连续阅读及服务器已发送副本核对。具体完成项与待办见[开发进度](docs/DEVELOPMENT_STATUS.md)。
 
-main 已完成规则完整保存/在线正文核对与保存预算检查，正在准备 0.1.7 云端构建，尚未正式发布。
+0.1.7 已由 GitHub 双架构构建并发布，新增规则完整保存/在线正文核对及所选范围的服务器数量与磁盘预算检查，移除应用内 EML 按钮，保留 Finder 打开方式。后续下载边界优先处理仍在 main 继续完善，尚未随桌面包发布。
 
 ## 主要功能
 
@@ -44,6 +44,12 @@ main 已完成规则完整保存/在线正文核对与保存预算检查，正�
 为项目往来、账单或订阅邮件设置归类条件，减少重复整理。规则支持先预览，再对历史邮件执行。
 
 ![按主题自动归入本地文件夹的示例规则](docs/screenshots/rules-demo.png)
+
+## 使用许可
+
+**个人自用免费，包含处理自己的工作邮件；企业统一部署、商业集成或销售需另行授权。**
+
+项目源码公开，采用 [Anser Personal Use License](LICENSE)，不是允许不受限商业使用的 MIT/Apache/GPL 许可。[使用边界与商业授权说明](docs/LICENSING.md)。第三方依赖保留原许可。
 
 ## 下载与安装
 

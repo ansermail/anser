@@ -1,0 +1,29 @@
+Anser (雁信)
+Copyright (c) 2026 Anser contributors.
+
+Anser-owned software is made available under the Anser Personal Use License
+included in LICENSE. Personal use, including personal use of work email, is
+free. Enterprise deployment, commercial integration, and commercial sale or
+distribution require separate written authorization.
+
+Third-party software is NOT relicensed by the Anser Personal Use License.
+Its original copyright notices, licenses, and required notices continue to
+apply. See the upstream distributions and their license files for full terms.
+
+The shadcn/ui components originate from shadcn-ui/ui under the MIT license.
+Copyright (c) 2023 shadcn. The full upstream MIT text is preserved at
+ docs/licenses/shadcn-ui-MIT.txt in the source checkout, or
+ licenses/shadcn-ui-MIT.txt in App resources.
+
+The patched IMAP parser is imap-proto 0.10.2 from djc/tokio-imap. Its original
+MIT / Apache-2.0 license files, and the associated NOM_LICENSE, remain in
+ src-tauri/vendor/imap-proto/.
+
+React, Radix UI, Tauri, Rust/npm dependencies, and other upstream components
+remain governed by their own licenses. LICENSE applies only to the Anser-owned
+parts, not to separately licensed upstream work. Dependency metadata and the
+vendored license files identify those upstream components; this notice is not
+a substitute for their full license terms.
+
+Commercial authorization contact:
+ https://github.com/ansermail/anser/issues

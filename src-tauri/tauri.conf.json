@@ -50,7 +50,13 @@
         "role": "Viewer",
         "rank": "Alternate"
       }
-    ]
+    ],
+    "resources": {
+      "../LICENSE": "LICENSE",
+      "../NOTICE": "NOTICE",
+      "../docs/LICENSING.md": "LICENSING.md",
+      "../docs/licenses/shadcn-ui-MIT.txt": "licenses/shadcn-ui-MIT.txt"
+    }
   },
   "plugins": {
     "updater": {

@@ -1,0 +1,79 @@
+Anser Personal Use License, Version 1.0
+
+Copyright (c) 2026 Anser contributors.
+
+1. Scope
+
+This license applies to copyrightable Anser software, source code, and
+modifications owned by its licensors, unless a file carries another license.
+Third-party components remain subject to their own licenses. This license does
+not replace, restrict, or grant rights beyond those third-party licenses.
+
+2. Free individual use
+
+An individual may, without a fee, download, install, use, copy, study, and
+modify the Software for that individual's own use. This includes reading and
+sending the individual's work-related email and use by employees or independent
+professionals on their own initiative. An email account's domain or the business
+subject of a message does not, by itself, make this individual use commercial
+licensing use under section 3.
+
+The individual-use grant cannot be used as a substitute for a license covering
+an enterprise deployment or commercial integration, distribution, or sale.
+
+3. Uses requiring separate commercial authorization
+
+Prior written authorization from the relevant Anser copyright holders is
+required for:
+
+(a) deployment by or on behalf of an enterprise, including centralized rollout,
+    bulk installation, management, or requiring the Software as part of the
+    enterprise's systems or tools for employees or customers;
+(b) incorporating the Software or substantial Anser-owned portions of it into
+    a commercial product, platform, service, or hosted offering; and
+(c) selling, renting, sublicensing for a fee, or commercially distributing the
+    Software or a product or service that provides its functionality.
+
+Enterprise deployment requires authorization even when the Software itself is
+not sold. Merely recommending the Software to colleagues, who independently
+choose to install and use it under section 2, is not a centralized enterprise
+deployment. Charges, quantities, duration, support, and other commercial terms
+must be agreed separately in writing; they are not promised by this license.
+
+4. Noncommercial sharing and changes
+
+Copies of the Software, including modified copies, may be shared without a fee
+for uses permitted by this license. All copies must retain this license and
+applicable copyright and third-party notices. Modified distributions must
+clearly identify that they are modified and must not claim to be an official
+Anser release. Sharing does not grant recipients rights to a use requiring
+commercial authorization under section 3. Anser trademarks or an endorsement
+are not granted by this license.
+
+5. User content
+
+This license governs the Software, not users' email, attachments, signatures,
+archives, or other content. It does not transfer ownership of that content to
+Anser or restrict users from using or exporting their own content.
+
+6. Compliance and reserved rights
+
+Rights not expressly granted here are reserved by the respective copyright
+holders. A use outside this license requires their separate permission. Rights
+under this license end for a user who violates its conditions, unless the
+relevant copyright holders grant permission or reinstate the rights in writing.
+Separate commercial agreements govern the rights they expressly grant.
+
+7. Disclaimer
+
+TO THE EXTENT PERMITTED BY APPLICABLE LAW, THE SOFTWARE IS PROVIDED "AS IS",
+WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE, AND NONINFRINGEMENT. TO THE SAME EXTENT,
+THE AUTHORS AND COPYRIGHT HOLDERS ARE NOT LIABLE FOR CLAIMS, DAMAGES, OR OTHER
+LIABILITY ARISING FROM THE SOFTWARE OR ITS USE.
+
+The English text above is the license. The Chinese explanation in
+https://github.com/ansermail/anser/blob/main/docs/LICENSING.md summarizes it.
+Contact the Anser maintainers through https://github.com/ansermail/anser/issues
+for commercial authorization. A repository star, donation, download, or issue
+submission is not itself commercial authorization.
