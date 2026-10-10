@@ -27,3 +27,51 @@
 ## 当前接续
 
 RELEASE_018_WORKING.md 云端发布已完成。先接续本轮实际发现的企业邮通知时间差和 QQ 自动已发送副本只读核对；收件在途下载代码完成，真实大附件繁忙/断网睡眠矩阵仍按 SYNC_02B2_WORKING.md 单独保留；Microsoft 应用注册等待用户前置，不把该项写成已完成。
+
+## 2026-10-10 0.1.9 构建期间的索引方案实测
+
+0.1.9 已发布，源码 220f4cc，Release 38051136526 全成功；当前开发从该基线接续。研究没有修改生产存储或原件，FTS/真正分页功能仍未接入；静态演示和当前应用继续原语义。
+
+在仓库外独立 Rust/rusqlite 0.32 bundled 实验中，建立五万条纯虚构记录（主体约十五次重复的中文项目说明、每千条一个稀有标题/带字面符号正文；每三条一个合成对话）。FTS5 external-content + trigram 候选与 `instr(lower(subject||' '||body),lower(?))` 二次核对；三字符以下仍扫描。中文 `预算审核`、两字 `预算`、一字 `预`、`100%`、`ABC_`、带引号 literal、NOT 和不存在词均与完整字面扫描结果一致。输入作为参数及双引号转义的 FTS phrase，不把 `%`/`_` 当 LIKE 通配符、不把 NOT 当布尔语法。
+
+实验命令为独立 Cargo crate（依赖与项目一致）的 `cargo run --offline --release`；SQLite 版本、建库与两轮数值见下面记录。connection-cold 只表示重新打开连接，操作系统页缓存未清空，不算真正磁盘冷启动。每项时间包含完整扫描基线与 FTS 查询，不能把它冒充生产 FTS 搜索首批延迟。SQL `row_number() OVER(PARTITION BY thread ORDER BY instant DESC,id ASC)` 再取 n=1、LIMIT200；COUNT DISTINCT=16667，页固定200行。没有下载/加载真实原件，未测试真实引用图、可信来源/状态合并或前端游标。
+
+采用依据：[SQLite FTS5 trigram 文档](https://www.sqlite.org/fts5.html#the_trigram_tokenizer)。短词不使用 FTS MATCH；外部内容表与增删改必须事务性更新，删除/恢复/解析迁移及正文覆盖需独立测试。不要把预览/规则对未知正文的保护替换为空值匹配。
+
+### 下一实现约定
+
+- typed 日期/状态/检索字段派生投影；保留原 JSON/MIME，不因索引改日期。相同时间 ID 稳定次序、未知时间置后。
+- SQL 查询先范围/可信来源过滤，再组内状态合并与最新代表，最后 LIMIT/游标；全图计数保留现有去重身份语义，不先截取单封再分组。
+- 拆开拓扑 revision 与查询 revision：单纯已读/星标/分类不需重建完整引用图，但应废弃影响筛选的旧 cursor；新增引用/服务器别名、来源隔离恢复等重建对应图与持久成员投影。读取同一事务的版本、成员、页和计数。
+- 页协议固定上限、nextCursor 与 scope/revision 检查；范围或数据版本变化返回明确 reset，前端丢弃迟到页并重查，保持阅读正文和邻居处理，真正解除5000累积前缀。
+- 字段检索保留原语义；至少三字符使用安全 FTS phrase 候选 + literal 确认，一/两字与不适用输入走投影扫描。跨字段拼接、Unicode大小写/符号/空白还需扩展专项，不以本实验代替。
+- 原目标冷/热五万封首屏≤3秒、搜索首批≤1秒必须在真实 Store 两种列表与迁移后测量，当前实验仅支持候选方案可行。
+
+### 虚构实验数值（单机，不是生产验收）
+
+```text
+sqlite=3.46.0
+insert_50000_ms=2497
+connection-cold needle="预算审核" count=50 comparative_ms=103
+connection-cold needle="预算" count=50 comparative_ms=104
+connection-cold needle="预" count=50 comparative_ms=110
+connection-cold needle="100%" count=50 comparative_ms=96
+connection-cold needle="ABC_" count=50 comparative_ms=94
+connection-cold needle="\"literal\"" count=50 comparative_ms=95
+connection-cold needle="NOT" count=0 comparative_ms=95
+connection-cold needle="不存在的词" count=0 comparative_ms=103
+connection-cold conversation_count_and_page_ms=62
+hot needle="预算审核" count=50 comparative_ms=102
+hot needle="预算" count=50 comparative_ms=102
+hot needle="预" count=50 comparative_ms=110
+hot needle="100%" count=50 comparative_ms=95
+hot needle="ABC_" count=50 comparative_ms=92
+hot needle="\"literal\"" count=50 comparative_ms=94
+hot needle="NOT" count=0 comparative_ms=93
+hot needle="不存在的词" count=0 comparative_ms=103
+hot conversation_count_and_page_ms=56
+```
+
+实验代码已保存为 `docs/experiments/search-scale-probe.rs`，不接入产品与真实数据库。重现时在仓库外新建仅含 `rusqlite = { version = "0.32", features = ["bundled"] }` 的临时 Cargo crate，复制此文件为 src/main.rs，执行 `cargo run --release -- /一个不存在的临时路径/fictional.sqlite3`；程序拒绝覆盖既有文件，只创建虚构实验库。测量前检查编译工具链/SQLite版本，环境漂移不可沿用本轮数值。
+
+复现代码在保存后再次以相同 bundled 依赖编译/运行成功；所有虚构 literal 比较与200条SQL页断言通过。0.1.9 已发布，下一生产改动从此工作点推进，不能沿用本实验作为产品性能门槛。

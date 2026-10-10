@@ -105,3 +105,7 @@ v0.1.5 已在 ansermail/anser 正式发布为 latest。Checks 与 Release macOS 
 ## 0.1.9 构建准备（2026-10-10）
 
 本机关键节点包含 QQ 自动副本只读核对、IDLE/NOOP 截止、跨时区排序/未读显示和 Microsoft 默认发布配置。209 前端/283 Rust/19 脚本/39 IMAP 与 UI/格式/生产/Pages 检查通过；固定源码、双架构 Actions、资源核验与正式发布持续记录 RELEASE_019_WORKING.md。当前仍以 0.1.8 为公开 latest，源码完成不等于新版已发布；真实 OAuth/升级等未执行项目继续保留。
+
+## 0.1.9 发布结果（2026-10-10）
+
+已从 220f4cc 远程构建并于 20:22:33（Asia/Shanghai）发布 latest：[Release macOS 38051136526](https://github.com/ansermail/anser/actions/runs/38051136526)、[Release 0.1.9](https://github.com/ansermail/anser/releases/tag/v0.1.9)。七资源/更新签名/版本架构/EML/完整 app 签名/许可/OAuth backend 编译配置、DMG 与更新包一致性、公开清单字节/固定标签/更新 URL HTTP200 全部通过。发布含 Microsoft 默认 Client ID；实际新授权/SMTP/刷新与本次原位更新仍独立待验收，不以配置装包冒充完成。详见 RELEASE_019_WORKING.md。

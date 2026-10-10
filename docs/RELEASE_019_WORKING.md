@@ -1,6 +1,6 @@
 # 0.1.9 发布工作点
 
-2026-10-10，main，基线 1191ce1。公开最新 0.1.8；本轮源码提交/云端构建待写回，未发布前不把新版称为 latest。
+2026-10-10，main，基线 1191ce1。0.1.9 已于 20:22:33（Asia/Shanghai）正式发布为 latest，源码 220f4cc6bc179ec700691e5dab3f9975f424ffc8；[Release macOS 38051136526](https://github.com/ansermail/anser/actions/runs/38051136526) 全部成功，[Release](https://github.com/ansermail/anser/releases/tag/v0.1.9)。
 
 ## 范围与本机门槛
 
@@ -15,7 +15,17 @@ QQ SMTP 自动已发送副本有限次新连接只读核对/旧精确回执恢�
 
 ## 云端/资源/正式发布
 
-待阶段提交并推送组织 main，workflow_dispatch release.yml；记录固定源码 SHA 与同一运行，核对 check、两架构及 draft。然后核对七项资产大小/SHA256、两份更新签名、公钥、manifest 链接、版本/架构/标识/EML/完整 app 签名、许可资源、仅 backend 的 Google/Microsoft 编译配置、DMG 与更新包二进制一致性，再发布草稿。公开端点/标签与下载资源需在发布后复核。
+固定源 `220f4cc6bc179ec700691e5dab3f9975f424ffc8`，workflow_dispatch 于 20:12:49（Asia/Shanghai）启动；check、Apple Silicon、Intel 与 draft 全部成功，随后完成以下核验并于 20:22:33 发布草稿为 latest：
+
+- 七份资源：两架构 DMG、app.tar.gz、sig 与 latest.json，大小及 GitHub SHA256 digest 全部匹配。
+- 两份更新归档用现有 Tauri/minisign verifier 与固定源公钥核验，manifest 两架构 URL/签名/版本一致。
+- 两包版本 0.1.9、arm64/x86_64、稳定标识 dev.maildesk.desktop、EML 声明及完整 codesign/CodeResources 通过。
+- LICENSE/NOTICE/LICENSING.md/shadcn 原许可与固定源资源逐字节匹配；Google 与 Microsoft 当前编译配置仅在原生 backend，前端资源中未检出对应配置。
+- Intel 对微软 Client ID 与 Google 交换常量使用函数内 movabsq/movq/movl 精确重建优化后的分段分配字节；简单连续字节搜索不足以断言漏注入，核验不打印值/汇编常量。此过程未改变发布源码/产物。
+- DMG 校验和通过；逐架构只读挂载，包内全部 8 个 app 文件的 SHA256 与更新归档相同，核验后已卸载挂载卷，未安装/启动正式包。
+- 发布后 tag 指向固定源码；匿名公开 latest.json 与已审计清单逐字节相同，版本为 0.1.9，两架构更新 URL 均 HTTP200。
+- 同源 Checks 38051110930 与 Pages 38051110935 也已成功；不把 Pages 部署当作桌面安装/升级验收。
+
 
 ## 未完成与接续
 
