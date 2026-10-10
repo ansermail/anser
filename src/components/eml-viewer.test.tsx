@@ -6,7 +6,7 @@ import { EmlViewer } from "./eml-viewer";
 const mocks = vi.hoisted(() => ({
   invoke: vi.fn(),
   open: vi.fn(),
-  listen: vi.fn(async () => () => {}),
+  listen: vi.fn(async (_event: string, _handler: () => void) => () => {}),
 }));
 vi.mock("@tauri-apps/api/core", () => ({ invoke: mocks.invoke }));
 vi.mock("@tauri-apps/api/event", () => ({ listen: mocks.listen }));
@@ -52,10 +52,10 @@ afterEach(async () => {
   await act(async () => root.unmount());
   host.remove();
 });
-async function choose() {
-  await act(async () => {
-    host.querySelector("button")!.click();
-  });
+async function openFromSystem(path = "/tmp/sample.eml") {
+  mocks.invoke.mockResolvedValueOnce([path]);
+  const handler = mocks.listen.mock.calls.at(-1)![1] as () => void;
+  await act(async () => handler());
 }
 it("opens queued OS files after subscribing, with read-only headers", async () => {
   mocks.invoke.mockImplementation(async (command: string) =>
@@ -80,7 +80,6 @@ it("opens queued OS files after subscribing, with read-only headers", async () =
 });
 it("closing while parsing ignores a late result and releases its snapshot", async () => {
   let resolve!: (value: typeof documentResult) => void;
-  mocks.open.mockResolvedValue("/tmp/sample.eml");
   mocks.invoke.mockImplementation((command: string) =>
     command === "open_eml_file"
       ? new Promise((done) => {
@@ -88,7 +87,7 @@ it("closing while parsing ignores a late result and releases its snapshot", asyn
         })
       : Promise.resolve([]),
   );
-  await choose();
+  await openFromSystem();
   const close = document.querySelector(
     '[data-slot="dialog-close"]',
   ) as HTMLButtonElement;
@@ -100,12 +99,11 @@ it("closing while parsing ignores a late result and releases its snapshot", asyn
   });
 });
 it("an unreadable file shows an error and a subsequent file can open", async () => {
-  mocks.open.mockResolvedValue("/tmp/sample.eml");
   mocks.invoke.mockImplementation(async (command: string) => {
     if (command === "open_eml_file") throw "文件不存在";
     return [];
   });
-  await choose();
+  await openFromSystem();
   expect(document.body.textContent).toContain("文件不存在");
   await act(async () => {
     (
@@ -115,6 +113,6 @@ it("an unreadable file shows an error and a subsequent file can open", async () 
   mocks.invoke.mockImplementation(async (command: string) =>
     command === "open_eml_file" ? documentResult : [],
   );
-  await choose();
+  await openFromSystem();
   expect(document.body.textContent).toContain("Original body");
 });

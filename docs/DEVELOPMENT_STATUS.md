@@ -23,6 +23,8 @@
 
 ## 当前执行检查点
 
+- **EML 入口简化（2026-10-10）**：按用户要求删除应用顶部“打开 EML”按钮及其选择器调用，保留系统文件关联/Opened/启动参数、只读阅读和附件处理。现有测试改从系统事件触发；44 项 EML/App 相关回归、UI 检查、生产构建、格式与 diff 检查通过，正在运行的原生开发预览已确认按钮消失。本轮不发布新版；正式包默认关联/冷启动等矩阵仍按原计划待验收。
+
 - **当前任务 RULES-03（2026-10-10）**：完整保存/saveFolder、在线正文/未知附件三态、持久顺序/暂停取消重启、保存与目录提交保护及任务界面已完成；203 前端、260 Rust、19 脚本、39 IMAP 与格式/UI/两种构建通过。授权 SYNC-02 A/B 原生保存完成（5476→5478），临时规则已关闭；5a0b09b 已合入并推送 main，本地/远端工作分支已删除，工作树已归档；GitHub Checks 与 Pages 部署均成功，结果见 [工作点](RULES_03_WORKING.md)。公开 0.1.6 不含此阶段。本轮不另发布。
 
 - **最新发布（2026-10-09：0.1.6 Alpha）**：用户指定的 GitHub 云端双架构构建与发版已完成，源码 e8e049d、[流水线](https://github.com/ansermail/anser/actions/runs/37940050741)、[Release](https://github.com/ansermail/anser/releases/tag/v0.1.6)。2026-10-09 22:13:59（Asia/Shanghai）发布为 latest，七个资源、更新签名、公钥、版本/架构/EML 声明、完整 codesign 与公开更新端点核验通过。195 前端、242 Rust、19 脚本、39 IMAP 及 UI/格式/构建通过；实际安装/默认 EML/冷启动及原位升级仍待验收。详见 [发布记录](RELEASE_016_WORKING.md)。当时接续 RULES-03；该阶段现已完成，当前下一步以顶部 RULES-03 工作点和本页末节为准。
@@ -570,3 +572,9 @@ Thunderbird 历史迁移、完整 Exchange、日历、移动端及跨设备同�
 - 验证：203 前端、260 Rust、19 桌面脚本、39 IMAP 与 UI/格式/生产/预览构建；原生 QQ 与腾讯企业邮 SYNC-02 A/B 精确样本各补存成功，5476→5478，无新发送、服务器移动/删除或存档迁移。临时测试规则保留但已关闭，原规则及账号策略保留。
 - 发布边界：未发布新版桌面包，0.1.6 Release 不包含本阶段；源码 5a0b09b 已推送 main；本地/远端 `codex/rules03-in-progress` 已删除，工作树已归档，仅保留 main。该源码的 Pages [38014860415](https://github.com/ansermail/anser/actions/runs/38014860415) 与 Checks [38014860407](https://github.com/ansermail/anser/actions/runs/38014860407) 均成功；后续仅补交验收记录，不重复构建。
 - 下一主线：main 上接续 SAVE-01B2 保存范围/故障验收，再推进 SYNC-02B2 繁忙收件/下载抢占及 SYNC-01B2B2B 兼容移动冲突矩阵；Gmail 标签与网络、5 万封搜索、大附件、正式安装/更新矩阵仍未完成。旧章节中的“回 RULES-03 分支”是当时记录，由本工作点替代。
+
+## 2026-10-10：移除应用内打开 EML 按钮
+
+- 顶部不再展示“打开 EML”，移除专用文件选择函数与未使用导入；EmlViewer 仍监听系统文件队列，支持打开方式、已运行/启动时的文件事件和后续只读查看。未修改 Tauri 文件关联、MIME 解析、附件能力及默认应用设置。
+- `npx vitest run src/components/eml-viewer.test.tsx src/App.test.tsx`：44 项通过，已有 EML 用例验证系统队列打开、迟到解析关闭清理及失败后再次打开；`npm run check:ui`、`npm run build`、`npm run format:check`、`git diff --check` 通过。现有大分包提示保留。
+- 复用稳定主工作区开发预览，原生顶部已确认仅剩连接状态/主题等控件，无 EML 按钮。无 Rust 修改，未重跑 Rust 回归、安装发布包或执行冷启动；相关正式包矩阵仍未完成。USAGE 和 AGENTS 同步入口约定；下一阶段仍按未完成事项总览。
