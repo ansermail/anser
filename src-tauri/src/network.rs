@@ -754,6 +754,7 @@ fn sync_imap<T: std::io::Read + Write>(
 ) -> Result<u32> {
     sync_imap_with_updates(store, a, session, &|| {})
 }
+#[cfg(test)]
 fn sync_imap_with_updates<T: std::io::Read + Write>(
     store: &Store,
     a: &Account,
@@ -762,12 +763,23 @@ fn sync_imap_with_updates<T: std::io::Read + Write>(
 ) -> Result<u32> {
     sync_imap_scope(store, a, session, updated, None)
 }
+#[cfg(test)]
 fn sync_imap_scope<T: std::io::Read + Write>(
     store: &Store,
     a: &Account,
     session: &mut imap::Session<T>,
     updated: &impl Fn(),
     only: Option<&str>,
+) -> Result<u32> {
+    sync_imap_scope_controlled(store, a, session, updated, only, None)
+}
+fn sync_imap_scope_controlled<T: std::io::Read + Write>(
+    store: &Store,
+    a: &Account,
+    session: &mut imap::Session<T>,
+    updated: &impl Fn(),
+    only: Option<&str>,
+    control: Option<&Arc<ConnectionControl>>,
 ) -> Result<u32> {
     let scope_started = std::time::Instant::now();
     let mut count = 0;
@@ -900,10 +912,30 @@ fn sync_imap_scope<T: std::io::Read + Write>(
                             "邮件头与结构"
                         }
                     );
-                    let fetched = session.run_command_and_read_response(
+                    let registration = if folder.eq_ignore_ascii_case("INBOX") {
+                        control
+                            .map(|control| {
+                                folder_gate.interruptible_download(observed_activity, control)
+                            })
+                            .transpose()?
+                    } else {
+                        None
+                    };
+                    let interrupted = || control.is_some_and(|control| control.stopped());
+                    let fetched = if interrupted() {
+                        None
+                    } else {
+                        Some(session.run_command_and_read_response(
                         if full { format!("UID FETCH {uid} (UID FLAGS INTERNALDATE RFC822.SIZE BODY.PEEK[])") }
                         else { format!("UID FETCH {uid} (UID FLAGS INTERNALDATE RFC822.SIZE BODYSTRUCTURE BODY.PEEK[HEADER])") }
-                    ).map_err(|e| match e {
+                    ))
+                    };
+                    drop(registration);
+                    if interrupted() {
+                        store.log(&format!("{} 新实时通知已到达，中断当前只读下载并关闭连接；未完整原件不保存，旧来源与存档保留，剩余邮件下轮继续",a.email))?;
+                        return Ok(());
+                    }
+                    let fetched = fetched.ok_or("只读下载已取消")?.map_err(|e| match e {
                         imap::error::Error::Parse(imap::error::ParseError::Invalid(data)) => {
                             let outline = response_outline(&data);
                             let _ = store.log(&format!("文件夹「{folder}」UID {uid} 协议诊断（正文与地址已隐藏）：{outline}"));
@@ -1072,6 +1104,12 @@ fn sync_imap_scope<T: std::io::Read + Write>(
                 "{stage}时，邮件协议库处理响应异常；已下载的本地存档已保留"
             ))
         });
+        if control.is_some_and(|control| control.stopped()) {
+            // Interrupted literal/tagged response: discard the entire session,
+            // skip reconciliation and never select another folder on it.
+            result?;
+            break;
+        }
         if let Err(reason) = &result {
             if unreliable_selection(reason) {
                 store.isolate_folder(a, &folder, reason, &evidence)?;
@@ -1107,14 +1145,11 @@ fn sync_inner(store: &Store, a: &Account, updated: &impl Fn()) -> Result<u32> {
     let secret = auth::credentials(a)?;
     let mut count = 0;
     if a.protocol == "imap" {
-        let mut session = imap_session(a, &secret)?;
-        let result = sync_imap_with_updates(store, a, &mut session, updated);
-        if result.is_ok() {
-            // A failed session may have unread responses. Close the socket
-            // directly on errors instead of issuing another command on it.
-            let _ = catch_unwind(AssertUnwindSafe(|| session.logout()));
-        }
-        count = result?;
+        let control = Arc::new(ConnectionControl::default());
+        let mut session = imap_session_using(a, &secret, Some(&control), |stream| stream)?;
+        let result =
+            sync_imap_scope_controlled(store, a, &mut session, updated, None, Some(&control));
+        count = finish_readonly_sync(&mut session, &control, result)?;
     } else {
         let folder_gate = crate::sync_control::folder_gate(&store.root, &a.id, "INBOX")?;
         let _folder_guard = folder_gate.lock().map_err(err)?;
@@ -2213,6 +2248,244 @@ mod tests {
     }
 
     #[test]
+    fn in_flight_readonly_download_yields_without_partial_publication_or_session_reuse() {
+        struct ReportingStream {
+            socket: TcpStream,
+            bytes: usize,
+            started: Option<std::sync::mpsc::Sender<()>>,
+        }
+        impl Read for ReportingStream {
+            fn read(&mut self, buffer: &mut [u8]) -> std::io::Result<usize> {
+                let n = self.socket.read(buffer)?;
+                self.bytes += n;
+                // Initial metadata responses are short; reaching this count
+                // proves the client has consumed part of the FETCH literal.
+                if self.bytes > 1024 {
+                    if let Some(tx) = self.started.take() {
+                        let _ = tx.send(());
+                    }
+                }
+                Ok(n)
+            }
+        }
+        impl Write for ReportingStream {
+            fn write(&mut self, buffer: &[u8]) -> std::io::Result<usize> {
+                self.socket.write(buffer)
+            }
+            fn flush(&mut self) -> std::io::Result<()> {
+                self.socket.flush()
+            }
+        }
+        for mode in ["body", "header", "tagged-ack", "network-failure"] {
+            let temp = tempfile::tempdir().unwrap();
+            let store = Store::new(temp.path().into()).unwrap();
+            let mut account = crate::tests::account();
+            account.save_locally = true;
+            store.save_account(&account).unwrap();
+            for uid in [9, 12] {
+                store
+                    .ingest(
+                        &account,
+                        "INBOX",
+                        &format!("7:{uid}"),
+                        &crate::tests::raw(),
+                        true,
+                    )
+                    .unwrap();
+            }
+            if mode == "header" {
+                account.save_locally = false;
+                store.save_account(&account).unwrap();
+            }
+            let old = store.snapshot(&crate::tests::query()).unwrap().messages[0].clone();
+            let old_hash: String = store
+                .db()
+                .unwrap()
+                .query_row("SELECT hash FROM messages WHERE id=?1", [&old.id], |r| {
+                    r.get(0)
+                })
+                .unwrap();
+            let gate = crate::sync_control::folder_gate(&store.root, &account.id, "INBOX").unwrap();
+            let control = Arc::new(ConnectionControl::default());
+            let commands = Arc::new(Mutex::new(Vec::new()));
+            let log = commands.clone();
+            let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+            let address = listener.local_addr().unwrap();
+            let server = std::thread::spawn(move || {
+                let (socket, _) = listener.accept().unwrap();
+                socket
+                    .set_read_timeout(Some(Duration::from_secs(5)))
+                    .unwrap();
+                let mut peer = BufReader::new(socket);
+                loop {
+                    let mut line = String::new();
+                    if peer.read_line(&mut line).unwrap_or(0) == 0 {
+                        break;
+                    }
+                    log.lock().unwrap().push(line.trim().to_owned());
+                    let tag = line.split_whitespace().next().unwrap();
+                    let response = if line.contains("LOGIN") {
+                        format!("{tag} OK Login\r\n")
+                    } else if line.contains("CAPABILITY") {
+                        format!("* CAPABILITY IMAP4rev1\r\n{tag} OK Caps\r\n")
+                    } else if line.contains("LIST") {
+                        format!("* LIST () \"/\" \"INBOX\"\r\n* LIST () \"/\" \"Archive\"\r\n{tag} OK Listed\r\n")
+                    } else if line.contains("EXAMINE") {
+                        format!("* 2 EXISTS\r\n* OK [UIDVALIDITY 7] Valid\r\n{tag} OK Opened\r\n")
+                    } else if line.contains("UID SEARCH") {
+                        format!("* SEARCH 12 13\r\n{tag} OK Searched\r\n")
+                    } else if line.contains("UID FETCH 13") {
+                        let mut raw = b"From: fixture@example.com\r\nSubject: Interrupted literal\r\nMessage-ID: <interrupted@example.com>\r\nX-Fixture: ".to_vec();
+                        raw.extend(vec![b'x'; 4096]);
+                        raw.extend(b"\r\n\r\nFixture body.\r\n");
+                        let section = if mode == "header" { "HEADER" } else { "" };
+                        let size = if mode == "tagged-ack" {
+                            raw.len()
+                        } else {
+                            1_000_000
+                        };
+                        peer.get_mut().write_all(format!("* 2 FETCH (UID 13 FLAGS () RFC822.SIZE {size} BODY[{section}] {{{size}}}\r\n").as_bytes()).unwrap();
+                        peer.get_mut().write_all(&raw).unwrap();
+                        if mode == "tagged-ack" {
+                            peer.get_mut().write_all(b")\r\n").unwrap();
+                        }
+                        peer.get_mut().flush().unwrap();
+                        if mode == "network-failure" {
+                            break;
+                        }
+                        // Wait for EOF after preemption; any next command is a
+                        // regression (especially LOGOUT or selecting Archive).
+                        continue;
+                    } else {
+                        panic!("unexpected command after incomplete FETCH: {line}");
+                    };
+                    peer.get_mut().write_all(response.as_bytes()).unwrap();
+                }
+            });
+            let (started_tx, started_rx) = std::sync::mpsc::channel();
+            let (done_tx, done_rx) = std::sync::mpsc::channel();
+            let job_store = store.clone();
+            let job_account = account.clone();
+            let job_control = control.clone();
+            let worker = std::thread::spawn(move || {
+                let socket = TcpStream::connect(address).unwrap();
+                socket
+                    .set_read_timeout(Some(Duration::from_secs(10)))
+                    .unwrap();
+                job_control.attach(&socket).unwrap();
+                let mut session = imap::Client::new(ReportingStream {
+                    socket,
+                    bytes: 0,
+                    started: Some(started_tx),
+                })
+                .login("fixture", "fixture-only")
+                .map_err(|(e, _)| e)
+                .unwrap();
+                // Full account scan must also abandon the pending Archive.
+                let result = sync_imap_scope_controlled(
+                    &job_store,
+                    &job_account,
+                    &mut session,
+                    &|| {},
+                    None,
+                    Some(&job_control),
+                );
+                let result = finish_readonly_sync(&mut session, &job_control, result);
+                drop(session);
+                done_tx.send(result).unwrap();
+            });
+            started_rx.recv_timeout(Duration::from_secs(3)).unwrap();
+            let started = std::time::Instant::now();
+            if mode != "network-failure" {
+                gate.notify();
+            }
+            let result = done_rx.recv_timeout(Duration::from_secs(2)).unwrap();
+            assert!(started.elapsed() < Duration::from_secs(2));
+            if mode == "network-failure" {
+                assert!(result.is_err());
+                assert!(!control.stopped());
+            } else {
+                assert_eq!(result.unwrap(), 0);
+                assert!(control.stopped());
+            }
+            worker.join().unwrap();
+            server.join().unwrap();
+            let active = |remote: &str| -> bool {
+                store.db().unwrap().query_row("SELECT active FROM sources WHERE account_id=?1 AND folder='INBOX' AND remote_id=?2", rusqlite::params![account.id, remote], |r|r.get(0)).unwrap()
+            };
+            assert!(active("7:9") && active("7:12"));
+            assert!(!store.has_source(&account.id, "INBOX", "7:13").unwrap());
+            assert_eq!(
+                store
+                    .snapshot(&crate::tests::query())
+                    .unwrap()
+                    .messages
+                    .len(),
+                1
+            );
+            let unchanged = store.detail(&old.id).unwrap().mail;
+            assert_eq!(
+                (
+                    unchanged.date,
+                    unchanged.is_read,
+                    unchanged.starred,
+                    unchanged.saved_locally
+                ),
+                (old.date.clone(), old.is_read, old.starred, true)
+            );
+            assert_eq!(
+                archive::read_raw(&store.root, &old_hash).unwrap(),
+                crate::tests::raw()
+            );
+            assert!(store
+                .remote_folders(Some(&account.id))
+                .unwrap()
+                .iter()
+                .all(|f| f.sync_error.is_none()));
+            let written = commands.lock().unwrap().join("\n");
+            assert!(written.contains("UID FETCH 13"));
+            assert!(
+                !written.contains("LOGOUT")
+                    && !written.contains("EXAMINE \"Archive\"")
+                    && !written.contains("(UID FLAGS)")
+                    && !written.contains("STORE")
+                    && !written.contains("EXPUNGE")
+            );
+
+            // A fresh round sees a new UID first and refetches the interrupted
+            // old original; only its complete snapshot can remove stale UID 9.
+            account.save_locally = true;
+            store.save_account(&account).unwrap();
+            let mut response = b"a1 OK Login\r\n* CAPABILITY IMAP4rev1\r\na2 OK Caps\r\n* LIST () \"/\" \"INBOX\"\r\na3 OK Listed\r\n* 3 EXISTS\r\n* OK [UIDVALIDITY 7] Valid\r\na4 OK Opened\r\n* SEARCH 12 13 14\r\na5 OK Searched\r\n".to_vec();
+            for (tag, uid) in [(6, 14), (7, 13)] {
+                let raw = format!("From: fixture@example.com\r\nSubject: Complete {uid}\r\nMessage-ID: <complete-{uid}@example.com>\r\nDate: Fri, 9 Oct 2026 01:00:00 +0000\r\n\r\nComplete body\r\n");
+                response.extend(format!("* 1 FETCH (UID {uid} FLAGS () RFC822.SIZE {} BODY[] {{{}}}\r\n{raw})\r\na{tag} OK Body\r\n",raw.len(),raw.len()).as_bytes());
+            }
+            response.extend(b"* 1 FETCH (UID 12 FLAGS (\\Seen))\r\na8 OK Flags\r\n");
+            let commands = Arc::new(Mutex::new(Vec::new()));
+            let mut session = imap::Client::new(ImapTranscript {
+                responses: Cursor::new(response),
+                commands: commands.clone(),
+            })
+            .login("fixture", "fixture-only")
+            .map_err(|(e, _)| e)
+            .unwrap();
+            assert_eq!(
+                sync_imap_scope(&store, &account, &mut session, &|| {}, Some("INBOX")).unwrap(),
+                2
+            );
+            let written = String::from_utf8(commands.lock().unwrap().clone()).unwrap();
+            assert!(written.find("UID FETCH 14").unwrap() < written.find("UID FETCH 13").unwrap());
+            assert!(!active("7:9"));
+            assert!(active("7:12") && active("7:13") && active("7:14"));
+            assert_eq!(
+                archive::read_raw(&store.root, &old_hash).unwrap(),
+                crate::tests::raw()
+            );
+        }
+    }
+
+    #[test]
     fn a_push_between_body_downloads_preserves_unscanned_sources_and_next_round_prioritizes_new_mail(
     ) {
         let temp = tempfile::tempdir().unwrap();
@@ -3058,7 +3331,9 @@ pub fn sync_folder_with_updates(
         return sync_with_updates(store, a, updated);
     }
     let started = std::time::Instant::now();
-    let mut session = imap_session(a, &auth::credentials(a)?)?;
+    let control = Arc::new(ConnectionControl::default());
+    let mut session =
+        imap_session_using(a, &auth::credentials(a)?, Some(&control), |stream| stream)?;
     if folder.eq_ignore_ascii_case("INBOX") {
         let _ = store.log(&format!(
             "{} 收件诊断：连接与认证 {} 毫秒",
@@ -3067,11 +3342,27 @@ pub fn sync_folder_with_updates(
         ));
     }
     let result = catch_unwind(AssertUnwindSafe(|| {
-        sync_imap_scope(store, a, &mut session, &updated, Some(folder))
+        sync_imap_scope_controlled(
+            store,
+            a,
+            &mut session,
+            &updated,
+            Some(folder),
+            Some(&control),
+        )
     }))
     .unwrap_or_else(|_| Err("邮件协议库处理响应异常；已下载的本地存档已保留".into()));
-    if result.is_ok() {
-        let _ = session.logout();
+    finish_readonly_sync(&mut session, &control, result)
+}
+fn finish_readonly_sync<T: std::io::Read + Write>(
+    session: &mut imap::Session<T>,
+    control: &ConnectionControl,
+    result: Result<u32>,
+) -> Result<u32> {
+    // Both genuine failures and deliberate preemption may leave unread bytes.
+    // A successful yield is not permission to send LOGOUT on a stopped socket.
+    if result.is_ok() && !control.stopped() {
+        let _ = catch_unwind(AssertUnwindSafe(|| session.logout()));
     }
     result
 }

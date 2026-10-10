@@ -582,7 +582,7 @@ fn sync_one_scope(
             account.last_sync = Some(chrono::Utc::now().to_rfc3339());
             account.error = None;
             let _ = store.log(&format!(
-                "{} {}完成，新增 {} 封邮件",
+                "{} {}本轮结束，新增 {} 封邮件",
                 account.email, scope, count
             ));
         }

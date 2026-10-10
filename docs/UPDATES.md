@@ -91,3 +91,8 @@ v0.1.5 已在 ansermail/anser 正式发布为 latest。Checks 与 Release macOS 
 ## 0.1.7 云端发布结果
 
 [source1de47d7的Release macOS 38017514986](https://github.com/ansermail/anser/actions/runs/38017514986)双架构与草稿全部成功，核验七资源、签名、公钥、版本/架构/EML、codesign、DMG及对应二进制后，2026-10-10 10:59:30（Asia/Shanghai）[0.1.7](https://github.com/ansermail/anser/releases/tag/v0.1.7)发布为latest。匿名canonical清单逐字节匹配核验文件，更新链接两平台均HTTP200；详见[工作点](RELEASE_017_WORKING.md)。该包包含RULES-03和保存预算，不包含之后e2f7cf6的SYNC下载边界改动。正式安装与原位升级仍未执行，没有Apple Developer ID/公证。
+
+
+## 0.1.8 构建准备（2026-10-10）
+
+在途收件箱只读 FETCH 可因实时通知停止；中断不保存部分原件、不清理旧来源或复用连接。纳入 e2f7cf6 的下载边界让出、项目许可资源与新 Google OAuth 编译配置；双架构构建从仓库 Secrets 注入，不改原更新密钥/标识。发布进度与资源核验见 RELEASE_018_WORKING.md；真实繁忙/睡眠/其他服务商与正式原位升级仍待验收。0.1.7 产物保持不变。
