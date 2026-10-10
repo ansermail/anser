@@ -12,10 +12,14 @@
 - [x] 稳定开发预览 QQ 收件箱只读检查：3451 位置，0 未缓存，预计31待保存/981 KB，预留129.1 MB；实际磁盘可用空间返回。表单取消未保存，不下载/移动/删除真实邮件，原5478存档保留。
 - [x] 五处版本同步0.1.7，发布说明已写。
 - [x] 最终发布门槛；源码提交/推送和工作流触发记录随后追加。
-- [ ] 远程 workflow_dispatch 触发 release.yml，记录 SHA/运行链接。
+- [x] 源码 1de47d790c2eaabeaa8b4422e0c7a6c5fdad73cf 已提交并推送 main；已远程 workflow_dispatch 触发 [Release macOS 38017514986](https://github.com/ansermail/anser/actions/runs/38017514986)，headSha 与上述提交一致，已确认 check 作业运行中。
 - [ ] 双架构云端构建/草稿及七份资源核验。
 - [ ] 正式发布/公开清单；真实正式安装/原位更新另列验收。
 
 ## 下一步
 
 按 docs/UPDATES.md 的全量门槛完成后提交推送并使用 `gh workflow run release.yml --repo ansermail/anser --ref main`；记录确切 run ID 后等待相同运行，不能因暂时查询失败重复触发。云端作业进行中可继续准备下一阶段工作点，发布验收分别记录。不把草稿构建等同正式发布。
+
+构建已触发，后续仅查询 38017514986，完成后检查草稿和七份资源。继续开发 SYNC-02 不改变本次构建的源码 SHA；该阶段后续改动不能计入 0.1.7。
+
+最新已确认：check 作业成功，两架构 build 作业均正在执行“Build signed update and first-install DMG”。Checks 成功不等于安装包完成；继续查询同一运行，不能重触发。

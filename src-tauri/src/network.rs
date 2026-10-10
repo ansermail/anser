@@ -866,6 +866,17 @@ fn sync_imap_scope<T: std::io::Read + Write>(
             let mut remote_ids = Vec::with_capacity(ids.len());
             let lookup = crate::remote::ReceiveLookup::new(store)?;
             for &uid in &ids {
+                if should_yield() {
+                    // This checkpoint follows a fully consumed FETCH and its
+                    // safe publication. A partial UID walk is not a complete
+                    // directory snapshot: retain every old source and trust
+                    // boundary until a later uninterrupted scan finishes.
+                    store.log(&format!(
+                        "{} 新实时通知已到达，历史邮件下载让出收件箱；剩余邮件下轮继续，旧来源与本地存档保留",
+                        a.email
+                    ))?;
+                    return Ok(());
+                }
                 let current = lookup.account(&a.id)?;
                 if !current.enabled || !current.same_connection(a) {
                     return Err("账号已暂停或连接配置已修改，停止旧收取任务".into());
@@ -2199,6 +2210,100 @@ mod tests {
                 < written.find("UID FETCH 12 (UID FLAGS)").unwrap()
         );
         assert!(!written.contains("STORE") && !written.contains("EXPUNGE"));
+    }
+
+    #[test]
+    fn a_push_between_body_downloads_preserves_unscanned_sources_and_next_round_prioritizes_new_mail(
+    ) {
+        let temp = tempfile::tempdir().unwrap();
+        let store = Store::new(temp.path().into()).unwrap();
+        let account = crate::tests::account();
+        store.save_account(&account).unwrap();
+        for uid in [9, 12] {
+            store
+                .ingest(
+                    &account,
+                    "INBOX",
+                    &format!("7:{uid}"),
+                    &crate::tests::raw(),
+                    true,
+                )
+                .unwrap();
+        }
+        let old = store.snapshot(&crate::tests::query()).unwrap().messages[0].clone();
+        let hash = || -> String {
+            store
+                .db()
+                .unwrap()
+                .query_row("SELECT hash FROM messages WHERE id=?1", [&old.id], |r| {
+                    r.get(0)
+                })
+                .unwrap()
+        };
+        let old_hash = hash();
+        let gate = crate::sync_control::folder_gate(&store.root, &account.id, "INBOX").unwrap();
+        fn transcript(uid: u32, ids: &str, flags: &str) -> Vec<u8> {
+            let raw = format!("From: fixture@example.com\r\nSubject: New item {uid}\r\nDate: Fri, 9 Oct 2026 01:00:00 +0000\r\nMessage-ID: <fixture-{uid}@example.com>\r\n\r\nBody {uid}\r\n");
+            let exists = ids.split_whitespace().count();
+            let mut bytes = format!("a1 OK Login\r\n* CAPABILITY IMAP4rev1\r\na2 OK Caps\r\n* LIST () \"/\" \"INBOX\"\r\na3 OK Listed\r\n* {exists} EXISTS\r\n* OK [UIDVALIDITY 7] Valid\r\na4 OK Opened\r\n* SEARCH {ids}\r\na5 OK Searched\r\n* 1 FETCH (UID {uid} FLAGS () RFC822.SIZE {} BODY[] {{{}}}\r\n", raw.len(),raw.len()).into_bytes();
+            bytes.extend(raw.as_bytes());
+            bytes.extend(format!(")\r\na6 OK Body\r\n{flags}").as_bytes());
+            bytes
+        }
+        let commands = Arc::new(Mutex::new(Vec::new()));
+        let mut session = imap::Client::new(ImapTranscript {
+            responses: Cursor::new(transcript(13, "12 13", "")),
+            commands: commands.clone(),
+        })
+        .login("fixture", "fixture-only")
+        .map_err(|(e, _)| e)
+        .unwrap();
+        assert_eq!(
+            sync_imap_scope(
+                &store,
+                &account,
+                &mut session,
+                &|| gate.notify(),
+                Some("INBOX")
+            )
+            .unwrap(),
+            1
+        );
+        let active = |remote: &str| -> bool {
+            store.db().unwrap().query_row("SELECT active FROM sources WHERE account_id=?1 AND folder='INBOX' AND remote_id=?2",rusqlite::params![account.id,remote],|r|r.get(0)).unwrap()
+        };
+        assert!(active("7:9") && active("7:12") && active("7:13"));
+        let written = String::from_utf8(commands.lock().unwrap().clone()).unwrap();
+        assert!(written.contains("UID FETCH 13"));
+        assert!(!written.contains("(UID FLAGS)") && !written.contains("UID FETCH 12"));
+        let current = store.detail(&old.id).unwrap().mail;
+        assert_eq!(current.date, old.date);
+        assert_eq!(current.is_read, old.is_read);
+        assert_eq!(hash(), old_hash);
+        assert!(current.saved_locally);
+        let commands = Arc::new(Mutex::new(Vec::new()));
+        let flags =
+            "* 1 FETCH (UID 13 FLAGS ())\r\n* 2 FETCH (UID 12 FLAGS (\\Seen))\r\na7 OK Flags\r\n";
+        let mut session = imap::Client::new(ImapTranscript {
+            responses: Cursor::new(transcript(14, "12 13 14", flags)),
+            commands: commands.clone(),
+        })
+        .login("fixture", "fixture-only")
+        .map_err(|(e, _)| e)
+        .unwrap();
+        assert_eq!(
+            sync_imap_scope(&store, &account, &mut session, &|| {}, Some("INBOX")).unwrap(),
+            1
+        );
+        let written = String::from_utf8(commands.lock().unwrap().clone()).unwrap();
+        assert!(written.find("UID FETCH 14").unwrap() < written.find("(UID FLAGS)").unwrap());
+        assert!(!active("7:9"));
+        assert!(active("7:12") && active("7:13") && active("7:14"));
+        assert_eq!(hash(), old_hash);
+        assert_eq!(
+            crate::archive::read_raw(&store.root, &old_hash).unwrap(),
+            crate::tests::raw()
+        );
     }
 
     #[test]
