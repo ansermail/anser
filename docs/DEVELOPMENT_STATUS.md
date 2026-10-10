@@ -6,7 +6,9 @@
 
 **最新关键节点：0.1.8 已发布（2026-10-10）**。f118cf3 / Release macOS 38033190031 双架构与七项资源核验完成，15:22:16（Asia/Shanghai）发布为 latest。SYNC-02B2 在途只读下载、新 Google 编译配置与许可资源已纳入；真实回归 A 为实时收取，B 仅证明定时补查收件，QQ 自动已发送副本仍待核对。当前优先接续这两项真实发现与繁忙/网络睡眠矩阵，再搜索/分页；见 RELEASE_018_WORKING.md / SYNC_02B2_WORKING.md，未标记整体完成。
 
-**本轮用户优先事项：Google OAuth Client 轮换（2026-10-10）**。已验证新 JSON 为桌面客户端，更新被忽略的 `.env.local`（0600）及组织仓库两项 Secrets；双架构原生发布步骤接入并检查同名配置。新客户端授权/刷新与含新配置的云端包尚未验收，旧 0.1.7 包不变。完成本项后仍从 `SYNC_02B2_WORKING.md` 继续在途只读下载抢占。
+**当前用户优先事项：Microsoft OAuth 应用注册（2026-10-10）**。Anser 公共桌面客户端、组织/个人账号、`http://localhost/callback` 和 IMAP/POP/SMTP/offline_access 委托权限声明已配置；本机忽略配置（0600）和组织仓库 Secret 已同步，开发应用已重编译并载入配置。用户授权及 IMAP 连接验证通过，SMTP 535 尚未解决：当前仅有外部邮箱登录别名，且使用了企业发件配置，待添加实际 Outlook 地址并按个人预设重测。发布接线和文档本轮提交，源码检查通过不等于含配置的正式包已发布。接续见 [Microsoft OAuth 工作点](MICROSOFT_OAUTH_WORKING.md)。
+
+**前一阶段：Google OAuth Client 轮换（2026-10-10）**。已验证新 JSON 为桌面客户端，更新被忽略的 `.env.local`（0600）及组织仓库两项 Secrets；双架构原生发布步骤接入并检查同名配置。新客户端授权/刷新与含新配置的云端包尚未验收，旧 0.1.7 包不变。服务商配置完成后仍从 `SYNC_02B2_WORKING.md` 继续在途只读下载抢占。
 
 核查功能基线 main / f118cf3；公开 0.1.8 发布来源为 f118cf3。下表按“尚需开发”“已实现但未完成真实验收”“源码完成但未发布”区分；后文早期阶段的测试数量、未发布说明和下一步仅保留为历史，不覆盖此处及最新工作点。
 
@@ -26,6 +28,8 @@
 建议下一阶段：先 SAVE-01B2 的保存范围与预算，再 SYNC-02B2 的下载抢占/繁忙收件；同期补存档故障回归，随后搜索/分页与附件体验。兼容移动冲突另属 SYNC-01B2B2B，不与收件延迟任务混写。正式安装与升级安排独立验收；未执行项继续保留。
 
 ## 当前执行检查点
+
+- **Microsoft OAuth（2026-10-10，注册和配置已完成）**：Anser 已创建，支持组织及个人账号，移动和桌面平台回调 `http://localhost/callback`；当前目录通过 Microsoft Graph 入口保存四项委托权限声明，未授予全租户管理员同意。Client ID 已写入本机忽略配置与组织仓库 Secret，Release 接线与文档本轮提交；用户随后要求编译，已通过稳定启动器重新启动 0.1.9 开发版，二进制内微软配置和签名核验通过。当前授权码+PKCE 不需额外开启其他公共客户端 fallback 流。用户随后授权及 IMAP 连接验证通过，SMTP 返回 535；已确认个人账号仅有外部邮箱登录名且选用了企业 SMTP 配置，等待用户添加实际 Outlook 地址并按个人预设重测。真实收发/刷新、发布者验证和含微软配置的云端包尚未验收，接续见 `MICROSOFT_OAUTH_WORKING.md`。
 
 - **最新发布（2026-10-10：0.1.7 Alpha）**：已从 1de47d7 完成 GitHub 双架构构建与正式发布。[Release macOS 38017514986](https://github.com/ansermail/anser/actions/runs/38017514986) 全部成功；2026-10-10 10:59:30（Asia/Shanghai）发布 [0.1.7](https://github.com/ansermail/anser/releases/tag/v0.1.7) 为 latest。七份资源大小/SHA-256、两份更新签名、版本/架构/EML 声明、完整 codesign、DMG 与更新包二进制一致性通过；匿名公开 latest.json 逐字节匹配，更新资源链接 HTTP200，标签指向 1de47d7。源码后续 e2f7cf6 的 SYNC 下载边界让出未纳入此包。实际安装/原位更新、在途下载抢占及真实矩阵仍未完成；继续入口见 [SYNC 工作点](SYNC_02B2_WORKING.md)。
 
@@ -607,7 +611,6 @@ npm/Cargo 声明指向许可文件；Tauri resources 打包许可/说明/通知/
 
 0.1.7 已发布且资源不可改写，本轮许可文件及 e2f7cf6 的下载边界将在后续关键节点构建纳入；当前继续 SYNC_02B2_WORKING.md，在途只读下载抢占、真实繁忙/睡眠断网→搜索分页。整体目标仍未完成。
 
-
 ## Google OAuth Client 轮换与发布接入（2026-10-10）
 
 - 用户提供新的 Google 桌面应用 JSON，已核对 `installed` 类型和必要字段；客户端内容不打印、不提交。更新本机被忽略的 `.env.local`，权限 0600，后端 loader 的两项值与新文件逐项匹配。
@@ -615,6 +618,20 @@ npm/Cargo 声明指向许可文件；Tauri resources 打包许可/说明/通知/
 - `release.yml` 对两架构增加配置存在性检查，并将两项 Secrets 注入 tauri-action 原生构建；不在 PR/Pages 中使用。`AGENTS.md`、USAGE、UPDATES 同步编译生效和旧令牌/手填 Client ID 的重新授权边界。
 - 验证：`npm run test:desktop` 19 项通过；`npm run format:check`、`npm run release:check`、`git diff --check` 通过。只改流水线/配置和文档，未重复全量前端/协议测试或生成本地分发包。
 - 开发应用通过 `npm run desktop` 稳定启动器重新编译并启动；已确认新二进制包含与新文件一致的 OAuth 配置（不打印值），运行应用父进程仍为 Tauri。本轮未进行新客户端的浏览器授权、Gmail 发信或长期刷新验收；不沿用旧客户端结果。0.1.7 已发布资源不变；包含新配置的正式双架构包需下一版本流水线构建。主线接续 `SYNC_02B2_WORKING.md`。
+
+## Microsoft OAuth 应用注册前置检查（2026-10-10）
+
+- 用户要求代理打开浏览器并完成微软应用配置，用户本人负责登录。复用 ego-browser TaskSpace 9；当前代码使用 common v2 endpoint、PKCE、系统浏览器及 `http://localhost:<随机端口>/callback`，收发权限为 Exchange Online 的 IMAP.AccessAsUser.All / POP.AccessAsUser.All / SMTP.Send，加 offline_access。
+- 实际浏览器验证：个人 Microsoft 账号可完成登录，但 Entra 管理中心返回 AADSTS16000，提示账号不在 Microsoft Services 目录中；目录切换亦被同一令牌错误阻塞。Azure 门户停在认证加载页面，未取得可管理目录。已按微软官方文档打开 Azure 免费账户注册，进入 Step 1 of 3 / Profile information；尚未提交注册资料、建立订阅或创建云资源。
+- 已交还浏览器让用户填写真实地区、电话和必要的身份/银行卡验证；不猜测账单地区，不将页面默认 United States 当作用户所在地。尚未创建 Anser 应用或拿到 Client ID，未修改本机 OAuth 配置、GitHub Secrets 或发布流水线，未执行真实微软邮箱授权、刷新或收发。
+- 接续：用户完成前置开通后 `takeOverTaskSpace(9)`，检查 `userPage()` / 当前 p2；切至可管理的 Entra 目录，先查现有 Anser 注册以避免重复，再配置支持组织和个人账号、Mobile and desktop applications 平台、自定义回调 `http://localhost/callback` 及 Exchange Online 委托权限。取得 Client ID 后继续本机/发布配置，真实授权、协议连接和刷新分别记录；邮件发送范围仍遵守 AGENTS。
+- 依据：[建立 Entra 目录](https://learn.microsoft.com/en-us/entra/identity-platform/quickstart-create-new-tenant)、[桌面客户端配置](https://learn.microsoft.com/en-us/entra/identity-platform/scenario-desktop-app-configuration)、[localhost 端口匹配](https://learn.microsoft.com/en-us/entra/identity-platform/reply-url)、[邮件协议 OAuth](https://learn.microsoft.com/en-us/exchange/client-developer/legacy-protocols/how-to-authenticate-an-imap-pop-smtp-application-by-using-oauth)。本轮仅记录浏览器前置阻塞；未修改业务代码或构建桌面包，协议测试未验证。
+
+### Microsoft 注册银行卡受阻补充（2026-10-10）
+
+- 用户报告中国银行卡验证失败；当前浏览器仍由用户控制，未读取或记录卡号/有效期/安全码，未重新提交付款验证。卡为信用卡或储蓄卡、卡组织、注册地区及原始报错仍待用户补充。
+- 官方付款文档对中国列出银联/Visa/Mastercard 信用卡；免费账户 FAQ 的借记卡支持不能直接推定为中国所有储蓄卡可用。已提示核对注册页最初默认 United States 是否改为真实账单地区，信息与银行一致，并核实国际交易权限；不能把尚未确认的地区或银行卡原因记作已定位根因。
+- 组织账号由现有组织管理员创建，或通过开通 Microsoft 365 商业版/Azure 建立目录；Microsoft 365 商业版试用同样可能需要信用卡并有续费条款，不计作已确认的免卡方案。雁信当前全球端点不能用中国世纪互联租户直接替代；国家云和全球云应用/令牌隔离。OAuth 注册仍未完成，未修改业务代码、配置或发布资源。
 
 
 ## SYNC-02B2 在途下载与 0.1.8 构建准备（2026-10-10）
@@ -630,3 +647,29 @@ npm/Cargo 声明指向许可文件；Tauri resources 打包许可/说明/通知/
 - 稳定后端下完成授权双邮箱 A/B 小邮件互发，SMTP 均确认。A 的实时通知到本轮结束 3321ms；B 仅证明 15:26:29 定时补查收件，随后才观察到企业邮新通知。两 INBOX 活动来源确认，本地 5478 到 5480 为两次 SMTP 原件，默认在线范围/路径未变。正文渲染本轮未取得可靠结果，不记作真实大附件或即时到达验收。
 - B 的 QQ 已发送 APPEND 在 literal 前明确拒绝“Mail has saved by smtp!”；需只读核对服务端已有副本，不能盲目重试/重发。下次先核查企业邮通知/实际投递时间差和 QQ 自动副本，再续繁忙/断网睡眠/其他服务商矩阵。搜索/分页代码入口已记 SEARCH_SCALE_WORKING.md，未计作搜索实现。
 - 本轮未移动/删除真实邮件，未改真实签名/范围/路径，未上传真实截图或数据库。预存的 Microsoft 注册等待用户记录保留在本机，没有混入本阶段提交。完整发布与核验过程见 RELEASE_018_WORKING.md。
+
+## Microsoft OAuth 注册及配置接线完成（2026-10-10）
+
+- 用户在当前 Chrome 经 GitHub 登录进入可管理的 Entra 免费目录，全局管理员和空应用列表实际确认，旧 AADSTS16000/银行卡前置阻塞已解除。用户确认注册附带平台策略后，Anser 公共桌面客户端创建成功，支持组织及个人账号，唯一移动/桌面回调 `http://localhost/callback`。
+- 当前目录搜索 Exchange Online API 返回空结果，在 Microsoft Graph 委托入口保存 IMAP.AccessAsUser.All / POP.AccessAsUser.All / SMTP.Send / offline_access；保存后清单五项（含默认 User.Read）确认。应用以用户同意访问，无全租户管理员同意、无客户端机密；PKCE native 回调已声明，其他 fallback 公共客户端开关保持禁用。旧聊天中概括为必须开启该开关不适用于当前授权码流。
+- Client ID 仅存于忽略的 `.env.local`（0600）及组织仓库 Secret `MAIL_MICROSOFT_CLIENT_ID`，loader 和 Secret 名称/更新时间核对通过。Release 本地修改加入配置存在门槛和两架构原生 env，Pages/PR 不注入；AGENTS/USAGE/UPDATES 和工作点已更新。真实配置不进入 Git，既有 Google/更新密钥保留。
+- 19 项桌面脚本、格式、release:check 和 diff 检查通过。当前工作区有另一阶段版本/收件可靠性/发件副本/UI 的未提交工作，本任务保留它们；未提交/推送流水线、重启稳定开发后端、构建或发布包。
+- 应用注册和权限声明已完成，真实微软邮箱授权/协议连接/刷新/收发、企业管理员批准及正式发布者验证未完成。已向用户询问实际 Outlook.com / Microsoft 365 地址；Azure 管理账号登录地址不能推定为微软邮箱。后续复用现有开发预览手填 Client ID 或在合适阶段重编译，见 `MICROSOFT_OAUTH_WORKING.md`；不把旧收发结果或其他任务的发布当作本轮微软验收。
+
+### Microsoft 默认配置开发应用重编译（2026-10-10）
+
+- 用户明确要求编译。先核对旧开发进程及 Tauri 关系，再终止旧启动器和退出后的残留开发 app/Vite；保留独立的其他预览进程。通过原 `npm run desktop` 稳定签名启动器重新运行，Cargo 显示 `anser v0.1.9`，dev 编译 16.81 秒完成并进入 Running。
+- 新开发应用 PID 74059 的父进程为 Tauri 73814；匹配 `.env.local` 中 Microsoft Client ID 的实际字节已编入新二进制，未输出配置。`codesign --verify --strict --deep` 通过，签名 bundle 的 Mach-O UUID 与 Cargo 二进制一致。首次直接比较 SHA-256 因签名修改二进制而不一致，改用 UUID 加实际配置匹配核对，未将此差异误判为编译失败。
+- 本机阶段运行日志 `/tmp/anser-microsoft-oauth-preview.log` 仅为临时证据，不替代此记录。本轮重启不作为 IDLE 实时收件验收；其他未提交改动保留，未安装/覆盖正式包或触发云端发布。新版本仍为开发预览，微软真实登录/刷新/收发与发布者验证仍需独立完成。
+
+- 重编译后的原生界面已正常显示，用户已自行进入 Outlook 授权流程；未再出现空 Client ID 阻塞。此项只确认启动与授权入口，尚未取得微软授权、令牌刷新或协议收发结果。
+
+### Microsoft 登录测试 SMTP 535（2026-10-10）
+
+- 新默认 Client ID 已在原生流程生效；用户完成浏览器授权，IMAP 登录/退出验证通过，SMTP 返回 535 5.7.3。此项仅为连接验证，不计真实收件、发送或刷新通过。
+- 当前表单使用 Microsoft 365 / smtp.office365.com，用户确认仅用外部 QQ 地址注册 Microsoft 账号，没有 Outlook/Hotmail/Live 邮箱别名；该外部地址不是微软企业邮箱，Microsoft OAuth 也不会授权读取腾讯 QQ 邮箱。个人预设应使用 smtp-mail.outlook.com:587 / STARTTLS / OAuth2。已确认配置不匹配，但 535 具体服务端拒绝原因仍需正确身份重测，不凭一条错误断言权限缺失。
+- 已打开官方账号别名管理入口，由用户选择地址并完成添加；未创建/删除别名、改主别名、保存新账号、再次授权或发送邮件。下一入口见 MICROSOFT_OAUTH_WORKING.md。
+
+### Microsoft OAuth 阶段提交（2026-10-10）
+
+用户要求提交本轮修改。提交范围为原生 Release 的 Microsoft Client ID Secret 检查/注入、Microsoft 使用与发布说明、长期约定和实际注册/编译/SMTP 535 工作记录。真实 Client ID、`.env.local`、截图、邮箱数据和令牌不提交。0.1.9 收件可靠性、发件副本、版本和相关工作点仍保留为独立未提交工作，不以本次配置提交宣称这些功能已完成验收。此次只创建本地 Git 提交；推送、云端构建和正式发布未执行。

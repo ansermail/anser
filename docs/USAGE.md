@@ -54,6 +54,10 @@ Gmail / Microsoft 的 OAuth 需要注册属于本产品的应用。可以在账�
 
 代码使用系统浏览器、PKCE 和本机临时端口回调；Google 应配置桌面客户端，Microsoft 应配置公共原生客户端与 localhost 重定向及邮件委托权限。OAuth 应用发布审核、租户策略和真实授权仍需验证。参考 [Google 原生应用 OAuth](https://developers.google.com/identity/protocols/oauth2/native-app)、[Microsoft 邮件协议 OAuth](https://learn.microsoft.com/en-us/exchange/client-developer/legacy-protocols/how-to-authenticate-an-imap-pop-smtp-application-by-using-oauth)。
 
+Microsoft 应用注册支持“任何 Entra ID 租户 + 个人 Microsoft 账户”，回调在“移动和桌面应用程序”平台填写 `http://localhost/callback`；运行时的随机端口由微软 localhost 匹配规则处理，路径必须一致。当前授权码 + PKCE 流无需客户端密钥，也无需启用用于其他无回调场景的“允许公共客户端流”开关。委托权限声明包含 `IMAP.AccessAsUser.All`、`POP.AccessAsUser.All`、`SMTP.Send` 和 `offline_access`；部分目录的控制台通过 Microsoft Graph 入口提供这些权限。雁信的协议授权仍使用完整 `https://outlook.office.com/` scope，不能改为 Graph 资源令牌来连接 IMAP/SMTP。连接时填写实际的 Outlook.com / Microsoft 365 邮箱地址，Azure 管理账号的登录地址不一定有微软邮箱。
+
+2026-10-10 已建立 Anser 的微软公共桌面客户端，并将 Client ID 保存于本机忽略配置和组织仓库 Secret `MAIL_MICROSOFT_CLIENT_ID`。双架构 Release 在原生构建前检查并注入配置；本机需重新编译或在高级设置填写 Client ID 才能让现有进程使用。应用注册及权限声明完成不代表邮箱授权、令牌刷新、真实收发或发布者验证完成；企业租户策略仍可能要求管理员批准。
+
 当前开发版会分别显示等待浏览器授权、交换令牌、收件及发件服务器验证；等待浏览器时可取消，超过 3 分钟会结束等待。请完成新打开页面的授权，过期页面不能用于下一次连接。Google 使用 `127.0.0.1` 回环回调及随机端口，桌面客户端无需在控制台逐个登记临时端口。Gmail 本机授权、令牌交换和连接验证已通过，实际发信、长期令牌刷新及标签操作仍需验收。
 
 ## 数据与行为

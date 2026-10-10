@@ -24,6 +24,12 @@
 
 2026-10-10 已按用户提供的新桌面客户端文件更新本机配置及上述两项仓库 Secrets。发布流水线接线已完成；新客户端的浏览器授权、令牌刷新和包含新配置的双架构发布验收需另行记录，不能沿用此前客户端的验收结果。
 
+## Microsoft OAuth 发布配置
+
+组织仓库 Secret `MAIL_MICROSOFT_CLIENT_ID` 保存产品自有公共桌面客户端的 ID。Apple Silicon / Intel Release 原生构建先检查配置存在，再注入 Rust 编译环境；不进入 Pages/PR 环境或 `VITE_` 变量，不使用微软客户端密钥。修改 Secret 不会更新已经发布的安装包，需要在后续新版本云端构建中纳入，不能覆盖已发布资源。
+
+2026-10-10 已完成应用注册、移动和桌面平台回调及 IMAP/POP/SMTP/离线访问委托权限声明；本机忽略配置与仓库 Secret 已同步。开发版授权和 IMAP 连接验证通过，个人账号误用企业发件配置时 SMTP 返回 535，尚需实际 Outlook 地址重测；真实收发/刷新、企业管理员批准和发布者验证未完成。含微软配置的双架构包构建与正式发布另行记录。
+
 ## 签名密钥
 
 本机更新密钥在 `~/.config/yanxin-release/updater.key`，权限 0600，公钥已写入 Tauri 配置。私钥已上传仓库 Secret `TAURI_SIGNING_PRIVATE_KEY`，没有提交到 Git 或写进日志。密钥没有密码，流水线明确使用空密码；应保管仓库外的密钥备份，后续版本复用同一密钥，不能重新生成替换已部署应用的公钥。
@@ -91,7 +97,6 @@ v0.1.5 已在 ansermail/anser 正式发布为 latest。Checks 与 Release macOS 
 ## 0.1.7 云端发布结果
 
 [source1de47d7的Release macOS 38017514986](https://github.com/ansermail/anser/actions/runs/38017514986)双架构与草稿全部成功，核验七资源、签名、公钥、版本/架构/EML、codesign、DMG及对应二进制后，2026-10-10 10:59:30（Asia/Shanghai）[0.1.7](https://github.com/ansermail/anser/releases/tag/v0.1.7)发布为latest。匿名canonical清单逐字节匹配核验文件，更新链接两平台均HTTP200；详见[工作点](RELEASE_017_WORKING.md)。该包包含RULES-03和保存预算，不包含之后e2f7cf6的SYNC下载边界改动。正式安装与原位升级仍未执行，没有Apple Developer ID/公证。
-
 
 ## 0.1.8 已发布（2026-10-10）
 

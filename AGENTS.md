@@ -80,6 +80,7 @@ Rust 重编译期间不要绑定或读取原生应用 UI；CUA 会在旧实例�
 - 邮箱凭据和 OAuth 令牌使用现有钥匙串入口；密码、令牌、客户端私密配置、更新私钥、真实 MIME/数据库/备份不得进入 Git、发布资源、截图或公开日志。
 - OAuth 测试配置与发布密钥留在仓库外或受忽略的本机配置中；CI 通过 GitHub Secrets 提供。诊断协议结构与任务状态即可，不输出认证内容或真实邮件正文。
 - Google 桌面 OAuth Client 更换时同步本机 `.env.local` 与组织仓库 Secrets `MAIL_GOOGLE_CLIENT_ID` / `MAIL_GOOGLE_CLIENT_SECRET`，只在原生发布构建注入，不使用公开 Variables 或 `VITE_`。编译配置需重建后生效；旧客户端令牌及手填 Client ID 不能当作已迁移，新的授权/刷新须独立验收。
+- Microsoft 桌面 OAuth 使用产品自有的公共客户端注册、PKCE 和 `http://localhost/callback` 本机回调；Client ID 同步被忽略的 `.env.local` 与组织仓库 Secret `MAIL_MICROSOFT_CLIENT_ID`，只在原生发布构建注入。所需 IMAP/POP/SMTP 权限为用户委托权限；应用注册/权限声明、用户实际同意、企业租户管理员批准和发布者验证分别记录，不通过新增客户端密钥或开启无关密码流替代浏览器授权。
 - GitHub Pages 与桌面共用 App/业务组件，推送 main 自动构建部署，禁止单独维护一份仿制界面。预览构建必须将原生模块替换为不可调用的静态桥，使用隔离的内存虚构数据，禁止读取既有邮箱持久数据或提供真实连接/收发/文件操作；构建检查覆盖布局样式与原生 IPC 隔离。正式原生包隐藏示例入口，开发预览保留。
 
 ## 真实收发测试范围（用户授权）
