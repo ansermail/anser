@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import { FolderOpen, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 import { call } from "@/lib/api";
@@ -18,10 +19,14 @@ export function RetentionSummaryView({
   summary,
   onRefresh,
   busy,
+  budgetContent,
+  budgetActions,
 }: {
   summary: RetentionSummary;
   onRefresh: () => void;
   busy: boolean;
+  budgetContent?: ReactNode;
+  budgetActions?: ReactNode;
 }) {
   const last = summary.lastSync ? new Date(summary.lastSync) : null;
   return (
@@ -58,6 +63,7 @@ export function RetentionSummaryView({
             : "尚无成功记录"}
         </p>
         <p className="break-all text-sm">保存位置：{summary.dataDir}</p>
+        {budgetContent}
         {summary.receiveError && (
           <Alert variant="destructive">
             <AlertDescription>
@@ -80,6 +86,7 @@ export function RetentionSummaryView({
         )}
       </CardContent>
       <CardFooter className="flex flex-wrap gap-2">
+        {budgetActions}
         <Button
           variant="outline"
           size="sm"

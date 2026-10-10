@@ -245,3 +245,23 @@ export interface FolderSettings {
   folders: RemoteFolder[];
   mappings: FolderMapping[];
 }
+
+export interface RetentionBudget {
+  checkedAt: string;
+  dataDir: string;
+  availableBytes: number | null;
+  diskError: string | null;
+  complete: boolean;
+  requiredBytes: number | null;
+  lowSpace: boolean;
+  folders: {
+    folder: string;
+    displayName: string;
+    total: number | null;
+    uncached: number | null;
+    pending: number | null;
+    pendingBytes: number | null;
+    conservative: boolean;
+    error: string | null;
+  }[];
+}

@@ -17,6 +17,7 @@ mod productivity;
 mod realtime;
 mod remote;
 mod retention;
+mod retention_budget;
 mod rule_operations;
 mod rule_runs;
 mod rules;
@@ -762,6 +763,28 @@ async fn retention_settings(
         .map_err(err)?
 }
 #[tauri::command]
+async fn inspect_retention_budget(
+    state: tauri::State<'_, AppState>,
+    account: Account,
+    overrides: Vec<retention::FolderRetention>,
+    request_id: String,
+) -> Result<retention_budget::RetentionBudget> {
+    let store = state.store.clone();
+    let lease = retention_budget::begin(&store, &request_id)?;
+    tauri::async_runtime::spawn_blocking(move || {
+        retention_budget::inspect(&store, &account, &overrides, &lease)
+    })
+    .await
+    .map_err(err)?
+}
+#[tauri::command]
+fn cancel_retention_inspection(
+    state: tauri::State<'_, AppState>,
+    request_id: String,
+) -> Result<()> {
+    retention_budget::cancel(&state.store, &request_id)
+}
+#[tauri::command]
 async fn save_retention(
     state: tauri::State<'_, AppState>,
     account: Account,
@@ -1237,6 +1260,8 @@ pub fn run() {
             account_folders,
             folder_settings,
             retention_settings,
+            inspect_retention_budget,
+            cancel_retention_inspection,
             save_retention,
             queue_archives,
             archive_jobs,

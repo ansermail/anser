@@ -269,6 +269,12 @@ export async function call<T = void>(
         throw new Error(
           "演示模式不下载服务器原件，请在桌面客户端中使用真实邮箱测试补存",
         );
+      case "cancel_retention_inspection":
+        return undefined as T;
+      case "inspect_retention_budget":
+        throw new Error(
+          "示例邮箱不连接真实服务器或读取磁盘，请在桌面客户端中检查预算",
+        );
       case "retention_settings": {
         const account = demo.accounts.find((a) => a.id === args.id);
         if (!account) throw new Error("账号不存在");

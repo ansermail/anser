@@ -305,3 +305,141 @@ it("polls status without replacing unsaved scope and stops when closed", async (
     vi.useRealTimers();
   }
 });
+
+const budgetFixture = {
+  checkedAt: "2026-10-10T01:00:00Z",
+  dataDir: "/fixture/archive",
+  availableBytes: 512,
+  diskError: null,
+  complete: true,
+  requiredBytes: 1024,
+  lowSpace: true,
+  folders: [
+    {
+      folder: "INBOX",
+      displayName: "收件箱",
+      total: 100,
+      uncached: 80,
+      pending: 90,
+      pendingBytes: 1000,
+      conservative: false,
+      error: null,
+    },
+  ],
+};
+function withSummary() {
+  settings.account = a;
+  settings.summary = {
+    dataDir: "/fixture/archive",
+    known: 20,
+    saved: 10,
+    savedBytes: 100,
+    pending: 10,
+    failedJobs: 0,
+    lastSync: null,
+    receiveError: null,
+    warning: null,
+  };
+}
+it("checks unsaved selected scope, displays low disk budget, and invalidates it after editing scope", async () => {
+  withSummary();
+  vi.mocked(api.call).mockImplementation(async (command) =>
+    command === "inspect_retention_budget"
+      ? (budgetFixture as never)
+      : (settings as never),
+  );
+  await render();
+  await select("收件箱保存方式", "完整保存");
+  await click("检查服务器数量与空间");
+  expect(api.call).toHaveBeenCalledWith(
+    "inspect_retention_budget",
+    expect.objectContaining({
+      account: a,
+      overrides: [{ folder: "INBOX", saveLocally: true }],
+      requestId: expect.any(String),
+    }),
+  );
+  expect(document.body.textContent).toContain("100 项");
+  expect(document.body.textContent).toContain("存档磁盘可用空间不足");
+  expect(api.call).not.toHaveBeenCalledWith(
+    "save_retention",
+    expect.anything(),
+  );
+  await select("收件箱保存方式", "在线阅读");
+  expect(
+    document.querySelector('[aria-label="服务器数量与空间预算"]'),
+  ).toBeNull();
+});
+it("cancels a pending check and ignores its late response, then permits a new request", async () => {
+  withSummary();
+  let finish!: (value: typeof budgetFixture) => void;
+  vi.mocked(api.call).mockImplementation(async (command) =>
+    command === "inspect_retention_budget"
+      ? (new Promise((resolve) => {
+          finish = resolve;
+        }) as never)
+      : command === "retention_settings"
+        ? (settings as never)
+        : (undefined as never),
+  );
+  await render();
+  await click("检查服务器数量与空间");
+  await click("取消预算检查");
+  expect(api.call).toHaveBeenCalledWith("cancel_retention_inspection", {
+    requestId: expect.any(String),
+  });
+  await act(async () => finish(budgetFixture));
+  expect(
+    document.querySelector('[aria-label="服务器数量与空间预算"]'),
+  ).toBeNull();
+  vi.mocked(api.call).mockImplementation(async (command) =>
+    command === "inspect_retention_budget"
+      ? ({
+          ...budgetFixture,
+          complete: false,
+          requiredBytes: null,
+          availableBytes: null,
+          diskError: "原存档磁盘未连接",
+          folders: [
+            {
+              ...budgetFixture.folders[0],
+              total: null,
+              pending: null,
+              uncached: null,
+              pendingBytes: null,
+              error: "大小缺失",
+            },
+          ],
+        } as never)
+      : (settings as never),
+  );
+  await click("检查服务器数量与空间");
+  expect(document.body.textContent).toContain("检查未完成");
+  expect(document.body.textContent).toContain("无法完整估算");
+  expect(document.body.textContent).toContain("原存档磁盘未连接");
+});
+it("closing the dialog interrupts a check and prevents a response from leaking into another account", async () => {
+  withSummary();
+  let finish!: (value: typeof budgetFixture) => void;
+  vi.mocked(api.call).mockImplementation(async (command) =>
+    command === "inspect_retention_budget"
+      ? (new Promise((resolve) => {
+          finish = resolve;
+        }) as never)
+      : command === "retention_settings"
+        ? (settings as never)
+        : (undefined as never),
+  );
+  await render();
+  await click("检查服务器数量与空间");
+  await render(null);
+  expect(api.call).toHaveBeenCalledWith(
+    "cancel_retention_inspection",
+    expect.anything(),
+  );
+  await render({ ...a, id: "next-account" });
+  await act(async () => finish(budgetFixture));
+  expect(
+    document.querySelector('[aria-label="服务器数量与空间预算"]'),
+  ).toBeNull();
+});

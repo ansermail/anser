@@ -1,6 +1,6 @@
 [package]
 name = "anser"
-version = "0.1.6"
+version = "0.1.7"
 edition = "2021"
 [lib]
 name = "anser_lib"
@@ -33,6 +33,7 @@ tauri-plugin-notification = "2"
 tauri-plugin-autostart = "2"
 tauri-plugin-window-state = "2"
 tauri-plugin-updater = "2"
+fs2 = "0.4.3"
 [target.'cfg(target_os = "macos")'.dependencies]
 notify-rust = "4"
 [dev-dependencies]

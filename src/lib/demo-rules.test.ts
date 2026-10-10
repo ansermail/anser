@@ -72,3 +72,16 @@ it("unknown preview does not claim a negative body match and failed download lea
   const { invoke } = await import("@tauri-apps/api/core");
   expect(invoke).not.toHaveBeenCalled();
 });
+
+it("server budget inspection cannot access real servers or disk from fictional preview", async () => {
+  const api = await setup(makeDemo());
+  const before = await api.snapshot(query);
+  await expect(
+    api.call("inspect_retention_budget", {
+      account: before.accounts[0],
+      overrides: [],
+      requestId: "fixture",
+    }),
+  ).rejects.toThrow("不连接真实服务器或读取磁盘");
+  expect((await api.snapshot(query)).messages).toEqual(before.messages);
+});

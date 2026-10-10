@@ -352,7 +352,17 @@ fn pop_multiline<T: BufRead>(r: &mut T) -> Result<Vec<u8>> {
     Ok(all)
 }
 fn pop_session(a: &Account, s: &Secret) -> Result<BufReader<TlsStream<TcpStream>>> {
+    pop_session_using(a, s, None)
+}
+fn pop_session_using(
+    a: &Account,
+    s: &Secret,
+    control: Option<&ConnectionControl>,
+) -> Result<BufReader<TlsStream<TcpStream>>> {
     let tcp = socket(&a.incoming_host, a.incoming_port)?;
+    if let Some(control) = control {
+        control.attach(&tcp)?;
+    }
     let tls = TlsConnector::new().map_err(err)?;
     let mut r = if a.incoming_tls == "starttls" {
         let mut p = BufReader::new(tcp);
@@ -5353,5 +5363,340 @@ mod sent_tests {
         s.sent_upload_action(&id, "retry").unwrap();
         assert_eq!(s.outbox().unwrap()[0].status, "sent");
         assert_eq!(s.sent_upload(&id).unwrap().unwrap().status, "queued");
+    }
+}
+
+/// Size-only inventory through a fresh read-only connection for every directory.
+/// A failed protocol stream is dropped here, never used for the next directory.
+pub(crate) fn saving_inventory(
+    store: &Store,
+    a: &Account,
+    folder: &str,
+    control: &ConnectionControl,
+) -> Result<crate::retention_budget::Inventory> {
+    let secret = auth::credentials(a)?;
+    let result = catch_unwind(AssertUnwindSafe(
+        || -> Result<crate::retention_budget::Inventory> {
+            if a.protocol == "imap" {
+                let mut session = imap_session_using(a, &secret, Some(control), |stream| stream)?;
+                let result = saving_imap_inventory(&mut session, folder, || {
+                    crate::retention_budget::check_account(store, a, control)
+                });
+                if result.is_ok() {
+                    let _ = session.logout();
+                }
+                result
+            } else {
+                let mut pop = pop_session_using(a, &secret, Some(control))?;
+                pop_command(&mut pop, "UIDL")?;
+                let before = pop_inventory_lines(&pop_multiline(&mut pop)?)?;
+                crate::retention_budget::check_account(store, a, control)?;
+                pop_command(&mut pop, "LIST")?;
+                let sizes = pop_inventory_lines(&pop_multiline(&mut pop)?)?;
+                pop_command(&mut pop, "UIDL")?;
+                let after = pop_inventory_lines(&pop_multiline(&mut pop)?)?;
+                let result = saving_pop_inventory(&before, &sizes, &after);
+                if result.is_ok() {
+                    let _ = pop_command(&mut pop, "QUIT");
+                }
+                result
+            }
+        },
+    ))
+    .unwrap_or_else(|_| Err("服务器预算响应解析异常，请重新检查".into()));
+    control.clear();
+    result
+}
+fn pop_inventory_lines(bytes: &[u8]) -> Result<std::collections::HashMap<u32, String>> {
+    let text = std::str::from_utf8(bytes).map_err(err)?;
+    let mut rows = std::collections::HashMap::new();
+    for line in text.lines() {
+        let fields = line.split_whitespace().collect::<Vec<_>>();
+        if fields.len() != 2 {
+            return Err("POP3 数量/大小响应不完整".into());
+        }
+        let index: u32 = fields[0].parse().map_err(err)?;
+        if index == 0 || rows.insert(index, fields[1].into()).is_some() {
+            return Err("POP3 数量/大小响应含重复编号".into());
+        }
+    }
+    Ok(rows)
+}
+fn saving_pop_inventory(
+    before: &std::collections::HashMap<u32, String>,
+    sizes: &std::collections::HashMap<u32, String>,
+    after: &std::collections::HashMap<u32, String>,
+) -> Result<crate::retention_budget::Inventory> {
+    if before != after || before.len() != sizes.len() {
+        return Err("检查期间服务器邮件数量或编号变化，请重新检查".into());
+    }
+    let mut remote_ids = std::collections::HashSet::new();
+    let mut rows = Vec::new();
+    for (index, uidl) in before {
+        if !remote_ids.insert(uidl) {
+            return Err("POP3 返回重复邮件标识，无法估算剩余空间".into());
+        }
+        let size: u64 = sizes
+            .get(index)
+            .ok_or("服务器未返回全部邮件大小")?
+            .parse()
+            .map_err(err)?;
+        if size == 0 {
+            return Err("服务器返回无效邮件大小".into());
+        }
+        rows.push((uidl.clone(), size));
+    }
+    Ok(crate::retention_budget::Inventory { rows, stable: true })
+}
+fn saving_imap_inventory<T: std::io::Read + Write>(
+    session: &mut imap::Session<T>,
+    folder: &str,
+    check: impl Fn() -> Result<()>,
+) -> Result<crate::retention_budget::Inventory> {
+    check()?;
+    let mailbox = examine_verified(session, folder)
+        .map_err(|_| "服务器目录数量响应无效、被拒绝或连接中断".to_string())?;
+    let mut ids = session
+        .uid_search("ALL")
+        .map_err(|_| "服务器邮件编号检查失败，预算未完成".to_string())?
+        .into_iter()
+        .collect::<Vec<_>>();
+    let mut exists = mailbox.exists;
+    for event in session.unsolicited_responses.try_iter() {
+        if let imap::types::UnsolicitedResponse::Exists(n) = event {
+            exists = n;
+        }
+    }
+    if ids.len() != exists as usize {
+        return Err("目录数量与邮件编号矛盾或检查期间发生变化，请重新检查".into());
+    }
+    if ids.len() > 200_000 || ids.contains(&0) {
+        return Err("服务器目录编号异常或超过本次 20 万封检查范围".into());
+    }
+    let validity = mailbox.uid_validity.filter(|v| *v > 0);
+    ids.sort_unstable();
+    let mut rows = Vec::new();
+    for batch in ids.chunks(500) {
+        check()?;
+        let requested = batch
+            .iter()
+            .copied()
+            .collect::<std::collections::HashSet<_>>();
+        let set = batch
+            .iter()
+            .map(u32::to_string)
+            .collect::<Vec<_>>()
+            .join(",");
+        let response = session
+            .run_command_and_read_response(format!("UID FETCH {set} (UID RFC822.SIZE)"))
+            .map_err(|_| "服务器大小响应无效、被拒绝或连接中断".to_string())?;
+        let sizes = saving_sizes(&response, &requested)?;
+        for uid in batch {
+            let size = *sizes
+                .get(uid)
+                .ok_or("服务器未返回全部邮件大小，预算检查未完成")?;
+            let remote =
+                validity.map_or_else(|| format!("unknown:{uid}"), |v| format!("{v}:{uid}"));
+            rows.push((remote, size));
+        }
+    }
+    check()?;
+    let final_mailbox = examine_verified(session, folder)
+        .map_err(|_| "服务器目录数量响应无效、被拒绝或连接中断".to_string())?;
+    if final_mailbox.uid_validity.filter(|v| *v > 0) != validity {
+        return Err("检查期间 UIDVALIDITY 变化，请重新检查".into());
+    }
+    let after = session
+        .uid_search("ALL")
+        .map_err(|_| "服务器邮件编号检查失败，预算未完成".to_string())?;
+    let mut final_exists = final_mailbox.exists;
+    for event in session.unsolicited_responses.try_iter() {
+        if let imap::types::UnsolicitedResponse::Exists(n) = event {
+            final_exists = n;
+        }
+    }
+    if after.len() != final_exists as usize
+        || after.len() != ids.len()
+        || ids.iter().any(|uid| !after.contains(uid))
+    {
+        return Err("检查期间服务器目录变化，请重新检查预算".into());
+    }
+    Ok(crate::retention_budget::Inventory {
+        rows,
+        stable: validity.is_some(),
+    })
+}
+fn saving_sizes(
+    response: &[u8],
+    requested: &std::collections::HashSet<u32>,
+) -> Result<std::collections::HashMap<u32, u64>> {
+    let mut rows = std::collections::HashMap::new();
+    let mut remaining = response;
+    while !remaining.is_empty() {
+        let (rest, response) = imap_proto::parse_response(remaining)
+            .map_err(|_| "服务器邮件大小响应无效或不完整".to_string())?;
+        remaining = rest;
+        if let imap_proto::Response::Fetch(_, attrs) = response {
+            let uid = attrs.iter().find_map(|a| {
+                if let imap_proto::AttributeValue::Uid(v) = a {
+                    Some(*v)
+                } else {
+                    None
+                }
+            });
+            let Some(uid) = uid.filter(|uid| requested.contains(uid)) else {
+                continue;
+            };
+            if attrs
+                .iter()
+                .filter(|a| matches!(a, imap_proto::AttributeValue::Uid(_)))
+                .count()
+                != 1
+            {
+                return Err("服务器大小响应含重复邮件编号".into());
+            }
+            let sizes = attrs
+                .iter()
+                .filter_map(|a| {
+                    if let imap_proto::AttributeValue::Rfc822Size(v) = a {
+                        Some(*v as u64)
+                    } else {
+                        None
+                    }
+                })
+                .collect::<Vec<_>>();
+            if sizes.len() != 1 || sizes[0] == 0 || rows.insert(uid, sizes[0]).is_some() {
+                return Err("服务器邮件大小缺失、重复或无效".into());
+            }
+        }
+    }
+    Ok(rows)
+}
+
+#[cfg(test)]
+mod saving_inventory_tests {
+    use super::*;
+    use std::io::{Cursor, Read};
+    #[derive(Debug)]
+    struct Transcript {
+        input: Cursor<Vec<u8>>,
+        output: Arc<Mutex<Vec<u8>>>,
+    }
+    impl Read for Transcript {
+        fn read(&mut self, bytes: &mut [u8]) -> std::io::Result<usize> {
+            self.input.read(bytes)
+        }
+    }
+    impl Write for Transcript {
+        fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+            self.output.lock().unwrap().extend_from_slice(bytes);
+            Ok(bytes.len())
+        }
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
+    fn inventory(response: &str) -> (Result<crate::retention_budget::Inventory>, String) {
+        let output = Arc::new(Mutex::new(Vec::new()));
+        let transcript = Transcript {
+            input: Cursor::new(response.as_bytes().to_vec()),
+            output: output.clone(),
+        };
+        let mut session = imap::Client::new(transcript)
+            .login("fixture", "fixture-only")
+            .unwrap();
+        let result = saving_imap_inventory(&mut session, "INBOX", || Ok(()));
+        let commands = String::from_utf8(output.lock().unwrap().clone()).unwrap();
+        (result, commands)
+    }
+    fn response(validity: &str, last_validity: &str, fetch: &str, after: &str) -> String {
+        format!("a1 OK Login\r\n* 2 EXISTS\r\n* FLAGS ()\r\n{validity}a2 OK [READ-ONLY] Open\r\n* SEARCH 12 13\r\na3 OK Search\r\n{fetch}a4 OK Sizes\r\n* 2 EXISTS\r\n* FLAGS ()\r\n{last_validity}a5 OK [READ-ONLY] Open\r\n* SEARCH {after}\r\na6 OK Search\r\n")
+    }
+    #[test]
+    fn size_inventory_reads_all_server_uids_without_body_marking_or_source_mutation() {
+        let r = response(
+            "* OK [UIDVALIDITY 7] Valid\r\n",
+            "* OK [UIDVALIDITY 7] Valid\r\n",
+            "* 1 FETCH (UID 12 RFC822.SIZE 100)\r\n* 2 FETCH (UID 13 RFC822.SIZE 200)\r\n",
+            "12 13",
+        );
+        let (result, commands) = inventory(&r);
+        let data = result.unwrap();
+        assert_eq!(data.rows, vec![("7:12".into(), 100), ("7:13".into(), 200)]);
+        assert!(data.stable);
+        assert!(commands.contains("EXAMINE \"INBOX\""));
+        assert!(commands.contains("UID FETCH 12,13 (UID RFC822.SIZE)"));
+        for forbidden in ["BODY", "STORE", "SELECT INBOX", "MOVE", "EXPUNGE"] {
+            assert!(!commands.contains(forbidden));
+        }
+    }
+    #[test]
+    fn missing_sizes_truncated_and_changed_namespaces_never_claim_complete_inventory() {
+        let v = "* OK [UIDVALIDITY 7] Valid\r\n";
+        for fetch in [
+            "* 1 FETCH (UID 12 RFC822.SIZE 100)\r\n",
+            "* 1 FETCH (UID 12 RFC822.SIZE 100)\r\n* 2 FETCH (UID 13 RFC822.SIZE 0)\r\n",
+            "* 1 FETCH (UID 12 RFC822.SIZE 100)\r\n* 2 FETCH (UID 13 RFC822.SIZE 200",
+        ] {
+            assert!(inventory(&response(v, v, fetch, "12 13")).0.is_err());
+        }
+        let fetch = "* 1 FETCH (UID 12 RFC822.SIZE 100)\r\n* 2 FETCH (UID 13 RFC822.SIZE 200)\r\n";
+        assert!(inventory(&response(
+            v,
+            "* OK [UIDVALIDITY 8] Valid\r\n",
+            fetch,
+            "12 13"
+        ))
+        .0
+        .is_err());
+        assert!(inventory(&response(v, v, fetch, "12 14")).0.is_err());
+        assert!(
+            !inventory(&response("", "", fetch, "12 13"))
+                .0
+                .unwrap()
+                .stable
+        );
+        let r = response(v, v, fetch, "12 13").replacen(
+            "a4 OK Sizes\r\n* 2 EXISTS",
+            "a4 OK Sizes\r\n* 0 EXISTS",
+            1,
+        );
+        assert!(inventory(&r).0.is_err());
+        assert!(saving_sizes(
+            b"* 1 FETCH (UID 12 UID 13 RFC822.SIZE 100)\r\n",
+            &std::collections::HashSet::from([12, 13])
+        )
+        .is_err());
+    }
+    #[test]
+    fn contradictory_container_stops_before_size_fetch() {
+        let (result, commands) = inventory("a1 OK Login\r\n* 0 EXISTS\r\n* FLAGS ()\r\na2 OK [READ-ONLY] Open\r\n* SEARCH 12\r\na3 OK Search\r\n");
+        assert!(result.is_err());
+        assert!(!commands.contains("UID FETCH"));
+    }
+    #[test]
+    fn pop_sizes_require_complete_unique_uidl_and_stable_snapshot() {
+        let before = pop_inventory_lines(b"1 abc\r\n2 def\r\n").unwrap();
+        let sizes = pop_inventory_lines(b"1 100\r\n2 200\r\n").unwrap();
+        assert_eq!(
+            saving_pop_inventory(&before, &sizes, &before)
+                .unwrap()
+                .rows
+                .len(),
+            2
+        );
+        assert!(saving_pop_inventory(
+            &before,
+            &sizes,
+            &pop_inventory_lines(b"1 abc\r\n2 changed\r\n").unwrap()
+        )
+        .is_err());
+        assert!(pop_inventory_lines(b"1 abc\r\n1 def\r\n").is_err());
+        assert!(saving_pop_inventory(
+            &pop_inventory_lines(b"1 abc\r\n2 abc\r\n").unwrap(),
+            &sizes,
+            &before
+        )
+        .is_err());
     }
 }

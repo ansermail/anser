@@ -1,10 +1,16 @@
 import { useEffect, useRef, useState } from "react";
-import { RefreshCw } from "lucide-react";
+import { Loader2, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 import { call } from "@/lib/api";
-import type { Account, FolderRetention, RetentionSettings } from "@/lib/types";
+import type {
+  Account,
+  FolderRetention,
+  RetentionSettings,
+  RetentionBudget,
+} from "@/lib/types";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
+import { RetentionBudgetView } from "./retention-budget";
 import { RetentionSummaryView } from "./retention-summary";
 import { Alert, AlertDescription } from "./ui/alert";
 import { Skeleton } from "./ui/skeleton";
@@ -38,6 +44,18 @@ export function RetentionDialog({
   onboarding?: boolean;
 }) {
   const epoch = useRef(0);
+  const inspection = useRef<string | null>(null);
+  const [budget, setBudget] = useState<RetentionBudget | null>(null);
+  const [checking, setChecking] = useState(false);
+  const [budgetError, setBudgetError] = useState("");
+  function cancelInspection() {
+    const requestId = inspection.current;
+    inspection.current = null;
+    if (requestId)
+      void call("cancel_retention_inspection", { requestId }).catch(() => {});
+    setChecking(false);
+  }
+
   const [settings, setSettings] = useState<RetentionSettings | null>(null);
   const [values, setValues] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
@@ -54,6 +72,9 @@ export function RetentionDialog({
   useEffect(() => {
     const current = ++epoch.current;
     setSettings(null);
+    setBudget(null);
+    setBudgetError("");
+    setChecking(false);
     setValues({});
     setError("");
     setBusy(false);
@@ -82,8 +103,23 @@ export function RetentionDialog({
       });
     return () => {
       if (epoch.current === current) epoch.current++;
+      const requestId = inspection.current;
+      inspection.current = null;
+      if (requestId)
+        void call("cancel_retention_inspection", { requestId }).catch(() => {});
     };
   }, [account?.id]);
+  // Every scope change invalidates a prior snapshot, including edits that have
+  // not been saved. Closing/changing account also interrupts its socket.
+  useEffect(() => {
+    cancelInspection();
+    setBudget(null);
+    setBudgetError("");
+  }, [
+    JSON.stringify(values),
+    settings?.defaultSave,
+    JSON.stringify(settings?.folders),
+  ]);
   if (!account) return null;
   const folders =
     account.protocol === "imap"
@@ -95,6 +131,44 @@ export function RetentionDialog({
   const missing = Object.keys(values).filter(
     (name) => !folders.some((f) => f.name === name),
   );
+  async function inspectBudget() {
+    if (
+      !account ||
+      !settings ||
+      busy ||
+      loading ||
+      checking ||
+      inspection.current ||
+      missing.length
+    )
+      return;
+    const requestId = crypto.randomUUID();
+    const current = epoch.current;
+    inspection.current = requestId;
+    setChecking(true);
+    setBudget(null);
+    setBudgetError("");
+    try {
+      const result = await call<RetentionBudget>("inspect_retention_budget", {
+        account: settings.account || account,
+        overrides: Object.entries(values).map(([folder, value]) => ({
+          folder,
+          saveLocally: value === "save",
+        })),
+        requestId,
+      });
+      if (epoch.current === current && inspection.current === requestId)
+        setBudget(result);
+    } catch (cause) {
+      if (epoch.current === current && inspection.current === requestId)
+        setBudgetError(String(cause));
+    } finally {
+      if (inspection.current === requestId) {
+        inspection.current = null;
+        setChecking(false);
+      }
+    }
+  }
   async function refresh() {
     if (!account || loading || busy) return;
     const current = epoch.current;
@@ -145,6 +219,7 @@ export function RetentionDialog({
     )
       return;
     const current = epoch.current;
+    cancelInspection();
     setBusy(true);
     setError("");
     const overrides: FolderRetention[] = Object.entries(values).map(
@@ -227,6 +302,35 @@ export function RetentionDialog({
             summary={settings.summary}
             busy={busy || loading}
             onRefresh={() => void refreshSummary()}
+            budgetContent={
+              budget ? (
+                <RetentionBudgetView
+                  budget={budget}
+                  currentPath={settings.summary.dataDir}
+                />
+              ) : budgetError ? (
+                <Alert variant="destructive">
+                  <AlertDescription>{budgetError}</AlertDescription>
+                </Alert>
+              ) : null
+            }
+            budgetActions={
+              checking ? (
+                <Button variant="outline" size="sm" onClick={cancelInspection}>
+                  <Loader2 data-icon="inline-start" className="animate-spin" />
+                  取消预算检查
+                </Button>
+              ) : (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={busy || loading || !settings || missing.length > 0}
+                  onClick={() => void inspectBudget()}
+                >
+                  检查服务器数量与空间
+                </Button>
+              )
+            }
           />
         )}
         {loading && !settings && (
