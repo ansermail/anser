@@ -115,3 +115,37 @@ it("queues legacy accepted records explicitly and retries only pre-submission fa
   });
   expect(card("preparing").querySelectorAll("button")).toHaveLength(0);
 });
+it("offers read-only verification for a rejected bound copy and never resends SMTP", async () => {
+  records.push({
+    ...records[1],
+    id: "unbound",
+    draft: { ...records[1].draft, subject: "unbound" },
+    serverCopy: { ...records[1].serverCopy!, target: "", validity: 0 },
+  });
+  records.push({
+    ...records[1],
+    id: "reported",
+    draft: { ...records[1].draft, subject: "reported" },
+    serverCopy: {
+      ...records[1].serverCopy!,
+      status: "checking",
+      origin: "smtpReported",
+    },
+  });
+  await render();
+  expect(card("unbound").textContent).not.toContain("只读核对副本");
+  expect(card("reported").textContent).toContain("不会再次上传");
+  expect(card("reported").textContent).not.toContain("重试保存副本");
+  await press("blocked", "只读核对副本");
+  expect(api.call).toHaveBeenCalledWith("sent_upload_action", {
+    id: "blocked",
+    action: "verify",
+  });
+  expect(
+    vi
+      .mocked(api.call)
+      .mock.calls.some(
+        ([cmd]) => cmd === "send_mail" || cmd === "retry_outbox",
+      ),
+  ).toBe(false);
+});

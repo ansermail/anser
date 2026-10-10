@@ -101,3 +101,7 @@ v0.1.5 已在 ansermail/anser 正式发布为 latest。Checks 与 Release macOS 
 ## 0.1.8 已发布（2026-10-10）
 
 在途收件箱只读 FETCH 可因实时通知停止；中断不保存部分原件、不清理旧来源或复用连接。纳入 e2f7cf6 的下载边界让出、项目许可资源与新 Google OAuth 编译配置；双架构构建从仓库 Secrets 注入，不改原更新密钥/标识。已从 f118cf3 完成远程 Release macOS 38033190031；15:22:16（Asia/Shanghai）发布为 latest。七项资源、更新签名、完整 codesign、许可资源、DMG/归档一致性、新 Google 编译配置及公开更新端点核验通过，详见 RELEASE_018_WORKING.md。真实繁忙/睡眠/其他服务商与正式原位升级仍待验收；本轮 QQ→企业邮只由定时补查观察到收件，QQ 自动已发送副本核对也有待处理项。0.1.7 产物保持不变。
+
+## 0.1.9 构建准备（2026-10-10）
+
+本机关键节点包含 QQ 自动副本只读核对、IDLE/NOOP 截止、跨时区排序/未读显示和 Microsoft 默认发布配置。209 前端/283 Rust/19 脚本/39 IMAP 与 UI/格式/生产/Pages 检查通过；固定源码、双架构 Actions、资源核验与正式发布持续记录 RELEASE_019_WORKING.md。当前仍以 0.1.8 为公开 latest，源码完成不等于新版已发布；真实 OAuth/升级等未执行项目继续保留。

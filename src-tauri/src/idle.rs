@@ -50,6 +50,27 @@ pub struct MailboxActivity {
     changed: bool,
     line: Vec<u8>,
     notify: Option<Arc<dyn Fn() + Send + Sync>>,
+    probe_deadline: Option<Instant>,
+}
+/// Bound an entire NOOP response, including a stream of keepalives. Removing
+/// the deadline on every exit avoids applying it to the next IDLE command.
+pub struct ProbeDeadline(Arc<Mutex<MailboxActivity>>);
+impl ProbeDeadline {
+    pub fn register(activity: &Arc<Mutex<MailboxActivity>>, timeout: Duration) -> Result<Self> {
+        let mut state = activity.lock().map_err(err)?;
+        if state.probe_deadline.is_some() {
+            return Err("实时补查已有截止时间".into());
+        }
+        state.probe_deadline = Some(Instant::now() + timeout);
+        Ok(Self(activity.clone()))
+    }
+}
+impl Drop for ProbeDeadline {
+    fn drop(&mut self) {
+        if let Ok(mut state) = self.0.lock() {
+            state.probe_deadline = None;
+        }
+    }
 }
 /// Registration is removed on normal return, protocol failure and unwind.
 pub struct ActivityNotification(Arc<Mutex<MailboxActivity>>);
@@ -136,7 +157,12 @@ impl<T> ObservedStream<T> {
 }
 impl<T: TimedStream> Read for ObservedStream<T> {
     fn read(&mut self, buffer: &mut [u8]) -> std::io::Result<usize> {
-        if let Some(deadline) = self.deadline {
+        let probe = self
+            .activity
+            .lock()
+            .ok()
+            .and_then(|state| state.probe_deadline);
+        if let Some(deadline) = self.deadline.into_iter().chain(probe).min() {
             let remaining = deadline.saturating_duration_since(Instant::now());
             if remaining.is_zero() {
                 return Err(std::io::ErrorKind::TimedOut.into());
@@ -186,6 +212,44 @@ impl<T: TimedStream> SetReadTimeout for ObservedStream<T> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn probe_deadline_bounds_continuous_keepalives_and_cleans_up_on_unwind() {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let socket = TcpStream::connect(listener.local_addr().unwrap()).unwrap();
+        let (mut peer, _) = listener.accept().unwrap();
+        let server = std::thread::spawn(move || {
+            for _ in 0..200 {
+                if peer.write_all(b"* OK keepalive\r\n").is_err() {
+                    break;
+                }
+                std::thread::sleep(Duration::from_millis(5));
+            }
+        });
+        let activity = Arc::new(Mutex::new(MailboxActivity::default()));
+        let mut stream = ObservedStream::new(socket, activity.clone());
+        let deadline = ProbeDeadline::register(&activity, Duration::from_millis(30)).unwrap();
+        let started = Instant::now();
+        let error = loop {
+            let mut b = [0; 128];
+            if let Err(e) = stream.read(&mut b) {
+                break e;
+            }
+        };
+        assert!(matches!(
+            error.kind(),
+            std::io::ErrorKind::TimedOut | std::io::ErrorKind::WouldBlock
+        ));
+        assert!(started.elapsed() < Duration::from_secs(3));
+        drop(deadline);
+        assert!(activity.lock().unwrap().probe_deadline.is_none());
+        let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            let _deadline = ProbeDeadline::register(&activity, Duration::from_secs(1)).unwrap();
+            panic!("fixture unwind");
+        }));
+        assert!(activity.lock().unwrap().probe_deadline.is_none());
+        drop(stream);
+        server.join().unwrap();
+    }
     #[test]
     fn notification_registration_is_removed_on_unwind() {
         let activity = Arc::new(Mutex::new(MailboxActivity::default()));

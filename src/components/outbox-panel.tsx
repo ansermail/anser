@@ -236,6 +236,15 @@ export function OutboxPanel({
                 {r.serverCopy.origin === "existing" && (
                   <p>服务器已有相同副本，未重复上传。</p>
                 )}
+                {r.serverCopy.origin === "smtpReported" && (
+                  <p>
+                    {r.serverCopy.status === "completed"
+                      ? "服务器报告 SMTP 已保存，唯一副本已核对；未重复上传。"
+                      : ["checking", "verifying"].includes(r.serverCopy.status)
+                        ? "服务器报告 SMTP 已保存，正在核对唯一副本；不会再次上传。"
+                        : "服务器报告 SMTP 已保存，结果尚未确认；只能只读核对，不会再次上传。"}
+                  </p>
+                )}
                 {r.serverCopy.status === "uncertain" && (
                   <p>
                     SMTP
@@ -260,20 +269,25 @@ export function OutboxPanel({
                     保存到服务器已发送
                   </Button>
                 )}
-              {r.status === "sent" && r.serverCopy?.status === "blocked" && (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  disabled={!!busy}
-                  onClick={() => void upload(r, "retry")}
-                >
-                  重试保存副本
-                </Button>
-              )}
               {r.status === "sent" &&
-                ["uncertain", "confirmed"].includes(
+                r.serverCopy?.status === "blocked" &&
+                r.serverCopy.origin !== "smtpReported" && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={!!busy}
+                    onClick={() => void upload(r, "retry")}
+                  >
+                    重试保存副本
+                  </Button>
+                )}
+              {r.status === "sent" &&
+                (["uncertain", "confirmed"].includes(
                   r.serverCopy?.status || "",
-                ) && (
+                ) ||
+                  (r.serverCopy?.status === "blocked" &&
+                    !!r.serverCopy.target &&
+                    r.serverCopy.validity > 0)) && (
                   <Button
                     variant="outline"
                     size="sm"

@@ -131,6 +131,47 @@ afterEach(async () => {
   vi.restoreAllMocks();
 });
 describe("message and conversation display modes", () => {
+  it("keeps unread status separate from account color on long subjects in both list modes", async () => {
+    const seed = await snapshot(localQuery);
+    const base = seed.messages[0];
+    seed.messages = [
+      {
+        ...base,
+        id: "long-unread",
+        subject: "长标题".repeat(100),
+        isRead: false,
+        messageId: "<unread@example.com>",
+      },
+      {
+        ...base,
+        id: "long-read",
+        subject: "已读长标题".repeat(100),
+        isRead: true,
+        messageId: "<read@example.com>",
+      },
+    ];
+    localStorage.setItem("mail-desktop-demo-v1", JSON.stringify(seed));
+    api.restoreDemo();
+    await click(nav("本地存档"));
+    for (const label of ["逐封邮件", "按对话分组"]) {
+      await chooseListMode(label);
+      const rows = [...host.querySelectorAll(".mail-row")];
+      expect(rows).toHaveLength(2);
+      for (const row of rows) {
+        expect(row.querySelectorAll('[aria-label="未读"]')).toHaveLength(
+          row.classList.contains("unread") ? 1 : 0,
+        );
+        expect(row.querySelector(".row-subject-text")?.textContent).toContain(
+          "长标题",
+        );
+        expect(
+          row
+            .querySelector('.row-meta .mini-dot[aria-hidden="true"]')
+            ?.getAttribute("title"),
+        ).toBe("邮箱颜色标识");
+      }
+    }
+  });
   it("reloads selected content when archival changes the original hash", async () => {
     const seed = await snapshot(localQuery);
     seed.messages = [{ ...seed.messages[0], savedLocally: false }];

@@ -23,6 +23,16 @@ pub struct Index {
     pub roots: HashMap<String, String>,
     pub counts: HashMap<(String, bool), usize>,
 }
+fn chronological(a: &Mail, b: &Mail) -> std::cmp::Ordering {
+    let instant = |mail: &Mail| chrono::DateTime::parse_from_rfc3339(&mail.date).ok();
+    match (instant(a), instant(b)) {
+        (Some(a), Some(b)) => a.cmp(&b),
+        (Some(_), None) => std::cmp::Ordering::Less,
+        (None, Some(_)) => std::cmp::Ordering::Greater,
+        (None, None) => std::cmp::Ordering::Equal,
+    }
+    .then(a.id.cmp(&b.id))
+}
 fn root(parents: &mut [usize], mut i: usize) -> usize {
     while parents[i] != i {
         parents[i] = parents[parents[i]];
@@ -189,7 +199,7 @@ impl Store {
                 mails.push(serde_json::from_str(&row.map_err(err)?).map_err(err)?);
             }
         }
-        mails.sort_by(|a, b| a.date.cmp(&b.date).then(a.id.cmp(&b.id)));
+        mails.sort_by(chronological);
         let mut out: Vec<Mail> = Vec::new();
         let mut positions = HashMap::new();
         for mut mail in mails {
@@ -219,7 +229,7 @@ impl Store {
             }
             out.push(mail);
         }
-        out.sort_by(|a, b| a.date.cmp(&b.date).then(a.id.cmp(&b.id)));
+        out.sort_by(chronological);
         Ok(out)
     }
 }

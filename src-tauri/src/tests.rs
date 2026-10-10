@@ -1208,6 +1208,107 @@ fn configurable_sync_interval_and_wakeup_are_persistent_and_keep_busy_catchup_pe
 }
 
 #[test]
+fn mail_lists_and_threads_order_instants_across_offsets_before_pagination() {
+    let dir = tempfile::tempdir().unwrap();
+    let store = Store::new(dir.path().into()).unwrap();
+    let a = account();
+    store.save_account(&a).unwrap();
+    let mut ids = std::collections::HashMap::new();
+    for (uid, subject, date, refs) in [
+        ("1", "Local evening", "Sat, 10 Oct 2026 19:48:12 +0800", ""),
+        (
+            "2",
+            "Local afternoon",
+            "Sat, 10 Oct 2026 16:49:55 +0800",
+            "",
+        ),
+        ("3", "Thread root", "Sat, 10 Oct 2026 16:39:32 +0800", ""),
+        (
+            "4",
+            "UTC reply",
+            "Sat, 10 Oct 2026 11:53:37 +0000",
+            "References: <3@example.com>\r\n",
+        ),
+        ("5", "Same instant", "Sat, 10 Oct 2026 19:53:37 +0800", ""),
+    ] {
+        let raw = format!("From: alice@example.com\r\nTo: test@example.com\r\nSubject: {subject}\r\nMessage-ID: <{uid}@example.com>\r\nDate: {date}\r\n{refs}\r\nBody");
+        store
+            .ingest(&a, "INBOX", uid, raw.as_bytes(), false)
+            .unwrap();
+        let m = store
+            .snapshot(&query())
+            .unwrap()
+            .messages
+            .into_iter()
+            .find(|m| m.subject == subject)
+            .unwrap();
+        ids.insert(subject, m.id);
+    }
+    let root = store.mail(&ids["Thread root"]).unwrap();
+    let original = archive::read_raw(dir.path(), &root.hash).unwrap();
+    let mut q = query();
+    q.list_mode = ListMode::Messages;
+    let list = store.snapshot(&q).unwrap().messages;
+    let mut tied = vec![ids["UTC reply"].clone(), ids["Same instant"].clone()];
+    tied.sort();
+    let mut expected = tied.clone();
+    expected.extend([
+        ids["Local evening"].clone(),
+        ids["Local afternoon"].clone(),
+        root.id.clone(),
+    ]);
+    assert_eq!(
+        list.iter().map(|m| m.id.clone()).collect::<Vec<_>>(),
+        expected
+    );
+    q.limit = 2;
+    assert_eq!(
+        store
+            .snapshot(&q)
+            .unwrap()
+            .messages
+            .iter()
+            .map(|m| m.id.clone())
+            .collect::<Vec<_>>(),
+        tied
+    );
+    q.list_mode = ListMode::Conversations;
+    let grouped = store.snapshot(&q).unwrap();
+    assert_eq!(grouped.matched, 4);
+    assert_eq!(
+        grouped
+            .messages
+            .iter()
+            .map(|m| m.id.clone())
+            .collect::<Vec<_>>(),
+        tied
+    );
+    assert_eq!(
+        store
+            .conversation(&root.id)
+            .unwrap()
+            .iter()
+            .map(|m| m.subject.as_str())
+            .collect::<Vec<_>>(),
+        ["Thread root", "UTC reply"]
+    );
+    assert_eq!(store.mail(&root.id).unwrap().date, root.date);
+    assert_eq!(archive::read_raw(dir.path(), &root.hash).unwrap(), original);
+    // Legacy invalid metadata sorts last; the archive is never rewritten.
+    let mut unknown = store.mail(&ids["Local evening"]).unwrap();
+    unknown.date = "invalid legacy date".into();
+    store.update_mail(&unknown).unwrap();
+    q.limit = 10;
+    for mode in [ListMode::Messages, ListMode::Conversations] {
+        q.list_mode = mode;
+        assert_eq!(
+            store.snapshot(&q).unwrap().messages.last().unwrap().id,
+            unknown.id
+        );
+    }
+}
+
+#[test]
 fn conversation_combines_inbox_and_sent_with_scope_pagination_and_old_archive_upgrade() {
     let dir = tempfile::tempdir().unwrap();
     let store = Store::new(dir.path().into()).unwrap();

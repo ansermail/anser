@@ -27,9 +27,13 @@ pub struct SentUpload {
     pub origin: String,
     #[serde(default)]
     pub server_message_id: String,
+    #[serde(skip)]
+    pub(crate) verification_attempts: u32,
 }
 const COLUMNS: &str =
-    "id,account_id,identity,content_hash,message_id,target,validity,uid,status,error,origin,server_message_id";
+    "id,account_id,identity,content_hash,message_id,target,validity,uid,status,error,origin,server_message_id,verification_attempts";
+const SMTP_REPORTED: &str = "smtpReported";
+const MAX_REPORTED_CHECKS: u32 = 5;
 fn decode(r: &rusqlite::Row<'_>) -> rusqlite::Result<SentUpload> {
     let target: String = r.get(5)?;
     Ok(SentUpload {
@@ -46,17 +50,14 @@ fn decode(r: &rusqlite::Row<'_>) -> rusqlite::Result<SentUpload> {
         error: r.get(9)?,
         origin: r.get(10)?,
         server_message_id: r.get(11)?,
+        verification_attempts: r.get(12)?,
     })
 }
 pub fn initialize(db: &rusqlite::Connection) -> Result<()> {
     db.execute_batch("CREATE TABLE IF NOT EXISTS sent_uploads(
         id TEXT PRIMARY KEY,account_id TEXT NOT NULL,identity TEXT NOT NULL,content_hash TEXT NOT NULL,
         message_id TEXT NOT NULL,target TEXT NOT NULL DEFAULT '',validity INTEGER NOT NULL DEFAULT 0,uid INTEGER,
-        status TEXT NOT NULL,error TEXT NOT NULL DEFAULT '',next_attempt INTEGER NOT NULL DEFAULT 0);
-        UPDATE sent_uploads SET status='queued',target='',validity=0 WHERE status='preparing';
-        UPDATE sent_uploads SET status='uncertain',error='上传已提交但确认未保存；只能核对，不会自动重复上传' WHERE status='submitted';
-        UPDATE sent_uploads SET status=CASE WHEN uid IS NULL THEN 'uncertain' ELSE 'confirmed' END WHERE status='verifying';
-        UPDATE sent_uploads SET status='uncertain' WHERE status='checking';").map_err(err)?;
+        status TEXT NOT NULL,error TEXT NOT NULL DEFAULT '',next_attempt INTEGER NOT NULL DEFAULT 0);").map_err(err)?;
     let has_origin: bool = db
         .prepare("PRAGMA table_info(sent_uploads)")
         .map_err(err)?
@@ -83,6 +84,27 @@ pub fn initialize(db: &rusqlite::Connection) -> Result<()> {
         )
         .map_err(err)?;
     }
+    let has_attempts = db
+        .prepare("PRAGMA table_info(sent_uploads)")
+        .map_err(err)?
+        .query_map([], |r| r.get::<_, String>(1))
+        .map_err(err)?
+        .any(|v| v.as_deref() == Ok("verification_attempts"));
+    if !has_attempts {
+        db.execute(
+            "ALTER TABLE sent_uploads ADD COLUMN verification_attempts INTEGER NOT NULL DEFAULT 0",
+            [],
+        )
+        .map_err(err)?;
+    }
+    db.execute_batch("UPDATE sent_uploads SET status='queued',target='',validity=0 WHERE status='preparing';
+        UPDATE sent_uploads SET status='uncertain',error='上传已提交但确认未保存；只能核对，不会自动重复上传' WHERE status='submitted';
+        UPDATE sent_uploads SET status=CASE WHEN uid IS NOT NULL THEN 'confirmed' WHEN origin='smtpReported' AND verification_attempts<5 THEN 'checking' ELSE 'uncertain' END WHERE status='verifying';
+        UPDATE sent_uploads SET status='uncertain' WHERE status='checking' AND (origin!='smtpReported' OR verification_attempts>=5);
+        UPDATE sent_uploads SET status='checking',origin='smtpReported',verification_attempts=0,next_attempt=0,error='服务器报告 SMTP 已保存，等待只读核对；不会再次上传'
+        WHERE status='blocked' AND target!='' AND validity>0 AND uid IS NULL
+        AND error='服务器明确拒绝上传，原件尚未传输：Mail has saved by smtp!'
+        AND EXISTS(SELECT 1 FROM accounts a WHERE a.id=sent_uploads.account_id AND json_extract(a.data,'$.provider')='qq');").map_err(err)?;
     Ok(())
 }
 fn insert(db: &rusqlite::Connection, a: &Account, id: &str, raw: &[u8]) -> Result<()> {
@@ -246,7 +268,7 @@ impl Store {
         if uid == 0 || u.validity == 0 {
             return Err("上传回执无效".into());
         }
-        let changed=self.db()?.execute("UPDATE sent_uploads SET uid=?2,origin=CASE WHEN origin!='' THEN origin WHEN status='preparing' THEN 'existing' WHEN status='submitted' THEN 'appended' ELSE 'observed' END,status='confirmed',error='' WHERE id=?1 AND status IN ('preparing','submitted','verifying') AND validity=?3",params![u.id,uid,u.validity]).map_err(err)?;
+        let changed=self.db()?.execute("UPDATE sent_uploads SET uid=?2,origin=CASE WHEN origin='smtpReported' THEN 'existing' WHEN origin!='' THEN origin WHEN status='preparing' THEN 'existing' WHEN status='submitted' THEN 'appended' ELSE 'observed' END,status='confirmed',error='' WHERE id=?1 AND status IN ('preparing','submitted','verifying') AND validity=?3",params![u.id,uid,u.validity]).map_err(err)?;
         if changed != 1 {
             return Err("上传任务已变化，回执未保存".into());
         }
@@ -292,7 +314,29 @@ impl Store {
         Ok(())
     }
     pub(crate) fn fail_upload(&self, id: &str, error: &str) -> Result<()> {
+        let u = self.sent_upload(id)?.ok_or("上传任务不存在")?;
+        if u.status == "verifying"
+            && u.origin == SMTP_REPORTED
+            && u.verification_attempts < MAX_REPORTED_CHECKS
+            && self.upload_content(&u).is_ok()
+        {
+            let delay = match u.verification_attempts {
+                0 | 1 => 10,
+                2 => 30,
+                3 => 60,
+                _ => 120,
+            };
+            self.db()?.execute("UPDATE sent_uploads SET status='checking',error=?2,next_attempt=?3 WHERE id=?1 AND status='verifying' AND origin='smtpReported' AND verification_attempts=?4",params![id,error,chrono::Utc::now().timestamp()+delay,u.verification_attempts]).map_err(err)?;
+            return Ok(());
+        }
         self.db()?.execute("UPDATE sent_uploads SET status=CASE WHEN status='preparing' THEN 'blocked' ELSE 'uncertain' END,error=?2 WHERE id=?1 AND status IN ('preparing','submitted','verifying','confirmed')",params![id,error]).map_err(err)?;
+        Ok(())
+    }
+    pub(crate) fn smtp_reported_upload(&self, id: &str) -> Result<()> {
+        let changed = self.db()?.execute("UPDATE sent_uploads SET status='checking',origin='smtpReported',verification_attempts=0,next_attempt=?2,error='服务器报告 SMTP 已保存，等待只读核对；不会再次上传' WHERE id=?1 AND status='submitted' AND uid IS NULL",params![id,chrono::Utc::now().timestamp()+5]).map_err(err)?;
+        if changed != 1 {
+            return Err("上传任务已变化，服务器报告待核对".into());
+        }
         Ok(())
     }
     pub(crate) fn reject_upload_before_literal(&self, id: &str, error: &str) -> Result<()> {
@@ -303,7 +347,12 @@ impl Store {
         let u = self.sent_upload(id)?.ok_or("没有上传任务")?;
         self.upload_content(&u)?;
         let (from, to) = match action {
-            "retry" if u.status == "blocked" && u.uid.is_none() => ("blocked", "queued"),
+            "retry" if u.status == "blocked" && u.uid.is_none() && u.origin != SMTP_REPORTED => {
+                ("blocked", "queued")
+            }
+            "verify" if u.status == "blocked" && !u.target.is_empty() && u.validity > 0 => {
+                ("blocked", "checking")
+            }
             "verify" if matches!(u.status.as_str(), "uncertain" | "confirmed") => {
                 (u.status.as_str(), "checking")
             }
@@ -313,7 +362,7 @@ impl Store {
         if to == "queued" {
             db.execute("UPDATE sent_uploads SET status='queued',target='',validity=0,error='',next_attempt=0 WHERE id=?1 AND status=?2",params![id,from]).map_err(err)?;
         } else {
-            db.execute("UPDATE sent_uploads SET status='checking',error='',next_attempt=0 WHERE id=?1 AND status=?2",params![id,from]).map_err(err)?;
+            db.execute("UPDATE sent_uploads SET status='checking',error='',next_attempt=0,verification_attempts=0 WHERE id=?1 AND status=?2",params![id,from]).map_err(err)?;
         }
         Ok(())
     }
@@ -330,7 +379,7 @@ impl Store {
         Ok(self
             .db()?
             .execute(
-                "UPDATE sent_uploads SET status=?3 WHERE id=?1 AND status=?2",
+                "UPDATE sent_uploads SET status=?3,verification_attempts=verification_attempts+CASE WHEN origin='smtpReported' AND ?2!='queued' THEN 1 ELSE 0 END WHERE id=?1 AND status=?2",
                 params![
                     u.id,
                     u.status,
@@ -437,6 +486,112 @@ pub(crate) mod tests {
         c.id = "pop3".into();
         network::send_with(&store, &c, |_| Ok(()), |_, _| Ok(())).unwrap();
         assert!(store.sent_upload(&c.id).unwrap().is_none());
+    }
+    #[test]
+    fn smtp_reported_copy_retries_are_readonly_bounded_and_survive_restart() {
+        let (temp, mut store, _, id, raw) = fixture();
+        let u = store.sent_upload(&id).unwrap().unwrap();
+        store.claim_upload(&u).unwrap();
+        store.bind_upload(&u, "Sent Messages", 7).unwrap();
+        store
+            .submit_upload(&store.sent_upload(&id).unwrap().unwrap())
+            .unwrap();
+        store.smtp_reported_upload(&id).unwrap();
+        // Failure reporting by the worker must not turn the scheduled read-only
+        // observation into a write-capable retry.
+        store.fail_upload(&id, "reported").unwrap();
+        for attempt in 1..=MAX_REPORTED_CHECKS {
+            store = Store::new(temp.path().into()).unwrap();
+            let before = store.sent_upload(&id).unwrap().unwrap();
+            assert_eq!(before.status, "checking");
+            assert!(store.sent_upload_action(&id, "retry").is_err());
+            store
+                .db()
+                .unwrap()
+                .execute("UPDATE sent_uploads SET next_attempt=0 WHERE id=?1", [&id])
+                .unwrap();
+            let u = store.due_uploads().unwrap().remove(0);
+            assert!(store.claim_upload(&u).unwrap());
+            assert!(!store.claim_upload(&u).unwrap());
+            let live = store.sent_upload(&id).unwrap().unwrap();
+            assert_eq!(live.verification_attempts, attempt);
+            store.fail_upload(&id, "not visible yet").unwrap();
+            let state = store.sent_upload(&id).unwrap().unwrap();
+            assert_eq!(
+                state.status,
+                if attempt < MAX_REPORTED_CHECKS {
+                    "checking"
+                } else {
+                    "uncertain"
+                }
+            );
+            assert_eq!(state.target, "Sent Messages");
+            assert_eq!(state.validity, 7);
+            assert_eq!(store.upload_content(&state).unwrap().1, raw);
+            assert_eq!(store.outbox().unwrap()[0].status, "sent");
+        }
+        store = Store::new(temp.path().into()).unwrap();
+        assert!(store.due_uploads().unwrap().is_empty());
+        assert!(store.sent_upload_action(&id, "retry").is_err());
+        store.sent_upload_action(&id, "verify").unwrap();
+        assert_eq!(
+            store
+                .sent_upload(&id)
+                .unwrap()
+                .unwrap()
+                .verification_attempts,
+            0
+        );
+        let u = store.sent_upload(&id).unwrap().unwrap();
+        store.claim_upload(&u).unwrap();
+        let mut account = store.account(&u.account_id).unwrap();
+        account.enabled = false;
+        store.save_account(&account).unwrap();
+        store.fail_upload(&id, "paused account").unwrap();
+        assert_eq!(store.sent_upload(&id).unwrap().unwrap().status, "uncertain");
+    }
+    #[test]
+    fn legacy_reported_copy_migration_and_blocked_verification_never_requeue_writes() {
+        for (provider, reason, migrated) in [
+            ("qq", "Mail has saved by smtp!", true),
+            ("custom", "Mail has saved by smtp!", false),
+            ("qq", "APPEND not permitted", false),
+            ("qq", "Mail has saved by smtp! different", false),
+        ] {
+            let (temp, store, mut account, id, _) = fixture();
+            account.provider = provider.into();
+            store.save_account(&account).unwrap();
+            let u = store.sent_upload(&id).unwrap().unwrap();
+            store.claim_upload(&u).unwrap();
+            store.bind_upload(&u, "Sent Messages", 7).unwrap();
+            store
+                .submit_upload(&store.sent_upload(&id).unwrap().unwrap())
+                .unwrap();
+            store
+                .reject_upload_before_literal(
+                    &id,
+                    &format!("服务器明确拒绝上传，原件尚未传输：{reason}"),
+                )
+                .unwrap();
+            let store = Store::new(temp.path().into()).unwrap();
+            let u = store.sent_upload(&id).unwrap().unwrap();
+            assert_eq!(u.status, if migrated { "checking" } else { "blocked" });
+            if migrated {
+                assert_eq!(u.origin, SMTP_REPORTED);
+            } else {
+                store.sent_upload_action(&id, "verify").unwrap();
+                let u = store.sent_upload(&id).unwrap().unwrap();
+                assert_eq!(u.status, "checking");
+                assert_eq!(u.target, "Sent Messages");
+                assert_eq!(u.validity, 7);
+                assert!(store.sent_upload_action(&id, "retry").is_err());
+            }
+        }
+        let (_temp, store, _, id, _) = fixture();
+        let u = store.sent_upload(&id).unwrap().unwrap();
+        store.claim_upload(&u).unwrap();
+        store.fail_upload(&id, "no bound namespace").unwrap();
+        assert!(store.sent_upload_action(&id, "verify").is_err());
     }
     #[test]
     fn interruption_after_submission_never_requeues_append_and_receipts_survive() {

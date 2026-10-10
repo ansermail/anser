@@ -632,6 +632,13 @@ kbd {
   border-radius: 50%;
   vertical-align: middle;
   margin-right: 6px;
+  flex-shrink: 0;
+}
+.row-subject-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .mail-row-main > p {
   font-size: 12px;

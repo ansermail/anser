@@ -476,3 +476,22 @@ SQLite 只在本机计数时短读；网络和 fs2 可用空间查询不持有�
 `sync_imap_scope_controlled` 收到主动停止后丢弃完整响应缓冲区，不执行 MIME 解析、ingest、reconcile_folder 或恢复目录信任；全目录扫描也退出整个连接，不选下一目录。统一 `finish_readonly_sync` 只在成功且未停止时 LOGOUT；普通网络失败仍返回错误、不误报成主动让出。实时 pending 收件箱轮次使用新连接，新 UID 先于中断的旧 UID，已有原件始终保留。其他目录与其他账号不注册这一钩子，SMTP/COPY/MOVE 不复用这套取消机制。
 
 新增模拟 socket 回归覆盖正文与邮件头 literal 中途、完整正文后的 tagged 回执等待、普通断线、EOF 后禁止命令、原件/日期/标记/来源保留和新连接续收；注册竞态、正常 drop、unwind 和账号/目录/存储隔离另有覆盖。真实大附件繁忙到达/网络睡眠矩阵仍保留待验收。
+
+
+## 2026-10-10 列表跨时区排序与未读标识修复
+
+原生 snapshot 先用 SQLite `julianday(date) DESC, id ASC` 排序，再汇总对话与截取返回范围；RFC3339 日期的时区偏移参与实际时间换算，不能按字符串比较。无效时间置后，同时间用 ID 稳定排列。对话阅读使用 chrono RFC3339 解析后比较时间，仍从旧到新显示。原件、原始日期字符串、来源和标记不修改，不需要数据迁移。
+
+列表标题改为独立可省略文本，未读点禁止 flex 收缩，避免长标题挤掉标识；黑点表示单封/范围内对话未读，账号彩色点仍仅表示账号。二者补充可访问或悬停说明。
+
+实际验证：`npm test -- src/App.test.tsx src/lib/conversations.test.ts` 46 项；Rust `mail_lists_and_threads_order_instants_across_offsets_before_pagination` 1 项及 `conversation` 4 项；`npm run build`（含 UI 检查）、`npm run format:check`、cargo fmt / diff 检查通过。跨时区回归覆盖两种列表、对话代表邮件、相同瞬间、分页、未知日期和原件保持。浏览器虚构长标题几何检查为 5×5px；稳定启动器重编译后的原生列表日期已正确倒序。只修复开发版，未发版，不沿用此前全量门槛作为此次发布证据。
+
+## 2026-10-10 SENT / IDLE 只读核对与补查
+
+QQ 的 literal 前精确拒绝 `Mail has saved by smtp!` 不表示副本已核对，只把任务置为 smtpReported/checking。verification_attempts 迁移列保留新连接观察次数，最多五次并退避；重启不恢复为写任务，配置/原件变化或次数耗尽保留人工核对。旧记录只迁移精确 QQ 回执且已有目录/UIDVALIDITY 的任务。已绑定目录的 blocked 记录可手动只读核对，未绑定记录不能猜 namespace。
+
+读取路径使用 EXAMINE/SEARCH/BODY.PEEK，仍核对唯一候选、原件、不可变头及全文；没有选择到唯一完整副本就不确认，不重新 APPEND/SMTP。成功关联既有服务器 UID/Message-ID，不改本机原件。相同随机边界但头不同只报告固定字段名称，不输出私密值，不放宽 MIME 校验。
+
+IDLE 60 秒绝对周期结束并确认 DONE 后在选中会话发 NOOP，重复 keepalive 不续期；NOOP 再有独立 45 秒响应截止及 RAII 清理，持续非终结响应也需退出。回调在 tagged 确认前可排队，不跨 I/O 持有活动锁。ProbeChanged 与 MailboxChanged/CatchUp 分开记录，新变化可让出同账号旧只读历史下载；无变化不 FETCH、不重复认证，失败丢弃旧连接并沿用退避。该补查基于 [IMAP NOOP](https://www.rfc-editor.org/rfc/rfc3501#section-6.1.2) 与 [IDLE](https://www.rfc-editor.org/rfc/rfc2177)，不等于服务器推送或投递时间承诺。
+
+协议/状态与真实样本分别见 SENT_IDLE_RELIABILITY_WORKING.md；发布全量结果见 RELEASE_019_WORKING.md，静默 NOOP 真实连接和弱网/睡眠矩阵未完成。

@@ -1,7 +1,10 @@
 use crate::{
     archive,
     auth::{self, Secret},
-    idle::{ActivityNotification, ConnectionControl, MailboxActivity, ObservedStream, TimedStream},
+    idle::{
+        ActivityNotification, ConnectionControl, MailboxActivity, ObservedStream, ProbeDeadline,
+        TimedStream,
+    },
     models::*,
     store::Store,
 };
@@ -216,6 +219,7 @@ pub enum WatchOutcome {
 pub enum WatchSignal {
     CatchUp,
     MailboxChanged,
+    ProbeChanged,
 }
 fn watch_session<T: TimedStream>(
     session: &mut imap::Session<ObservedStream<T>>,
@@ -235,12 +239,38 @@ fn watch_session<T: TimedStream>(
         .map_err(|e| format!("打开实时收件箱失败：{e}"))?;
     let changed = Arc::new(changed);
     let notified = changed.clone();
+    let probing = Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let notification_phase = probing.clone();
     let _notification = ActivityNotification::register(
         activity,
-        Arc::new(move || notified(WatchSignal::MailboxChanged)),
+        Arc::new(move || {
+            notified(
+                if notification_phase.load(std::sync::atomic::Ordering::Acquire) {
+                    WatchSignal::ProbeChanged
+                } else {
+                    WatchSignal::MailboxChanged
+                },
+            )
+        }),
     )?;
     let mut connected = false;
+    let mut next_probe = std::time::Instant::now() + idle_timeout;
     while !control.stopped() {
+        if std::time::Instant::now() >= next_probe {
+            // DONE has been acknowledged before this loop. NOOP checks the
+            // selected mailbox without fetching bodies or writing flags, even
+            // on providers that delay spontaneous IDLE status updates.
+            probing.store(true, std::sync::atomic::Ordering::Release);
+            let deadline = ProbeDeadline::register(activity, Duration::from_secs(45))?;
+            let result = session.noop();
+            drop(deadline);
+            probing.store(false, std::sync::atomic::Ordering::Release);
+            if control.stopped() {
+                break;
+            }
+            result.map_err(|e| format!("实时连接补查失败：{e}"))?;
+            next_probe = std::time::Instant::now() + idle_timeout;
+        }
         // Start listening before queueing a catch-up, covering the SELECT/IDLE gap.
         let idle = session.idle().map_err(|e| format!("启动 IDLE 失败：{e}"))?;
         if !connected {
@@ -248,7 +278,11 @@ fn watch_session<T: TimedStream>(
             changed(WatchSignal::CatchUp);
             connected = true;
         }
-        let result = idle.wait_with_timeout(idle_timeout);
+        let result = idle.wait_with_timeout(
+            next_probe
+                .saturating_duration_since(std::time::Instant::now())
+                .max(Duration::from_millis(1)),
+        );
         if control.stopped() {
             break;
         }
@@ -275,7 +309,7 @@ pub fn watch_imap(
             control,
             ready,
             changed,
-            Duration::from_secs(20 * 60),
+            Duration::from_secs(60),
         )
     }))
     .unwrap_or_else(|_| Err("服务器实时通知响应不兼容，继续使用定时补查".into()));
@@ -1512,6 +1546,8 @@ mod tests {
                     )
                 } else if line.contains("EXAMINE") {
                     format!("* FLAGS (\\Seen)\r\n* 1 EXISTS\r\n* OK [UIDVALIDITY 7] UIDs valid\r\n{tag} OK [READ-ONLY] Opened\r\n")
+                } else if line.contains("NOOP") {
+                    format!("* 1 EXISTS\r\n{tag} OK Still unchanged\r\n")
                 } else if line.contains("IDLE") {
                     if mode == "rejected" {
                         reader
@@ -1624,6 +1660,142 @@ mod tests {
         assert_eq!(result.unwrap(), WatchOutcome::Stopped);
         assert_eq!(changes, 2);
         assert_eq!(commands.iter().filter(|c| c.ends_with("IDLE")).count(), 2);
+    }
+    #[test]
+    fn quiet_idle_probes_find_changes_before_ack_without_flooding_or_reusing_failed_sessions() {
+        for rejected in [false, true] {
+            let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+            let address = listener.local_addr().unwrap();
+            let control = Arc::new(ConnectionControl::default());
+            let ack = Arc::new(std::sync::atomic::AtomicBool::new(false));
+            let ack_seen = ack.clone();
+            let (permit_tx, permit_rx) = std::sync::mpsc::channel();
+            let server = std::thread::spawn(move || {
+                let (socket, _) = listener.accept().unwrap();
+                socket
+                    .set_read_timeout(Some(Duration::from_secs(3)))
+                    .unwrap();
+                let mut peer = BufReader::new(socket);
+                peer.get_mut().write_all(b"* OK Fixture\r\n").unwrap();
+                let mut commands = Vec::new();
+                let mut probes = 0;
+                loop {
+                    let mut line = String::new();
+                    if peer.read_line(&mut line).unwrap_or(0) == 0 {
+                        break;
+                    }
+                    commands.push(line.trim().to_owned());
+                    let tag = line.split_whitespace().next().unwrap();
+                    let response = if line.contains("LOGIN") {
+                        format!("{tag} OK Login\r\n")
+                    } else if line.contains("CAPABILITY") {
+                        format!("* CAPABILITY IMAP4rev1 IDLE\r\n{tag} OK Caps\r\n")
+                    } else if line.contains("EXAMINE") {
+                        format!("* 1 EXISTS\r\n* OK [UIDVALIDITY 7] Valid\r\n{tag} OK Opened\r\n")
+                    } else if line.contains("IDLE") {
+                        peer.get_mut().write_all(b"+ idling\r\n").unwrap();
+                        // Repeated keepalives must not reset the probe deadline.
+                        for _ in 0..8 {
+                            peer.get_mut().write_all(b"* OK Keepalive\r\n").unwrap();
+                            std::thread::sleep(Duration::from_millis(5));
+                        }
+                        let mut done = String::new();
+                        peer.read_line(&mut done).unwrap();
+                        assert_eq!(done, "DONE\r\n");
+                        commands.push("DONE".into());
+                        format!("{tag} OK Done\r\n")
+                    } else if line.contains("NOOP") {
+                        probes += 1;
+                        if rejected {
+                            peer.get_mut()
+                                .write_all(format!("{tag} NO Probe rejected\r\n").as_bytes())
+                                .unwrap();
+                            break;
+                        }
+                        if probes == 1 {
+                            format!("* 1 EXISTS\r\n{tag} OK Unchanged\r\n")
+                        } else {
+                            peer.get_mut().write_all(b"* 2 EXISTS\r\n").unwrap();
+                            peer.get_mut().flush().unwrap();
+                            permit_rx.recv_timeout(Duration::from_secs(3)).unwrap();
+                            ack_seen.store(true, std::sync::atomic::Ordering::Release);
+                            format!("{tag} OK Changed\r\n")
+                        }
+                    } else {
+                        panic!("unexpected command: {line}");
+                    };
+                    if peer.get_mut().write_all(response.as_bytes()).is_err() {
+                        break;
+                    }
+                }
+                commands
+            });
+            let socket = TcpStream::connect(address).unwrap();
+            socket
+                .set_read_timeout(Some(Duration::from_secs(3)))
+                .unwrap();
+            control.attach(&socket).unwrap();
+            let activity = Arc::new(Mutex::new(MailboxActivity::default()));
+            let mut client = imap::Client::new(ObservedStream::new(socket, activity.clone()));
+            client.read_greeting().unwrap();
+            let mut session = client
+                .login("fixture", "fixture-only")
+                .map_err(|(e, _)| e)
+                .unwrap();
+            let signals = Arc::new(Mutex::new(Vec::new()));
+            let seen = signals.clone();
+            let observed = activity.clone();
+            let (tx, rx) = std::sync::mpsc::channel();
+            let worker_control = control.clone();
+            let thread = std::thread::spawn(move || {
+                let result = watch_session(
+                    &mut session,
+                    &activity,
+                    &worker_control,
+                    || {},
+                    move |signal| {
+                        seen.lock().unwrap().push(signal);
+                        if signal == WatchSignal::ProbeChanged {
+                            tx.send(observed.try_lock().is_ok()).unwrap();
+                        }
+                    },
+                    Duration::from_millis(25),
+                );
+                assert!(!activity.lock().unwrap().notify_is_registered());
+                drop(session);
+                result
+            });
+            if !rejected {
+                assert!(rx.recv_timeout(Duration::from_secs(2)).unwrap());
+                assert!(!ack.load(std::sync::atomic::Ordering::Acquire));
+                control.stop();
+                permit_tx.send(()).unwrap();
+            }
+            let result = thread.join().unwrap();
+            control.stop();
+            let commands = server.join().unwrap();
+            if rejected {
+                assert!(result.unwrap_err().contains("补查失败"));
+                assert_eq!(commands.iter().filter(|c| c.ends_with("NOOP")).count(), 1);
+            } else {
+                assert_eq!(result.unwrap(), WatchOutcome::Stopped);
+                assert_eq!(
+                    *signals.lock().unwrap(),
+                    vec![WatchSignal::CatchUp, WatchSignal::ProbeChanged]
+                );
+                assert_eq!(commands.iter().filter(|c| c.ends_with("NOOP")).count(), 2);
+            }
+            assert!(!commands.iter().any(|c| [
+                "STATUS",
+                "UID FETCH",
+                "STORE",
+                "EXPUNGE",
+                "SELECT ",
+                "LOGOUT"
+            ]
+            .iter()
+            .any(|s| c.contains(s))));
+        }
     }
     #[test]
     fn idle_notification_is_delivered_before_done_ack_and_outside_activity_lock() {
@@ -5105,22 +5277,13 @@ fn append_rejection(c: &AppendCapture) -> Option<String> {
 }
 // Preserve all original headers and the complete MIME body/attachments.
 // Relays may add trace/signature headers; those additions do not duplicate a send.
-fn sent_headers_match(
+fn sent_header_mismatches(
     original: &[mailparse::MailHeader<'_>],
     server: &[mailparse::MailHeader<'_>],
     renamed: bool,
-) -> bool {
+) -> Vec<&'static str> {
     use mailparse::MailHeaderMap;
-    for h in original {
-        let name = h.get_key();
-        if renamed && name.eq_ignore_ascii_case("Message-ID") {
-            continue;
-        }
-        if original.get_all_values(&name) != server.get_all_values(&name) {
-            return false;
-        }
-    }
-    for name in [
+    let names = [
         "From",
         "Sender",
         "Reply-To",
@@ -5137,15 +5300,29 @@ fn sent_headers_match(
         "Content-Transfer-Encoding",
         "Content-Disposition",
         "Content-ID",
-    ] {
-        if renamed && name == "Message-ID" {
-            continue;
-        }
-        if original.get_all_values(name) != server.get_all_values(name) {
-            return false;
-        }
+    ];
+    let mut differences = names
+        .into_iter()
+        .filter(|name| {
+            !(renamed && *name == "Message-ID")
+                && original.get_all_values(name) != server.get_all_values(name)
+        })
+        .collect::<Vec<_>>();
+    if original.iter().any(|header| {
+        let name = header.get_key();
+        !names.iter().any(|known| known.eq_ignore_ascii_case(&name))
+            && original.get_all_values(&name) != server.get_all_values(&name)
+    }) {
+        differences.push("Other headers");
     }
-    true
+    differences
+}
+fn sent_headers_match(
+    original: &[mailparse::MailHeader<'_>],
+    server: &[mailparse::MailHeader<'_>],
+    renamed: bool,
+) -> bool {
+    sent_header_mismatches(original, server, renamed).is_empty()
 }
 #[cfg(test)]
 fn sent_content_matches(local: &[u8], remote: &[u8]) -> Result<bool> {
@@ -5192,7 +5369,17 @@ fn sent_fetch_match<T: std::io::Read + Write>(
     }
     let body = result[0].body().ok_or("已发送副本未返回完整原件")?;
     if !sent_content_matches_id(raw, body, renamed)? {
-        return Err("服务器副本的邮件头或 MIME 内容不同，请人工核对；不会再次上传".into());
+        let (local, _) = mailparse::parse_headers(raw).map_err(err)?;
+        let (remote, _) = mailparse::parse_headers(body).map_err(err)?;
+        let names = sent_header_mismatches(&local, &remote, renamed);
+        return Err(if names.is_empty() {
+            "服务器副本的完整 MIME 内容不同，请人工核对；不会再次上传".into()
+        } else {
+            format!(
+                "服务器副本的邮件头字段不一致（仅字段名称）：{}；不会再次上传",
+                names.join("、")
+            )
+        });
     }
     let (headers, _) = mailparse::parse_headers(body).map_err(err)?;
     use mailparse::MailHeaderMap;
@@ -5261,6 +5448,7 @@ fn sent_find<T: std::io::Read + Write>(
     let mut ids: Vec<u32> = ids.into_iter().collect();
     ids.sort_unstable();
     let mut candidates = Vec::new();
+    let mut same_boundary_differences = std::collections::BTreeSet::new();
     for batch in ids.chunks(50) {
         let set = batch
             .iter()
@@ -5283,8 +5471,25 @@ fn sent_find<T: std::io::Read + Write>(
             let (remote, _) = mailparse::parse_headers(header).map_err(err)?;
             if sent_headers_match(&headers, &remote, true) {
                 candidates.push(message.uid.unwrap());
+            } else {
+                let remote_kind = mailparse::parse_content_type(
+                    &remote.get_first_value("Content-Type").unwrap_or_default(),
+                );
+                if remote_kind.params.get("boundary") == kind.params.get("boundary") {
+                    same_boundary_differences
+                        .extend(sent_header_mismatches(&headers, &remote, true));
+                }
             }
         }
+    }
+    if candidates.is_empty() && !same_boundary_differences.is_empty() {
+        return Err(format!(
+            "发现保留原 MIME 边界的副本，但头字段不一致（仅字段名称）：{}；只能核对，不会再次上传",
+            same_boundary_differences
+                .into_iter()
+                .collect::<Vec<_>>()
+                .join("、")
+        ));
     }
     if candidates.len() > 20 {
         return Err("全文候选副本过多，无法唯一核对；不会上传".into());
@@ -5323,7 +5528,11 @@ fn upload_sent_session<T: std::io::Read + Write>(
     }
     // Tencent may reject writes after EXAMINE. SELECT changes session access
     // only; it never marks/deletes mail and we never issue CLOSE/EXPUNGE.
-    let selected = session.select(&u.target).map_err(err)?;
+    let selected = if read_only {
+        examine_verified(session, &u.target)?
+    } else {
+        session.select(&u.target).map_err(err)?
+    };
     if selected.uid_validity != Some(u.validity) {
         return Err("上传前目录 UIDVALIDITY 无法确认或已变化，尚未提交".into());
     }
@@ -5363,6 +5572,10 @@ fn upload_sent_session<T: std::io::Read + Write>(
         // imap 2.4 emits Error::Append exclusively before writing the literal.
         // A tagged NO/BAD therefore proves this attempt transmitted no MIME.
         if let Some(reason) = append_rejection(&*capture.lock().map_err(err)?) {
+            if account.provider == "qq" && reason == "Mail has saved by smtp!" {
+                store.smtp_reported_upload(&u.id)?;
+                return Err("服务器报告 SMTP 已保存；等待新连接只读核对，不会再次上传".into());
+            }
             let error = format!("服务器明确拒绝上传，原件尚未传输：{reason}");
             store.reject_upload_before_literal(&u.id, &error)?;
             return Err(error);
@@ -5740,6 +5953,102 @@ mod sent_tests {
         let commands = String::from_utf8_lossy(&w.lock().unwrap()).into_owned();
         assert_eq!(commands.matches("BODY.PEEK[]").count(), 1);
         assert!(!commands.contains("APPEND"));
+    }
+    #[test]
+    fn renamed_candidate_with_same_boundary_but_changed_headers_never_uploads_or_logs_values() {
+        let (_temp, s, mut account, id, raw) = crate::sent_uploads::tests::fixture();
+        account.provider = "qq".into();
+        s.save_account(&account).unwrap();
+        let u = claim(&s, &id);
+        let mut remote = String::from_utf8(raw.clone())
+            .unwrap()
+            .replace(&u.message_id, "<changed@example.com>")
+            .into_bytes();
+        remote = [
+            b"Reply-To: private-fixture@example.com\r\n".as_slice(),
+            remote.as_slice(),
+        ]
+        .concat();
+        let (_, end) = mailparse::parse_headers(&remote).unwrap();
+        let mut header = format!("* 1 FETCH (UID 9 BODY[HEADER] {{{end}}}\r\n").into_bytes();
+        header.extend(&remote[..end]);
+        header.extend(b")\r\na6 OK Header\r\n");
+        let (mut wire, c, w) = session(vec![
+            b"a1 OK login\r\n".to_vec(),
+            examine("a2", 7),
+            examine("a3", 7),
+            b"* SEARCH\r\na4 OK searched\r\n".to_vec(),
+            b"* SEARCH 9\r\na5 OK searched\r\n".to_vec(),
+            header,
+        ]);
+        let e = upload_sent_session(&s, &u, &mut wire, &c).unwrap_err();
+        assert!(e.contains("Reply-To"));
+        assert!(!e.contains("private-fixture"));
+        assert!(!String::from_utf8_lossy(&w.lock().unwrap()).contains("APPEND"));
+        assert_eq!(
+            s.upload_content(&s.sent_upload(&id).unwrap().unwrap())
+                .unwrap()
+                .1,
+            raw
+        );
+    }
+    #[test]
+    fn smtp_saved_rejection_only_checks_fresh_connections_until_unique_copy_is_verified() {
+        let (_temp, s, mut a, id, raw) = crate::sent_uploads::tests::fixture();
+        a.provider = "qq".into();
+        s.save_account(&a).unwrap();
+        let u = claim(&s, &id);
+        let (mut wire, c, w) = session(vec![
+            b"a1 OK login\r\n".to_vec(),
+            examine("a2", 7),
+            examine("a3", 7),
+            b"* SEARCH\r\na4 OK searched\r\n".to_vec(),
+            b"* SEARCH\r\na5 OK searched\r\n".to_vec(),
+            b"a6 NO Mail has saved by smtp!\r\n".to_vec(),
+        ]);
+        let error = upload_sent_session(&s, &u, &mut wire, &c).unwrap_err();
+        s.fail_upload(&id, &error).unwrap();
+        assert_eq!(s.sent_upload(&id).unwrap().unwrap().status, "checking");
+        assert!(!w
+            .lock()
+            .unwrap()
+            .windows(raw.len())
+            .any(|bytes| bytes == raw));
+        assert!(s.sent_upload_action(&id, "retry").is_err());
+        for visible in [false, true] {
+            let u = claim(&s, &id);
+            let mut replies = vec![
+                b"a1 OK login\r\n".to_vec(),
+                examine("a2", 7),
+                examine("a3", 7),
+            ];
+            if visible {
+                replies.push(b"* SEARCH 9\r\na4 OK searched\r\n".to_vec());
+                replies.push(fetch("a5", 9, &raw));
+            } else {
+                replies.push(b"* SEARCH\r\na4 OK searched\r\n".to_vec());
+                replies.push(b"* SEARCH\r\na5 OK searched\r\n".to_vec());
+            }
+            let (mut wire, c, w) = session(replies);
+            let result = upload_sent_session(&s, &u, &mut wire, &c);
+            let commands = String::from_utf8_lossy(&w.lock().unwrap()).into_owned();
+            for forbidden in ["APPEND", "SELECT ", "STORE", "EXPUNGE"] {
+                assert!(!commands.contains(forbidden));
+            }
+            if let Err(e) = &result {
+                s.fail_upload(&id, e).unwrap();
+            }
+            assert_eq!(
+                s.sent_upload(&id).unwrap().unwrap().status,
+                if visible { "completed" } else { "checking" }
+            );
+        }
+        let completed = s.sent_upload(&id).unwrap().unwrap();
+        assert_eq!(completed.origin, "existing");
+        assert_eq!(completed.uid, Some(9));
+        assert!(s.has_source(&a.id, "Sent Messages", "7:9").unwrap());
+        assert_eq!(s.upload_content(&completed).unwrap().1, raw);
+        assert_eq!(s.outbox().unwrap()[0].status, "sent");
     }
     #[test]
     fn tagged_rejection_before_literal_is_retryable_without_resending_smtp() {

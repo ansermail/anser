@@ -80,8 +80,12 @@ impl Trigger {
         let mut trigger = Self::new(match signal {
             network::WatchSignal::CatchUp => "监听连接后补查",
             network::WatchSignal::MailboxChanged => "服务器实时通知",
+            network::WatchSignal::ProbeChanged => "实时连接补查发现变化",
         });
-        trigger.push = signal == network::WatchSignal::MailboxChanged;
+        trigger.push = matches!(
+            signal,
+            network::WatchSignal::MailboxChanged | network::WatchSignal::ProbeChanged
+        );
         trigger
     }
 }
@@ -431,6 +435,15 @@ pub fn start(store: Store, app: tauri::AppHandle, control: Arc<RealtimeControl>)
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn probe_changes_keep_distinct_evidence_and_can_preempt_downloads() {
+        let push = Trigger::signal(network::WatchSignal::MailboxChanged);
+        let probe = Trigger::signal(network::WatchSignal::ProbeChanged);
+        assert!(push.push && probe.push);
+        assert_ne!(push.source, probe.source);
+        assert!(!Trigger::signal(network::WatchSignal::CatchUp).push);
+        assert!(!Trigger::poll().push);
+    }
     #[test]
     fn polling_and_push_coalesce_without_losing_retries_or_crossing_accounts() {
         let mut pending = HashMap::new();

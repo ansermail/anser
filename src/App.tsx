@@ -1882,11 +1882,15 @@ export default function App() {
                               <span className="sender-name">
                                 {senderName(m.sender)}
                               </span>
-                              <time>{time(m.date)}</time>
+                              <time dateTime={m.date}>{time(m.date)}</time>
                             </div>
                             <div className="row-subject">
-                              {!m.isRead && <i />}
-                              {m.subject}
+                              {!m.isRead && (
+                                <i aria-label="未读" title="未读" />
+                              )}
+                              <span className="row-subject-text">
+                                {m.subject}
+                              </span>
                               {grouped && (m.conversationCount || 0) > 1 && (
                                 <Badge
                                   variant="secondary"
@@ -1900,6 +1904,8 @@ export default function App() {
                             <div className="row-meta">
                               <span
                                 className={`mini-dot color-${data.accounts.findIndex((a) => a.id === m.accountId) % 4}`}
+                                aria-hidden="true"
+                                title="邮箱颜色标识"
                               />
                               <span>
                                 {data.accounts.find((a) => a.id === m.accountId)
