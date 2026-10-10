@@ -119,7 +119,7 @@ codex/search-scale，从SEARCH-01/b65e3ab接续，仍未合入main或发布。�
 
 ### 实际验证
 
-`cargo test --manifest-path src-tauri/Cargo.toml` 296项全量通过（47.52s，含8项新分页/邻居专项）；cargo check、cargo fmt --check、git diff --check通过。首轮测试编译缺Page Debug derive，已补充并重跑，未把该失败计为通过。
+`cargo test --manifest-path src-tauri/Cargo.toml` 297项全量通过（47.53s，含9项新分页/邻居专项）；cargo check、cargo fmt --check、git diff --check通过。首轮测试编译缺Page Debug derive，已补充并重跑，未把该失败计为通过。
 
 专项用6103条虚构派生记录（无真实MIME/账号数据）证明：逐封与对话都可遍历>5000结果、固定197页、同时间/未知时间不重不漏；对话计数/状态/范围与旧语义一致；字段/附件/文件夹/远端范围；标记改变reset而图不重建、跨范围/假游标拒绝；毫秒时区上下边界；未知正文/隔离来源覆盖计数；无变化来源及后台状态不reset；WAL读取期间另连接提交仍保持旧计数/标记/版本快照；5000行以后直接查邻居、已读离开未读过滤、同线程跳过、未知日期/账号限制。
 
@@ -134,3 +134,5 @@ codex/search-scale，从SEARCH-01/b65e3ab接续，仍未合入main或发布。�
 5. 前端两模式真实cursor交互、正在加载换范围/新消息/读状态变化、连续阅读/首尾、Pages隔离与五万封Store两模式冷/热目标；最后全量发布门槛、版本同步、合并main并清理工作分支，关键节点先远程构建下一版。
 
 代码入口：paging.rs::mail_page/mail_neighbor/read_listing/units；接口库api.ts、App refresh/navigateReading/加载更多；原有Rust Query不变，PageRequest包装它。阶段源码以当前分支PAGING-01提交为准，接续先核对branch/status。
+
+目录隔离/恢复补充保护：folder_health 的 DML 触发器在数据库层也废弃拓扑投影，不依赖调用者是否经过旧 Store 帮助函数；新增回归证明未保存邮件在隔离后从成员投影消失、直接恢复目录后重新进入完整计数。当前完整297 Rust/9专项通过，前端接续计划不变。后端主体提交0f2c8a9；本保护以后续提交为准。

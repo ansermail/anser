@@ -29,7 +29,7 @@
 
 ## 当前执行检查点
 
-- **当前主线 PAGING-01（2026-10-10，codex/search-scale）**：逐封/对话SQL固定页、图/查询版本拆分、同WAL快照元数据、游标reset、日期/正文覆盖字段和远距离阅读邻居IPC已接入；296Rust全量（8专项含6103条双模式、并发与5000后seek）、check/格式/diff通过。前端仍为旧snapshot/累计5000，尚未解除界面限制、加时间控件或验收五万封指标；未发布。下一步按SEARCH_SCALE_WORKING.md接api/App的cursor与邻居、shadcn日期/覆盖提示，再完整门槛合并/构建。
+- **当前主线 PAGING-01（2026-10-10，codex/search-scale）**：逐封/对话SQL固定页、图/查询版本拆分、同WAL快照元数据、游标reset、日期/正文覆盖字段和远距离阅读邻居IPC已接入；297Rust全量（9专项含6103条双模式、并发与5000后seek）、check/格式/diff通过。前端仍为旧snapshot/累计5000，尚未解除界面限制、加时间控件或验收五万封指标；未发布。下一步按SEARCH_SCALE_WORKING.md接api/App的cursor与邻居、shadcn日期/覆盖提示，再完整门槛合并/构建。
 
 - **当前主线 SEARCH-01（2026-10-10，codex/search-scale）**：事务全文候选/typed检索投影、旧数据迁移/缺索引恢复、短词与NUL回退和可信来源边界已接入；288 Rust全量（含5专项）及原生C/D标题搜索、cargo fmt/diff通过，尚未发布。本阶段仍保留全匹配反序列化和5000前缀限制，不声明分页完成。下一步从 SEARCH_SCALE_WORKING.md 接 SQL 对话成员/页游标、前端/时间/覆盖提示及五万封产品测量，再完整门槛合并/远程构建。
 
@@ -702,6 +702,6 @@ C 的实时通知/在线正文与 QQ 已存在副本核对成功；D 已收到�
 
 ## 2026-10-10 PAGING-01 后端子阶段
 
-当前分支codex/search-scale，基线b65e3ab。新paging.rs及IPC提供固定≤200 SQL页、完整图计数/范围状态、版本/范围游标、同快照metadata与直接seek邻居。8专项/296Rust全量通过，日期/未知正文/源隔离/重复更新/并发/5000后邻居均有虚构回归；未用真实MIME或改变邮件。无前端改动或云端新版，正式仍0.1.9。
+当前分支codex/search-scale，基线b65e3ab。新paging.rs及IPC提供固定≤200 SQL页、完整图计数/范围状态、版本/范围游标、同快照metadata与直接seek邻居。8专项/297Rust全量通过，日期/未知正文/源隔离/重复更新/并发/5000后邻居均有虚构回归；未用真实MIME或改变邮件。无前端改动或云端新版，正式仍0.1.9。
 
 下一入口SEARCH_SCALE_WORKING.md：前端api/App/demo真正页追加和reset、取消累计5000，阅读不得重载前缀或混入seek片段；shadcn日期/覆盖说明与完整Store五万封指标仍待。完成后完整门槛合并main清理分支并远程构建，其他SAVE/SYNC/服务商/安装/P1未完成项保留。

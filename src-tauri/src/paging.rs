@@ -83,9 +83,10 @@ pub fn initialize(db: &Connection) -> Result<()> {
     ] {
         for action in ["insert", "delete", "update"] {
             let condition=if action=="update" {format!("WHEN {changed}")}else{String::new()};
+            let topology=if table=="folder_health" {"UPDATE conversation_revision SET version=version+1;"}else{""};
             // Sources and server receipt changes may affect membership/filter
             // visibility even when no message JSON was updated.
-            tx.execute_batch(&format!("DROP TRIGGER IF EXISTS paging_{table}_{action}; CREATE TRIGGER paging_{table}_{action} AFTER {action} ON {table} {condition} BEGIN UPDATE query_revision SET version=version+1; END;")).map_err(err)?;
+            tx.execute_batch(&format!("DROP TRIGGER IF EXISTS paging_{table}_{action}; CREATE TRIGGER paging_{table}_{action} AFTER {action} ON {table} {condition} BEGIN UPDATE query_revision SET version=version+1; {topology} END;")).map_err(err)?;
         }
     }
     tx.commit().map_err(err)
@@ -799,5 +800,40 @@ mod tests {
         assert!(store
             .mail_neighbor(&r, &anchor.id, "invalid-direction")
             .is_err());
+    }
+    #[test]
+    fn directory_health_writes_invalidate_persisted_members_even_outside_store_helpers() {
+        let (_dir, store) = seed(7);
+        let mut m = store.mail("fictional-00000").unwrap();
+        m.saved_locally = false;
+        m.body.clear();
+        store.update_mail(&m).unwrap();
+        let r = request(ListMode::Conversations, 2);
+        store.mail_page(&r).unwrap();
+        let db = store.db().unwrap();
+        db.execute("INSERT INTO folder_health VALUES(?1,'INBOX','fictional-identity','fictional isolation','now','{}')",[account().id]).unwrap();
+        store.mail_page(&r).unwrap();
+        assert_eq!(
+            db.query_row(
+                "SELECT COUNT(*) FROM conversation_members WHERE mail_id=?1",
+                [&m.id],
+                |row| row.get::<_, i64>(0)
+            )
+            .unwrap(),
+            0
+        );
+        db.execute("DELETE FROM folder_health", []).unwrap();
+        let mut all = r;
+        all.query.view = "all".into();
+        assert_eq!(store.mail_page(&all).unwrap().snapshot.matched, 7);
+        assert_eq!(
+            db.query_row(
+                "SELECT COUNT(*) FROM conversation_members WHERE mail_id=?1",
+                [&m.id],
+                |row| row.get::<_, i64>(0)
+            )
+            .unwrap(),
+            1
+        );
     }
 }

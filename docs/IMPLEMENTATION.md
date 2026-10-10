@@ -512,4 +512,4 @@ codex/search-scale后端增加paging.rs与mail_page/mail_neighbor IPC，旧snaps
 
 mail_neighbor在同样快照按当前阅读ID直接seek前后结果，保留筛选、跳过当前对话，支持锚点被已读移出未读列表；不重载前缀或改变分页流。日期下限包含/上限排除，用SQLite整数Julian毫秒分子避免边界浮点偏移，原日期不改。
 
-296Rust全量通过，具体6103条/并发/日期/覆盖/游标/阅读证据见SEARCH_SCALE_WORKING.md。App仍调用旧前缀API，UI/日期控件/覆盖说明/产品五万封指标与新版本发布未完成。
+297Rust全量通过，具体6103条/并发/日期/覆盖/游标/阅读证据见SEARCH_SCALE_WORKING.md。App仍调用旧前缀API，UI/日期控件/覆盖说明/产品五万封指标与新版本发布未完成。
