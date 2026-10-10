@@ -76,11 +76,20 @@ jobs:
         env:
           SIGNING_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
         run: test -n "$SIGNING_KEY" || { echo 'Missing TAURI_SIGNING_PRIVATE_KEY'; exit 1; }
+      - name: Require Google desktop OAuth configuration
+        env:
+          MAIL_GOOGLE_CLIENT_ID: ${{ secrets.MAIL_GOOGLE_CLIENT_ID }}
+          MAIL_GOOGLE_CLIENT_SECRET: ${{ secrets.MAIL_GOOGLE_CLIENT_SECRET }}
+        run: |
+          test -n "$MAIL_GOOGLE_CLIENT_ID" || { echo 'Missing MAIL_GOOGLE_CLIENT_ID'; exit 1; }
+          test -n "$MAIL_GOOGLE_CLIENT_SECRET" || { echo 'Missing MAIL_GOOGLE_CLIENT_SECRET'; exit 1; }
       - name: Build signed update and first-install DMG
         uses: tauri-apps/tauri-action@944946e3e4cac6603d1fe8f514171e9ecd3c78aa # v1
         env:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ""
+          MAIL_GOOGLE_CLIENT_ID: ${{ secrets.MAIL_GOOGLE_CLIENT_ID }}
+          MAIL_GOOGLE_CLIENT_SECRET: ${{ secrets.MAIL_GOOGLE_CLIENT_SECRET }}
         with:
           args: --target ${{ matrix.target }} --bundles app,dmg
           uploadUpdaterJson: false

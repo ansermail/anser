@@ -4,6 +4,8 @@
 
 ## 当前未完成事项总览（2026-10-10 核对）
 
+**本轮用户优先事项：Google OAuth Client 轮换（2026-10-10）**。已验证新 JSON 为桌面客户端，更新被忽略的 `.env.local`（0600）及组织仓库两项 Secrets；双架构原生发布步骤接入并检查同名配置。新客户端授权/刷新与含新配置的云端包尚未验收，旧 0.1.7 包不变。完成本项后仍从 `SYNC_02B2_WORKING.md` 继续在途只读下载抢占。
+
 核查功能基线 main / e2f7cf6；公开 0.1.7 发布来源为 1de47d7。下表按“尚需开发”“已实现但未完成真实验收”“源码完成但未发布”区分；后文早期阶段的测试数量、未发布说明和下一步仅保留为历史，不覆盖此处及最新工作点。
 
 | 类别                        | 剩余内容                                                                                                                                                        | 接续入口/边界                                                                              |
@@ -602,3 +604,12 @@ Thunderbird 历史迁移、完整 Exchange、日历、移动端及跨设备同�
 npm/Cargo 声明指向许可文件；Tauri resources 打包许可/说明/通知/上游 shadcn MIT 全文，Release 流水线增加资源存在门槛。通过 GitHub 官方 license API 获取原 MIT 文本（LICENSE.md），保留 vendor 原许可。首次错误 URL 缺 .md 导致文件未创建/Cargo 资源检查失败；修复后 cargo check/fmt、19 脚本、格式/diff/release:check 通过。此项不修改功能代码，不重复前端/Rust全量回归或本地构建分发包；正式 App 包内许可资源尚待下一云端构建验收。
 
 0.1.7 已发布且资源不可改写，本轮许可文件及 e2f7cf6 的下载边界将在后续关键节点构建纳入；当前继续 SYNC_02B2_WORKING.md，在途只读下载抢占、真实繁忙/睡眠断网→搜索分页。整体目标仍未完成。
+
+
+## Google OAuth Client 轮换与发布接入（2026-10-10）
+
+- 用户提供新的 Google 桌面应用 JSON，已核对 `installed` 类型和必要字段；客户端内容不打印、不提交。更新本机被忽略的 `.env.local`，权限 0600，后端 loader 的两项值与新文件逐项匹配。
+- 通过 stdin 更新组织仓库 `ansermail/anser` 的 `MAIL_GOOGLE_CLIENT_ID` / `MAIL_GOOGLE_CLIENT_SECRET` 两项仓库 Secrets；GitHub 名称/更新时间确认成功，未改更新签名密钥。没有使用公开 Variables 或 Pages 环境。
+- `release.yml` 对两架构增加配置存在性检查，并将两项 Secrets 注入 tauri-action 原生构建；不在 PR/Pages 中使用。`AGENTS.md`、USAGE、UPDATES 同步编译生效和旧令牌/手填 Client ID 的重新授权边界。
+- 验证：`npm run test:desktop` 19 项通过；`npm run format:check`、`npm run release:check`、`git diff --check` 通过。只改流水线/配置和文档，未重复全量前端/协议测试或生成本地分发包。
+- 开发应用通过 `npm run desktop` 稳定启动器重新编译并启动；已确认新二进制包含与新文件一致的 OAuth 配置（不打印值），运行应用父进程仍为 Tauri。本轮未进行新客户端的浏览器授权、Gmail 发信或长期刷新验收；不沿用旧客户端结果。0.1.7 已发布资源不变；包含新配置的正式双架构包需下一版本流水线构建。主线接续 `SYNC_02B2_WORKING.md`。

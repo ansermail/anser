@@ -16,6 +16,14 @@
 - 发布后的同版本不可覆盖。草稿可重跑上传；`releases/latest/download/latest.json` 只有正式发布后才可用。用户检查不读取草稿。
 - 仓库是公开的 `ansermail/anser`；客户端不包含 GitHub token。端点仅 HTTPS，签名必须有效；失败时保留当前安装，不执行重启。
 
+## Google OAuth 发布配置
+
+组织仓库 `ansermail/anser` 使用仓库级 GitHub Secrets `MAIL_GOOGLE_CLIENT_ID` 和 `MAIL_GOOGLE_CLIENT_SECRET`。macOS 发布流水线在 Apple Silicon / Intel 构建前检查两项是否存在，并仅注入原生构建步骤；不使用公开 Repository Variables 或 `VITE_` 变量，不给 Pages / PR 检查提供凭据。
+
+更换客户端时同步更新两项 Secrets 和被 Git 忽略的本机 `.env.local`（权限 0600），然后重新启动开发应用或构建新版本。现有安装包的编译配置不会随 Secrets 修改而变化；已发布版本不可覆盖。Google 桌面客户端的 secret 会参与原生令牌交换，无法像服务端秘密一样保密；原始 JSON、本机配置及令牌不作为独立发布文件上传。
+
+2026-10-10 已按用户提供的新桌面客户端文件更新本机配置及上述两项仓库 Secrets。发布流水线接线已完成；新客户端的浏览器授权、令牌刷新和包含新配置的双架构发布验收需另行记录，不能沿用此前客户端的验收结果。
+
 ## 签名密钥
 
 本机更新密钥在 `~/.config/yanxin-release/updater.key`，权限 0600，公钥已写入 Tauri 配置。私钥已上传仓库 Secret `TAURI_SIGNING_PRIVATE_KEY`，没有提交到 Git 或写进日志。密钥没有密码，流水线明确使用空密码；应保管仓库外的密钥备份，后续版本复用同一密钥，不能重新生成替换已部署应用的公钥。
