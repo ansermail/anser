@@ -20,6 +20,8 @@ pub(crate) struct RuleRun {
     pub configuration: String,
     pub rules: Vec<Rule>,
     pub remote_only: bool,
+    #[serde(default)]
+    pub retry_queues: bool,
     pub cursor: usize,
     pub applied: u32,
     pub local_state: String,
@@ -188,7 +190,7 @@ fn write(db: &rusqlite::Connection, job: &mut RuleRun) -> Result<()> {
 }
 pub(crate) fn cancel_in(db: &rusqlite::Connection, ids: &[String]) -> Result<()> {
     let ids = serde_json::to_string(ids).map_err(err)?;
-    db.execute("UPDATE directory_operations SET status='cancelled',error='规则处理已取消，未提交移动' WHERE status IN ('queued','preparing') AND kind='move' AND id IN (SELECT j.value FROM rule_runs r JOIN json_each(r.data,'$.operations') j WHERE r.status NOT IN ('completed','cancelled') AND r.id IN (SELECT value FROM json_each(?1)))",[&ids]).map_err(err)?;
+    db.execute("UPDATE directory_operations SET status='cancelled',error='规则处理已取消，未提交服务器操作' WHERE status IN ('queued','preparing','blocked') AND id IN (SELECT j.value FROM rule_runs r JOIN json_each(r.data,'$.operations') j WHERE r.status NOT IN ('completed','cancelled') AND r.id IN (SELECT value FROM json_each(?1)))",[&ids]).map_err(err)?;
     db.execute("UPDATE rule_runs SET status='cancelled',revision=revision+1,error='规则处理已取消' WHERE status NOT IN ('completed','cancelled') AND id IN (SELECT value FROM json_each(?1))",[ids]).map_err(err)?;
     Ok(())
 }
@@ -269,6 +271,7 @@ impl Store {
             configuration: fingerprint,
             rules: configured[offset..].to_vec(),
             remote_only,
+            retry_queues: false,
             cursor: 0,
             applied: 0,
             local_state: local_state(&m)?,
@@ -305,7 +308,11 @@ impl Store {
                     subject: job.source.subject,
                     step: job
                         .rules
-                        .get(job.cursor)
+                        .get(if job.status == "completed" {
+                            job.cursor.saturating_sub(1)
+                        } else {
+                            job.cursor
+                        })
                         .map(|r| r.name.clone())
                         .unwrap_or_default(),
                     cursor: job.cursor,
@@ -325,6 +332,12 @@ impl Store {
     }
     pub(crate) fn claim_rule_run(&self, job: &RuleRun) -> Result<bool> {
         Ok(self.db()?.execute("UPDATE rule_runs SET status='running',error='' WHERE id=?1 AND revision=?2 AND status='queued'",params![job.id,job.revision]).map_err(err)?==1)
+    }
+    pub(crate) fn rule_blocks_directory(
+        db: &rusqlite::Connection,
+        operation_id: &str,
+    ) -> Result<bool> {
+        db.query_row("SELECT EXISTS(SELECT 1 FROM rule_runs r JOIN json_each(r.data,'$.operations') j WHERE j.value=?1 AND r.status!='completed')",[operation_id],|row|row.get(0)).map_err(err)
     }
     pub(crate) fn rule_blocks_move(db: &rusqlite::Connection, mail_id: &str) -> Result<bool> {
         db.query_row("SELECT EXISTS(SELECT 1 FROM rule_runs WHERE mail_id=?1 AND status NOT IN ('completed','cancelled'))",[mail_id],|r|r.get(0)).map_err(err)
@@ -360,6 +373,7 @@ impl Store {
                 job.source = read_plan(&tx, &m)?;
                 archive_jobs::proof(&tx, &job.source)?;
                 job.local_state = local_state(&m)?;
+                job.retry_queues = true;
                 job.status = "queued".into();
             }
             _ => return Err("规则处理状态已变化，请刷新".into()),
@@ -392,6 +406,36 @@ impl Store {
         let header_hash = archive::digest(&raw[..end]);
         loop {
             let _archive = self.archive_gate.read().map_err(err)?;
+            let (before, a, m) = guard(&self.db()?, expected, &hash, &header_hash)?;
+            let prepared = if let Some(rule) = before.rules.get(before.cursor) {
+                let mut evaluation = m.clone();
+                evaluation.body = parsed.body.clone();
+                evaluation.has_attachments = parsed.has_attachments;
+                if rules::body_decode_failed(&parsed)
+                    && rules::match_state(rule, &m, false) == rules::MatchState::NeedsBody
+                {
+                    return Err("原件含解码异常，未按不完整正文执行规则，请核对邮件内容".into());
+                }
+                let applicable = !before.remote_only || rules::remote(rule) || rules::saves(rule);
+                let needs_save = rules::saves(rule)
+                    || (rule.action == "serverMove"
+                        && self.should_save_folder(&a, &rule.source_folder)?);
+                if applicable && needs_save && m.saved_locally {
+                    archive::read_raw(&self.root, &m.hash)?;
+                }
+                if applicable
+                    && needs_save
+                    && !m.saved_locally
+                    && rules::match_state(rule, &evaluation, !rules::body_decode_failed(&parsed))
+                        == rules::MatchState::Match
+                {
+                    Some(self.prepare_archive(&before.source, raw)?)
+                } else {
+                    None
+                }
+            } else {
+                None
+            };
             let mut db = self.db()?;
             let tx = db
                 .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
@@ -413,7 +457,7 @@ impl Store {
             {
                 return Err("原件含解码异常，未按不完整正文执行规则，请核对邮件内容".into());
             }
-            let matched=rules::matches(&r,&evaluation) && (!rules::remote(&r)||tx.query_row("SELECT EXISTS(SELECT 1 FROM trusted_sources WHERE mail_id=?1 AND account_id=?2 AND folder=?3 AND active=1)",params![m.id,m.account_id,r.source_folder],|row|row.get::<_,bool>(0)).map_err(err)?);
+            let matched=rules::match_state(&r,&evaluation,!rules::body_decode_failed(&parsed)) == rules::MatchState::Match && (!rules::remote(&r)||tx.query_row("SELECT EXISTS(SELECT 1 FROM sources WHERE mail_id=?1 AND account_id=?2 AND folder=?3 AND active=1)",params![m.id,m.account_id,r.source_folder],|row|row.get::<_,bool>(0)).map_err(err)?);
             let applicable = !job.remote_only || rules::remote(&r) || rules::saves(&r);
             if matched && applicable {
                 let needs_save = rules::saves(&r)
@@ -430,15 +474,17 @@ impl Store {
                             ));
                         }
                         tx.execute("UPDATE archive_jobs SET status='running' WHERE id=?1 AND revision=?2 AND status='queued'",params![saved.id,saved.revision]).map_err(err)?;
-                        self.complete_archive_in(&tx, &saved, raw)?;
+                        self.complete_archive_in(
+                            &tx,
+                            &saved,
+                            prepared.as_ref().ok_or("保存策略已变化，请重新核对规则")?,
+                        )?;
                         let data: String = tx
                             .query_row("SELECT data FROM messages WHERE id=?1", [&m.id], |row| {
                                 row.get(0)
                             })
                             .map_err(err)?;
                         m = serde_json::from_str(&data).map_err(err)?;
-                    } else {
-                        archive::read_raw(&self.root, &m.hash)?;
                     }
                 }
                 if let Err(error) = check_local_intent(&job, &m, &r) {
@@ -455,11 +501,20 @@ impl Store {
                     let mut remote_mail = m.clone();
                     remote_mail.body = evaluation.body.clone();
                     remote_mail.has_attachments = evaluation.has_attachments;
-                    Self::apply_remote_rule_in(&tx, &r, &remote_mail, false)?;
+                    Self::apply_remote_rule_in(
+                        &tx,
+                        &r,
+                        &remote_mail,
+                        job.retry_queues && Self::unqueued_rule_failure_in(&tx, &r, &m.id)?,
+                    )?;
                     let item:Option<(Option<String>,String,String)>=tx.query_row("SELECT operation_id,status,error FROM rule_executions WHERE rule_id=?1 AND mail_id=?2 ORDER BY rowid DESC LIMIT 1",params![r.id,m.id],|row|Ok((row.get(0)?,row.get(1)?,row.get(2)?))).optional().map_err(err)?;
                     if let Some((op, status, error)) = item {
                         if status == "blocked" && op.is_none() {
-                            return Err(error);
+                            job.status = "blocked".into();
+                            job.error = error;
+                            write(&tx, &mut job)?;
+                            tx.commit().map_err(err)?;
+                            return Ok(());
                         }
                         if let Some(id) = op {
                             if !job.operations.contains(&id) {
@@ -788,5 +843,317 @@ mod tests {
             0
         );
         assert!(store.mail(&id).unwrap().saved_locally);
+    }
+    fn target(store: &Store, a: &Account) {
+        store
+            .save_remote_folders(
+                &a.id,
+                &[RemoteFolder {
+                    account_id: a.id.clone(),
+                    name: "Archive".into(),
+                    display_name: "归档".into(),
+                    delimiter: None,
+                    selectable: true,
+                    roles: vec![],
+                    detected_roles: None,
+                    sync_error: None,
+                }],
+            )
+            .unwrap();
+    }
+    fn remote_rule(a: &Account, action: &str) -> Rule {
+        let mut r = rule(a, action);
+        r.source_folder = "INBOX".into();
+        r.destination = "Archive".into();
+        r
+    }
+    #[test]
+    fn prior_copy_and_move_are_held_on_later_save_failure_and_cancelled_without_submission() {
+        for action in ["serverCopy", "serverMove"] {
+            let (root, store, a, id, raw) = fixture();
+            target(&store, &a);
+            store
+                .save_rules(&[remote_rule(&a, action), rule(&a, "save"), rule(&a, "trash")])
+                .unwrap();
+            store.run_rules().unwrap();
+            assert!(store.directory_operations().unwrap().is_empty());
+            let job = pending(&store);
+            store.claim_rule_run(&job).unwrap();
+            std::fs::write(root.path().join("archive"), b"disk unavailable").unwrap();
+            let error = store.process_rule_run(&job, &raw).unwrap_err();
+            store.fail_rule_run(&job, &error).unwrap();
+            let stalled = store.rule_run(&job.id).unwrap();
+            assert_eq!(stalled.cursor, 1);
+            let op = store.directory_operation(&stalled.operations[0]).unwrap();
+            assert!(!store.claim_copy(&op).unwrap());
+            assert!(store.submit_copy(&op, "hash").is_err());
+            assert!(!store.mail(&id).unwrap().saved_locally && !store.mail(&id).unwrap().trashed);
+            store.rule_run_action(&job.id, "cancel").unwrap();
+            assert_eq!(
+                store.directory_operation(&op.id).unwrap().status,
+                "cancelled"
+            );
+            assert!(!store.claim_copy(&op).unwrap());
+        }
+    }
+    #[test]
+    fn save_before_move_preserves_original_and_only_releases_after_chain_completion() {
+        let (_root, store, a, id, raw) = fixture();
+        target(&store, &a);
+        store
+            .save_rules(&[rule(&a, "save"), remote_rule(&a, "serverMove")])
+            .unwrap();
+        store.run_rules().unwrap();
+        let job = pending(&store);
+        store.claim_rule_run(&job).unwrap();
+        store.process_rule_run(&job, &raw).unwrap();
+        assert_eq!(store.message_raw(&store.mail(&id).unwrap()).unwrap(), raw);
+        let done = store.rule_run(&job.id).unwrap();
+        assert_eq!(done.status, "completed");
+        assert_eq!(store.rule_runs().unwrap()[0].step, "serverMove");
+        let op = store.directory_operation(&done.operations[0]).unwrap();
+        assert!(store.claim_copy(&op).unwrap());
+        store.run_rules().unwrap();
+        assert_eq!(store.directory_operations().unwrap().len(), 1);
+    }
+    #[test]
+    fn isolated_active_remote_source_blocks_chain_and_explicit_retry_queues_once() {
+        let (_root, store, a, id, raw) = fixture();
+        target(&store, &a);
+        let end = raw.windows(4).position(|w| w == b"\r\n\r\n").unwrap() + 4;
+        store
+            .ingest(&a, "Archive", "8:20", &raw[..end], false)
+            .unwrap();
+        store
+            .save_rules(&[
+                rule(&a, "save"),
+                remote_rule(&a, "serverCopy"),
+                rule(&a, "trash"),
+            ])
+            .unwrap();
+        store
+            .isolate_folder(&a, "INBOX", "bad", &Default::default())
+            .unwrap();
+        store.run_rules().unwrap();
+        let job = pending(&store);
+        assert_eq!(job.source.folder, "Archive");
+        store.claim_rule_run(&job).unwrap();
+        store.process_rule_run(&job, &raw).unwrap();
+        assert_eq!(store.rule_run(&job.id).unwrap().status, "blocked");
+        assert_eq!(store.rule_run(&job.id).unwrap().cursor, 1);
+        assert!(store.mail(&id).unwrap().saved_locally && !store.mail(&id).unwrap().trashed);
+        assert!(store.rule_executions().unwrap()[0].operation_id.is_none());
+        let hit = store.rule_executions().unwrap().remove(0);
+        assert!(store
+            .retry_rule_execution(&hit.id)
+            .unwrap_err()
+            .contains("关联规则链"));
+        store.restore_folder_trust(&a, "INBOX").unwrap();
+        store.run_rules().unwrap();
+        assert!(store.directory_operations().unwrap().is_empty());
+        store.rule_run_action(&job.id, "retry").unwrap();
+        let retry = store.rule_run(&job.id).unwrap();
+        store.claim_rule_run(&retry).unwrap();
+        store.process_rule_run(&retry, &raw).unwrap();
+        assert!(store.mail(&id).unwrap().trashed);
+        assert_eq!(store.directory_operations().unwrap().len(), 1);
+    }
+    #[test]
+    fn cancelling_only_owned_unsubmitted_operations_preserves_manual_and_submitted_results() {
+        let (_root, store, a, id) = crate::directory_operations::tests::fixture();
+        store.save_rules(&[rule(&a, "save")]).unwrap();
+        store
+            .defer_rules(&store.mail(&id).unwrap(), &store.rules().unwrap(), 0, false)
+            .unwrap();
+        let mut job = pending(&store);
+        let owned = store.queue_copy(&id, "INBOX", "Archive").unwrap();
+        job.operations.push(owned.clone());
+        write(&store.db().unwrap(), &mut job).unwrap();
+        for state in ["queued", "preparing", "blocked", "submitted", "uncertain"] {
+            let db = store.db().unwrap();
+            db.execute(
+                "UPDATE directory_operations SET status=?2 WHERE id=?1",
+                params![owned, state],
+            )
+            .unwrap();
+            db.execute(
+                "UPDATE rule_runs SET status='paused' WHERE id=?1",
+                [&job.id],
+            )
+            .unwrap();
+            store.rule_run_action(&job.id, "cancel").unwrap();
+            assert_eq!(
+                store.directory_operation(&owned).unwrap().status,
+                if matches!(state, "submitted" | "uncertain") {
+                    state
+                } else {
+                    "cancelled"
+                }
+            );
+        }
+        let db = store.db().unwrap();
+        db.execute(
+            "UPDATE directory_operations SET status='queued' WHERE id=?1",
+            [&owned],
+        )
+        .unwrap();
+        job = store.rule_run(&job.id).unwrap();
+        job.operations.clear();
+        job.status = "paused".into();
+        write(&db, &mut job).unwrap();
+        store.rule_run_action(&job.id, "cancel").unwrap();
+        assert_eq!(store.directory_operation(&owned).unwrap().status, "queued");
+    }
+    #[test]
+    fn prepared_file_does_not_hold_sqlite_writer_and_source_changes_reject_publication() {
+        let (root, store, a, id, raw) = fixture();
+        store.queue_archives(&[id.clone()], false).unwrap();
+        let job = Store::archive_job_for_mail_in(&store.db().unwrap(), &id).unwrap();
+        store.claim_archive(&job).unwrap();
+        let prepared = store.prepare_archive(&job, &raw).unwrap();
+        let db = store.db().unwrap();
+        db.execute("UPDATE sources SET active=0 WHERE mail_id=?1", [&id])
+            .unwrap();
+        let mut db = store.db().unwrap();
+        let tx = db
+            .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
+            .unwrap();
+        assert!(store.complete_archive_in(&tx, &job, &prepared).is_err());
+        drop(tx);
+        drop(prepared);
+        assert!(!store.mail(&id).unwrap().saved_locally);
+        assert_eq!(
+            std::fs::read_dir(root.path().join("archive"))
+                .unwrap()
+                .count(),
+            0
+        );
+        assert!(!store.account(&a.id).unwrap().save_locally);
+    }
+    #[test]
+    fn publication_database_rollback_does_not_mark_saved_or_advance_rules() {
+        let (_root, store, a, id, raw) = fixture();
+        store.save_rules(&[rule(&a, "saveFolder")]).unwrap();
+        store.run_rules().unwrap();
+        let job = pending(&store);
+        store.claim_rule_run(&job).unwrap();
+        store.db().unwrap().execute_batch("CREATE TRIGGER reject_rule_cursor BEFORE UPDATE ON rule_runs WHEN NEW.cursor>0 BEGIN SELECT RAISE(ABORT,'fixture rollback'); END;").unwrap();
+        assert!(store.process_rule_run(&job, &raw).is_err());
+        let m = store.mail(&id).unwrap();
+        assert!(!m.saved_locally);
+        assert_eq!(m.local_folder, "全部存档");
+        assert_eq!(store.rule_run(&job.id).unwrap().cursor, 0);
+        assert!(store.archive_jobs().unwrap().is_empty());
+        store
+            .db()
+            .unwrap()
+            .execute_batch("DROP TRIGGER reject_rule_cursor")
+            .unwrap();
+        store.process_rule_run(&job, &raw).unwrap();
+        assert_eq!(store.message_raw(&store.mail(&id).unwrap()).unwrap(), raw);
+    }
+    #[test]
+    fn unknown_attachment_combinations_wait_but_known_headers_short_circuit() {
+        let (_root, store, a, id, _raw) = fixture();
+        let m = store.mail(&id).unwrap();
+        let mut r = rule(&a, "trash");
+        r.conditions = vec![Condition {
+            field: "attachment".into(),
+            operator: "equals".into(),
+            value: "false".into(),
+        }];
+        assert_eq!(
+            rules::match_state(&r, &m, false),
+            rules::MatchState::NeedsBody
+        );
+        let mut known = m.clone();
+        known.attachment_metadata_known = true;
+        assert_eq!(
+            rules::match_state(&r, &known, false),
+            rules::MatchState::Match
+        );
+        r.conditions.push(Condition {
+            field: "subject".into(),
+            operator: "contains".into(),
+            value: "missing".into(),
+        });
+        assert_eq!(
+            rules::match_state(&r, &m, false),
+            rules::MatchState::NoMatch
+        );
+        r.mode = "any".into();
+        r.conditions[1].value = "invoice".into();
+        assert_eq!(rules::match_state(&r, &m, false), rules::MatchState::Match);
+    }
+    #[test]
+    fn completed_stop_view_names_last_checked_not_next_rule() {
+        let (_root, store, a, _id, raw) = fixture();
+        let mut first = rule(&a, "save");
+        first.stop = true;
+        store.save_rules(&[first, rule(&a, "trash")]).unwrap();
+        store.run_rules().unwrap();
+        let job = pending(&store);
+        store.claim_rule_run(&job).unwrap();
+        store.process_rule_run(&job, &raw).unwrap();
+        let view = &store.rule_runs().unwrap()[0];
+        assert_eq!(view.cursor, 1);
+        assert_eq!(view.total, 2);
+        assert_eq!(view.step, "save");
+    }
+    #[test]
+    fn undecodable_body_blocks_negative_rule_but_bad_attachment_allows_known_body() {
+        for bad_body in [true, false] {
+            let (_root, store, a, id, raw) = fixture();
+            let raw = if bad_body {
+                String::from_utf8(raw).unwrap().replace("Content-Type: text/plain; charset=utf-8\r\n\r\nPlease keep this invoice.","Content-Type: text/plain; charset=utf-8\r\nContent-Transfer-Encoding: base64\r\n\r\n***invalid***").into_bytes()
+            } else {
+                String::from_utf8(raw)
+                    .unwrap()
+                    .replace("aW52b2ljZSBjb250ZW50", "***invalid***")
+                    .into_bytes()
+            };
+            let mut r = rule(&a, "star");
+            r.conditions = vec![Condition {
+                field: "body".into(),
+                operator: if bad_body { "notContains" } else { "contains" }.into(),
+                value: "keep this invoice".into(),
+            }];
+            store.save_rules(&[r]).unwrap();
+            store.run_rules().unwrap();
+            let job = pending(&store);
+            store.claim_rule_run(&job).unwrap();
+            if bad_body {
+                assert!(store
+                    .process_rule_run(&job, &raw)
+                    .unwrap_err()
+                    .contains("解码异常"));
+                assert!(!store.mail(&id).unwrap().starred);
+            } else {
+                store.process_rule_run(&job, &raw).unwrap();
+                assert!(store.mail(&id).unwrap().starred);
+            }
+        }
+    }
+    #[test]
+    fn pause_invalidates_preparing_copy_submission_until_resume_finishes_chain() {
+        let (_root, store, a, id) = crate::directory_operations::tests::fixture();
+        store.save_rules(&[rule(&a, "save")]).unwrap();
+        store
+            .defer_rules(&store.mail(&id).unwrap(), &store.rules().unwrap(), 0, false)
+            .unwrap();
+        let mut job = pending(&store);
+        let copy = store.queue_copy(&id, "INBOX", "Archive").unwrap();
+        let op = store.directory_operation(&copy).unwrap();
+        store.claim_copy(&op).unwrap();
+        job.operations.push(copy);
+        write(&store.db().unwrap(), &mut job).unwrap();
+        store.rule_run_action(&job.id, "pause").unwrap();
+        assert!(store.submit_copy(&op, "hash").is_err());
+        store.rule_run_action(&job.id, "resume").unwrap();
+        let next = store.rule_run(&job.id).unwrap();
+        assert_ne!(next.revision, job.revision);
+        store.claim_rule_run(&next).unwrap();
+        store.process_rule_run(&next, &crate::tests::raw()).unwrap();
+        store.submit_copy(&op, "hash").unwrap();
     }
 }

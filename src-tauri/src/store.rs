@@ -492,8 +492,38 @@ impl Store {
         if m.saved_locally && !remote_only {
             archive::read_raw(&self.root, &m.hash)?;
         }
+        // Determine all required reads/saves before scheduling any earlier MOVE.
+        // The continuation owns the full chain and keeps directory tasks held
+        // until every ordered step has finished successfully.
+        for rule in configured {
+            let state = rules::match_state(rule, &m, rules::body_available(&m));
+            if rules::remote(rule) && !self.rule_has_source(rule, &m)? {
+                continue;
+            }
+            let applicable = !remote_only || rules::remote(rule) || rules::saves(rule) || rule.stop;
+            if applicable
+                && (state == rules::MatchState::NeedsBody
+                    || (state == rules::MatchState::Match
+                        && !m.saved_locally
+                        && (rules::saves(rule)
+                            || (rule.action == "serverMove"
+                                && self.should_save_folder(
+                                    &self.account(&m.account_id)?,
+                                    &rule.source_folder,
+                                )?))))
+            {
+                self.defer_rules(&m, configured, 0, remote_only)?;
+                return Ok(1);
+            }
+            if state == rules::MatchState::Match && rule.stop {
+                break;
+            }
+        }
         let mut count = 0;
         for (position, r) in configured.iter().enumerate() {
+            if rules::remote(r) && !self.rule_has_source(r, &m)? {
+                continue;
+            }
             let state = rules::match_state(r, &m, rules::body_available(&m));
             if state == rules::MatchState::NeedsBody
                 && (!remote_only || rules::remote(r) || rules::saves(r) || r.stop)
@@ -530,7 +560,7 @@ impl Store {
                     } else {
                         continue;
                     }
-                    if r.stop {
+                    if r.stop || Self::unqueued_rule_failure_in(&self.db()?, r, &m.id)? {
                         break;
                     }
                     continue;
@@ -593,12 +623,13 @@ impl Store {
         rules::validate(rule)?;
         let mut rule = rule.clone();
         rule.enabled = true;
-        let db = self.db()?;
-        let mut q = db.prepare("SELECT data FROM messages").map_err(err)?;
         let mut matches = Vec::new();
-        for row in q.query_map([], |r| r.get::<_, String>(0)).map_err(err)? {
-            let m: Mail = serde_json::from_str(&row.map_err(err)?).map_err(err)?;
-            let state = rules::match_state(&rule, &m, rules::body_available(&m));
+        for m in self.rule_candidates()? {
+            let mut state = rules::match_state(&rule, &m, false);
+            if state == rules::MatchState::NeedsBody && m.saved_locally {
+                let full = self.mail(&m.id)?;
+                state = rules::match_state(&rule, &full, rules::body_available(&full));
+            }
             if state != rules::MatchState::NoMatch
                 && (!rules::remote(&rule) || self.rule_has_source(&rule, &m)?)
             {
@@ -611,6 +642,17 @@ impl Store {
         }
         Ok(matches)
     }
+    fn rule_candidates(&self) -> Result<Vec<Mail>> {
+        let db = self.db()?;
+        let mut query = db
+            .prepare("SELECT data FROM message_listing ORDER BY rowid")
+            .map_err(err)?;
+        let rows = query
+            .query_map([], |row| row.get::<_, String>(0))
+            .map_err(err)?;
+        rows.map(|row| serde_json::from_str(&row.map_err(err)?).map_err(err))
+            .collect()
+    }
     pub fn run_rules(&self) -> Result<u32> {
         // Freeze the ordered configuration once per historical scan. Use the
         // body-free projection unless a condition actually needs stored text;
@@ -619,32 +661,12 @@ impl Store {
         if !configured.iter().any(|r| r.enabled) {
             return Ok(0);
         }
-        let needs_body = configured.iter().any(|r| {
-            r.enabled
-                && r.conditions
-                    .iter()
-                    .any(|condition| condition.field == "body")
-        });
-        let db = self.db()?;
-        let mut q = db
-            .prepare(if needs_body {
-                "SELECT data FROM messages ORDER BY rowid"
-            } else {
-                "SELECT data FROM message_listing ORDER BY rowid"
-            })
-            .map_err(err)?;
-        let candidates = q
-            .query_map([], |r| r.get::<_, String>(0))
-            .map_err(err)?
-            .collect::<std::result::Result<Vec<_>, _>>()
-            .map_err(err)?;
         let mut n = 0;
-        for data in candidates {
-            let mail: Mail = serde_json::from_str(&data).map_err(err)?;
-            if configured.iter().any(|rule| {
-                rules::match_state(rule, &mail, rules::body_available(&mail))
-                    != rules::MatchState::NoMatch
-            }) {
+        for mail in self.rule_candidates()? {
+            if configured
+                .iter()
+                .any(|rule| rules::match_state(rule, &mail, false) != rules::MatchState::NoMatch)
+            {
                 // Load the current full record only for candidates. Conditions
                 // and stop ordering are evaluated again before any mutation.
                 n += self.apply_configured_rules(self.mail(&mail.id)?, &configured, false)?;

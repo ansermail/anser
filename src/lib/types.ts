@@ -58,6 +58,7 @@ export interface Mail {
   localFolder: string;
   trashed: boolean;
   hasAttachments: boolean;
+  attachmentMetadataKnown?: boolean;
   hash: string;
   size: number;
   savedAt: string;

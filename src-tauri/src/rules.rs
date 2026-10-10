@@ -59,11 +59,7 @@ pub fn validate(rule: &Rule) -> Result<()> {
     Ok(())
 }
 pub fn matches(rule: &Rule, mail: &Mail) -> bool {
-    let decoded = !mail.parse_warnings.iter().any(|warning| {
-        warning.starts_with("text/plain 正文片段无法解码：")
-            || warning.starts_with("text/html 正文片段无法解码：")
-    });
-    matches_with_body(rule, mail, mail.saved_locally && decoded)
+    match_state(rule, mail, body_available(mail)) == MatchState::Match
 }
 pub fn matches_with_body(rule: &Rule, mail: &Mail, body_available: bool) -> bool {
     if !rule.enabled
@@ -190,7 +186,7 @@ pub fn match_state(rule: &Rule, mail: &Mail, body_available: bool) -> MatchState
         let mut one = rule.clone();
         one.mode = "all".into();
         one.conditions = vec![condition.clone()];
-        let matched = matches(&one, mail);
+        let matched = matches_with_body(&one, mail, body_available);
         if rule.mode == "all" && !matched {
             return MatchState::NoMatch;
         }

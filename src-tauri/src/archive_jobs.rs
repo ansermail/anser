@@ -79,6 +79,11 @@ pub(crate) fn proof(db: &rusqlite::Connection, job: &ArchiveJob) -> Result<(Acco
     }
     Ok((a, m))
 }
+pub(crate) struct PreparedArchive {
+    pub mail: Mail,
+    pub header_hash: String,
+    staged: archive::StagedRaw,
+}
 impl Store {
     pub fn archive_jobs(&self) -> Result<Vec<ArchiveJob>> {
         let db = self.db()?;
@@ -254,11 +259,21 @@ impl Store {
     }
     pub(crate) fn complete_archive(&self, job: &ArchiveJob, raw: &[u8]) -> Result<()> {
         let _archive = self.archive_gate.read().map_err(err)?;
+        let existing = if raw.is_empty() {
+            let (_, mail) = proof(&self.db()?, job)?;
+            if !mail.saved_locally {
+                return Err("未收到完整原件，不能标记保存成功".into());
+            }
+            Some(archive::read_raw(&self.root, &mail.hash)?)
+        } else {
+            None
+        };
+        let prepared = self.prepare_archive(&job, existing.as_deref().unwrap_or(raw))?;
         let mut db = self.db()?;
         let tx = db
             .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
             .map_err(err)?;
-        self.complete_archive_in(&tx, job, raw)?;
+        self.complete_archive_in(&tx, job, &prepared)?;
         tx.commit().map_err(err)
     }
     pub(crate) fn archive_job_for_mail_in(
@@ -272,11 +287,46 @@ impl Store {
         )
         .map_err(err)
     }
+    // Parse and fsync outside the SQLite writer. Callers retain archive_gate
+    // until publication, so migration cannot switch the physical archive.
+    pub(crate) fn prepare_archive(&self, job: &ArchiveJob, raw: &[u8]) -> Result<PreparedArchive> {
+        if !job.id.is_empty() {
+            let current = self.archive_job(&job.id)?;
+            if current.status != "running" || current.revision != job.revision {
+                return Err("补存已暂停、取消或重新入队，未发布原件".into());
+            }
+        }
+        let (mut account, old) = proof(&self.db()?, job)?;
+        account.save_locally = true;
+        let mut mail = archive::parse(raw, &account, &job.folder)?.0;
+        let end = raw
+            .windows(4)
+            .position(|w| w == b"\r\n\r\n")
+            .map(|p| p + 4)
+            .unwrap_or(raw.len());
+        let header_hash = archive::digest(&raw[..end]);
+        if mail.hash != job.expected_hash && header_hash != job.expected_hash {
+            return Err("邮件原始头或内容已变化，未保存错误邮件".into());
+        }
+        if !old.message_id.is_empty() && mail.message_id != old.message_id {
+            return Err("邮件标识不匹配，未保存".into());
+        }
+        if old.saved_locally && old.hash != mail.hash {
+            return Err("邮件已被另一原件替代，未将旧补存任务标记为成功".into());
+        }
+        let staged = archive::stage_raw(&self.root, raw)?;
+        mail.hash = staged.hash().into();
+        Ok(PreparedArchive {
+            mail,
+            header_hash,
+            staged,
+        })
+    }
     pub(crate) fn complete_archive_in(
         &self,
         tx: &rusqlite::Connection,
         job: &ArchiveJob,
-        raw: &[u8],
+        prepared: &PreparedArchive,
     ) -> Result<()> {
         let current = tx
             .query_row(
@@ -288,21 +338,16 @@ impl Store {
         if current.status != "running" || current.revision != job.revision {
             return Err("补存已暂停、取消或重新入队，未发布原件".into());
         }
-        let (a, old) = proof(&tx, job)?;
+        let (_, old) = proof(&tx, job)?;
+        let hash = &prepared.mail.hash;
+        if hash != &job.expected_hash && prepared.header_hash != job.expected_hash {
+            return Err("邮件原始头或内容已变化，未保存错误邮件".into());
+        }
+        if old.saved_locally && &old.hash != hash {
+            return Err("邮件已被另一原件替代，未将旧补存任务标记为成功".into());
+        }
         if !old.saved_locally {
-            let header_end = raw
-                .windows(4)
-                .position(|w| w == b"\r\n\r\n")
-                .map(|p| p + 4)
-                .unwrap_or(raw.len());
-            let hash = archive::digest(raw);
-            if hash != job.expected_hash && archive::digest(&raw[..header_end]) != job.expected_hash
-            {
-                return Err("邮件原始头或内容已变化，未保存错误邮件".into());
-            }
-            let mut complete = a.clone();
-            complete.save_locally = true;
-            let (mut mail, _, _) = archive::parse(raw, &complete, &job.folder)?;
+            let mut mail = prepared.mail.clone();
             if !old.message_id.is_empty() && mail.message_id != old.message_id {
                 return Err("邮件标识不匹配，未保存".into());
             }
@@ -312,8 +357,9 @@ impl Store {
                     "已有相同完整存档，但对应不同本地记录；请核对来源后处理，原状态保留".into(),
                 );
             }
+            prepared.staged.publish()?;
             mail.id = old.id.clone();
-            mail.hash = archive::store_raw(&self.root, raw)?;
+            mail.hash = hash.clone();
             mail.saved_locally = true;
             mail.is_read = old.is_read;
             mail.starred = old.starred;
@@ -336,18 +382,6 @@ impl Store {
                 ],
             )
             .map_err(err)?;
-        } else {
-            let existing = archive::read_raw(&self.root, &old.hash)?;
-            let end = existing
-                .windows(4)
-                .position(|w| w == b"\r\n\r\n")
-                .map(|p| p + 4)
-                .unwrap_or(existing.len());
-            if old.hash != job.expected_hash
-                && archive::digest(&existing[..end]) != job.expected_hash
-            {
-                return Err("邮件已被另一原件替代，未将旧补存任务标记为成功".into());
-            }
         }
         tx.execute(
             "UPDATE archive_jobs SET status='completed',error='',updated_at=?2 WHERE id=?1",

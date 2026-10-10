@@ -5,7 +5,7 @@ import {
   conversationMessages,
   conversationSummaries,
 } from "./conversations";
-import { ruleMatches } from "./rule-match";
+import { ruleMatchState } from "./rule-match";
 import { invoke, isTauri } from "@tauri-apps/api/core";
 import type {
   Account,
@@ -330,18 +330,24 @@ export async function call<T = void>(
         if (current) current.serverRetentionDays = days ?? null;
         break;
       }
-      case "preview_rule":
-        result = demo.messages
-          .filter(
-            (m) =>
-              ruleMatches({ ...(args.rule as Rule), enabled: true }, m) &&
-              (!["serverCopy", "serverMove"].includes(
-                (args.rule as Rule).action,
-              ) ||
-                m.sourceFolder === (args.rule as Rule).sourceFolder),
+      case "preview_rule": {
+        const rule = { ...(args.rule as Rule), enabled: true };
+        result = demo.messages.flatMap((mail) => {
+          const state = ruleMatchState(rule, mail);
+          if (
+            state === "noMatch" ||
+            (["serverCopy", "serverMove"].includes(rule.action) &&
+              mail.sourceFolder !== rule.sourceFolder)
           )
-          .map((m) => m.subject);
+            return [];
+          return [
+            state === "needsBody"
+              ? `${mail.subject}（等待正文核对）`
+              : mail.subject,
+          ];
+        });
         break;
+      }
       case "run_rules": {
         if (
           demo.rules.some(
@@ -350,19 +356,45 @@ export async function call<T = void>(
         )
           throw new Error("演示模式不执行服务器规则，请在真实桌面预览中测试");
         let count = 0;
-        for (const m of demo.messages) {
-          for (const r of demo.rules) {
-            if (ruleMatches(r, m)) {
-              if (r.action === "folder") m.localFolder = r.destination;
-              if (r.action === "read") m.isRead = true;
-              if (r.action === "unread") m.isRead = false;
-              if (r.action === "star") m.starred = true;
-              if (r.action === "trash") m.trashed = true;
-              count++;
-              if (r.stop) break;
+        const planned = demo.messages.map((mail) => ({ ...mail }));
+        for (const mail of planned) {
+          for (const rule of demo.rules) {
+            const state = ruleMatchState(rule, mail);
+            if (state === "needsBody")
+              throw new Error(
+                "示例预览不下载在线正文或附件，未知内容需在桌面客户端核对",
+              );
+            if (state !== "match") continue;
+            if (
+              ["save", "saveFolder"].includes(rule.action) &&
+              mail.savedLocally === false
+            )
+              throw new Error(
+                "示例仅对已有完整邮件演示保存与归类，不提供实际下载",
+              );
+            switch (rule.action) {
+              case "folder":
+              case "saveFolder":
+                mail.localFolder = rule.destination;
+                break;
+              case "read":
+                mail.isRead = true;
+                break;
+              case "unread":
+                mail.isRead = false;
+                break;
+              case "star":
+                mail.starred = true;
+                break;
+              case "trash":
+                mail.trashed = true;
+                break;
             }
+            count++;
+            if (rule.stop) break;
           }
         }
+        demo.messages = planned;
         result = count;
         break;
       }
@@ -451,6 +483,11 @@ export async function call<T = void>(
         ] satisfies Address[];
         break;
       }
+      case "rule_runs":
+        result = [];
+        break;
+      case "rule_run_action":
+        throw new Error("示例预览不执行异步规则任务，请在桌面客户端查看");
       case "folder_health":
       case "directory_operations":
       case "rule_executions":

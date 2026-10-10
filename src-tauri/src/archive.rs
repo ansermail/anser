@@ -48,6 +48,61 @@ pub fn store_raw(root: &Path, raw: &[u8]) -> Result<String> {
     }
     Ok(hash)
 }
+// A private staging file is discarded when a late/cancelled save cannot be
+// published. The expensive write/hash precedes the SQLite writer; publication
+// only renames the already fsynced bytes. Callers hold Store::archive_gate.
+pub(crate) struct StagedRaw {
+    hash: String,
+    destination: std::path::PathBuf,
+    temporary: Option<std::path::PathBuf>,
+}
+impl StagedRaw {
+    pub fn hash(&self) -> &str {
+        &self.hash
+    }
+    pub fn publish(&self) -> Result<()> {
+        if let Some(temporary) = &self.temporary {
+            if self.destination.exists() {
+                return Err("原件已由其他任务保存，请重新核对后重试".into());
+            }
+            fs::rename(temporary, &self.destination).map_err(err)?;
+            File::open(self.destination.parent().ok_or("无效存档路径")?)
+                .and_then(|file| file.sync_all())
+                .map_err(err)?;
+        }
+        Ok(())
+    }
+}
+impl Drop for StagedRaw {
+    fn drop(&mut self) {
+        if let Some(path) = &self.temporary {
+            let _ = fs::remove_file(path);
+        }
+    }
+}
+pub(crate) fn stage_raw(root: &Path, raw: &[u8]) -> Result<StagedRaw> {
+    let runtime = crate::archive_location::runtime(root);
+    let _guard = runtime.gate.read().map_err(err)?;
+    let actual = crate::archive_location::physical_root(root)?;
+    let hash = digest(raw);
+    let folder = actual.join("archive");
+    let destination = folder.join(format!("{hash}.eml"));
+    let temporary = if destination.exists() {
+        if digest(&fs::read(&destination).map_err(err)?) != hash {
+            return Err("已存档文件校验失败，请从备份恢复".into());
+        }
+        None
+    } else {
+        let path = folder.join(format!(".save-{}", uuid::Uuid::new_v4()));
+        atomic_write(&path, raw)?;
+        Some(path)
+    };
+    Ok(StagedRaw {
+        hash,
+        destination,
+        temporary,
+    })
+}
 pub fn read_raw(root: &Path, hash: &str) -> Result<Vec<u8>> {
     let runtime = crate::archive_location::runtime(root);
     let _guard = runtime.gate.read().map_err(err)?;

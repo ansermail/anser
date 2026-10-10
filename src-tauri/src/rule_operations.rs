@@ -139,6 +139,13 @@ impl Store {
         tx.execute("INSERT INTO rule_executions(id,rule_id,mail_id,fingerprint,rule_data,data,operation_id,status,error,updated_at) VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,?10) ON CONFLICT(rule_id,mail_id,fingerprint) DO UPDATE SET operation_id=excluded.operation_id,status=excluded.status,error=excluded.error,updated_at=excluded.updated_at",params![execution.id,rule.id,mail.id,frozen,serde_json::to_string(rule).map_err(err)?,serde_json::to_string(&execution).map_err(err)?,operation_id,status,error,execution.updated_at]).map_err(err)?;
         Ok(true)
     }
+    pub(crate) fn unqueued_rule_failure_in(
+        db: &rusqlite::Connection,
+        rule: &Rule,
+        mail_id: &str,
+    ) -> Result<bool> {
+        db.query_row("SELECT EXISTS(SELECT 1 FROM rule_executions WHERE rule_id=?1 AND mail_id=?2 AND fingerprint=?3 AND status='blocked' AND operation_id IS NULL)",params![rule.id,mail_id,fingerprint(rule)?],|row|row.get(0)).map_err(err)
+    }
     pub fn retry_rule_execution(&self, id: &str) -> Result<()> {
         let (rule_id, mail_id, frozen): (String,String,String) = self.db()?.query_row("SELECT rule_id,mail_id,fingerprint FROM rule_executions WHERE id=?1 AND operation_id IS NULL AND status='blocked'",[id],|r|Ok((r.get(0)?,r.get(1)?,r.get(2)?))).map_err(|_| "此规则记录不能重试，请查看关联服务器任务")?;
         let rule = self
@@ -148,6 +155,11 @@ impl Store {
             .ok_or("规则已删除或停用，不能重试")?;
         if fingerprint(&rule)? != frozen {
             return Err("规则配置已变化，请预览新规则后执行，旧记录保留".into());
+        }
+        if Self::rule_blocks_move(&self.db()?, &mail_id)? {
+            return Err(
+                "关联规则链尚未完成，请在规则处理任务中重新核对，不会提前入队服务器动作".into(),
+            );
         }
         let mail = self.mail(&mail_id)?;
         if !rules::matches(&rule, &mail) {

@@ -399,8 +399,8 @@ impl Store {
         Ok(self
             .db()?
             .execute(
-                "UPDATE directory_operations SET status=?3 WHERE id=?1 AND status=?2 AND (?4=0 OR NOT EXISTS(SELECT 1 FROM rule_runs WHERE mail_id=?5 AND status NOT IN ('completed','cancelled')))",
-                params![op.id, op.status, next,op.kind=="move" && matches!(op.status.as_str(),"queued"|"cleanup_pending"),op.mail_id],
+                "UPDATE directory_operations SET status=?3 WHERE id=?1 AND status=?2 AND (?4=0 OR NOT EXISTS(SELECT 1 FROM rule_runs WHERE mail_id=?5 AND status NOT IN ('completed','cancelled'))) AND (?6=0 OR NOT EXISTS(SELECT 1 FROM rule_runs r JOIN json_each(r.data,'$.operations') j WHERE j.value=?1 AND r.status!='completed'))",
+                params![op.id, op.status, next,op.kind=="move" && matches!(op.status.as_str(),"queued"|"cleanup_pending"),op.mail_id,op.status=="queued"],
             )
             .map_err(err)?
             == 1)
@@ -424,6 +424,9 @@ impl Store {
             .map_err(err)?;
         check(&tx, op)?;
         check_other_move(&tx, op)?;
+        if Self::rule_blocks_directory(&tx, &op.id)? {
+            return Err("关联规则尚未完成或已停止，未提交服务器操作".into());
+        }
         if op.kind == "move" && Self::rule_blocks_move(&tx, &op.mail_id)? {
             return Err("规则尚未完成正文核对或保存，未提交移动".into());
         }

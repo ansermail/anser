@@ -84,6 +84,7 @@ beforeEach(() => {
   vi.spyOn(api, "call").mockImplementation(async <T,>(command: string) => {
     if (command === "folder_settings") return settings as T;
     if (command === "rule_executions") return hits as T;
+    if (command === "rule_runs") return [] as T;
     if (command === "preview_rule") return ["example subject"] as T;
     return undefined as T;
   });
@@ -211,4 +212,26 @@ it("does not expose a full-address Gmail account as a supported remote rule acco
     (e) => e.textContent === data.accounts[0].email,
   )!;
   expect(gmail.getAttribute("data-disabled")).not.toBeNull();
+});
+
+it("offers complete save without a folder and save-and-classify with a local destination", async () => {
+  await render();
+  await click("新建规则");
+  await select("规则执行动作", "完整保存到本地");
+  expect(
+    document.querySelector('input[placeholder="例如：项目 / 设计"]'),
+  ).toBeNull();
+  await select("规则执行动作", "完整保存并归入本地文件夹");
+  expect(
+    document.querySelector('input[placeholder="例如：项目 / 设计"]'),
+  ).not.toBeNull();
+  await select("条件字段", "正文");
+  await click("预览匹配，不执行动作");
+  expect(api.call).toHaveBeenLastCalledWith("preview_rule", {
+    rule: expect.objectContaining({
+      action: "saveFolder",
+      conditions: [expect.objectContaining({ field: "body" })],
+    }),
+  });
+  expect(api.call).not.toHaveBeenCalledWith("run_rules");
 });

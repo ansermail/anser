@@ -468,3 +468,13 @@ GitHub CI 和两架构发布工作流已推送；首次 Checks 已成功，Relea
 原预览以 `preview/` 为 Vite 根目录，Tailwind 自动扫描未覆盖 `src/` 业务组件，公开 CSS 缺少 flex/grid/gap 等布局工具类。`src/index.css` 明确声明 `@source "./"`，预览入口改为渲染共用 App，删除重复 PreviewApp。Vite 预览构建将 Tauri core/app/event/updater/dialog 导入替换为静态禁用桥；API 使用内存示例存储，无法退出到真实模式，连接/收发及本机操作明确报错。`scripts/check-preview.mjs` 在每次预览构建检查共享布局 CSS、基路径与无原生 IPC 实现；Preview Pages 自动跟随 main 相关修改。
 
 `eml_files` 是独立内存状态，接收 macOS Opened、启动/单实例路径参数及选择器请求；订阅后排空待打开队列，防止启动事件丢失。读取限制为 64 MiB，正文/日期/附件复用 archive MIME 解析，原始字节只保留于当前文件快照，不走 Store、收取、规则或凭据接口。前端串行解析与代际检查防止切换/关闭后的迟到结果，附件用当前令牌提取，预览复用私有缓存与可执行文件保护，另存禁止覆盖源文件。bundle.fileAssociations 声明 EML Viewer/Alternate；稳定开发包从同一配置生成 CFBundleDocumentTypes，不改变应用/钥匙串标识或默认打开方式。
+
+## RULES-03：持久规则链与完整保存（2026-10-10）
+
+`rule_runs` 持久化配置指纹、可信来源/账号身份/原件头证明、cursor/revision、字段意图基线和自有目录任务 ID；正文不写入任务。三态匹配先从 `message_listing` 投影筛候选，待核对的在线内容按准确 UID/UIDVALIDITY 只读获取。正文解码失败不执行否定条件，损坏附件不阻止已成功解码的正文条件。
+
+`archive::stage_raw` 通过当前 `archive_location` 在写事务外准备、散列校验和 fsync 临时原件；调用者持有存档读 gate 直到发布。短 Immediate 事务再次核对源/账号/任务代际/配置/用户字段，发布已准备原件和保存索引、归类、cursor；失败回滚索引/状态，未发布临时文件由 Drop 清理。若原件重命名后数据库回滚，完整但未索引文件保留，下一次校验复用，不虚报保存成功；外置盘不能自动回落本机。
+
+任何后续按需读取/保存步骤使整条规则链先入队；自有 COPY/MOVE 的领取/提交 CAS 都核对所属链完成状态。暂停提高 revision，取消撤销 queued/preparing/blocked 自有任务；已提交/结果不明任务不重放、不撤回。隔离但仍活动的远端来源记录阻塞命中并停止；用户显式重试只能重试未入队失败，关联链独立执行记录重试被拒绝，防止绕过先后顺序。重启将 running 链重新入队并提高代际；备份排除可执行规则任务。
+
+260 Rust / 203 前端 / 19 桌面脚本 / 39 vendored IMAP 回归、UI/格式/两种构建通过。原生授权 SYNC-02 A/B 各补存一封成功；暂停/取消竞态、后续保存失败时前置 COPY/MOVE 保留、回滚/断源/隔离重试等使用临时数据库验证。真实服务器移动与故障盘矩阵仍另列待办；本阶段未发布桌面包。
