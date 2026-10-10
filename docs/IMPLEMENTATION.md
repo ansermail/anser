@@ -503,3 +503,13 @@ IDLE 60 秒绝对周期结束并确认 DONE 后在选中会话发 NOOP，重复 
 snapshot 使用参数化 phrase筛候选，再对投影指定字段执行原ASCII-insensitive literal子串核对；默认拼接仍为标题/发件人/收件人/正文。短词/NUL输入回退扫描，记录里的NUL也因FTS截断行为回退，以免漏掉尾部关键词。仅readonly派生字段参与检索，readable_listing/trusted_sources仍控制可见性，索引不是来源认证或正文下载入口。
 
 288 Rust全量与原生联调标题搜索通过；参见SEARCH_SCALE_WORKING.md。本阶段尚未替换全匹配反序列化/会话聚合及前缀分页，SQL真分页、时间筛选/覆盖提示、产品五万封性能验收与下一版云端包未完成。
+
+## 2026-10-10 PAGING-01 SQL固定页（未发布）
+
+codex/search-scale后端增加paging.rs与mail_page/mail_neighbor IPC，旧snapshot暂供前端兼容。PageRequest包装原Query及cursor/ISO日期边界；返回扁平Snapshot与nextCursor/revision/reset/bodyCoverage。先范围与可信来源过滤、按完整图成员/计数聚合状态、选择代表，再LIMIT≤200，只解析当前页JSON。Cursor范围hash/版本/时间/ID，旧版本返回新首屏及reset，不能拼接；畸形/跨范围/无效锚点拒绝。
+
+查询版本与拓扑版本分开；持久图过期时独立写事务刷新，正常页面/计数/图/元信息同一WAL快照只读，metadata/remote_folders复用同连接。读/星标不重建图，同值来源与lastSync/error不废弃查询页。语义沿用RFC引用关联、跨账号隔离、去重计数、范围内状态汇总与未知时间置后。
+
+mail_neighbor在同样快照按当前阅读ID直接seek前后结果，保留筛选、跳过当前对话，支持锚点被已读移出未读列表；不重载前缀或改变分页流。日期下限包含/上限排除，用SQLite整数Julian毫秒分子避免边界浮点偏移，原日期不改。
+
+296Rust全量通过，具体6103条/并发/日期/覆盖/游标/阅读证据见SEARCH_SCALE_WORKING.md。App仍调用旧前缀API，UI/日期控件/覆盖说明/产品五万封指标与新版本发布未完成。

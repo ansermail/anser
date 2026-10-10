@@ -1,6 +1,6 @@
 # SEARCH / SCALE 后续工作点
 
-2026-10-10，当前功能基线 220f4cc，0.1.9 已完成云端构建/资源核验与正式发布。当前开发分支 `codex/search-scale`（从 main / 7e4b122 接续）。索引子阶段已接入，分页/时间筛选与整体规模验收仍未完成；正式 0.1.9 不含本分支。
+2026-10-10，当前功能基线 220f4cc，0.1.9 已完成云端构建/资源核验与正式发布。当前开发分支 `codex/search-scale`（从 main / 7e4b122 接续）。索引和 SQL 页/邻居后端子阶段已接入；前端分页/时间筛选与整体规模验收仍未完成；正式 0.1.9 不含本分支。
 
 ## 未完成要求
 
@@ -26,7 +26,7 @@
 
 ## 当前接续
 
-RELEASE_019_WORKING.md 云端发布已完成。QQ 自动副本核对和 C 实时收件通过，真实大附件繁忙/断网睡眠矩阵仍按 SYNC_02B2_WORKING.md 单独保留。Microsoft 注册/默认发布配置已完成，实际邮箱 SMTP/刷新未完成。事务性检索投影已按下方 SEARCH-01 子阶段接入。下一步 SQL 对话成员/摘要投影与页协议，再前端分页/时间筛选/覆盖提示；虚构实验不计作生产性能完成。
+RELEASE_019_WORKING.md 云端发布已完成。QQ 自动副本核对和 C 实时收件通过，真实大附件繁忙/断网睡眠矩阵仍按 SYNC_02B2_WORKING.md 单独保留。Microsoft 注册/默认发布配置已完成，实际邮箱 SMTP/刷新未完成。事务性检索投影已按下方 SEARCH-01 子阶段接入。SQL 对话成员/摘要投影、页协议与锚点邻居接口已接入，下一步前端分页/时间筛选/覆盖提示；虚构实验不计作生产性能完成。
 
 ## 2026-10-10 0.1.9 构建期间的索引方案实测
 
@@ -102,3 +102,35 @@ hot conversation_count_and_page_ms=56
 4. 完整 Store 两模式五万封冷/热首屏/首批测量，真正脱离前缀重载；随后全量门槛、版本更新、合入main并删除完成分支，关键节点先远程构建下一新版。
 
 阶段文件：src-tauri/src/search.rs、store.rs、lib.rs 与 AGENTS/USAGE/IMPLEMENTATION/本工作点/DEVELOPMENT_STATUS。源码提交以本分支最新 SEARCH-01 提交为准；后续继续此分支，不能把未完成分页功能混入正式包。
+
+## PAGING-01 后端固定页与阅读锚点（2026-10-10）
+
+codex/search-scale，从SEARCH-01/b65e3ab接续，仍未合入main或发布。新文件paging.rs；涉及conversation/lib/remote/search/store。
+
+### 已完成
+
+- `mail_page` IPC 与 Store::mail_page：PageRequest含query、cursor、dateFrom、dateBefore；每页限制1..200，SQL count/窗口分组/状态合并后截取，只反序列化本页Mail，正文仍为空。未知日期置后，同时间ID稳定次序；日期下限包含、上限排除，使用与SQLite一致的整数Julian毫秒换算，保留原始日期。
+- 持久conversation_members/counts从完整可信引用图生成，计数保留服务器副本身份去重及跨账号隔离语义。按当前范围挑最新代表、合并范围内已读/星标/附件，完整图计数不受页大小或筛选截断。
+- 引用图revision与查询revision拆分；标记/分类/日期/文本更新废弃查询cursor但不重建引用图，引用/别名/垃圾箱/完整保存可见性及来源变化影响图。普通source相同值更新和account lastSync/error不误重置页。
+- 图过期时在独立IMMEDIATE事务更新派生成员；正常计数/过滤/分页/元信息在同一只读WAL快照，网络任务不因分页长持写锁。snapshot_metadata与remote_folders_in共用调用连接，查询结果/计数/来源错误和元数据不会跨连接拼接不同快照。
+- Base64URL JSON游标绑定规范化范围hash、数据版本、实际时间/ID；空白/畸形/跨范围/不存在锚点拒绝。版本改变返回新的第一页及reset=true，前端必须替换，不能合并旧结果。游标中不存检索文本或凭据。
+- `mail_neighbor` IPC与Store::mail_neighbor：query/date范围+id+previous/next，直接seek相邻结果，允许当前锚点因已读离开未读筛选；结果仍遵守当前范围，跳过同一对话，校验账号/可读来源和参数。返回body-free Mail及revision；不会从头加载第5000行前的页，也不改列表页流或标记。
+- 旧snapshot保持兼容供前端过渡，尚未删除其全量反序列化/5000前缀路径。不能把新后端接口视作当前UI已经解除限制。
+
+### 实际验证
+
+`cargo test --manifest-path src-tauri/Cargo.toml` 296项全量通过（47.52s，含8项新分页/邻居专项）；cargo check、cargo fmt --check、git diff --check通过。首轮测试编译缺Page Debug derive，已补充并重跑，未把该失败计为通过。
+
+专项用6103条虚构派生记录（无真实MIME/账号数据）证明：逐封与对话都可遍历>5000结果、固定197页、同时间/未知时间不重不漏；对话计数/状态/范围与旧语义一致；字段/附件/文件夹/远端范围；标记改变reset而图不重建、跨范围/假游标拒绝；毫秒时区上下边界；未知正文/隔离来源覆盖计数；无变化来源及后台状态不reset；WAL读取期间另连接提交仍保持旧计数/标记/版本快照；5000行以后直接查邻居、已读离开未读过滤、同线程跳过、未知日期/账号限制。
+
+本轮未改UI/脚本/Pages，没有原生界面对新接口的使用验收、没有五万封生产测量、云端新版构建或发布。正式0.1.9不含本分支。
+
+### 前端接续必须完成
+
+1. src/lib/api.ts新增mailPage/mailNeighbor桥，native调用对应IPC；Pages/demo继续隔离虚构内存数据，同样实现cursor/reset/日期/相邻范围语义，不能回到静态桥里的原生调用。
+2. src/lib/types.ts扩展页返回nextCursor/revision/reset/bodyCoverage及日期条件。App刷新只拿首个固定页；加载更多按cursor请求、同范围/请求代际/原cursor保护、同revision才追加，reset替换而非拼接；移除累计limit与5000禁用。
+3. 保留阅读正文和选择过期保护；可用内存邻居先用，否则mailNeighbor直接seek。不得将seek邻居结果混入列表流形成缺页，不从首200条重载到远距离锚点。按钮/键盘的加载与首尾反馈都需测试，拒绝较旧revision/范围/选择响应。
+4. 日期界面用shadcn Calendar+Popover，起始当地午夜至结束日期后一日（DST用日历加一天），转换ISO传入dateFrom/dateBefore；正文检索说明展示known/unknown覆盖，未知不自动下载。
+5. 前端两模式真实cursor交互、正在加载换范围/新消息/读状态变化、连续阅读/首尾、Pages隔离与五万封Store两模式冷/热目标；最后全量发布门槛、版本同步、合并main并清理工作分支，关键节点先远程构建下一版。
+
+代码入口：paging.rs::mail_page/mail_neighbor/read_listing/units；接口库api.ts、App refresh/navigateReading/加载更多；原有Rust Query不变，PageRequest包装它。阶段源码以当前分支PAGING-01提交为准，接续先核对branch/status。

@@ -102,6 +102,11 @@ pub fn predicate(indexed: bool) -> String {
     format!("(?2='' OR listing.id IN (SELECT mail_id FROM search_documents WHERE instr(lower(CASE ?8 WHEN 'subject' THEN subject WHEN 'sender' THEN sender WHEN 'recipients' THEN recipients WHEN 'body' THEN body ELSE all_text END),lower(?2))>0 {candidates}))")
 }
 
+pub(crate) fn listing_predicate(indexed: bool) -> String {
+    let search = predicate(indexed);
+    format!("(?1='' OR listing.account_id=?1) AND {search} AND (?3='' OR json_extract(data,'$.localFolder')=?3) AND CASE ?4 WHEN 'trash' THEN json_extract(data,'$.trashed')=1 ELSE json_extract(data,'$.trashed')=0 END AND CASE ?4 WHEN 'all' THEN EXISTS(SELECT 1 FROM trusted_sources s JOIN accounts a ON a.id=s.account_id WHERE s.mail_id=listing.id AND s.folder='INBOX' COLLATE NOCASE AND s.active=1) WHEN 'unread' THEN json_extract(data,'$.isRead')=0 WHEN 'starred' THEN json_extract(data,'$.starred')=1 WHEN 'sent' THEN (EXISTS(SELECT 1 FROM trusted_sources s JOIN remote_folders f ON f.account_id=s.account_id AND f.name=s.folder WHERE s.mail_id=listing.id AND s.active=1 AND EXISTS(SELECT 1 FROM json_each(f.data,'$.roles') WHERE value='sent')) OR (json_extract(data,'$.sourceFolder')='Sent' AND (NOT EXISTS(SELECT 1 FROM remote_folders f WHERE f.account_id=listing.account_id AND f.name='Sent') OR EXISTS(SELECT 1 FROM trusted_sources s JOIN outbox o ON o.id=s.remote_id WHERE s.mail_id=listing.id AND s.folder='Sent' AND o.status='sent')))) ELSE 1 END AND (?5=0 OR json_extract(data,'$.isRead')=0) AND (?6=0 OR json_extract(data,'$.starred')=1) AND (?7=0 OR json_extract(data,'$.hasAttachments')=1) AND (?9='' OR EXISTS(SELECT 1 FROM trusted_sources s WHERE s.mail_id=listing.id AND s.account_id=listing.account_id AND s.folder=?9 AND s.active=1)) AND (?4!='local' OR COALESCE(json_extract(data,'$.savedLocally'),1)=1)")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

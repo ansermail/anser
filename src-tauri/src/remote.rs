@@ -82,6 +82,13 @@ impl Store {
     }
     pub fn remote_folders(&self, account: Option<&str>) -> Result<Vec<RemoteFolder>> {
         let db = self.db()?;
+        self.remote_folders_in(&db, account)
+    }
+    pub(crate) fn remote_folders_in(
+        &self,
+        db: &rusqlite::Connection,
+        account: Option<&str>,
+    ) -> Result<Vec<RemoteFolder>> {
         let mut q = db.prepare("SELECT data FROM remote_folders WHERE ?1='' OR account_id=?1 ORDER BY name COLLATE NOCASE").map_err(err)?;
         let rows = q
             .query_map([account.unwrap_or("")], |r| r.get::<_, String>(0))
@@ -89,8 +96,14 @@ impl Store {
             .map(|r| {
                 let mut folder: RemoteFolder =
                     serde_json::from_str(&r.map_err(err)?).map_err(err)?;
-                folder.sync_error =
-                    self.folder_isolated_reason(&folder.account_id, &folder.name)?;
+                folder.sync_error = db
+                    .query_row(
+                        "SELECT reason FROM folder_health WHERE account_id=?1 AND folder=?2",
+                        rusqlite::params![folder.account_id, folder.name],
+                        |r| r.get(0),
+                    )
+                    .optional()
+                    .map_err(err)?;
                 if folder.detected_roles.is_none() {
                     normalize_folder(&mut folder);
                     folder.detected_roles = Some(folder.roles.clone());

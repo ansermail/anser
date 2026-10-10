@@ -102,6 +102,7 @@ impl Store {
         crate::archive_jobs::initialize(&db)?;
         crate::rule_runs::initialize(&db)?;
         crate::search::initialize(&db)?;
+        crate::paging::initialize(&db)?;
         s.migrate_folder_roles()?;
         if let Err(error) = s.cleanup_archive_migration() {
             s.log(&format!("存档迁移清理待完成：{error}"))?;
@@ -692,8 +693,7 @@ impl Store {
     pub fn snapshot(&self, q: &Query) -> Result<Snapshot> {
         let db = self.db()?;
         let phrase = crate::search::phrase(&q.search);
-        let search = crate::search::predicate(phrase.is_some());
-        let where_sql=format!("(?1='' OR account_id=?1) AND {search} AND (?3='' OR json_extract(data,'$.localFolder')=?3) AND CASE ?4 WHEN 'trash' THEN json_extract(data,'$.trashed')=1 ELSE json_extract(data,'$.trashed')=0 END AND CASE ?4 WHEN 'all' THEN EXISTS(SELECT 1 FROM trusted_sources s JOIN accounts a ON a.id=s.account_id WHERE s.mail_id=listing.id AND s.folder='INBOX' COLLATE NOCASE AND s.active=1) WHEN 'unread' THEN json_extract(data,'$.isRead')=0 WHEN 'starred' THEN json_extract(data,'$.starred')=1 WHEN 'sent' THEN (EXISTS(SELECT 1 FROM trusted_sources s JOIN remote_folders f ON f.account_id=s.account_id AND f.name=s.folder WHERE s.mail_id=listing.id AND s.active=1 AND EXISTS(SELECT 1 FROM json_each(f.data,'$.roles') WHERE value='sent')) OR (json_extract(data,'$.sourceFolder')='Sent' AND (NOT EXISTS(SELECT 1 FROM remote_folders f WHERE f.account_id=listing.account_id AND f.name='Sent') OR EXISTS(SELECT 1 FROM trusted_sources s JOIN outbox o ON o.id=s.remote_id WHERE s.mail_id=listing.id AND s.folder='Sent' AND o.status='sent')))) ELSE 1 END AND (?5=0 OR json_extract(data,'$.isRead')=0) AND (?6=0 OR json_extract(data,'$.starred')=1) AND (?7=0 OR json_extract(data,'$.hasAttachments')=1) AND (?9='' OR EXISTS(SELECT 1 FROM trusted_sources s WHERE s.mail_id=listing.id AND s.account_id=listing.account_id AND s.folder=?9 AND s.active=1)) AND (?4!='local' OR COALESCE(json_extract(data,'$.savedLocally'),1)=1)");
+        let where_sql = crate::search::listing_predicate(phrase.is_some());
         // RFC3339 strings may carry different offsets. Order by the instant,
         // before grouping/pagination; keep unknown dates last and ties stable.
         let mut st=db.prepare(&format!("SELECT data FROM readable_listing listing WHERE {where_sql} ORDER BY julianday(json_extract(data,'$.date')) DESC, id ASC")).map_err(err)?;
@@ -733,6 +733,14 @@ impl Store {
         };
         let matched = messages.len() as u64;
         messages.truncate(q.limit.clamp(1, 5000) as usize);
+        self.snapshot_metadata(&db, messages, matched)
+    }
+    pub(crate) fn snapshot_metadata(
+        &self,
+        db: &Connection,
+        messages: Vec<Mail>,
+        matched: u64,
+    ) -> Result<Snapshot> {
         let stats=db.query_row("SELECT COUNT(*),COALESCE(SUM(json_extract(data,'$.isRead')=0 AND json_extract(data,'$.trashed')=0),0),COALESCE(SUM(CASE WHEN COALESCE(json_extract(data,'$.savedLocally'),1)=1 THEN json_extract(data,'$.size') ELSE 0 END),0),COALESCE(SUM(COALESCE(json_extract(data,'$.savedLocally'),1)),0) FROM message_listing",[],|r|Ok(Stats{total:r.get(0)?,saved:r.get(3)?,unread:r.get(1)?,bytes:r.get(2)?})).map_err(err)?;
         let mut fs=db.prepare("SELECT DISTINCT json_extract(data,'$.localFolder') FROM message_listing WHERE json_extract(data,'$.localFolder')!='全部存档' ORDER BY 1").map_err(err)?;
         let folders = fs
@@ -752,8 +760,7 @@ impl Store {
             .collect::<std::result::Result<Vec<String>, _>>()
             .map_err(err)?;
         Ok(Snapshot {
-            accounts: self
-                .accounts()?
+            accounts: json_rows::<Account>(db, "SELECT data FROM accounts ORDER BY rowid")?
                 .into_iter()
                 .map(|mut account| {
                     account.error = account
@@ -763,14 +770,14 @@ impl Store {
                     account
                 })
                 .collect(),
-            rules: self.rules()?,
+            rules: json_rows(db, "SELECT data FROM rules ORDER BY position")?,
             messages,
             folders,
             stats,
             logs,
             data_dir: crate::archive_location::display_path(&self.root),
             matched,
-            remote_folders: self.remote_folders(None)?,
+            remote_folders: self.remote_folders_in(db, None)?,
         })
     }
     pub fn detail(&self, id: &str) -> Result<Detail> {
@@ -1057,4 +1064,16 @@ impl Store {
         ))?;
         Ok(count)
     }
+}
+
+pub(crate) fn json_rows<T: serde::de::DeserializeOwned>(
+    db: &Connection,
+    sql: &str,
+) -> Result<Vec<T>> {
+    let mut query = db.prepare(sql).map_err(err)?;
+    let rows = query
+        .query_map([], |r| r.get::<_, String>(0))
+        .map_err(err)?;
+    rows.map(|r| serde_json::from_str(&r.map_err(err)?).map_err(err))
+        .collect()
 }

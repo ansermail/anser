@@ -108,6 +108,34 @@ pub fn summaries(messages: Vec<Mail>, index: &Index) -> Vec<Mail> {
     }
     out
 }
+fn links_in(db: &rusqlite::Connection) -> Result<Vec<Link>> {
+    let mut query = db.prepare("SELECT json_object('id',id,'accountId',account_id,'messageId',COALESCE(json_extract(data,'$.messageId'),''),'serverMessageId',COALESCE(json_extract(data,'$.serverMessageId'),''),'inReplyTo',json(COALESCE(json_extract(data,'$.inReplyTo'),'[]')),'references',json(COALESCE(json_extract(data,'$.references'),'[]')),'trashed',json(CASE WHEN json_extract(data,'$.trashed') THEN 'true' ELSE 'false' END)) FROM readable_listing").map_err(err)?;
+    let links = query
+        .query_map([], |r| r.get::<_, String>(0))
+        .map_err(err)?
+        .map(|r| serde_json::from_str(&r.map_err(err)?).map_err(err))
+        .collect::<Result<Vec<Link>>>()?;
+    Ok(links)
+}
+pub(crate) struct Member {
+    pub id: String,
+    pub root: String,
+    pub trashed: bool,
+}
+pub(crate) fn projection(db: &rusqlite::Connection) -> Result<(Index, Vec<Member>)> {
+    let links = links_in(db)?;
+    let graph = index(&links);
+    let members = links
+        .into_iter()
+        .map(|link| Member {
+            root: graph.roots[&link.id].clone(),
+            id: link.id,
+            trashed: link.trashed,
+        })
+        .collect();
+    Ok((graph, members))
+}
+
 impl Store {
     pub fn change_mail(&self, id: &str, action: &str, value: &str) -> Result<()> {
         if matches!(action, "read" | "star" | "trash") && !matches!(value, "true" | "false") {
@@ -163,12 +191,7 @@ impl Store {
         }
         // A read transaction pins both the revision and link metadata to the
         // same snapshot while new messages continue to arrive in WAL mode.
-        let mut query = tx.prepare("SELECT json_object('id',id,'accountId',account_id,'messageId',COALESCE(json_extract(data,'$.messageId'),''),'serverMessageId',COALESCE(json_extract(data,'$.serverMessageId'),''),'inReplyTo',json(COALESCE(json_extract(data,'$.inReplyTo'),'[]')),'references',json(COALESCE(json_extract(data,'$.references'),'[]')),'trashed',json(CASE WHEN json_extract(data,'$.trashed') THEN 'true' ELSE 'false' END)) FROM readable_listing").map_err(err)?;
-        let links = query
-            .query_map([], |r| r.get::<_, String>(0))
-            .map_err(err)?
-            .map(|r| serde_json::from_str(&r.map_err(err)?).map_err(err))
-            .collect::<Result<Vec<Link>>>()?;
+        let links = links_in(&tx)?;
         let graph = Arc::new(index(&links));
         *cached = Some((revision, graph.clone()));
         Ok(graph)

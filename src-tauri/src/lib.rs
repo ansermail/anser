@@ -13,6 +13,7 @@ mod models;
 mod network;
 mod notifications;
 mod operations;
+mod paging;
 mod productivity;
 mod realtime;
 mod remote;
@@ -80,6 +81,28 @@ fn save_mail_signature(
 async fn snapshot(state: tauri::State<'_, AppState>, query: Query) -> Result<Snapshot> {
     let store = state.store.clone();
     tauri::async_runtime::spawn_blocking(move || store.snapshot(&query))
+        .await
+        .map_err(err)?
+}
+#[tauri::command]
+async fn mail_page(
+    state: tauri::State<'_, AppState>,
+    request: paging::PageRequest,
+) -> Result<paging::Page> {
+    let store = state.store.clone();
+    tauri::async_runtime::spawn_blocking(move || store.mail_page(&request))
+        .await
+        .map_err(err)?
+}
+#[tauri::command]
+async fn mail_neighbor(
+    state: tauri::State<'_, AppState>,
+    request: paging::PageRequest,
+    id: String,
+    direction: String,
+) -> Result<paging::Neighbor> {
+    let store = state.store.clone();
+    tauri::async_runtime::spawn_blocking(move || store.mail_neighbor(&request, &id, &direction))
         .await
         .map_err(err)?
 }
@@ -1256,6 +1279,8 @@ pub fn run() {
             preview_eml_attachment,
             save_eml_attachment,
             snapshot,
+            mail_page,
+            mail_neighbor,
             mail_signature,
             save_mail_signature,
             account_folders,
