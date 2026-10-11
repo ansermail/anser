@@ -19,3 +19,9 @@
 2. 核对 check、Apple Silicon/Intel、draft；下载仅正式候选资源到仓库外审计目录，核对七资源 SHA256/尺寸、更新签名、公钥、latest.json、App 版本/架构/稳定标识/EML/全 codesign/许可/原生 OAuth 配置、DMG 全文件与归档一致。
 3. 草稿不可影响公开 latest；正式发布前补系统拖拽/原生快捷操作验收。开发预览用稳定启动器，不启动两份同标识 App，不把候选构建当正式安装或原位更新验收。
 4. 若代码修复需重建，记录新的固定提交与运行，既有正式版本标签/资源不可覆盖。源码仍保留附件和快捷操作工作点，未完成矩阵不缩减。
+
+## 已触发的固定运行（2026-10-11）
+
+候选源码 `2786ec746a9ad81677a98affff9be4a0d471eea9`，组织分支 `codex/mail-shortcuts`；`workflow_dispatch` 已启动 [Release macOS 38128874078](https://github.com/ansermail/anser/actions/runs/38128874078)，读取 headSha 与事件一致。当前 check 进行中；后续只观察该运行，不重复触发。原生验收未完成，main 与正式 latest 0.1.10 保持。
+
+当前开发根目录 codex/compose-attachments 已 FF 至候选源，保留工作树与源码；`npm run desktop` 稳定启动器重新编译后输出 Running，App PID 15167 的父进程 14913 为 Tauri，Info 版本0.1.11/稳定标识及完整 codesign 验证通过。原生 UI 与按键未因启动成功自动算验收。本轮日志只是辅助，下一恢复时须重新核对进程；不要沿用已退出的旧 PID 或仅靠日志判断仍在运行。
