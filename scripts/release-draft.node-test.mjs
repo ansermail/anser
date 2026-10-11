@@ -4,6 +4,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { inspectRelease, updateDraft, releaseFiles } from "./release-draft.mjs";
+import { manifest as createManifest } from "./release-assets.mjs";
 
 const sha = "a".repeat(40),
   oldSha = "b".repeat(40),
@@ -52,7 +53,12 @@ function fixture({ published = false, target = null, absent = false } = {}) {
   return {
     client,
     calls,
-    options: { tag, sha, notes: "new notes\nwith lines", files: ["first.dmg"] },
+    options: {
+      tag,
+      sha,
+      notes: "new notes\nwith lines\n",
+      files: ["first.dmg"],
+    },
   };
 }
 
@@ -170,18 +176,39 @@ test("only seven matching assets and the source release notes can be uploaded", 
   const out = path.join(root, "assets");
   fs.mkdirSync(out);
   fs.mkdirSync(path.join(root, "docs/releases"), { recursive: true });
+  fs.mkdirSync(path.join(root, "src-tauri"));
+  fs.writeFileSync(
+    path.join(root, "package.json"),
+    JSON.stringify({ name: "anser", version: "1.2.3" }),
+  );
+  fs.writeFileSync(
+    path.join(root, "src-tauri/Cargo.toml"),
+    '[package]\nname = "anser"\nversion = "1.2.3"\n',
+  );
+  fs.writeFileSync(
+    path.join(root, "src-tauri/tauri.conf.json"),
+    JSON.stringify({
+      version: "1.2.3",
+      identifier: "dev.maildesk.desktop",
+      plugins: {
+        updater: {
+          pubkey: "fictional",
+          endpoints: [
+            "https://github.com/ansermail/anser/releases/latest/download/latest.json",
+          ],
+        },
+      },
+    }),
+  );
   fs.writeFileSync(path.join(root, "docs/releases/v1.2.3.md"), "new notes\n");
-  const platforms = {};
   for (const arch of ["aarch64", "x86_64"]) {
     const base = `Anser_1.2.3_${arch}`;
     for (const ext of [".dmg", ".app.tar.gz", ".app.tar.gz.sig"])
       fs.writeFileSync(path.join(out, base + ext), "fixture");
-    platforms[`darwin-${arch}`] = {
-      url: `https://github.com/ansermail/anser/releases/download/v1.2.3/${base}.app.tar.gz`,
-      signature: "fixture",
-    };
   }
-  const manifest = { version: "1.2.3", notes: "new notes", platforms };
+  // Exercise the production producer/consumer together, including final LF.
+  const manifest = createManifest(out, root);
+  assert.equal(manifest.notes, "new notes\n");
   const write = () =>
     fs.writeFileSync(path.join(out, "latest.json"), JSON.stringify(manifest));
   write();
@@ -189,7 +216,7 @@ test("only seven matching assets and the source release notes can be uploaded", 
   manifest.notes = "previous source";
   write();
   assert.throws(() => releaseFiles(root, out, "1.2.3"));
-  manifest.notes = "new notes";
+  manifest.notes = "new notes\n";
   manifest.platforms["darwin-x86_64"].signature = "old signature";
   write();
   assert.throws(() => releaseFiles(root, out, "1.2.3"));

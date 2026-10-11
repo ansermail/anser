@@ -218,9 +218,7 @@ export function releaseFiles(root, output, version) {
   }
   assert.equal(
     manifest.notes,
-    fs
-      .readFileSync(path.join(root, `docs/releases/v${version}.md`), "utf8")
-      .trim(),
+    fs.readFileSync(path.join(root, `docs/releases/v${version}.md`), "utf8"),
   );
   return names.map((name) => path.resolve(output, name));
 }
@@ -258,7 +256,7 @@ function main() {
       process.argv[3] ?? "release-assets",
       version,
     );
-    const notes = fs.readFileSync(`docs/releases/${tag}.md`, "utf8").trim();
+    const notes = fs.readFileSync(`docs/releases/${tag}.md`, "utf8");
     const id = updateDraft(client, { tag, sha, notes, files });
     console.log(`Draft ${id} updated from ${sha}; not published.`);
   }
