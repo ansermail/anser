@@ -130,6 +130,76 @@ afterEach(async () => {
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
 });
+describe("draft list after composing", () => {
+  async function openDraft() {
+    const seed = await snapshot(localQuery);
+    const draft = {
+      ...api.newDraft(seed.accounts[0].id),
+      to: "receiver@example.com",
+      subject: "Draft before editing",
+      signature: {
+        accountId: seed.accounts[0].id,
+        included: false,
+        body: "",
+        html: "",
+      },
+    };
+    await api.call("save_draft", { draft });
+    await click(nav("草稿箱"));
+    await click(host.querySelector(".draft-card button"));
+    return draft;
+  }
+  async function change(selector: string, text: string) {
+    const field = document.querySelector(selector) as HTMLInputElement;
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(
+        HTMLInputElement.prototype,
+        "value",
+      )!.set!.call(field, text);
+      field.dispatchEvent(new Event("input", { bubbles: true }));
+      field.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+  }
+  function composeButton(label: string) {
+    return (
+      [...document.querySelectorAll(".compose-dialog button")].find(
+        (button) =>
+          button.textContent?.trim() === label ||
+          button.getAttribute("aria-label") === label,
+      ) ?? null
+    );
+  }
+  it("refreshes saved edits and removes a cleared draft on close without leaving the drafts page", async () => {
+    await openDraft();
+    await change("#subject", "Draft after editing");
+    await click(composeButton("保存草稿并关闭"));
+    expect(host.querySelector(".draft-card h3")?.textContent).toBe(
+      "Draft after editing",
+    );
+    await click(host.querySelector(".draft-card button"));
+    await change("#subject", "");
+    await change("#to", "");
+    await click(composeButton("舍弃空白邮件"));
+    expect(host.querySelector(".draft-card")).toBeNull();
+    expect(host.textContent).toContain("暂时没有草稿");
+    expect(host.querySelector("h1")?.textContent).toBe("草稿箱");
+  });
+  it("removes a successfully scheduled draft from the visible list", async () => {
+    const draft = await openDraft();
+    await click(composeButton("定时发送"));
+    await click(composeButton("确认定时发送"));
+    expect(document.querySelector(".compose-dialog")).toBeNull();
+    expect(host.querySelector(".draft-card")).toBeNull();
+    expect(host.textContent).toContain("暂时没有草稿");
+    const records =
+      await api.call<import("./lib/types").OutboxRecord[]>("list_outbox");
+    expect(
+      records.some(
+        (record) => record.id === draft.id && record.status === "scheduled",
+      ),
+    ).toBe(true);
+  });
+});
 describe("message and conversation display modes", () => {
   it("keeps unread status separate from account color on long subjects in both list modes", async () => {
     const seed = await snapshot(localQuery);

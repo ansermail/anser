@@ -257,6 +257,7 @@ export default function App() {
     [dark, setDark] = useState(localStorage.getItem("mail-theme") === "dark");
   const searchRef = useRef<HTMLInputElement>(null),
     request = useRef(0),
+    draftRequest = useRef(0),
     queryRef = useRef(query),
     readerRef = useRef<HTMLDivElement>(null);
   const selectionRef = useRef(selected);
@@ -1026,13 +1027,18 @@ export default function App() {
     setSearch("");
     void refresh();
   }
+  async function reloadDrafts() {
+    const ticket = ++draftRequest.current;
+    try {
+      const list = await call<Compose[]>("list_drafts");
+      if (ticket === draftRequest.current) setDrafts(list);
+    } catch (e) {
+      if (ticket === draftRequest.current) toast.error(String(e));
+    }
+  }
   async function showDrafts() {
     setPage("drafts");
-    try {
-      setDrafts(await call<Compose[]>("list_drafts"));
-    } catch (e) {
-      toast.error(String(e));
-    }
+    await reloadDrafts();
   }
   async function queueArchives(ids: string[], conversations = false) {
     if (archiving) return;
@@ -2622,6 +2628,7 @@ export default function App() {
         onClose={() => {
           setDraft(null);
           void refresh();
+          if (page === "drafts") void reloadDrafts();
         }}
         accounts={data.accounts}
         onSent={() => void refresh()}

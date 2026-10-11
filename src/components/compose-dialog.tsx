@@ -588,7 +588,10 @@ export function ComposeDialog({
         </DialogHeader>
         {value && (
           <>
-            <fieldset disabled={sending || closing || countdown !== null}>
+            <fieldset
+              className="compose-fields"
+              disabled={sending || closing || countdown !== null}
+            >
               <div className="compose-row">
                 <Label>发件人</Label>
                 <SelectField
@@ -902,7 +905,7 @@ export function ComposeDialog({
                 </Alert>
               )}
               {!!value.forwardFiles?.length && (
-                <FieldSet className="px-5 py-3">
+                <FieldSet className="min-w-0 shrink-0 px-7 py-3">
                   <FieldLegend>原邮件附件</FieldLegend>
                   <FieldGroup>
                     {value.forwardFiles.map((file) => (
@@ -921,8 +924,11 @@ export function ComposeDialog({
                             })
                           }
                         />
-                        <FieldContent>
-                          <FieldLabel htmlFor={`forward-file-${file.id}`}>
+                        <FieldContent className="min-w-0">
+                          <FieldLabel
+                            className="max-w-full break-words"
+                            htmlFor={`forward-file-${file.id}`}
+                          >
                             {file.name} · {file.size} 字节
                           </FieldLabel>
                         </FieldContent>

@@ -1655,7 +1655,7 @@ kbd {
   flex-shrink: 0;
   padding: 0 25px 7px;
 }
-.compose-dialog fieldset {
+.compose-dialog > .compose-fields {
   display: flex;
   flex-direction: column;
   flex: 1;
