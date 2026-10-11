@@ -148,3 +148,7 @@ MailDateFilter使用现有shadcn Calendar/Popover/Field/Button，按当地午夜
 全部字段/正文搜索显示正文覆盖帮助，只查本机已有派生内容，不下载未知正文。schema3增加size和统计/文件夹覆盖索引，每页摘要不重复解析全局JSON；保留原件/日期/标记/源身份。Release五万条实际Store（非SQL玩具）与数据分布/冷缓存限制见RELEASE_010_WORKING.md，所测单机目标通过，真实冷启动、多Mac/弱网负载仍保留。
 
 最终全量/提交/双架构构建正在执行，入口RELEASE_010_WORKING.md；不要沿用0.1.9发布结果。后续统一合入main并删除完成分支，远程新包核验后接附件体验，SAVE/SYNC/服务商/升级/P1未完项仍在开发计划。
+
+## 2026-10-11 发布收束与真实矩阵
+
+main/fa6bb6e，0.1.10/38104135660已完成全量、双架构、七资源核验和正式发布，公开端点正确；codex/search-scale本地/远端已删除。索引/页/邻居/时间/覆盖与界面接续清单完成，本工作点旧“下一实现/界面尚未接入”仅保留历史，由本节替代。所测合成单机Release目标通过，OS冷缓存/多Mac/真实并发负载未完成，不删除原范围。发布详情RELEASE_010_WORKING.md；下一开发ATTACHMENTS_NEXT_WORKING.md，同时保留真实SEARCH/SAVE/SYNC/服务商/升级矩阵。

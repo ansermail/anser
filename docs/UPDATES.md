@@ -113,3 +113,7 @@ v0.1.5 已在 ansermail/anser 正式发布为 latest。Checks 与 Release macOS 
 ## 0.1.10 发布准备（2026-10-11）
 
 搜索候选索引、两模式固定页/锚点阅读、日期/覆盖说明、无变化刷新尾页保持及统计优化完成开发分支验收，五文件版本同步。关键节点先完成全量门槛合入main，远程双架构构建后核验并发布草稿；固定源/运行/资源结果持续写RELEASE_010_WORKING.md。当前公开latest仍0.1.9，不能把开发预览或Pages成功当新版已发布。
+
+## 0.1.10 正式发布（2026-10-11）
+
+fa6bb6e / [Release38104135660](https://github.com/ansermail/anser/actions/runs/38104135660)双架构成功，10:16:43（Asia/Shanghai）发布[0.1.10](https://github.com/ansermail/anser/releases/tag/v0.1.10)为latest；七资源及更新/应用签名、版本架构/标识/EML/许可/OAuth默认配置、DMG与归档一致性、公开清单/固定tag/两架构URL通过。存储标识、公钥、原件未更换。开发代码/资源核验完成不代表实际原位升级，正式安装/多Mac等继续独立待验收，见RELEASE_010_WORKING.md。
