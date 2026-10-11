@@ -27,9 +27,11 @@
 
 建议下一阶段：0.1.10已完成云端构建/资源核验与发布，接附件转发/拖拽和快捷操作；SEARCH规模真实矩阵继续保留；同步保留 SAVE-01B2 的真实保存范围下载和 SYNC-02B2 繁忙/网络睡眠矩阵。兼容移动冲突另属 SYNC-01B2B2B，不与收件延迟任务混写。正式安装与升级安排独立验收；未执行项继续保留。
 
+2026-10-11 接续补充：附件与快捷操作已经在开发根汇合并完成0.1.11双架构候选/资源核验，普通转发小样本通过；当前下一动作是补原生拖拽/键盘确认及候选草稿重建的源码目标保护，再正式合入/发布。快捷操作的干净托管工作树已归档，本地无需旧目录；远端候选源分支保留。整体未完范围不缩减，不能以候选构建代替真实验收。
+
 ## 当前执行检查点
 
-- **0.1.11 候选构建已启动（2026-10-11）**：源码2786ec746a9ad81677a98affff9be4a0d471eea9，组织工作分支codex/mail-shortcuts；[Release38128874078](https://github.com/ansermail/anser/actions/runs/38128874078)固定headSha/event已核对，当前check进行中，不重复触发。发布版本下238前端、305Rust/1ignore、19脚本、39IMAP及两种构建/UI/格式/版本/diff门槛实际重跑通过；开发根已FF到该源，稳定启动器编译0.1.11并Running、新PID父进程Tauri、签名/稳定标识核对通过；开发Info无版本字段，不冒充正式包Info版本验收。原生拖拽/快捷键未验收前不提前合入正式 main 或发布。公开latest仍0.1.10；接续 RELEASE_011_WORKING.md / READ_SHORTCUTS_WORKING.md，其他 SAVE/SYNC/服务商/安装/P1未完范围完整保留。
+- **0.1.11 候选构建与资源已验证（2026-10-11）**：源码2786ec746a9ad81677a98affff9be4a0d471eea9，组织工作分支codex/mail-shortcuts；[Release38128874078](https://github.com/ansermail/anser/actions/runs/38128874078)的check/双架构/draft全部成功，固定headSha/event与草稿ID409574987核对；七资源摘要/更新签名/版本架构/全codesign/许可/EML/原生OAuth和DMG全部8文件一致性通过。发布版本下238前端、305Rust/1ignore、19脚本、39IMAP及两种构建/UI/格式/版本/diff门槛实际重跑通过；开发根已FF并恢复稳定0.1.11预览，开发Info无版本字段，不冒充正式包版本验收。原生拖拽/快捷键仍待人工结果，未合正式main、未发布，公开latest清单逐字节保持0.1.10。若改源码重建草稿，先处理流水线旧target_commitish/notes保护，不能混源码与产物；接续 RELEASE_011_WORKING.md / READ_SHORTCUTS_WORKING.md，其他 SAVE/SYNC/服务商/安装/P1未完范围完整保留。
 
 - **READ-01B2B1 快捷操作（2026-10-11，codex/mail-shortcuts）**：从附件 `2336663` 在独立托管工作树接入 ⌘R/⌘⇧R/⌘⇧F/⌘⇧U/⌘⇧L，复用现有草稿、收件人、原附件快照及单封标记/撤销。输入/IME/重复/弹层/菜单、多选、切正文/搜索旧结果、异步写入和现有草稿保护已覆盖。新增9项、完整238前端及UI/生产/Pages/格式/diff通过；纯虚构静态预览实际 Command+R/编辑内 Command+N 和 Tooltip 通过，原生实际键盘尚待验收。入口 READ_SHORTCUTS_WORKING.md，工作树 `/Users/zhangxiaojun/.codex/worktrees/mail-shortcuts/mail`。正式仍0.1.10；附件拖拽/原生验证齐备后完整门槛并首先远程构建新版，不能把本阶段源码完成当作桌面已发布。
 

@@ -22,6 +22,20 @@
 
 ## 已触发的固定运行（2026-10-11）
 
-候选源码 `2786ec746a9ad81677a98affff9be4a0d471eea9`，组织分支 `codex/mail-shortcuts`；`workflow_dispatch` 已启动 [Release macOS 38128874078](https://github.com/ansermail/anser/actions/runs/38128874078)，读取 headSha 与事件一致。当前 check 进行中；后续只观察该运行，不重复触发。原生验收未完成，main 与正式 latest 0.1.10 保持。
+候选源码 `2786ec746a9ad81677a98affff9be4a0d471eea9`，组织分支 `codex/mail-shortcuts`；[Release macOS 38128874078](https://github.com/ansermail/anser/actions/runs/38128874078) 已全部成功：check、Apple Silicon、Intel 与 draft，headSha/event 匹配；本轮没有重复触发。生成草稿 Release ID 409574987。原生验收未完成，main 与正式 latest 0.1.10 保持。
 
 当前开发根目录 codex/compose-attachments 已 FF 至候选源，保留工作树与源码；`npm run desktop` 稳定启动器重新编译0.1.11后输出 Running，App PID 15167 的父进程 14913 为 Tauri。开发包 Info 只有稳定标识，没有 CFBundleShortVersionString；首次按正式包版本字段读取失败，不能当作 Info 版本检查通过。版本依据本轮候选配置和编译日志，稳定标识及完整 codesign 后续独立验证通过。原生 UI 与按键未因启动成功自动算验收。本轮日志只是辅助，下一恢复时须重新核对进程；不要沿用已退出的旧 PID 或仅靠日志判断仍在运行。
+
+## 草稿资源核验结果
+
+- 七资源的名称、GitHub size/SHA256 digest 与下载文件一致；清单版本0.1.11、两架构URL及各自独立签名匹配现有公钥，更新签名验证通过。
+- 两 App 的 Info 版本0.1.11、arm64/x86_64、稳定标识、完整 codesign/CodeResources、EML 关联和许可文件逐字节匹配固定源。原生 Google/Microsoft 配置精确核对通过；Intel 的优化短串在指定交换函数内重建核对，不打印配置/反汇编值，前端资源未包含配置值。
+- 两 DMG 校验和通过，只读挂载后各自全部8个 App 文件与对应更新归档 SHA256 一致，验证完卸载；没有安装或运行正式包。
+- 核验后再次读取草稿 target_commitish=固定2786ec7及七资源摘要，无并发替换；匿名公开 latest.json 与构建前逐字节相同，仍0.1.10。草稿尚没有正式发布，不能把草稿标签查询404当构建失败；通过经授权的 releases 列表/ID读取草稿元数据和CLI下载。
+- 候选审计辅助资料在仓库外 `/tmp/anser-release011-audit`；工作点保留结果与命令，不依赖临时文件作为唯一依据。源/云端构建/资源验证完成不等于原生拖拽、快捷键、正式安装或原位升级完成。
+
+## 后续必须核对
+
+1. 等待已发出的原生人工验收结果，或恢复原生控制工具后核对实际拖拽/快捷键；当前稳定开发预览已恢复，不能把浏览器模拟代替原生。
+2. 如需改源码重建0.1.11，先修正/明确现有流水线“更新已存在草稿”时的源码与说明保护：当前分支脚本只覆盖资源，没有同步 draft target_commitish/notes；不得让新源码产物与旧发布目标混合。检查已有标签是否已指向其他提交，不能改写已发布标签，必要时使用新版本。每次固定新的源码/运行并重新审计，不能沿用本轮资产结论。
+3. 正式验收齐备后合入 main，确认发布源码与候选/标签一致，更新候选说明及清单，再发布草稿并核对匿名版本/URL。未验收阶段不能当完成代码混入正式发布。其他SAVE/SYNC/服务商/安装/签名/P1仍保留。
