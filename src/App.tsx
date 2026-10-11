@@ -119,6 +119,7 @@ import {
   DropdownMenuRadioItem,
   DropdownMenuLabel,
   DropdownMenuSeparator,
+  DropdownMenuShortcut,
   DropdownMenuTrigger,
 } from "./components/ui/dropdown-menu";
 import { Input } from "./components/ui/input";
@@ -133,6 +134,9 @@ import { Toaster, toast } from "sonner";
 import { AccountDialog } from "./components/account-dialog";
 import { RulesPanel } from "./components/rules-panel";
 import { ComposeDialog } from "./components/compose-dialog";
+import { mailShortcut } from "./lib/mail-shortcuts";
+import { mailShortcutKeys } from "./lib/mail-shortcuts";
+import { MailActionTooltip } from "./components/mail-action-tooltip";
 import { ContactsPanel } from "./components/contacts-panel";
 import { OutboxPanel } from "./components/outbox-panel";
 import { ArchiveIntegrity } from "./components/archive-integrity";
@@ -290,6 +294,7 @@ export default function App() {
   } | null>(null);
   const navigationRequest = useRef(0);
   const navigationPending = useRef(false);
+  const shortcutMutationPending = useRef(false);
   const dataScope = useRef("");
   const [navigationLoading, setNavigationLoading] = useState(false);
   selectionRef.current = selected;
@@ -553,6 +558,20 @@ export default function App() {
   );
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
+      const target = e.target instanceof Element ? e.target : null;
+      if (
+        e.defaultPrevented ||
+        e.isComposing ||
+        e.repeat ||
+        draft ||
+        target?.closest(
+          'input, textarea, select, [contenteditable]:not([contenteditable="false"]), [role="combobox"]',
+        ) ||
+        document.querySelector(
+          '[role="dialog"], [role="alertdialog"], [role="menu"], [role="listbox"]',
+        )
+      )
+        return;
       if (
         e.altKey &&
         !e.metaKey &&
@@ -560,19 +579,7 @@ export default function App() {
         !e.shiftKey &&
         ["ArrowUp", "ArrowDown"].includes(e.key)
       ) {
-        const target = e.target instanceof Element ? e.target : null;
-        if (
-          page !== "mail" ||
-          draft ||
-          !selected ||
-          target?.closest(
-            'input, textarea, [contenteditable="true"], [role="combobox"]',
-          ) ||
-          document.querySelector(
-            '[role="dialog"], [role="alertdialog"], [role="menu"], [role="listbox"]',
-          )
-        )
-          return;
+        if (page !== "mail" || !selected) return;
         const direction = e.key === "ArrowUp" ? "previous" : "next";
         if (canNavigate(direction)) {
           e.preventDefault();
@@ -580,18 +587,68 @@ export default function App() {
         }
         return;
       }
-      if ((e.metaKey || e.ctrlKey) && e.key === "k") {
+      const action = mailShortcut(e);
+      if (action) {
+        if (
+          page !== "mail" ||
+          loading ||
+          checked.length ||
+          !detail ||
+          detail.mail.id !== selected ||
+          navigationPending.current ||
+          !canSeek()
+        )
+          return;
+        e.preventDefault();
+        const mail = detail.mail;
+        if (
+          action === "reply" ||
+          action === "replyAll" ||
+          action === "forward"
+        ) {
+          compose(mail, action === "forward", action === "replyAll", detail);
+        } else if (!shortcutMutationPending.current) {
+          shortcutMutationPending.current = true;
+          void mutate(
+            [mail.id],
+            action,
+            String(action === "read" ? !mail.isRead : !mail.starred),
+            false,
+            [mail],
+          ).finally(() => {
+            shortcutMutationPending.current = false;
+          });
+        }
+        return;
+      }
+      if (e.altKey || e.shiftKey) return;
+      if (
+        (e.metaKey || e.ctrlKey) &&
+        e.key.toLowerCase() === "k" &&
+        searchRef.current
+      ) {
         e.preventDefault();
         searchRef.current?.focus();
       }
-      if ((e.metaKey || e.ctrlKey) && e.key === "n") {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "n") {
         e.preventDefault();
         compose();
       }
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [compose, page, draft, selected, data, detail, query]);
+  }, [
+    compose,
+    page,
+    draft,
+    selected,
+    data,
+    detail,
+    query,
+    search,
+    loading,
+    checked,
+  ]);
   function navigate(
     view: string,
     accountId = "",
@@ -2282,39 +2339,52 @@ export default function App() {
                               <ArrowDownToLine size={17} />
                             </Button>
                             <span className="toolbar-divider" />
-                            <Button
-                              variant="ghost"
-                              size="icon-sm"
-                              title={
+                            <MailActionTooltip
+                              action="read"
+                              label={
                                 detail.mail.isRead ? "标记未读" : "标记已读"
                               }
-                              onClick={() =>
-                                void mutate(
-                                  [detail.mail.id],
-                                  "read",
-                                  String(!detail.mail.isRead),
-                                )
-                              }
                             >
-                              <MailOpen size={17} />
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="icon-sm"
-                              title="星标"
-                              onClick={() =>
-                                void mutate(
-                                  [detail.mail.id],
-                                  "star",
-                                  String(!detail.mail.starred),
-                                )
-                              }
-                            >
-                              <Star
-                                size={17}
-                                className={detail.mail.starred ? "star-on" : ""}
-                              />
-                            </Button>
+                              <Button
+                                variant="ghost"
+                                size="icon-sm"
+                                title={
+                                  detail.mail.isRead ? "标记未读" : "标记已读"
+                                }
+                                aria-keyshortcuts="Meta+Shift+U Control+Shift+U"
+                                onClick={() =>
+                                  void mutate(
+                                    [detail.mail.id],
+                                    "read",
+                                    String(!detail.mail.isRead),
+                                  )
+                                }
+                              >
+                                <MailOpen size={17} />
+                              </Button>
+                            </MailActionTooltip>
+                            <MailActionTooltip action="star" label={"星标"}>
+                              <Button
+                                variant="ghost"
+                                size="icon-sm"
+                                title="星标"
+                                aria-keyshortcuts="Meta+Shift+L Control+Shift+L"
+                                onClick={() =>
+                                  void mutate(
+                                    [detail.mail.id],
+                                    "star",
+                                    String(!detail.mail.starred),
+                                  )
+                                }
+                              >
+                                <Star
+                                  size={17}
+                                  className={
+                                    detail.mail.starred ? "star-on" : ""
+                                  }
+                                />
+                              </Button>
+                            </MailActionTooltip>
                             <Button
                               variant="ghost"
                               size="icon-sm"
@@ -2339,16 +2409,19 @@ export default function App() {
                             </Button>
                           </div>
                           <div className="reader-actions">
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              aria-label="回复"
-                              title="回复"
-                              onClick={() => compose(detail.mail)}
-                            >
-                              <Reply size={15} />
-                              <span className="action-label">回复</span>
-                            </Button>
+                            <MailActionTooltip action="reply" label={"回复"}>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                aria-label="回复"
+                                title="回复"
+                                aria-keyshortcuts="Meta+R Control+R"
+                                onClick={() => compose(detail.mail)}
+                              >
+                                <Reply size={15} />
+                                <span className="action-label">回复</span>
+                              </Button>
+                            </MailActionTooltip>
                             <DropdownMenu>
                               <DropdownMenuTrigger asChild>
                                 <Button
@@ -2361,42 +2434,51 @@ export default function App() {
                                 </Button>
                               </DropdownMenuTrigger>
                               <DropdownMenuContent align="end">
-                                <DropdownMenuItem
-                                  onClick={() =>
-                                    compose(detail.mail, false, true)
-                                  }
-                                >
-                                  <ReplyAll size={15} />
-                                  全部回复
-                                </DropdownMenuItem>
-                                <DropdownMenuItem
-                                  onClick={() => {
-                                    const address = parseAddresses(
-                                      detail.mail.sender,
-                                    )[0];
-                                    if (!address) {
-                                      toast.error("无法识别发件人邮箱地址");
-                                      return;
+                                <DropdownMenuGroup>
+                                  <DropdownMenuItem
+                                    aria-keyshortcuts="Meta+Shift+R Control+Shift+R"
+                                    onClick={() =>
+                                      compose(detail.mail, false, true)
                                     }
-                                    setContactSeed(address);
-                                    setPage("contacts");
-                                  }}
-                                >
-                                  <UsersRound size={15} />
-                                  添加发件人为联系人
-                                </DropdownMenuItem>
+                                  >
+                                    <ReplyAll size={15} />
+                                    全部回复
+                                    <DropdownMenuShortcut>
+                                      {mailShortcutKeys.replyAll}
+                                    </DropdownMenuShortcut>
+                                  </DropdownMenuItem>
+                                  <DropdownMenuItem
+                                    onClick={() => {
+                                      const address = parseAddresses(
+                                        detail.mail.sender,
+                                      )[0];
+                                      if (!address) {
+                                        toast.error("无法识别发件人邮箱地址");
+                                        return;
+                                      }
+                                      setContactSeed(address);
+                                      setPage("contacts");
+                                    }}
+                                  >
+                                    <UsersRound size={15} />
+                                    添加发件人为联系人
+                                  </DropdownMenuItem>
+                                </DropdownMenuGroup>
                               </DropdownMenuContent>
                             </DropdownMenu>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              aria-label="转发"
-                              title="转发"
-                              onClick={() => compose(detail.mail, true)}
-                            >
-                              <ArrowRight size={15} />
-                              <span className="action-label">转发</span>
-                            </Button>
+                            <MailActionTooltip action="forward" label={"转发"}>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                aria-label="转发"
+                                title="转发"
+                                aria-keyshortcuts="Meta+Shift+F Control+Shift+F"
+                                onClick={() => compose(detail.mail, true)}
+                              >
+                                <ArrowRight size={15} />
+                                <span className="action-label">转发</span>
+                              </Button>
+                            </MailActionTooltip>
                             {(["copy", "move"] as const).map((kind) => (
                               <ServerDirectoryMenu
                                 key={kind}
