@@ -218,6 +218,8 @@ pub struct AttachmentInfo {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Detail {
+    #[serde(default)]
+    pub original_hash: String,
     pub mail: Mail,
     pub html: String,
     pub attachments: Vec<AttachmentInfo>,
@@ -240,6 +242,10 @@ pub struct QuotedMail {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Compose {
+    #[serde(default)]
+    pub forward_source: Option<ForwardSource>,
+    #[serde(default)]
+    pub forward_files: Vec<ForwardFile>,
     #[serde(default)]
     pub signature: Option<crate::signatures::ComposeSignature>,
     pub id: String,
@@ -268,6 +274,21 @@ pub struct Compose {
     pub delivery_body: Option<String>,
     #[serde(default)]
     pub delivery_html: Option<String>,
+}
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ForwardSource {
+    pub id: String,
+    pub hash: String,
+}
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ForwardFile {
+    pub id: String,
+    pub name: String,
+    pub mime: String,
+    pub size: usize,
+    pub included: bool,
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Address {

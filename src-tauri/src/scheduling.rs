@@ -166,7 +166,7 @@ mod tests {
         );
         assert_eq!(restored.delivery_html, d.delivery_html);
         assert_eq!(
-            std::fs::read(&restored.attachments[0]).unwrap(),
+            s.forward_payloads(&restored).unwrap()[0].bytes,
             b"original bytes"
         );
         assert_eq!(s.outbox().unwrap()[0].status, "cancelled");
@@ -338,31 +338,17 @@ impl Store {
     }
     pub fn recover_outbox_draft(&self, data: &str, raw: &[u8]) -> Result<Compose> {
         let mut draft: Compose = serde_json::from_str(data).map_err(err)?;
+        let previous = draft.clone();
         draft.id = uuid::Uuid::new_v4().to_string();
-        let parsed = mailparse::parse_mail(raw).map_err(err)?;
-        let mut parts = Vec::new();
-        archive::leaves(&parsed, &mut parts);
-        let directory = self.root.join("draft-assets").join(&draft.id);
+        draft.forward_source = None;
         draft.attachments.clear();
-        for (i, part) in parts.into_iter().enumerate() {
-            let disposition = part.get_content_disposition();
-            let filename = disposition
-                .params
-                .get("filename")
-                .or_else(|| part.ctype.params.get("name"));
-            if filename.is_none()
-                && disposition.disposition != mailparse::DispositionType::Attachment
-            {
-                continue;
+        draft.forward_files = self.recover_forward_files(&draft.id, raw)?;
+        match self.recover_excluded_files(&previous, &draft.id) {
+            Ok(files) => draft.forward_files.extend(files),
+            Err(error) => {
+                let _ = self.collect_compose_files(&draft.id);
+                return Err(error);
             }
-            let name =
-                std::path::Path::new(filename.map(String::as_str).unwrap_or("attachment.bin"))
-                    .file_name()
-                    .filter(|n| !n.is_empty())
-                    .unwrap_or(std::ffi::OsStr::new("attachment.bin"));
-            let path = directory.join(format!("{i}-{}", name.to_string_lossy()));
-            archive::atomic_write(&path, &part.get_body_raw().map_err(err)?)?;
-            draft.attachments.push(path.to_string_lossy().to_string());
         }
         Ok(draft)
     }

@@ -11,6 +11,9 @@ export class Channel<T> {
 export async function listen() {
   return () => {};
 }
+export function getCurrentWebview() {
+  return { onDragDropEvent: async () => () => {} };
+}
 export async function getVersion() {
   return "页面预览";
 }

@@ -801,6 +801,8 @@ fn older_snapshot_queries_default_to_all_read_states() {
 
 pub(super) fn draft() -> Compose {
     Compose {
+        forward_source: None,
+        forward_files: vec![],
         signature: None,
         id: "draft-1".into(),
         account_id: account().id,

@@ -521,3 +521,13 @@ App切换至mailPage/mailNeighbor，不再累计扩大limit。页追加同时检
 DemoPager只处理虚构内存快照，opaque随机cursor在内存绑定范围/版本/锚点，保留页/日期/邻居语义；Pages仍禁用原生桥。日期组件shadcn组合，按日历加一天应对DST；覆盖说明来自后端同快照known/unknown，不以未知当空正文或自动下载。
 
 search schema3增加typed size与search_summary/search_folders覆盖索引，stats/文件夹查询改用投影避免每页JSON扫描。单机五万条Release测量与页面/接口证据见RELEASE_010_WORKING.md；实际原位更新/多Mac/真实冷缓存未执行。
+
+## 2026-10-11 ATTACH-01 管理原附件（未发布）
+
+Compose可选forwardSource(id,hash)/forwardFiles(id,name,mime,size,included)，Detail返回完整originalHash；字段默认兼容旧草稿。compose_files为草稿归属/散列记录，compose_sessions租约保护在途准备；原件重新read/完整hash核对、解码和文件写入在SQL写事务外，短事务再次核对源索引和租约。文件独立于archive_location/预览缓存，用UUID/目录标识及0700/0600，拒绝符号链接和未知目录内容，清理只在引用/租约/发送保护边界外进行，24h无引用与部分清理重启可恢复。备份剔除写信表，原始MIME不变。
+
+build_prepared_message先读取并校验归属/元信息/length/hash，沿用50MB总预算构造Base64附件并保留原MIME类型/名称；普通SMTP补raw_hash，定时冻结raw不因源路径消失改变。取消/重发从冻结raw和未选副本恢复新归属，不重复发信。窗口准备/保存/关闭顺序及迟到拒绝在前后端都保护。
+
+拖拽采用[官方Webview.onDragDropEvent](https://v2.tauri.app/reference/javascript/api/namespacewebview/#ondragdropevent)及已安装type声明，physical坐标按devicePixelRatio核对当前Dialog边界，生命周期解绑；窗口状态和草稿ID保护丢弃迟到返回。Pages alias/stub与native/isDemo守卫不提供真文件功能。
+
+代码/227前端/305Rust与8副本专项通过，但原生视觉、系统实际拖拽、双邮箱实际附件转发与重启/定时边界未完成；工作点ATTACHMENTS_NEXT_WORKING.md，版本仍0.1.10、工作分支未发布。

@@ -539,6 +539,12 @@ export default function App() {
           body: mail.body,
           html: source.html,
         };
+        if (forward && native && !isDemo() && source.attachments.length) {
+          d.forwardSource = {
+            id: source.mail.id,
+            hash: source.originalHash || "",
+          };
+        }
       }
       setDraft(d);
     },

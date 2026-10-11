@@ -21,6 +21,7 @@ export default defineConfig(({ mode }) => ({
             "@tauri-apps/api/core",
             "@tauri-apps/api/app",
             "@tauri-apps/api/event",
+            "@tauri-apps/api/webview",
             "@tauri-apps/plugin-updater",
             "@tauri-apps/plugin-dialog",
           ].map((find) => ({

@@ -1249,7 +1249,22 @@ fn inline_images(html: &str) -> Result<(String, Vec<SinglePart>, usize)> {
     Ok((output, images, total))
 }
 
+#[cfg(test)]
 pub(crate) fn build_message(a: &Account, c: &Compose) -> Result<Message> {
+    if c.forward_source.is_some() || c.forward_files.iter().any(|f| f.included) {
+        return Err("原附件需要经草稿归属核对后准备".into());
+    }
+    build_message_parts(a, c, &[])
+}
+pub(crate) fn build_prepared_message(store: &Store, a: &Account, c: &Compose) -> Result<Message> {
+    let files = store.forward_payloads(c)?;
+    build_message_parts(a, c, &files)
+}
+fn build_message_parts(
+    a: &Account,
+    c: &Compose,
+    files: &[crate::compose_files::AttachmentBytes],
+) -> Result<Message> {
     let mut builder = Message::builder()
         .from(a.email.parse().map_err(err)?)
         .message_id(Some(format!(
@@ -1355,6 +1370,19 @@ pub(crate) fn build_message(a: &Account, c: &Compose) -> Result<Message> {
             ),
         );
     }
+    for file in files {
+        total += file.bytes.len();
+        if total > 50 * 1024 * 1024 {
+            return Err("开发版单封附件总大小上限为50 MB".into());
+        }
+        parts = parts.singlepart(
+            Attachment::new(file.name.clone()).body(
+                Body::new_with_encoding(file.bytes.clone(), ContentTransferEncoding::Base64)
+                    .map_err(|_| "附件编码失败")?,
+                ContentType::parse(&file.mime).map_err(err)?,
+            ),
+        );
+    }
     builder.multipart(parts).map_err(err)
 }
 pub fn send(store: &Store, c: &Compose) -> Result<String> {
@@ -1397,17 +1425,18 @@ pub(crate) fn send_with<T>(
     if !a.enabled {
         return Err("此账号已暂停，请先启用".into());
     }
-    let message = build_message(&a, c)?;
+    let message = build_prepared_message(store, &a, c)?;
     let transport = prepare(&a)?;
     let raw = message.formatted();
     store.save_draft(c)?;
     db.execute(
-        "INSERT INTO outbox(id,status,data,raw,updated_at) VALUES(?1,'sending',?2,?3,?4)",
+        "INSERT INTO outbox(id,status,data,raw,updated_at,raw_hash) VALUES(?1,'sending',?2,?3,?4,?5)",
         rusqlite::params![
             c.id,
             serde_json::to_string(c).map_err(err)?,
             raw,
-            chrono::Utc::now().to_rfc3339()
+            chrono::Utc::now().to_rfc3339(),
+            archive::digest(&raw)
         ],
     )
     .map_err(err)?;
@@ -1437,7 +1466,7 @@ pub(crate) fn send_with<T>(
 
 pub fn schedule(store: &Store, c: &Compose, at: &str) -> Result<()> {
     let a = store.account(&c.account_id)?;
-    let message = build_message(&a, c)?;
+    let message = build_prepared_message(store, &a, c)?;
     store.schedule_mail(c, &message.formatted(), at, chrono::Utc::now())
 }
 

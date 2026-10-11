@@ -18,6 +18,8 @@ export function hasDraftContent(draft: Compose): boolean {
       draft.source,
     ].some((text) => !!text?.trim()) ||
     draft.attachments.length ||
+    draft.forwardSource ||
+    draft.forwardFiles?.length ||
     draft.quote ||
     draft.replyAnchorId ||
     draft.inReplyTo

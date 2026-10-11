@@ -4,6 +4,7 @@ mod archive_jobs;
 mod archive_location;
 mod attachment_preview;
 mod auth;
+mod compose_files;
 mod conversation;
 mod directory_operations;
 mod eml_files;
@@ -685,21 +686,52 @@ async fn sync_mail(state: tauri::State<'_, AppState>, app: tauri::AppHandle) -> 
     .map_err(err)?
 }
 #[tauri::command]
-fn save_draft(state: tauri::State<AppState>, draft: Compose) -> Result<()> {
-    state.store.save_draft(&draft)
+async fn save_draft(state: tauri::State<'_, AppState>, draft: Compose) -> Result<()> {
+    let store = state.store.clone();
+    tauri::async_runtime::spawn_blocking(move || store.save_draft(&draft))
+        .await
+        .map_err(err)?
 }
 #[tauri::command]
 fn list_drafts(state: tauri::State<AppState>) -> Result<Vec<Compose>> {
     state.store.drafts()
 }
 #[tauri::command]
-fn delete_draft(state: tauri::State<AppState>, id: String) -> Result<()> {
-    state
-        .store
-        .db()?
-        .execute("DELETE FROM drafts WHERE id=?1", [id])
-        .map_err(err)?;
-    Ok(())
+async fn delete_draft(state: tauri::State<'_, AppState>, id: String) -> Result<()> {
+    let store = state.store.clone();
+    tauri::async_runtime::spawn_blocking(move || store.delete_compose_draft(&id))
+        .await
+        .map_err(err)?
+}
+#[tauri::command]
+async fn open_compose_session(state: tauri::State<'_, AppState>, id: String) -> Result<String> {
+    let store = state.store.clone();
+    tauri::async_runtime::spawn_blocking(move || store.open_compose_session(&id))
+        .await
+        .map_err(err)?
+}
+#[tauri::command]
+async fn close_compose_session(
+    state: tauri::State<'_, AppState>,
+    id: String,
+    token: String,
+) -> Result<()> {
+    let store = state.store.clone();
+    tauri::async_runtime::spawn_blocking(move || store.close_compose_session(&id, &token))
+        .await
+        .map_err(err)?
+}
+#[tauri::command]
+async fn prepare_forward_files(
+    state: tauri::State<'_, AppState>,
+    id: String,
+    token: String,
+    source: ForwardSource,
+) -> Result<Vec<ForwardFile>> {
+    let store = state.store.clone();
+    tauri::async_runtime::spawn_blocking(move || store.prepare_forward_files(&id, &token, &source))
+        .await
+        .map_err(err)?
 }
 // SMTP work has its own guard. Long IMAP downloads must never occupy it.
 fn with_send_gate<T>(gate: &Mutex<()>, send: impl FnOnce() -> Result<T>) -> Result<T> {
@@ -1336,6 +1368,9 @@ pub fn run() {
             save_draft,
             list_drafts,
             delete_draft,
+            open_compose_session,
+            close_compose_session,
+            prepare_forward_files,
             send_mail,
             schedule_mail,
             cancel_schedule,

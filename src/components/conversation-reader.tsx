@@ -384,6 +384,8 @@ function QuickReply({
     (!!draft.html ||
       !!draft.deliveryHtml ||
       !!draft.attachments.length ||
+      !!draft.forwardFiles?.length ||
+      !!draft.forwardSource ||
       !!draft.quote?.included ||
       (draft.format && draft.format !== "plain"));
   if (complex)

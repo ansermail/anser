@@ -1,6 +1,6 @@
 # 附件/阅读后续工作点
 
-2026-10-11，main/fa6bb6e，0.1.10 Release38104135660已核验发布。这里是现码核查与接续设计，尚未实现附件新功能；不能把计划记为完成。
+2026-10-11，main/fa6bb6e，0.1.10 Release38104135660已核验发布。当前在codex/compose-attachments实现了管理副本/租约、转发勾选和原生拖拽；自动检查通过，真实验收尚未完成，未发布。
 
 ## 原要求
 
@@ -22,3 +22,35 @@ App.compose构造forward引用快照，但未为普通转发填attachments；com
 ## 下一动作
 
 0.1.10固定源云端构建/资产核验和正式发布已完成，从此工作点新建合适工作分支继续普通转发附件/管理副本；随后拖拽/快捷操作。先检查status/origin/未提交工作，复杂步骤补充源码/测试/失败与下一入口。
+
+## ATTACH-01 代码与自动检查（2026-10-11）
+
+分支codex/compose-attachments，从main/1e597ef接续；正式仍0.1.10/fa6bb6e。本阶段源码提交以本分支ATTACH-01提交为准，后续继续同一分支。
+
+### 已实现
+
+- Detail增加完整originalHash；Compose有forwardSource及forwardFiles可勾选描述。读取时不保存/改写原MIME，准备阶段重新核对完整散列；所有部件一次解析后保存decoded字节，不按同名猜部件，不悄悄跳过解码错误。
+- compose_files.rs：应用本机数据目录compose-attachments（与archive_location/预览缓存/用户文件分离），0700/0600和目录标识、UUID不透明文件键、草稿归属/name/mime/size/hash校验。网络读取、文件复制/散列在写事务外，短事务再次校验租约/原索引身份后发布。跨Store同目录管理锁只保护副本，源网络请求不持该锁。
+- 原附件准备默认全选，可逐项切换；待准备或失败阻止发送/定时，可重试或显式不携带。发送构造同时处理普通文件路径和归属校验后的管理bytes，MIME类型/同名/字节保持，普通SMTP记录补齐raw_hash；冻结MIME继续保护确认不明/定时发送。
+- 窗口租约按打开/关闭生命周期串行操作，关窗/切草稿废弃迟到准备。关闭成功保存草稿再取消租约，复制失败/源变化回滚自己的文件不发布半清单。元数据引用保护草稿与未完成/失败/不明发送；重启使旧租约失效，超过24小时无引用管理副本/已标识孤儿可清理，未知文件/符号链接不跟随、不递归删除。
+- 取消定时/准备重发从冻结原件恢复为新草稿归属，保留选中及未选管理副本；不沿用旧路径或旧草稿ID。管理副本与租约从存档SQLite备份删除，原件备份不夹带写信状态。
+- ComposeDialog用现有shadcn Field/Checkbox/Button/Alert展示原附件；拖拽使用已安装/官方Tauri webview.onDragDropEvent，物理像素位置与Dialog CSS bounds按devicePixelRatio核对，编辑/关闭/倒计时锁保护，结束解绑；文件选择同样核对迟到返回归属、路径去重，不合并到另一个草稿。
+- 新webview模块有Pages静态别名/stub，preview仍禁用真实IPC/文件读取。外部EML只读仍保持；其Detail的hash只描述原件，不自动导入或转发外部文件。
+
+### 实际验证
+
+- npm test：227项/41文件；新管理附件前端3项与路径/坐标2项，旧写信/引用/签名/草稿回归保持通过。
+- cargo test --manifest-path src-tauri/Cargo.toml：305通过/1性能手动门槛ignore（本轮未重复执行性能）；8项副本/取消/同名类型/原件/重启/归属/校验/定时/符号链接/回收/备份保护专项。
+- cargo check、cargo fmt --check、npm run build（UI/TS）、npm run build:preview（静态桥隔离）、npm run format:check、git diff --check通过。没有改构建脚本，桌面脚本/vendor解析器未在本子阶段重跑；发布前仍需完整门槛。
+- 首轮Rust为path借用/移动冲突已修；旧取消计划测试按恢复后的管理bytes验证，不再假定路径数组。首次备份测试误用mail.sqlite3，已改实际snapshot.sqlite3并重跑。TypeScript对drop union在回调内丢失窄化及空lease判断已修，最终自动检查通过。
+- 没有本轮真实SMTP发送、源邮件移动/永久删除、存档迁移或公开真实截图。原生实际附件准备/选择、两邮箱收取转发和实际拖拽尚未验收，不能把模拟/native事件回调断言当系统拖拽通过。
+
+### 必须继续的验收与发布
+
+1. 先确认稳定启动器Running/新PID父进程Tauri，Rust重编译时不绑CUA。用自己的两邮箱发送明确ATTACH联调小文件（同名不同目录/字节、中文名），核实To/CC/BCC与发件仅授权两邮箱，签名关闭/无敏感引用。
+2. 收取后核实完整detail originalHash/实际byte提取，普通转发默认附件与逐项选择，关闭保存/重新打开仍有引用，再实际回发到另一个授权邮箱，核对附件数量/name/mime/decoded字节和原件保持；取消或失败不自动重复SMTP。
+3. 用本轮自己创建的临时文件在原生写信窗口做系统拖拽，验证范围/同路径去重/同名不同文件/倒计时锁/解绑；仅测试事件模拟不足。测试恢复设置，普通文件添加若错误保留编辑窗口，预览网页拒绝真文件。
+4. 浏览器纯虚构预览视觉检查；原生重启恢复/定时取消与更换窗口、背景同步并发有实际样本后，再全量发布门槛、版本同步/说明/合入main清理工作分支，先远程构建新版本并核验正式资源。
+5. 剩余快捷操作、真实SAVE/SYNC/服务商/升级/P1矩阵继续保留。此阶段不是整个Goal完成，不改写已发布0.1.10标签或产物。
+
+关键文件：compose_files.rs/models/store/network/scheduling/lib/eml_files；App/ComposeDialog/conversation-reader/types/compose-format/compose-attachments与相关tests、vite/preview-bridge。sourceHash为空会明确要求重新打开原邮件，不能按主题/文件名猜附件。

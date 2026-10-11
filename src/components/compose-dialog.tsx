@@ -5,6 +5,19 @@ import { useConfirmation } from "@/hooks/use-confirmation";
 import { MailContent } from "./mail-content";
 import { Switch } from "./ui/switch";
 import { Label } from "./ui/label";
+import { Checkbox } from "./ui/checkbox";
+import {
+  FieldSet,
+  FieldLegend,
+  FieldGroup,
+  Field,
+  FieldContent,
+  FieldLabel,
+} from "./ui/field";
+import {
+  mergeAttachmentPaths,
+  insideComposeDrop,
+} from "@/lib/compose-attachments";
 import { disableFrameContextMenu } from "@/lib/context-menu";
 import { SelectField, SelectOption } from "@/components/ui/select-field";
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
@@ -33,7 +46,7 @@ import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { Textarea } from "./ui/textarea";
 import { call, native, isDemo } from "@/lib/api";
-import type { Account, Address, Compose } from "@/lib/types";
+import type { Account, Address, Compose, ForwardFile } from "@/lib/types";
 import {
   textToHtml,
   composeFormat,
@@ -72,6 +85,15 @@ export function ComposeDialog({
     [closing, setClosing] = useState(false),
     [extra, setExtra] = useState(false);
   const [signatureError, setSignatureError] = useState("");
+  const [forwardError, setForwardError] = useState("");
+  const [forwardLoading, setForwardLoading] = useState(false);
+  const [forwardReload, setForwardReload] = useState(0);
+  const [sessionReload, setSessionReload] = useState(0);
+  const sessionChain = useRef<Promise<void>>(Promise.resolve());
+  const session = useRef<{ id: string; promise: Promise<string> } | null>(null);
+  const dialogElement = useRef<HTMLDivElement>(null);
+  const interactionLocked = useRef(false);
+  interactionLocked.current = sending || closing || countdown !== null;
   const [signatureReload, setSignatureReload] = useState(0);
   const [suggestions, setSuggestions] = useState<Address[]>([]);
   const [deliveryPreview, setDeliveryPreview] = useState(false);
@@ -88,6 +110,128 @@ export function ComposeDialog({
   const autosaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const latest = useRef(value);
   latest.current = value;
+  useEffect(() => {
+    if (!draft?.id || !native || isDemo()) {
+      session.current = null;
+      return;
+    }
+    const id = draft.id;
+    const promise = sessionChain.current.then(() =>
+      call<string>("open_compose_session", { id }),
+    );
+    session.current = { id, promise };
+    sessionChain.current = promise.then(
+      () => {},
+      () => {},
+    );
+    return () => {
+      const close = promise.then((token) =>
+        call<void>("close_compose_session", { id, token }),
+      );
+      sessionChain.current = close.catch(() => {});
+    };
+  }, [draft?.id, sessionReload]);
+  useEffect(() => {
+    if (!value?.forwardSource || value.id !== draft?.id || !native || isDemo())
+      return;
+    const source = value.forwardSource,
+      id = value.id,
+      lease = session.current;
+    if (!lease || lease.id !== id) return;
+    let live = true;
+    setForwardLoading(true);
+    setForwardError("");
+    void lease.promise
+      .then((token) =>
+        call<ForwardFile[]>("prepare_forward_files", { id, token, source }),
+      )
+      .then((files) => {
+        if (!live || closingNow.current || latest.current?.id !== id) return;
+        setForwardLoading(false);
+        setValue((current) =>
+          current?.id === id &&
+          current.forwardSource?.hash === source.hash &&
+          current.forwardSource.id === source.id
+            ? {
+                ...current,
+                forwardSource: undefined,
+                forwardFiles: [...(current.forwardFiles || []), ...files],
+              }
+            : current,
+        );
+      })
+      .catch((error) => {
+        if (live && latest.current?.id === id) {
+          setForwardLoading(false);
+          setForwardError(String(error));
+        }
+      });
+    return () => {
+      live = false;
+    };
+  }, [
+    value?.id,
+    value?.forwardSource?.id,
+    value?.forwardSource?.hash,
+    forwardReload,
+    sessionReload,
+    draft?.id,
+  ]);
+  useEffect(() => {
+    if (!draft?.id || !native || isDemo()) return;
+    const id = draft.id;
+    let live = true,
+      unlisten: (() => void) | undefined;
+    void import("@tauri-apps/api/webview")
+      .then(({ getCurrentWebview }) =>
+        getCurrentWebview().onDragDropEvent((event) => {
+          if (
+            !live ||
+            event.payload.type !== "drop" ||
+            latest.current?.id !== id ||
+            closingNow.current ||
+            interactionLocked.current ||
+            isDemo()
+          )
+            return;
+          const rect = dialogElement.current?.getBoundingClientRect();
+          if (
+            !rect ||
+            !insideComposeDrop(
+              event.payload.position,
+              rect,
+              window.devicePixelRatio,
+            )
+          )
+            return;
+          const paths = event.payload.paths;
+          if (paths.some((path) => !path || path.includes("\0"))) {
+            toast.error("附件路径无效，未添加文件");
+            return;
+          }
+          setValue((current) =>
+            current?.id === id
+              ? {
+                  ...current,
+                  attachments: mergeAttachmentPaths(current.attachments, paths),
+                }
+              : current,
+          );
+        }),
+      )
+      .then((stop) => {
+        if (!live) stop();
+        else unlisten = stop;
+      })
+      .catch((error) => {
+        if (live)
+          toast.error(`拖拽附件未就绪，可使用附件按钮：${String(error)}`);
+      });
+    return () => {
+      live = false;
+      unlisten?.();
+    };
+  }, [draft?.id]);
   const timer = useRef<ReturnType<typeof setInterval> | null>(null);
   const sourceFile = useRef<HTMLInputElement>(null);
   const previewFrame = useRef<HTMLIFrameElement>(null);
@@ -105,6 +249,8 @@ export function ComposeDialog({
     setCountdown(null);
     setSaved(false);
     setSignatureError("");
+    setForwardError("");
+    setForwardLoading(false);
     setExtra(!!draft?.cc || !!draft?.bcc);
     setExpanded(false);
     setPlanning(false);
@@ -199,6 +345,11 @@ export function ComposeDialog({
             await call("save_draft", { draft: current });
           else await call("delete_draft", { id: current.id });
         });
+      const lease = session.current;
+      if (native && !isDemo() && lease && current && lease.id === current.id) {
+        const token = await lease.promise;
+        await call("close_compose_session", { id: lease.id, token });
+      }
       onClose();
     } catch (e) {
       toast.error(
@@ -229,6 +380,10 @@ export function ComposeDialog({
     }
   }
   async function valid() {
+    if (forwardLoading || value?.forwardSource) {
+      toast.error("原附件尚未准备完成，请重试或选择不携带原附件");
+      return false;
+    }
     if (!value?.accountId || !value.to.trim()) {
       toast.error("请选择发件账号并填写收件人");
       return false;
@@ -348,15 +503,33 @@ export function ComposeDialog({
       toast.info("请在桌面客户端中添加真实附件");
       return;
     }
-    const { open } = await import("@tauri-apps/plugin-dialog");
-    const paths = await open({ multiple: true, directory: false });
-    if (paths)
-      update({
-        attachments: [
-          ...(value?.attachments || []),
-          ...(Array.isArray(paths) ? paths : [paths]),
-        ],
-      });
+    const id = latest.current?.id;
+    if (!id || closingNow.current || interactionLocked.current) return;
+    try {
+      const { open } = await import("@tauri-apps/plugin-dialog");
+      const paths = await open({ multiple: true, directory: false });
+      if (
+        paths &&
+        latest.current?.id === id &&
+        !closingNow.current &&
+        !interactionLocked.current
+      ) {
+        const incoming = Array.isArray(paths) ? paths : [paths];
+        setValue((current) =>
+          current?.id === id
+            ? {
+                ...current,
+                attachments: mergeAttachmentPaths(
+                  current.attachments,
+                  incoming,
+                ),
+              }
+            : current,
+        );
+      }
+    } catch (error) {
+      toast.error(`添加附件失败：${String(error)}`);
+    }
   }
   return (
     <Dialog
@@ -366,6 +539,7 @@ export function ComposeDialog({
       }}
     >
       <DialogContent
+        ref={dialogElement}
         className={`compose-dialog ${expanded ? "compose-expanded" : ""}`}
         showCloseButton={false}
         onInteractOutside={(e) => e.preventDefault()}
@@ -691,6 +865,72 @@ export function ComposeDialog({
                   />
                 </section>
               )}
+              {value.forwardSource && (
+                <Alert className="mx-4 w-auto">
+                  <FileUp />
+                  <AlertDescription>
+                    {forwardLoading
+                      ? "正在准备原邮件附件，原件保持不变…"
+                      : forwardError || "等待准备原邮件附件"}
+                    <div className="flex flex-wrap gap-2">
+                      {!forwardLoading && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => {
+                            setSessionReload((n) => n + 1);
+                            setForwardReload((n) => n + 1);
+                          }}
+                        >
+                          重试准备
+                        </Button>
+                      )}
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        disabled={sending || closing || countdown !== null}
+                        onClick={() => {
+                          update({ forwardSource: undefined });
+                          setForwardError("");
+                          setForwardLoading(false);
+                        }}
+                      >
+                        不携带原附件
+                      </Button>
+                    </div>
+                  </AlertDescription>
+                </Alert>
+              )}
+              {!!value.forwardFiles?.length && (
+                <FieldSet className="px-5 py-3">
+                  <FieldLegend>原邮件附件</FieldLegend>
+                  <FieldGroup>
+                    {value.forwardFiles.map((file) => (
+                      <Field key={file.id} orientation="horizontal">
+                        <Checkbox
+                          id={`forward-file-${file.id}`}
+                          checked={file.included}
+                          disabled={sending || closing || countdown !== null}
+                          onCheckedChange={(included) =>
+                            update({
+                              forwardFiles: value.forwardFiles!.map((item) =>
+                                item.id === file.id
+                                  ? { ...item, included: included === true }
+                                  : item,
+                              ),
+                            })
+                          }
+                        />
+                        <FieldContent>
+                          <FieldLabel htmlFor={`forward-file-${file.id}`}>
+                            {file.name} · {file.size} 字节
+                          </FieldLabel>
+                        </FieldContent>
+                      </Field>
+                    ))}
+                  </FieldGroup>
+                </FieldSet>
+              )}
               {value.attachments.length > 0 && (
                 <div className="compose-attachments">
                   {value.attachments.map((p, i) => (
@@ -726,7 +966,14 @@ export function ComposeDialog({
             )}
             <div className="compose-footer">
               <Button
-                disabled={sending || closing || isDemo() || !native}
+                disabled={
+                  sending ||
+                  closing ||
+                  forwardLoading ||
+                  !!value.forwardSource ||
+                  isDemo() ||
+                  !native
+                }
                 onClick={
                   countdown !== null
                     ? () => {
@@ -755,6 +1002,8 @@ export function ComposeDialog({
                 disabled={
                   sending ||
                   closing ||
+                  forwardLoading ||
+                  !!value.forwardSource ||
                   countdown !== null ||
                   (!native && !isDemo())
                 }
