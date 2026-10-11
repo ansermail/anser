@@ -29,7 +29,7 @@
 
 ## 当前执行检查点
 
-- **0.1.11 候选构建已启动（2026-10-11）**：源码2786ec746a9ad81677a98affff9be4a0d471eea9，组织工作分支codex/mail-shortcuts；[Release38128874078](https://github.com/ansermail/anser/actions/runs/38128874078)固定headSha/event已核对，当前check进行中，不重复触发。发布版本下238前端、305Rust/1ignore、19脚本、39IMAP及两种构建/UI/格式/版本/diff门槛实际重跑通过；开发根已FF到该源，稳定启动器Running及新PID父进程Tauri、0.1.11开发App签名/标识核对通过。原生拖拽/快捷键未验收前不提前合入正式 main 或发布。公开latest仍0.1.10；接续 RELEASE_011_WORKING.md / READ_SHORTCUTS_WORKING.md，其他 SAVE/SYNC/服务商/安装/P1未完范围完整保留。
+- **0.1.11 候选构建已启动（2026-10-11）**：源码2786ec746a9ad81677a98affff9be4a0d471eea9，组织工作分支codex/mail-shortcuts；[Release38128874078](https://github.com/ansermail/anser/actions/runs/38128874078)固定headSha/event已核对，当前check进行中，不重复触发。发布版本下238前端、305Rust/1ignore、19脚本、39IMAP及两种构建/UI/格式/版本/diff门槛实际重跑通过；开发根已FF到该源，稳定启动器编译0.1.11并Running、新PID父进程Tauri、签名/稳定标识核对通过；开发Info无版本字段，不冒充正式包Info版本验收。原生拖拽/快捷键未验收前不提前合入正式 main 或发布。公开latest仍0.1.10；接续 RELEASE_011_WORKING.md / READ_SHORTCUTS_WORKING.md，其他 SAVE/SYNC/服务商/安装/P1未完范围完整保留。
 
 - **READ-01B2B1 快捷操作（2026-10-11，codex/mail-shortcuts）**：从附件 `2336663` 在独立托管工作树接入 ⌘R/⌘⇧R/⌘⇧F/⌘⇧U/⌘⇧L，复用现有草稿、收件人、原附件快照及单封标记/撤销。输入/IME/重复/弹层/菜单、多选、切正文/搜索旧结果、异步写入和现有草稿保护已覆盖。新增9项、完整238前端及UI/生产/Pages/格式/diff通过；纯虚构静态预览实际 Command+R/编辑内 Command+N 和 Tooltip 通过，原生实际键盘尚待验收。入口 READ_SHORTCUTS_WORKING.md，工作树 `/Users/zhangxiaojun/.codex/worktrees/mail-shortcuts/mail`。正式仍0.1.10；附件拖拽/原生验证齐备后完整门槛并首先远程构建新版，不能把本阶段源码完成当作桌面已发布。
 

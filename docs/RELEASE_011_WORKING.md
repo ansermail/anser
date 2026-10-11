@@ -24,4 +24,4 @@
 
 候选源码 `2786ec746a9ad81677a98affff9be4a0d471eea9`，组织分支 `codex/mail-shortcuts`；`workflow_dispatch` 已启动 [Release macOS 38128874078](https://github.com/ansermail/anser/actions/runs/38128874078)，读取 headSha 与事件一致。当前 check 进行中；后续只观察该运行，不重复触发。原生验收未完成，main 与正式 latest 0.1.10 保持。
 
-当前开发根目录 codex/compose-attachments 已 FF 至候选源，保留工作树与源码；`npm run desktop` 稳定启动器重新编译后输出 Running，App PID 15167 的父进程 14913 为 Tauri，Info 版本0.1.11/稳定标识及完整 codesign 验证通过。原生 UI 与按键未因启动成功自动算验收。本轮日志只是辅助，下一恢复时须重新核对进程；不要沿用已退出的旧 PID 或仅靠日志判断仍在运行。
+当前开发根目录 codex/compose-attachments 已 FF 至候选源，保留工作树与源码；`npm run desktop` 稳定启动器重新编译0.1.11后输出 Running，App PID 15167 的父进程 14913 为 Tauri。开发包 Info 只有稳定标识，没有 CFBundleShortVersionString；首次按正式包版本字段读取失败，不能当作 Info 版本检查通过。版本依据本轮候选配置和编译日志，稳定标识及完整 codesign 后续独立验证通过。原生 UI 与按键未因启动成功自动算验收。本轮日志只是辅助，下一恢复时须重新核对进程；不要沿用已退出的旧 PID 或仅靠日志判断仍在运行。
