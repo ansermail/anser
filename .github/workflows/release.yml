@@ -6,7 +6,7 @@ on:
 permissions:
   contents: read
 concurrency:
-  group: release-${{ github.ref }}
+  group: release-macos
   cancel-in-progress: false
 jobs:
   check:
@@ -23,14 +23,7 @@ jobs:
         name: Skip versions already published
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          VERSION=$(node -p "require('./src-tauri/tauri.conf.json').version")
-          if gh release view "v$VERSION" --json isDraft --jq .isDraft > /tmp/release-state 2>/dev/null && test "$(cat /tmp/release-state)" = false; then
-            echo "build_required=false" >> "$GITHUB_OUTPUT"
-            echo "::notice::v$VERSION is already published; skipping without replacing its assets."
-          else
-            echo "build_required=true" >> "$GITHUB_OUTPUT"
-          fi
+        run: node scripts/release-draft.mjs check
       - uses: dtolnay/rust-toolchain@1.91.1
         with:
           components: rustfmt
@@ -133,13 +126,4 @@ jobs:
       - name: Create or update draft Release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          VERSION=$(node -p "require('./src-tauri/tauri.conf.json').version")
-          TAG="v$VERSION"
-          if gh release view "$TAG" >/dev/null 2>&1; then
-            DRAFT=$(gh release view "$TAG" --json isDraft --jq .isDraft)
-            test "$DRAFT" = true || { echo 'Published releases are immutable; bump the version.'; exit 1; }
-          else
-            gh release create "$TAG" --draft --target "$GITHUB_SHA" --title "Anser - 雁信 $VERSION" --notes-file "docs/releases/$TAG.md"
-          fi
-          gh release upload "$TAG" release-assets/*.dmg release-assets/*.tar.gz release-assets/*.sig release-assets/latest.json --clobber
+        run: node scripts/release-draft.mjs upload release-assets
