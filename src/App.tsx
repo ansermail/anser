@@ -1,5 +1,5 @@
 import { EmlViewer } from "./components/eml-viewer";
-import { MailDateFilter } from "./components/mail-date-filter";
+import { MailFilters } from "./components/mail-filters";
 import { ArchiveLocation } from "./components/archive-location";
 import { MailSignatures } from "./components/mail-signatures";
 import { useConfirmation } from "./hooks/use-confirmation";
@@ -114,7 +114,6 @@ import {
   DropdownMenuContent,
   DropdownMenuGroup,
   DropdownMenuItem,
-  DropdownMenuCheckboxItem,
   DropdownMenuRadioGroup,
   DropdownMenuRadioItem,
   DropdownMenuLabel,
@@ -1916,94 +1915,16 @@ export default function App() {
                         <kbd>⌘ K</kbd>
                       )}
                     </div>
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button
-                          variant={
-                            query.starredOnly ||
-                            query.attachmentsOnly ||
-                            query.searchField
-                              ? "secondary"
-                              : "ghost"
-                          }
-                          size="icon-lg"
-                          aria-label="筛选邮件"
-                          title={
-                            query.starredOnly ||
-                            query.attachmentsOnly ||
-                            query.searchField
-                              ? "筛选邮件（已启用）"
-                              : "筛选邮件"
-                          }
-                        >
-                          <SlidersHorizontal />
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end">
-                        <DropdownMenuLabel>邮件筛选</DropdownMenuLabel>
-                        <DropdownMenuCheckboxItem
-                          checked={!!query.starredOnly}
-                          onCheckedChange={(checked) =>
-                            setQuery((q) => ({
-                              ...q,
-                              starredOnly: checked,
-                              limit: 200,
-                            }))
-                          }
-                        >
-                          <Star size={14} />
-                          星标邮件
-                        </DropdownMenuCheckboxItem>
-                        <DropdownMenuCheckboxItem
-                          checked={!!query.attachmentsOnly}
-                          onCheckedChange={(checked) =>
-                            setQuery((q) => ({
-                              ...q,
-                              attachmentsOnly: checked,
-                              limit: 200,
-                            }))
-                          }
-                        >
-                          <Paperclip size={14} />
-                          有附件
-                        </DropdownMenuCheckboxItem>
-                        <DropdownMenuSeparator />
-                        <DropdownMenuLabel>搜索字段</DropdownMenuLabel>
-                        <DropdownMenuRadioGroup
-                          value={query.searchField || ""}
-                          onValueChange={(value) =>
-                            setQuery((q) => ({
-                              ...q,
-                              searchField: value,
-                              limit: 200,
-                            }))
-                          }
-                        >
-                          {[
-                            ["", "全部字段"],
-                            ["subject", "主题"],
-                            ["sender", "发件人"],
-                            ["recipients", "收件人"],
-                            ["body", "正文"],
-                          ].map(([value, label]) => (
-                            <DropdownMenuRadioItem value={value} key={value}>
-                              {label}
-                            </DropdownMenuRadioItem>
-                          ))}
-                        </DropdownMenuRadioGroup>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  </div>
-                  <div className="flex flex-wrap items-center gap-2 px-4 pb-3">
-                    <MailDateFilter
-                      dateFrom={query.dateFrom}
-                      dateBefore={query.dateBefore}
-                      onChange={(range) =>
-                        setQuery((q) => ({ ...q, ...range, limit: 200 }))
+                    <MailFilters
+                      query={query}
+                      onChange={(filters) =>
+                        setQuery((q) => ({ ...q, ...filters, limit: 200 }))
                       }
                     />
-                    {query.search &&
-                      (!query.searchField || query.searchField === "body") && (
+                  </div>
+                  {query.search &&
+                    (!query.searchField || query.searchField === "body") && (
+                      <div className="flex flex-wrap items-center gap-2 px-4 pb-3">
                         <Tooltip>
                           <TooltipTrigger asChild>
                             <Button
@@ -2024,8 +1945,8 @@ export default function App() {
                             </p>
                           </TooltipContent>
                         </Tooltip>
-                      )}
-                  </div>
+                      </div>
+                    )}
                   <div className="list-filters">
                     <Tabs
                       value={query.unreadOnly ? "unread" : "all"}

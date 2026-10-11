@@ -427,6 +427,130 @@ describe("mail action shortcuts", () => {
     ).toBe(false);
   });
 });
+describe("mail filter panel", () => {
+  it("keeps the calendar inside filters and retains other conditions when applying or clearing dates", async () => {
+    const pages = vi.spyOn(api, "mailPage");
+    const filter = host.querySelector('button[aria-label="筛选邮件"]')!;
+    expect(
+      document.querySelector('button[aria-label="按时间筛选邮件"]'),
+    ).toBeNull();
+    await click(filter);
+    const panel = document.querySelector('[role="dialog"]')!;
+    expect(panel.textContent).toContain("邮件筛选");
+    expect(
+      panel.querySelector('button[aria-label="按时间筛选邮件"]'),
+    ).not.toBeNull();
+    await click([...panel.querySelectorAll('[role="checkbox"]')][0]);
+    await click([...panel.querySelectorAll('[role="checkbox"]')][1]);
+    await click(panel.querySelector('button[aria-label="按时间筛选邮件"]'));
+    const calendar = document.querySelector('[aria-label="邮件时间范围"]')!;
+    expect(calendar).not.toBeNull();
+    const today = new Date();
+    await click(
+      [...calendar.querySelectorAll("button[data-day]")].find(
+        (button) =>
+          button.getAttribute("data-day") === today.toLocaleDateString(),
+      )!,
+    );
+    await click(
+      [...calendar.querySelectorAll("button")].find(
+        (button) => button.textContent === "应用筛选",
+      )!,
+    );
+    expect(document.querySelector('[aria-label="邮件时间范围"]')).toBeNull();
+    expect(document.querySelector('[role="dialog"]')).not.toBeNull();
+    expect(filter.getAttribute("title")).toBe("筛选邮件（已启用）");
+    const lastQuery = pages.mock.calls.at(-1)![0];
+    expect(lastQuery).toMatchObject({
+      starredOnly: true,
+      attachmentsOnly: true,
+      limit: 200,
+    });
+    expect(new Date(lastQuery.dateFrom!).getHours()).toBe(0);
+    expect(lastQuery.dateBefore).toBeTruthy();
+    await click(document.querySelector('button[aria-label="按时间筛选邮件"]'));
+    const clear = [
+      ...document
+        .querySelector('[aria-label="邮件时间范围"]')!
+        .querySelectorAll("button"),
+    ].find((button) => button.textContent === "不限时间")!;
+    await click(clear);
+    expect(pages.mock.calls.at(-1)![0]).toMatchObject({
+      starredOnly: true,
+      attachmentsOnly: true,
+      dateFrom: undefined,
+      dateBefore: undefined,
+    });
+    await act(async () =>
+      document.dispatchEvent(
+        new KeyboardEvent("keydown", { key: "Escape", bubbles: true }),
+      ),
+    );
+    expect(
+      document.querySelector('button[aria-label="按时间筛选邮件"]'),
+    ).toBeNull();
+  });
+  it("shows an active filter for dates alone and allows the search-field select inside the panel", async () => {
+    const pages = vi.spyOn(api, "mailPage");
+    await click(host.querySelector('button[aria-label="筛选邮件"]'));
+    const select = document.querySelector('button[aria-label="搜索字段"]')!;
+    await act(async () =>
+      select.dispatchEvent(
+        new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true }),
+      ),
+    );
+    await click(
+      [...document.querySelectorAll('[role="option"]')].find(
+        (option) => option.textContent === "主题",
+      )!,
+    );
+    expect(pages.mock.calls.at(-1)![0].searchField).toBe("subject");
+    expect(
+      document.querySelector('button[aria-label="按时间筛选邮件"]'),
+    ).not.toBeNull();
+    await act(async () =>
+      select.dispatchEvent(
+        new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true }),
+      ),
+    );
+    await click(
+      [...document.querySelectorAll('[role="option"]')].find(
+        (option) => option.textContent === "全部字段",
+      )!,
+    );
+    await click(document.querySelector('button[aria-label="按时间筛选邮件"]'));
+    const calendar = document.querySelector('[aria-label="邮件时间范围"]')!;
+    await click(
+      [...calendar.querySelectorAll("button[data-day]")].find(
+        (button) =>
+          button.getAttribute("data-day") === new Date().toLocaleDateString(),
+      )!,
+    );
+    await click(
+      [...calendar.querySelectorAll("button")].find(
+        (button) => button.textContent === "应用筛选",
+      )!,
+    );
+    expect(
+      host
+        .querySelector('button[aria-label="筛选邮件"]')
+        ?.getAttribute("title"),
+    ).toBe("筛选邮件（已启用）");
+    await click(document.querySelector('button[aria-label="按时间筛选邮件"]'));
+    await click(
+      [
+        ...document
+          .querySelector('[aria-label="邮件时间范围"]')!
+          .querySelectorAll("button"),
+      ].find((button) => button.textContent === "不限时间")!,
+    );
+    expect(
+      host
+        .querySelector('button[aria-label="筛选邮件"]')
+        ?.getAttribute("title"),
+    ).toBe("筛选邮件");
+  });
+});
 describe("message and conversation display modes", () => {
   it("keeps unread status separate from account color on long subjects in both list modes", async () => {
     const seed = await snapshot(localQuery);

@@ -24,10 +24,14 @@ function selectedRange(from?: string, before?: string): DateRange | undefined {
   return { from: new Date(from), to };
 }
 export function MailDateFilter({
+  id,
+  placeholder = "时间范围",
   dateFrom,
   dateBefore,
   onChange,
 }: {
+  id?: string;
+  placeholder?: string;
   dateFrom?: string;
   dateBefore?: string;
   onChange: (range: { dateFrom?: string; dateBefore?: string }) => void;
@@ -45,7 +49,7 @@ export function MailDateFilter({
     ? fromLabel === toLabel
       ? fromLabel
       : `${fromLabel} — ${toLabel}`
-    : "时间范围";
+    : placeholder;
   return (
     <Popover
       open={open}
@@ -56,6 +60,7 @@ export function MailDateFilter({
     >
       <PopoverTrigger asChild>
         <Button
+          id={id}
           variant={dateFrom ? "secondary" : "outline"}
           size="sm"
           aria-label="按时间筛选邮件"
@@ -65,7 +70,11 @@ export function MailDateFilter({
           <span className="truncate">{label}</span>
         </Button>
       </PopoverTrigger>
-      <PopoverContent align="start" className="w-80">
+      <PopoverContent
+        align="start"
+        className="w-80 max-h-[var(--radix-popover-content-available-height)] overflow-y-auto"
+        aria-label="邮件时间范围"
+      >
         <FieldGroup>
           <Field>
             <FieldLabel>邮件时间范围</FieldLabel>
