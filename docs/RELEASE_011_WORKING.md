@@ -1,5 +1,16 @@
 # 0.1.11 候选版远程构建工作点
 
+## 最新候选已构建并核验（2026-10-11，未正式发布）
+
+固定源码 `fdc10499ab8752516cf4f2abdd26bcebfa042fc6` / codex/compose-attachments 已推送；[Release38150754149](https://github.com/ansermail/anser/actions/runs/38150754149) event/headSha一致，check、Apple Silicon、Intel及draft全部成功。此运行是修复真实LF失败后的新源码构建，不是观察超时重启旧运行。草稿409574987已同步新完整提交和源码说明（含末尾LF），七资源已重新上传，随后完成新源独立审计。
+
+- 七资源名称/尺寸/GitHub SHA256摘要与下载文件一致，manifest版本/两架构URL/独立签名及说明等于固定源，更新签名匹配现有公钥。
+- 两App版本0.1.11、arm64/x86_64、稳定标识/EML/完整codesign及许可资源通过；Google/Microsoft默认配置精确核对，Intel短常量在指定交换函数中重建匹配，值不打印，配置未进入前端/资源文件。编译核对不代表授权/SMTP/刷新通过。
+- 两DMG校验和、只读挂载的全部8个App文件与更新归档一致，随后卸载；没有安装或运行正式包。
+- 审计后再次查询，草稿目标/完整说明/七个资源ID及摘要均无并发替换；匿名公开latest.json与构建前逐字节一致，仍0.1.10。新审计辅助资料 `/tmp/anser-release011-audit-fdc1049`，结果保存在本工作点，不依赖临时目录接续。
+
+最新下一步：候选代码/本机自动门槛、已记录原生样本及云端/资源已验证；尚未正式合入main或发布。继续补拖拽复杂边界/真实故障及正式安装/原位升级矩阵，并按实际验收范围完成正式合入/发版；全部SAVE/SYNC/服务商/P1未完范围见VERIFICATION_011_WORKING.md。下面旧源/失败记录仅代表各自当时状态。
+
 ## 修复后首次重建（2026-10-11，汇总失败）
 
 新候选源码 `751669c506c82738a7f5068fd75edc527e67be03` 已推送组织分支codex/compose-attachments，触发一次 [Release38149322470](https://github.com/ansermail/anser/actions/runs/38149322470)，event/headSha一致，未重复触发。check已成功，两架构正在构建；包含草稿源码/说明保护、筛选日期/层级及Status表头修复，241前端/305Rust（1ignore）/28脚本/39IMAP及本机两种构建/格式/版本门槛通过。原生五项组合/标记恢复、计划取消及双向收件附件字节补验通过，用户确认系统拖入；复杂边界及真实故障矩阵保留。
