@@ -2,8 +2,8 @@
 use crate::models::{err, Result};
 use rusqlite::{Connection, OptionalExtension, Transaction, TransactionBehavior};
 
-const VERSION: i64 = 2;
-const COLUMNS: &str = "mail_id,account_id,subject,sender,recipients,body,all_text,instant,is_read,starred,trashed,has_attachments,saved_locally,local_folder,body_known,fts_safe";
+const VERSION: i64 = 3;
+const COLUMNS: &str = "mail_id,account_id,subject,sender,recipients,body,all_text,instant,is_read,starred,trashed,has_attachments,saved_locally,local_folder,body_known,fts_safe,size";
 
 pub fn initialize(db: &Connection) -> Result<()> {
     // Acquire the write lock before reading the schema marker so concurrent
@@ -19,8 +19,8 @@ pub fn initialize(db: &Connection) -> Result<()> {
     if version.is_some_and(|v| v > VERSION) {
         return Err("检索索引来自较新版本，请使用新版应用".into());
     }
-    let objects: i64 = tx.query_row("SELECT COUNT(*) FROM sqlite_schema WHERE name IN ('search_documents','search_fts','search_source','search_message_insert','search_message_update','search_message_delete','search_text_insert','search_text_update','search_text_delete','search_account_time','search_time','search_unindexable')", [], |r| r.get(0)).map_err(err)?;
-    if version == Some(VERSION) && objects == 12 {
+    let objects: i64 = tx.query_row("SELECT COUNT(*) FROM sqlite_schema WHERE name IN ('search_documents','search_fts','search_source','search_message_insert','search_message_update','search_message_delete','search_text_insert','search_text_update','search_text_delete','search_account_time','search_time','search_unindexable','search_summary','search_folders')", [], |r| r.get(0)).map_err(err)?;
+    if version == Some(VERSION) && objects == 14 {
         return tx.commit().map_err(err);
     }
     // Rebuild only derived objects, atomically. Missing objects or an interrupted
@@ -39,9 +39,11 @@ pub fn initialize(db: &Connection) -> Result<()> {
             subject TEXT NOT NULL,sender TEXT NOT NULL,recipients TEXT NOT NULL,body TEXT NOT NULL,
             all_text TEXT NOT NULL,instant REAL,is_read INTEGER NOT NULL,starred INTEGER NOT NULL,
             trashed INTEGER NOT NULL,has_attachments INTEGER NOT NULL,saved_locally INTEGER NOT NULL,
-            local_folder TEXT NOT NULL,body_known INTEGER NOT NULL,fts_safe INTEGER NOT NULL);
+            local_folder TEXT NOT NULL,body_known INTEGER NOT NULL,fts_safe INTEGER NOT NULL,size INTEGER NOT NULL);
         CREATE INDEX search_account_time ON search_documents(account_id,instant DESC,mail_id);
         CREATE INDEX search_time ON search_documents(instant DESC,mail_id);
+        CREATE INDEX search_summary ON search_documents(saved_locally,trashed,is_read,size);
+        CREATE INDEX search_folders ON search_documents(local_folder);
         CREATE INDEX search_unindexable ON search_documents(rowid) WHERE fts_safe=0;
         CREATE VIRTUAL TABLE search_fts USING fts5(all_text,content='search_documents',content_rowid='rowid',tokenize='trigram');
         CREATE VIEW search_source AS WITH projected AS (SELECT id AS mail_id,account_id,
@@ -60,7 +62,7 @@ pub fn initialize(db: &Connection) -> Result<()> {
             COALESCE(json_extract(data,'$.savedLocally'),1)=1 AND NOT EXISTS(
                 SELECT 1 FROM json_each(messages.data,'$.parseWarnings') w WHERE
                 w.value LIKE 'text/plain 正文片段无法解码：%' OR w.value LIKE 'text/html 正文片段无法解码：%') AS body_known
-            FROM messages) SELECT projected.*,instr(all_text,char(0))=0 AS fts_safe FROM projected;
+            FROM messages) SELECT projected.*,instr(all_text,char(0))=0 AS fts_safe,COALESCE(json_extract(messages.data,'$.size'),0) AS size FROM projected JOIN messages ON messages.id=projected.mail_id;
         CREATE TRIGGER search_text_insert AFTER INSERT ON search_documents BEGIN
             INSERT INTO search_fts(rowid,all_text) VALUES(NEW.rowid,NEW.all_text); END;
         CREATE TRIGGER search_text_delete AFTER DELETE ON search_documents BEGIN

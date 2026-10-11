@@ -741,8 +741,8 @@ impl Store {
         messages: Vec<Mail>,
         matched: u64,
     ) -> Result<Snapshot> {
-        let stats=db.query_row("SELECT COUNT(*),COALESCE(SUM(json_extract(data,'$.isRead')=0 AND json_extract(data,'$.trashed')=0),0),COALESCE(SUM(CASE WHEN COALESCE(json_extract(data,'$.savedLocally'),1)=1 THEN json_extract(data,'$.size') ELSE 0 END),0),COALESCE(SUM(COALESCE(json_extract(data,'$.savedLocally'),1)),0) FROM message_listing",[],|r|Ok(Stats{total:r.get(0)?,saved:r.get(3)?,unread:r.get(1)?,bytes:r.get(2)?})).map_err(err)?;
-        let mut fs=db.prepare("SELECT DISTINCT json_extract(data,'$.localFolder') FROM message_listing WHERE json_extract(data,'$.localFolder')!='全部存档' ORDER BY 1").map_err(err)?;
+        let stats=db.query_row("SELECT COUNT(*),COALESCE(SUM(is_read=0 AND trashed=0),0),COALESCE(SUM(CASE WHEN saved_locally=1 THEN size ELSE 0 END),0),COALESCE(SUM(saved_locally),0) FROM search_documents",[],|r|Ok(Stats{total:r.get(0)?,saved:r.get(3)?,unread:r.get(1)?,bytes:r.get(2)?})).map_err(err)?;
+        let mut fs=db.prepare("SELECT DISTINCT local_folder FROM search_documents WHERE local_folder!='全部存档' ORDER BY 1").map_err(err)?;
         let folders = fs
             .query_map([], |r| r.get(0))
             .map_err(err)?

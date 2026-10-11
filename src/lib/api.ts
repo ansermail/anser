@@ -1,4 +1,5 @@
 import { memoryStorage } from "./demo-storage";
+import { DemoPager } from "./mail-pages";
 import { emptySignature } from "./signatures";
 import {
   conversationIndex,
@@ -15,6 +16,8 @@ import type {
   Rule,
   Detail,
   Compose,
+  MailPage,
+  MailNeighbor,
 } from "./types";
 import { makeDemo } from "./demo";
 import { parseAddresses } from "./addresses";
@@ -24,17 +27,20 @@ export const native = !publicPreview && isTauri();
 const demoStorage = publicPreview ? memoryStorage() : localStorage;
 const key = "mail-desktop-demo-v1";
 let demo: Snapshot | null = null;
+const demoPager = new DemoPager();
 export function isDemo() {
   return demo !== null;
 }
 export function enterDemo() {
   if (native && !import.meta.env.DEV) throw new Error("正式应用不开放示例邮箱");
   demo = makeDemo();
+  demoPager.changed();
   demoStorage.setItem(key, JSON.stringify(demo));
 }
 export function leaveDemo() {
   if (publicPreview) return;
   demo = null;
+  demoPager.changed();
   demoStorage.removeItem(key);
   demoStorage.removeItem(key + "-drafts");
   demoStorage.removeItem(key + "-contacts");
@@ -57,7 +63,10 @@ export function restoreDemo() {
   }
   try {
     const data = demoStorage.getItem(key);
-    if (data) demo = JSON.parse(data);
+    if (data) {
+      demo = JSON.parse(data);
+      demoPager.changed();
+    }
   } catch {
     demoStorage.removeItem(key);
   }
@@ -126,6 +135,40 @@ export async function snapshot(query: Query): Promise<Snapshot> {
     };
   }
   return native ? invoke("snapshot", { query }) : empty();
+}
+function pageRequest(query: Query, cursor = "") {
+  return {
+    query,
+    cursor,
+    dateFrom: query.dateFrom || "",
+    dateBefore: query.dateBefore || "",
+  };
+}
+export async function mailPage(query: Query, cursor = ""): Promise<MailPage> {
+  if (demo) return demoPager.page(demo, query, cursor);
+  if (native)
+    return invoke("mail_page", { request: pageRequest(query, cursor) });
+  return {
+    ...empty(),
+    nextCursor: null,
+    revision: 0,
+    reset: false,
+    bodyCoverage: { known: 0, unknown: 0 },
+  };
+}
+export async function mailNeighbor(
+  query: Query,
+  id: string,
+  direction: "previous" | "next",
+): Promise<MailNeighbor> {
+  if (demo) return demoPager.neighbor(demo, query, id, direction);
+  if (native)
+    return invoke("mail_neighbor", {
+      request: pageRequest(query),
+      id,
+      direction,
+    });
+  return { mail: null, revision: 0 };
 }
 export async function call<T = void>(
   command: string,
@@ -731,6 +774,18 @@ export async function call<T = void>(
       ].includes(command)
     )
       demoStorage.setItem(key, JSON.stringify(demo));
+    if (
+      [
+        "update_mail",
+        "run_rules",
+        "account_action",
+        "edit_account",
+        "queue_archives",
+        "archive_job_action",
+        "save_retention",
+      ].includes(command)
+    )
+      demoPager.changed();
     return result as T;
   }
   if (!native) throw new Error("请在 macOS 桌面客户端中使用此功能。");

@@ -101,6 +101,8 @@ export interface Query {
   searchField?: string;
   remoteFolder?: string;
   listMode?: "conversations" | "messages";
+  dateFrom?: string;
+  dateBefore?: string;
 }
 export interface Snapshot {
   accounts: Account[];
@@ -126,6 +128,16 @@ export interface Detail {
   replyTo?: Address[];
   to?: Address[];
   cc?: Address[];
+}
+export interface MailPage extends Snapshot {
+  nextCursor: string | null;
+  revision: number;
+  reset: boolean;
+  bodyCoverage: { known: number; unknown: number };
+}
+export interface MailNeighbor {
+  mail: Mail | null;
+  revision: number;
 }
 export interface QuotedMail {
   kind: "reply" | "forward";

@@ -424,6 +424,9 @@ mod tests {
     use std::collections::HashSet;
 
     fn seed(size: usize) -> (tempfile::TempDir, Store) {
+        seed_with_distribution(size, false)
+    }
+    fn seed_with_distribution(size: usize, realistic: bool) -> (tempfile::TempDir, Store) {
         let dir = tempfile::tempdir().unwrap();
         let store = Store::new(dir.path().into()).unwrap();
         let a = account();
@@ -453,6 +456,33 @@ mod tests {
                 m.starred = i % 5 == 0;
                 m.has_attachments = i % 7 == 0;
                 m.local_folder = if i % 2 == 0 { "Keep" } else { "全部存档" }.into();
+                if realistic {
+                    m.saved_locally = i % 3 != 0;
+                    m.subject = if i % 1000 == 0 {
+                        format!("稀有预算审核 {i}")
+                    } else {
+                        format!("项目通知 {i}")
+                    };
+                    m.sender = format!("Example {} <person{}@example.com>", i % 20, i % 20);
+                    m.body =
+                        if m.saved_locally {
+                            "仅用于性能测量的虚构项目说明，不含真实邮箱内容。"
+                                .repeat(if i % 100 == 1 { 500 } else { 25 })
+                        } else {
+                            String::new()
+                        };
+                    if i % 1000 == 0 && m.saved_locally {
+                        m.body.push_str(" 稀有正文检索标记");
+                    }
+                    m.size = m.body.len() as u64 + 400 + if m.has_attachments { 512000 } else { 0 };
+                    m.date = if i % 97 == 0 {
+                        String::new()
+                    } else {
+                        (chrono::DateTime::parse_from_rfc3339("2026-10-10T19:53:37+08:00").unwrap()
+                            - chrono::Duration::minutes(i as i64))
+                        .to_rfc3339()
+                    };
+                }
                 insert
                     .execute(params![
                         m.id,
@@ -835,5 +865,55 @@ mod tests {
             .unwrap(),
             1
         );
+    }
+    #[test]
+    #[ignore = "manual release-mode performance gate on a fictional 50000-message database"]
+    fn actual_store_50000_pages_and_search_measurement() {
+        let (dir, store) = seed_with_distribution(50000, true);
+        store
+            .db()
+            .unwrap()
+            .execute_batch("PRAGMA wal_checkpoint(TRUNCATE)")
+            .unwrap();
+        drop(store);
+        let start = std::time::Instant::now();
+        let store = Store::new(dir.path().into()).unwrap();
+        println!("50000 fictional records: 2/3 saved, 1800/36000-byte synthetic text mix, 20 sender identities, 34 days, unknown dates, linked pairs; reopen={}ms (OS cache not cleared)",start.elapsed().as_millis());
+        for mode in [ListMode::Messages, ListMode::Conversations] {
+            let mut r = request(mode, 200);
+            r.query.view = "all".into();
+            for temperature in ["connection/graph cold", "hot"] {
+                let start = std::time::Instant::now();
+                let page = store.mail_page(&r).unwrap();
+                let elapsed = start.elapsed();
+                println!(
+                    "{mode:?} {temperature} first page={}ms returned={} matched={}",
+                    elapsed.as_millis(),
+                    page.snapshot.messages.len(),
+                    page.snapshot.matched
+                );
+                assert_eq!(page.snapshot.messages.len(), 200);
+                assert!(elapsed.as_secs_f64() <= 3.0, "first page exceeds 3 seconds");
+            }
+            for (field, term) in [
+                ("subject", "稀有预算审核"),
+                ("body", "稀有正文检索标记"),
+                ("body", "虚构"),
+            ] {
+                r.query.search_field = field.into();
+                r.query.search = term.into();
+                for temperature in ["new query", "hot"] {
+                    let start = std::time::Instant::now();
+                    let page = store.mail_page(&r).unwrap();
+                    let elapsed = start.elapsed();
+                    println!("{mode:?} {temperature} {field} literal chars={} first={}ms returned={} matched={}",term.chars().count(),elapsed.as_millis(),page.snapshot.messages.len(),page.snapshot.matched);
+                    assert!(page.snapshot.matched > 0);
+                    assert!(
+                        elapsed.as_secs_f64() <= 1.0,
+                        "search first page exceeds 1 second"
+                    );
+                }
+            }
+        }
     }
 }

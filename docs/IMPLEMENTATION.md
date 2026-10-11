@@ -513,3 +513,11 @@ codex/search-scale后端增加paging.rs与mail_page/mail_neighbor IPC，旧snaps
 mail_neighbor在同样快照按当前阅读ID直接seek前后结果，保留筛选、跳过当前对话，支持锚点被已读移出未读列表；不重载前缀或改变分页流。日期下限包含/上限排除，用SQLite整数Julian毫秒分子避免边界浮点偏移，原日期不改。
 
 297Rust全量通过，具体6103条/并发/日期/覆盖/游标/阅读证据见SEARCH_SCALE_WORKING.md。App仍调用旧前缀API，UI/日期控件/覆盖说明/产品五万封指标与新版本发布未完成。
+
+## 2026-10-11 PAGING-02 前端协议和统计索引（待发布）
+
+App切换至mailPage/mailNeighbor，不再累计扩大limit。页追加同时检查query对象/序列/cursor/版本，reset替换而不合并；同范围同版本刷新保留已加载尾部及尾cursor，稳定coalesce调度通过live ref使用最新工作函数，HMR也不保留旧逻辑。阅读seek独立，不能插入列表页流形成缺页；邻居响应拒绝较旧版本/查询/选择，重复导航互斥。
+
+DemoPager只处理虚构内存快照，opaque随机cursor在内存绑定范围/版本/锚点，保留页/日期/邻居语义；Pages仍禁用原生桥。日期组件shadcn组合，按日历加一天应对DST；覆盖说明来自后端同快照known/unknown，不以未知当空正文或自动下载。
+
+search schema3增加typed size与search_summary/search_folders覆盖索引，stats/文件夹查询改用投影避免每页JSON扫描。单机五万条Release测量与页面/接口证据见RELEASE_010_WORKING.md；实际原位更新/多Mac/真实冷缓存未执行。

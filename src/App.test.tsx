@@ -374,6 +374,81 @@ describe("message and conversation display modes", () => {
     );
   });
 });
+describe("fixed cursor list loading", () => {
+  it("requests only the next fixed page and appends without changing the query prefix", async () => {
+    await seedLargeMailbox();
+    const original = api.mailPage,
+      calls = vi.spyOn(api, "mailPage").mockImplementation(original);
+    await click(host.querySelector(".load-more"));
+    expect(host.querySelectorAll("button.mail-row-main")).toHaveLength(205);
+    expect(
+      calls.mock.calls.some(([q, cursor]) => q.limit === 200 && !!cursor),
+    ).toBe(true);
+    expect(calls.mock.calls.every(([q]) => q.limit === 200)).toBe(true);
+    expect(host.querySelector(".load-more")).toBeNull();
+  });
+  it("keeps loaded pages and the final cursor through an unchanged refresh", async () => {
+    await seedLargeMailbox();
+    const base = JSON.parse(
+      localStorage.getItem("mail-desktop-demo-v1")!,
+    ) as import("./lib/types").Snapshot;
+    base.messages[0].isRead = true;
+    localStorage.setItem("mail-desktop-demo-v1", JSON.stringify(base));
+    api.restoreDemo();
+    await click(nav("本地存档"));
+    await click(host.querySelector(".load-more"));
+    expect(host.querySelectorAll("button.mail-row-main")).toHaveLength(205);
+    await click(host.querySelector("button.mail-row-main"));
+    expect(host.querySelectorAll("button.mail-row-main")).toHaveLength(205);
+    expect(host.querySelector(".load-more")).toBeNull();
+  });
+  it("replaces a stale page on a new message rather than combining generations", async () => {
+    await seedLargeMailbox();
+    const base = JSON.parse(
+      localStorage.getItem("mail-desktop-demo-v1")!,
+    ) as import("./lib/types").Snapshot;
+    base.messages.push({
+      ...base.messages[0],
+      id: "new-arrival",
+      messageId: "<new-arrival@example.com>",
+      subject: "New arrival",
+      date: new Date(Date.parse(base.messages[0].date) + 10000).toISOString(),
+    });
+    localStorage.setItem("mail-desktop-demo-v1", JSON.stringify(base));
+    api.restoreDemo();
+    await click(host.querySelector(".load-more"));
+    expect(host.querySelectorAll("button.mail-row-main")).toHaveLength(200);
+    expect(host.querySelector(".row-subject-text")?.textContent).toBe(
+      "New arrival",
+    );
+    expect(document.body.textContent).toContain("已重新加载最新结果");
+  });
+  it("discards a delayed cursor page after moving to a different category", async () => {
+    await seedLargeMailbox();
+    const original = api.mailPage;
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    vi.spyOn(api, "mailPage").mockImplementation(async (q, cursor) => {
+      if (cursor) await gate;
+      return original(q, cursor);
+    });
+    await click(host.querySelector(".load-more"));
+    await click(nav("星标邮件"));
+    await act(async () => {
+      release();
+      await gate;
+    });
+    expect(host.querySelectorAll("button.mail-row-main")).toHaveLength(200);
+    expect(host.querySelector(".list-heading h1")?.textContent).toBe(
+      "星标邮件",
+    );
+    expect(
+      host.querySelector(".load-more")?.getAttribute("aria-busy"),
+    ).not.toBe("true");
+  });
+});
 describe("reading across loaded page boundaries", () => {
   it.each(["按对话分组", "逐封邮件"])(
     "loads the next page and keeps previous navigation in %s mode",
@@ -386,12 +461,16 @@ describe("reading across loaded page boundaries", () => {
       expect(host.querySelector(".message-heading h1")?.textContent).toBe(
         "Pagination mail 200",
       );
-      expect(host.querySelectorAll("button.mail-row-main")).toHaveLength(205);
+      expect(host.querySelectorAll("button.mail-row-main")).toHaveLength(200);
       await click(host.querySelector('[aria-label="上一封邮件"]'));
       expect(host.querySelector(".message-heading h1")?.textContent).toBe(
         "Pagination mail 199",
       );
-      await click(host.querySelectorAll("button.mail-row-main")[204]);
+      for (let n = 0; n < 5; n++)
+        await click(host.querySelector('[aria-label="下一封邮件"]'));
+      expect(host.querySelector(".message-heading h1")?.textContent).toBe(
+        "Pagination mail 204",
+      );
       expect(
         (host.querySelector('[aria-label="下一封邮件"]') as HTMLButtonElement)
           .disabled,
@@ -428,24 +507,28 @@ describe("reading across loaded page boundaries", () => {
         .disabled,
     ).toBe(true);
   });
-  it("keeps the current mail on failure, prevents duplicate loading and allows retry", async () => {
+  it("keeps the current mail on seek failure, prevents duplicate navigation and allows retry", async () => {
     await seedLargeMailbox();
-    await click(host.querySelectorAll("button.mail-row-main")[199]);
-    const originalSnapshot = api.snapshot;
+    const original = api.mailNeighbor;
     let reject!: (error: Error) => void;
     const gate = new Promise<never>((_, fail) => {
       reject = fail;
     });
-    const calls = vi.spyOn(api, "snapshot").mockImplementation(async (q) => {
-      if (q.limit > 200) return gate;
-      return originalSnapshot(q);
-    });
+    const calls = vi
+      .spyOn(api, "mailNeighbor")
+      .mockImplementation(async (q, id, direction) =>
+        id === "page-199" && direction === "next"
+          ? gate
+          : original(q, id, direction),
+      );
+    await click(host.querySelectorAll("button.mail-row-main")[199]);
     await click(host.querySelector('[aria-label="下一封邮件"]'));
     expect(
       host
         .querySelector('[aria-label="下一封邮件"]')
         ?.getAttribute("aria-busy"),
     ).toBe("true");
+    const before = calls.mock.calls.length;
     await act(async () =>
       host.querySelector(".reader")!.dispatchEvent(
         new KeyboardEvent("keydown", {
@@ -455,34 +538,35 @@ describe("reading across loaded page boundaries", () => {
         }),
       ),
     );
-    expect(calls.mock.calls.filter(([q]) => q.limit > 200)).toHaveLength(1);
-    await act(async () => {
-      reject(new Error("Test unavailable"));
-    });
+    expect(calls.mock.calls).toHaveLength(before);
+    await act(async () => reject(new Error("Test unavailable")));
     expect(host.querySelector(".message-heading h1")?.textContent).toBe(
       "Pagination mail 199",
     );
-    expect(document.body.textContent).toContain("加载更多邮件失败");
-    calls.mockImplementation(originalSnapshot);
+    expect(document.body.textContent).toContain("加载相邻邮件失败");
+    calls.mockImplementation(original);
     await click(host.querySelector('[aria-label="下一封邮件"]'));
     expect(host.querySelector(".message-heading h1")?.textContent).toBe(
       "Pagination mail 200",
     );
+    expect(host.querySelectorAll("button.mail-row-main")).toHaveLength(200);
   });
   it.each(["category", "mode", "selection"])(
     "discards a delayed page after changing %s",
     async (change) => {
       await seedLargeMailbox();
-      await click(host.querySelectorAll("button.mail-row-main")[199]);
-      const originalSnapshot = api.snapshot;
+      const original = api.mailNeighbor;
       let release!: () => void;
       const gate = new Promise<void>((resolve) => {
         release = resolve;
       });
-      vi.spyOn(api, "snapshot").mockImplementation(async (q) => {
-        if (q.limit > 200) await gate;
-        return originalSnapshot(q);
-      });
+      vi.spyOn(api, "mailNeighbor").mockImplementation(
+        async (q, id, direction) => {
+          if (id === "page-199" && direction === "next") await gate;
+          return original(q, id, direction);
+        },
+      );
+      await click(host.querySelectorAll("button.mail-row-main")[199]);
       await click(host.querySelector('[aria-label="下一封邮件"]'));
       if (change === "category") await click(nav("星标邮件"));
       if (change === "mode") await chooseListMode("逐封邮件");
@@ -841,10 +925,14 @@ describe("reading unread mail within its current category", () => {
     };
     await act(async () => root.unmount());
     leaveDemo();
-    vi.spyOn(api, "snapshot").mockResolvedValue({
+    vi.spyOn(api, "mailPage").mockResolvedValue({
       ...seed,
       messages: [],
       remoteFolders: [folder],
+      nextCursor: null,
+      revision: 1,
+      reset: false,
+      bodyCoverage: { known: 0, unknown: 0 },
     });
     const commands = vi
       .spyOn(api, "call")
