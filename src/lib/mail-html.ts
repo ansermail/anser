@@ -69,11 +69,13 @@ export function safeMailHtml(
   marker.name = "yanxin-mail-document";
   marker.content = documentId;
   doc.head.prepend(marker);
+  // break-word wraps long prose/URLs without reducing table cells' min-content
+  // width to one character (anywhere squeezes narrow status/header columns).
   // Keep original head styles and body classes; insert our policy before them.
   // A body-only sanitizer otherwise drops leading styles in HTML email fragments.
   doc.head.insertAdjacentHTML(
     "afterbegin",
-    `<meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data: https:; style-src 'unsafe-inline'; font-src data: https:; upgrade-insecure-requests; base-uri 'none'; form-action 'none'"><style>body{font-family:-apple-system,BlinkMacSystemFont,sans-serif;font-size:14px;line-height:1.6;color:#242424;margin:0;padding:0;overflow-wrap:anywhere}img{max-width:100%;height:auto}table{max-width:100%}pre{white-space:pre-wrap}</style>`,
+    `<meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data: https:; style-src 'unsafe-inline'; font-src data: https:; upgrade-insecure-requests; base-uri 'none'; form-action 'none'"><style>body{font-family:-apple-system,BlinkMacSystemFont,sans-serif;font-size:14px;line-height:1.6;color:#242424;margin:0;padding:0;overflow-wrap:break-word}img{max-width:100%;height:auto}table{max-width:100%}pre{white-space:pre-wrap}</style>`,
   );
   return `<!doctype html>${doc.documentElement.outerHTML}`;
 }

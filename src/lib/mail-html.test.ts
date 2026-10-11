@@ -7,6 +7,24 @@ import {
   interceptMailLinks,
 } from "./mail-html";
 describe("untrusted email rendering", () => {
+  it("preserves authored table sizing without making every letter a min-content break", () => {
+    const doc = new DOMParser().parseFromString(
+      safeMailHtml(
+        '<table style="width:100%"><tr><th style="width:24px;padding:16px 0 16px 16px">Status</th><th style="width:100%;padding:16px">Job</th><th style="white-space:nowrap">Annotations</th></tr><tr><td>×</td><td>Checks / test</td><td>2</td></tr></table><p>https://example.invalid/long-resource-name</p>',
+      ),
+      "text/html",
+    );
+    expect(doc.querySelector("th")?.style.width).toBe("24px");
+    expect(doc.querySelector("th")?.textContent).toBe("Status");
+    expect(doc.querySelectorAll("th")[1].style.width).toBe("100%");
+    expect(doc.querySelectorAll("th")[2].style.whiteSpace).toBe("nowrap");
+    expect(doc.head.querySelector("style")?.textContent).toContain(
+      "overflow-wrap:break-word",
+    );
+    expect(doc.head.querySelector("style")?.textContent).not.toContain(
+      "overflow-wrap:anywhere",
+    );
+  });
   it("keeps leading styles in email fragments and classes on full documents", () => {
     for (const html of [
       '<meta name="viewport"><style>.mail_cnt{max-width:700px}.title_bold{font-weight:bold}</style><div class="mail_cnt"><p class="title_bold">每周概况</p></div>',
