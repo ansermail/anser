@@ -31,11 +31,11 @@
 
 - **当前发布与接续（2026-10-11）**：0.1.10/fa6bb6e/38104135660已核验发布，公开清单/标签/下载链接正确，本地/远端search-scale分支清理完成；main工作成果完整。下一附件阶段尚未实施，入口ATTACHMENTS_NEXT_WORKING.md；SEARCH真实规模、SAVE/SYNC/服务商/正式升级及P1矩阵继续保留，不将本节点发布视作整体完成。
 
-- **当前主线 PAGING-02/0.1.10（2026-10-11，codex/search-scale）**：FTS/两模式固定页与前端cursor、锚点阅读、shadcn日期/正文覆盖、无变化刷新尾页保持、schema3统计索引已接入。单机五万条Release真实Store目标所测范围通过（逐封291ms、对话冷图1051ms、正文两字最慢748ms）；OS缓存不清空、多Mac/真实负载未验收。原生200→400页加载与纯虚构Pages日期/范围通过，最终全量门槛/合并/远程构建待写回RELEASE_010_WORKING.md。公开最新仍0.1.9；后续附件体验与SAVE/SYNC/服务商/正式升级/P1完整未完范围保留。
+- **阶段记录 PAGING-02/0.1.10（2026-10-11，codex/search-scale）**：FTS/两模式固定页与前端cursor、锚点阅读、shadcn日期/正文覆盖、无变化刷新尾页保持、schema3统计索引已接入。单机五万条Release真实Store目标所测范围通过（逐封291ms、对话冷图1051ms、正文两字最慢748ms）；OS缓存不清空、多Mac/真实负载未验收。原生200→400页加载与纯虚构Pages日期/范围通过，最终全量门槛/合并/远程构建待写回RELEASE_010_WORKING.md。公开最新仍0.1.9；后续附件体验与SAVE/SYNC/服务商/正式升级/P1完整未完范围保留。
 
-- **当前主线 PAGING-01（2026-10-10，codex/search-scale）**：逐封/对话SQL固定页、图/查询版本拆分、同WAL快照元数据、游标reset、日期/正文覆盖字段和远距离阅读邻居IPC已接入；297Rust全量（9专项含6103条双模式、并发与5000后seek）、check/格式/diff通过。前端仍为旧snapshot/累计5000，尚未解除界面限制、加时间控件或验收五万封指标；未发布。下一步按SEARCH_SCALE_WORKING.md接api/App的cursor与邻居、shadcn日期/覆盖提示，再完整门槛合并/构建。
+- **阶段记录 PAGING-01（2026-10-10，codex/search-scale）**：逐封/对话SQL固定页、图/查询版本拆分、同WAL快照元数据、游标reset、日期/正文覆盖字段和远距离阅读邻居IPC已接入；297Rust全量（9专项含6103条双模式、并发与5000后seek）、check/格式/diff通过。前端仍为旧snapshot/累计5000，尚未解除界面限制、加时间控件或验收五万封指标；未发布。下一步按SEARCH_SCALE_WORKING.md接api/App的cursor与邻居、shadcn日期/覆盖提示，再完整门槛合并/构建。
 
-- **当前主线 SEARCH-01（2026-10-10，codex/search-scale）**：事务全文候选/typed检索投影、旧数据迁移/缺索引恢复、短词与NUL回退和可信来源边界已接入；288 Rust全量（含5专项）及原生C/D标题搜索、cargo fmt/diff通过，尚未发布。本阶段仍保留全匹配反序列化和5000前缀限制，不声明分页完成。下一步从 SEARCH_SCALE_WORKING.md 接 SQL 对话成员/页游标、前端/时间/覆盖提示及五万封产品测量，再完整门槛合并/远程构建。
+- **阶段记录 SEARCH-01（2026-10-10，codex/search-scale）**：事务全文候选/typed检索投影、旧数据迁移/缺索引恢复、短词与NUL回退和可信来源边界已接入；288 Rust全量（含5专项）及原生C/D标题搜索、cargo fmt/diff通过，尚未发布。本阶段仍保留全匹配反序列化和5000前缀限制，不声明分页完成。下一步从 SEARCH_SCALE_WORKING.md 接 SQL 对话成员/页游标、前端/时间/覆盖提示及五万封产品测量，再完整门槛合并/远程构建。
 
 - **当前主线关键节点（2026-10-10）**：0.1.9 本机/云端完整门槛与授权双邮箱 C/D 样本已核对，已于 20:22:33 正式发布，源码 220f4cc / Actions 38051136526；代码、真实样本、构建和发布分开记录，接续 RELEASE_019_WORKING.md，搜索入口 SEARCH_SCALE_WORKING.md。Microsoft SMTP 等独立未完成项保持。
 
