@@ -1,6 +1,6 @@
 # 富文本正文与 Simple Editor 工具条
 
-2026-10-12，`codex/rich-body-images` 从 main/a030672 接续；用户现要求将本分支与相关界面修复作为 0.1.12 Alpha 发布供下载测试，发布进度与固定源码见 [工作点](RELEASE_012_WORKING.md)。正式 latest 在发布确认前仍为0.1.11/652fad5。
+2026-10-12，`codex/rich-body-images` 从 main/a030672 接续；本分支与相关界面修复已作为 0.1.12 Alpha 正式发布供下载测试，固定源码 `996738d` 与资源核验见 [发布工作点](RELEASE_012_WORKING.md)。用户下载后的真实互发、草稿重开和原位升级继续独立验收。
 
 ## 已完成源码
 
@@ -36,7 +36,7 @@
 
 1. 原生图片剪贴板粘贴、Finder跨窗口拖拽与当前窗口边界；原生草稿关闭重开后图片/格式显示（自动Store测试通过不替代此项）。
 2. 授权企业邮↔QQ的真实图片/字体/高亮/任务列表互发，以及其他收件客户端显示。不得向第三方发信；不得用原有邮件收件人列表。
-3. 复核源码/格式/隐私后按用户授权提交 0.1.12；合并/云端构建/新版本发布独立记录于 RELEASE_012_WORKING.md，不能把本地构建视为发版。
+3. 0.1.12 的源码提交、合并、云端构建与正式发布已完成，见 RELEASE_012_WORKING.md；后续修复和新版本仍需分别验收与记录。
 4. 原有硬件/睡眠/大附件/服务商矩阵继续由各工作点维护。
 
 主要文件：rich-editor.tsx/rich-toolbar.tsx/rich-search.tsx、lib/rich-body.ts/rich-extensions.ts/compose-format.ts、compose-dialog.tsx、Rust compose_files.rs/lib.rs、index.css及对应测试。当前记录不依赖运行PID或临时日志；后续启动仍使用 `npm run desktop` 稳定开发签名。
