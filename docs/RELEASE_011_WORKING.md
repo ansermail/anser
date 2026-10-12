@@ -1,6 +1,14 @@
 # 0.1.11 远程构建与发布工作点
 
+## 正式交付完成（2026-10-12）
+
+0.1.11 Alpha 已于 2026-10-12 08:55:48（Asia/Shanghai）正式发布为 latest。源码 `652fad54779f330767b251b7acc23914ecdd29f4` 已合入组织 main；[Release38189306087](https://github.com/ansermail/anser/actions/runs/38189306087) 全量检查/双架构/draft 成功，[下载版本](https://github.com/ansermail/anser/releases/tag/v0.1.11)。本次云端 241 前端、305 Rust（1独立性能项忽略）、28桌面脚本、39 IMAP 及格式/UI/生产构建通过。七资源尺寸/摘要、完整说明/清单、更新签名、公钥、App 版本/架构/稳定标识/EML/许可/codesign/原生OAuth、DMG全部8文件与归档一致性已重新核验。发布前后资源未替换，标签指向固定源码，匿名标准更新端点逐字节等于本次清单，两架构更新包匿名下载字节一致、DMG HTTP200。首次公开查询短暂缓存0.1.10，随后标准端点已确认0.1.11；实际安装/原位升级未验证，Apple Developer ID/公证未完成。
+
+Checks38189305730、Pages38189305785也成功；工作分支确认全部为main祖先后清理。本轮没有安装或启动正式包，没有真实收发、迁移或删除邮件。审计资料在仓库外 `/tmp/anser-release011-audit-652fad5`；本记录不依赖临时日志。下一从VERIFICATION_011_WORKING.md及SAVE/SYNC/服务商/P1继续，不覆盖已发布0.1.11；以下按日期保留历史。
+
 ## 正式发布准备（2026-10-12）
+
+源码 `652fad54779f330767b251b7acc23914ecdd29f4` 已 FF 合入并推送组织 main；正式固定运行 [Release38189306087](https://github.com/ansermail/anser/actions/runs/38189306087) 为 workflow_dispatch，headSha 一致。等待该运行全量检查/双架构/draft，审计入口 `/tmp/anser-release011-audit-652fad5`；公开构建前仍0.1.10。未重复触发，不发布旧候选。
 
 用户已授权提交、合入 main 和正式远程发版。组织 main 为当前开发分支祖先，工作树干净；0.1.11 仍是草稿409574987且无标签。发布说明改为用户功能说明；新固定 main 源须重建并重新审计七资源，不能直接发布旧候选说明/清单。实际安装、原位更新及复杂真实矩阵仍保留，正式发布不等于这些验收通过。
 
