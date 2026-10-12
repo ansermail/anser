@@ -228,6 +228,9 @@ export default function App() {
     [expandedAccounts, setExpandedAccounts] = useState<string[]>([]),
     [folderLoading, setFolderLoading] = useState<string[]>([]),
     [folderErrors, setFolderErrors] = useState<Record<string, string>>({}),
+    [loadedFolders, setLoadedFolders] = useState<
+      Record<string, RemoteFolder[]>
+    >({}),
     [serverFolders, setServerFolders] = useState<RemoteFolder[]>([]),
     [page, setPage] = useState("mail"),
     [sidebarOpen, setSidebarOpen] = useState(true),
@@ -1180,6 +1183,7 @@ export default function App() {
     setFolderErrors((errors) => ({ ...errors, [id]: "" }));
     try {
       const folders = await call<RemoteFolder[]>("account_folders", { id });
+      setLoadedFolders((all) => ({ ...all, [id]: folders }));
       setServerFolders((all) => [
         ...all.filter((f) => f.accountId !== id),
         ...folders,
@@ -1190,15 +1194,14 @@ export default function App() {
       setFolderLoading((ids) => ids.filter((value) => value !== id));
     }
   }
+  function remoteFolder(accountId: string, name: string) {
+    return (loadedFolders[accountId] || serverFolders).find(
+      (folder) => folder.accountId === accountId && folder.name === name,
+    );
+  }
   async function openRemoteFolder(accountId: string, folder: string) {
     navigate("remote", accountId, "", folder);
-    if (
-      demo ||
-      serverFolders.find(
-        (item) => item.accountId === accountId && item.name === folder,
-      )?.syncError
-    )
-      return;
+    if (demo || remoteFolder(accountId, folder)?.syncError) return;
     try {
       await call("sync_remote_folder", { id: accountId, folder });
       await refresh();
@@ -1209,10 +1212,7 @@ export default function App() {
   const activeAccount = data.accounts.find((a) => a.id === query.accountId),
     title = query.remoteFolder
       ? (() => {
-          const folder = serverFolders.find(
-            (f) =>
-              f.accountId === query.accountId && f.name === query.remoteFolder,
-          );
+          const folder = remoteFolder(query.accountId, query.remoteFolder);
           return folder ? remoteFolderLabel(folder) : query.remoteFolder;
         })()
       : query.folder || activeAccount?.name || viewNames[query.view];
@@ -1345,18 +1345,20 @@ export default function App() {
                     <div
                       className={`account-navigation ${page === "mail" && query.accountId === a.id ? "active" : ""}`}
                     >
-                      <Button
-                        variant="ghost"
-                        className="nav-item account-item"
-                        onClick={() => navigate("all", a.id)}
-                      >
-                        <span className={`account-dot color-${i % 4}`} />
-                        <span>
-                          {a.name}
-                          <small>{a.email}</small>
-                        </span>
-                        {!a.enabled && <span className="paused-dot" />}
-                      </Button>
+                      <CollapsibleTrigger asChild>
+                        <Button
+                          variant="ghost"
+                          className="nav-item account-item"
+                          onClick={() => navigate("all", a.id)}
+                        >
+                          <span className={`account-dot color-${i % 4}`} />
+                          <span>
+                            {a.name}
+                            <small>{a.email}</small>
+                          </span>
+                          {!a.enabled && <span className="paused-dot" />}
+                        </Button>
+                      </CollapsibleTrigger>
                       {a.error && (
                         <Tooltip>
                           <TooltipTrigger asChild>
@@ -1397,32 +1399,36 @@ export default function App() {
                       </CollapsibleTrigger>
                     </div>
                     <CollapsibleContent className="remote-folder-list">
-                      {folderLoading.includes(a.id) && (
+                      {folderLoading.includes(a.id) ? (
                         <div role="status" aria-label="正在加载服务器文件夹">
                           <Skeleton className="h-6 mb-2" />
                           <Skeleton className="h-6" />
                         </div>
+                      ) : (
+                        <>
+                          {folderErrors[a.id] ? (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => void loadFolders(a.id)}
+                            >
+                              加载失败，重试
+                            </Button>
+                          ) : (
+                            <RemoteFolderList
+                              folders={loadedFolders[a.id] || []}
+                              selected={
+                                query.accountId === a.id
+                                  ? query.remoteFolder || ""
+                                  : ""
+                              }
+                              onSelect={(name) =>
+                                void openRemoteFolder(a.id, name)
+                              }
+                            />
+                          )}
+                        </>
                       )}
-                      {folderErrors[a.id] && (
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => void loadFolders(a.id)}
-                        >
-                          加载失败，重试
-                        </Button>
-                      )}
-                      <RemoteFolderList
-                        folders={serverFolders.filter(
-                          (f) => f.accountId === a.id,
-                        )}
-                        selected={
-                          query.accountId === a.id
-                            ? query.remoteFolder || ""
-                            : ""
-                        }
-                        onSelect={(name) => void openRemoteFolder(a.id, name)}
-                      />
                     </CollapsibleContent>
                   </Collapsible>
                 ))}
@@ -1880,11 +1886,8 @@ export default function App() {
                       />
                     </Button>
                   </div>
-                  {serverFolders.find(
-                    (f) =>
-                      f.accountId === query.accountId &&
-                      f.name === query.remoteFolder,
-                  )?.syncError && (
+                  {remoteFolder(query.accountId, query.remoteFolder || "")
+                    ?.syncError && (
                     <Alert className="mx-4 w-auto">
                       <AlertCircle />
                       <AlertTitle>目录来源已隔离</AlertTitle>

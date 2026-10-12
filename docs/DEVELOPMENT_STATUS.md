@@ -6,6 +6,8 @@
 
 **最新关键节点：0.1.12 已发布（2026-10-12）**。用户要求的富文本/正文图片和界面修复已从源码 `996738d82f5e55af5f0dddb13ddba9a5248a9d05` 通过组织 [Release macOS 38217856007](https://github.com/ansermail/anser/actions/runs/38217856007) 完成全量检查、双架构构建及资源审计，15:38:33（Asia/Shanghai）正式发布为 [v0.1.12](https://github.com/ansermail/anser/releases/tag/v0.1.12) latest。七资源、更新签名、公钥、App/DMG一致性及公开标准更新端点逐字节核验通过；真实互发/草稿重开和原位升级由用户下载后继续验收，见 [发布工作点](RELEASE_012_WORKING.md)。
 
+**当前开发修复：账号目录展开（2026-10-12，未发布）**。账号名称/地址现在与箭头一样可展开或收起目录；展开时仍向服务器执行完整目录发现，加载期间只显示骨架屏，返回后一次展示完整结果，失败只显示重试入口，不再把缓存目录与骨架屏混排。源码改动与测试见下方当前执行检查点；此修复尚未进入 0.1.12 安装包。
+
 **上一版本关键节点：0.1.11 已发布（2026-10-12）**。0.1.11 Alpha 已于 2026-10-12 08:55:48（Asia/Shanghai）正式发布为 latest。源码 `652fad54779f330767b251b7acc23914ecdd29f4` 已合入组织 main；[Release38189306087](https://github.com/ansermail/anser/actions/runs/38189306087) 全量检查/双架构/draft 成功，[下载版本](https://github.com/ansermail/anser/releases/tag/v0.1.11)。本次云端 241 前端、305 Rust（1独立性能项忽略）、28桌面脚本、39 IMAP 及格式/UI/生产构建通过。七资源尺寸/摘要、完整说明/清单、更新签名、公钥、App 版本/架构/稳定标识/EML/许可/codesign/原生OAuth、DMG全部8文件与归档一致性已重新核验。发布前后资源未替换，标签指向固定源码，匿名标准更新端点逐字节等于本次清单，两架构更新包匿名下载字节一致、DMG HTTP200。首次公开查询短暂缓存0.1.10，随后标准端点已确认0.1.11；实际安装/原位升级未验证，Apple Developer ID/公证未完成。 已完成工作分支清理，当前从 VERIFICATION_011_WORKING.md 复杂边界/真实矩阵及 SAVE/SYNC/服务商/P1 接续。
 
 **独立服务商事项：Microsoft OAuth 应用注册（2026-10-10）**。Anser 公共桌面客户端、组织/个人账号、`http://localhost/callback` 和 IMAP/POP/SMTP/offline_access 委托权限声明已配置；本机忽略配置（0600）和组织仓库 Secret 已同步，开发应用已重编译并载入配置。用户授权及 IMAP 连接验证通过，SMTP 535 尚未解决：当前仅有外部邮箱登录别名，且使用了企业发件配置，待添加实际 Outlook 地址并按个人预设重测。默认配置已随 0.1.9 双架构正式包发布并核对；装包通过不等于 SMTP/刷新验收通过。接续见 [Microsoft OAuth 工作点](MICROSOFT_OAUTH_WORKING.md)。
@@ -30,6 +32,8 @@
 0.1.12 源码提交、组织远程流水线、资源审计与正式发布已完成，见 RELEASE_012_WORKING.md；富文本原生图片/草稿/互发矩阵由用户下载后继续验收，入口仍为 RICH_BODY_WORKING.md。0.1.11 已完成远程发版和源码清理。后续优先接 SAVE-01B2 保存范围真实验收、SYNC-02B2 繁忙/网络睡眠矩阵，以及 VERIFICATION_011_WORKING.md 当前边界。安全合并/来源恢复/MOVE复杂冲突、本地单封与选中项永久清理/清空废纸篓、服务商与P1仍需开发；正式安装与升级安排独立验收。
 
 ## 当前执行检查点
+
+- **账号目录展开与加载修复（2026-10-12，源码完成待发布）**：`src/App.tsx` 将账号名称/地址按钮组合为 shadcn CollapsibleTrigger，点击时保留切换账号邮件的行为并展开/收起目录；每次展开调用 `account_folders` 完整发现，加载期间隐藏所有目录，只显示骨架屏；成功后用该次响应展示目录，失败仅留重试。新发现结果同时用于隔离判断与目录标题，避免旧快照覆盖后误触发隔离目录补收。`src/App.test.tsx` 新增缓存目录、待返回、完成结果和账号行收起回归；完整 App 60 项首次执行 59 通过、1 项因 Radix 收起容器保留 `hidden` 属性而断言错误，修正后该项及原有目录筛选/隔离共 3 项重跑通过。`npm run check:ui`、`npm run build`、`npm run format:check` 和 `git diff --check` 通过。隔离浏览器示例预览已实际点击账号行确认展开后显示 3 个目录、再次点击收起且可见目录归零；真实原生预览被当前正在运行的安装版单实例拦截，未动该窗口，也未验证真实服务器加载时序。后续仍需原生真实账号验收与新版发布；用户下载的 0.1.12 不含本次修复。
 
 - **0.1.12 正式交付（2026-10-12）**：固定源码 `996738d82f5e55af5f0dddb13ddba9a5248a9d05` 已合入组织 main；[Release macOS 38217856007](https://github.com/ansermail/anser/actions/runs/38217856007) 的 check、双架构和 draft 全部成功，15:38:33（Asia/Shanghai）发布 [v0.1.12](https://github.com/ansermail/anser/releases/tag/v0.1.12) 为 latest。七资源/更新签名/版本架构/完整App签名/许可/EML/原生OAuth及DMG与归档逐文件一致通过；标签固定源码、发布前后草稿身份/说明/资源ID及摘要不变，匿名标准更新端点已逐字节等于0.1.12清单，两架构公开DMG和更新归档等于审计资源。真实安装/原位升级、图片粘贴/拖拽、草稿重开与完整富文本互发待用户下载后验收；Apple Developer ID/公证未完成。详情见 RELEASE_012_WORKING.md。
 

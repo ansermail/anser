@@ -5,7 +5,7 @@ import { beforeEach, afterEach, describe, it, expect, vi } from "vitest";
 import App from "./App";
 import { enterDemo, leaveDemo, snapshot } from "./lib/api";
 import * as api from "./lib/api";
-import type { Query } from "./lib/types";
+import type { Query, RemoteFolder } from "./lib/types";
 import { toast } from "sonner";
 
 let root: Root;
@@ -1333,6 +1333,77 @@ describe("reading unread mail within its current category", () => {
     await click(inbox);
     expect(host.querySelector(".list-heading h1")?.textContent).toBe("收件箱");
     expect(host.querySelectorAll(".mail-row-main").length).toBeGreaterThan(0);
+  });
+  it("toggles folders from the account row and waits for the complete directory response", async () => {
+    const seed = await snapshot(localQuery);
+    const accountId = seed.accounts[0].id;
+    const cached: RemoteFolder = {
+      accountId,
+      name: "INBOX",
+      displayName: "收件箱",
+      delimiter: "/",
+      selectable: true,
+    };
+    const fresh: RemoteFolder = {
+      ...cached,
+      name: "Sent",
+      displayName: "已发送",
+    };
+    await act(async () => root.unmount());
+    leaveDemo();
+    vi.spyOn(api, "mailPage").mockResolvedValue({
+      ...seed,
+      remoteFolders: [cached],
+      nextCursor: null,
+      revision: 1,
+      reset: false,
+      bodyCoverage: { known: 0, unknown: 0 },
+    });
+    let finishLoading!: (folders: RemoteFolder[]) => void;
+    const loading = new Promise<RemoteFolder[]>((resolve) => {
+      finishLoading = resolve;
+    });
+    const realCall = api.call;
+    const commands = vi
+      .spyOn(api, "call")
+      .mockImplementation(
+        async <T,>(
+          command: string,
+          args?: Record<string, unknown>,
+        ): Promise<T> =>
+          command === "account_folders"
+            ? (loading as T)
+            : realCall<T>(command, args),
+      );
+    root = createRoot(host);
+    await act(async () => root.render(<App />));
+
+    const account = host.querySelector(".account-navigation .account-item");
+    await click(account);
+    expect(account?.getAttribute("aria-expanded")).toBe("true");
+    expect(commands).toHaveBeenCalledWith("account_folders", { id: accountId });
+    expect(
+      host.querySelector('[role="status"][aria-label="正在加载服务器文件夹"]'),
+    ).not.toBeNull();
+    expect(
+      host.querySelectorAll(".remote-folder-list .folder-item"),
+    ).toHaveLength(0);
+
+    await act(async () => finishLoading([cached, fresh]));
+    expect(
+      host.querySelector('[role="status"][aria-label="正在加载服务器文件夹"]'),
+    ).toBeNull();
+    expect(
+      [...host.querySelectorAll(".remote-folder-list .folder-item")].map(
+        (item) => item.textContent,
+      ),
+    ).toEqual(["收件箱", "已发送"]);
+
+    await click(account);
+    expect(account?.getAttribute("aria-expanded")).toBe("false");
+    expect(
+      host.querySelector(".remote-folder-list")?.hasAttribute("hidden"),
+    ).toBe(true);
   });
   it("opens an isolated directory explanation without automatically retrying its server selection", async () => {
     const seed = await snapshot(localQuery);
