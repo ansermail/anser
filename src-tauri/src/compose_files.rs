@@ -133,6 +133,24 @@ pub struct AttachmentBytes {
     pub mime: String,
     pub bytes: Vec<u8>,
 }
+#[derive(serde::Serialize)]
+pub struct BodyImage {
+    pub src: String,
+    pub name: String,
+}
+fn raster_mime(bytes: &[u8]) -> Result<&'static str> {
+    if bytes.starts_with(b"\x89PNG\r\n\x1a\n") {
+        Ok("image/png")
+    } else if bytes.starts_with(b"\xff\xd8\xff") {
+        Ok("image/jpeg")
+    } else if bytes.starts_with(b"GIF87a") || bytes.starts_with(b"GIF89a") {
+        Ok("image/gif")
+    } else if bytes.starts_with(b"RIFF") && bytes.get(8..12) == Some(b"WEBP") {
+        Ok("image/webp")
+    } else {
+        Err("请选择 PNG、JPEG、GIF 或 WebP 图片".into())
+    }
+}
 fn write_file(
     root: &Path,
     name: String,
@@ -235,6 +253,63 @@ fn metadata(db: &rusqlite::Connection, owner: &str, file: &ForwardFile) -> Resul
     Ok(hash)
 }
 impl Store {
+    pub fn read_body_images(
+        &self,
+        owner: &str,
+        token: &str,
+        paths: &[String],
+    ) -> Result<Vec<BodyImage>> {
+        use base64::Engine;
+        use std::io::Read;
+        let check = || -> Result<()> {
+            let allowed: bool = self.db()?.query_row(
+                "SELECT EXISTS(SELECT 1 FROM compose_sessions WHERE draft_id=?1 AND token=?2) AND NOT EXISTS(SELECT 1 FROM outbox WHERE id=?1 AND status IN ('scheduled','overdue','paused','sending','sent','uncertain'))",
+                params![owner, token], |r| r.get(0)).map_err(err)?;
+            if allowed {
+                Ok(())
+            } else {
+                Err("写信窗口已关闭或提交，图片读取已取消".into())
+            }
+        };
+        check()?;
+        if paths.is_empty() || paths.len() > 20 {
+            return Err("每次请选择1至20张正文图片".into());
+        }
+        let mut result = Vec::new();
+        let mut total = 0;
+        for path in paths {
+            regular(Path::new(path))?;
+            let file = fs::File::open(path).map_err(err)?;
+            let max = 10 * 1024 * 1024;
+            if !file.metadata().map_err(err)?.is_file() || file.metadata().map_err(err)?.len() > max
+            {
+                return Err("单张正文图片不能超过10 MB".into());
+            }
+            let mut bytes = Vec::new();
+            file.take(max + 1).read_to_end(&mut bytes).map_err(err)?;
+            if bytes.len() as u64 > max {
+                return Err("正文图片读取期间变大，请重新选择".into());
+            }
+            total += bytes.len();
+            if total > MAX_BYTES {
+                return Err("正文图片总大小超过50 MB".into());
+            }
+            let mime = raster_mime(&bytes)?;
+            result.push(BodyImage {
+                src: format!(
+                    "data:{mime};base64,{}",
+                    base64::engine::general_purpose::STANDARD.encode(bytes)
+                ),
+                name: Path::new(path)
+                    .file_name()
+                    .ok_or("图片名称无效")?
+                    .to_string_lossy()
+                    .into(),
+            });
+        }
+        check()?;
+        Ok(result)
+    }
     pub fn open_compose_session(&self, owner: &str) -> Result<String> {
         if owner.is_empty() || owner.len() > 512 {
             return Err("草稿标识无效".into());
@@ -588,6 +663,81 @@ mod tests {
         network,
         tests::{account, draft},
     };
+    #[test]
+    fn body_images_are_snapshots_bound_to_live_editor_and_kept_in_drafts_and_mime() {
+        use base64::Engine;
+        let dir = tempfile::tempdir().unwrap();
+        let store = Store::new(dir.path().into()).unwrap();
+        let a = account();
+        store.save_account(&a).unwrap();
+        let mut d = draft();
+        let png = base64::engine::general_purpose::STANDARD.decode("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a1ioAAAAASUVORK5CYII=").unwrap();
+        let file = dir.path().join("picture.dat");
+        fs::write(&file, &png).unwrap();
+        let paths = vec![file.to_string_lossy().into_owned()];
+        assert!(store.read_body_images(&d.id, "stale", &paths).is_err());
+        let token = store.open_compose_session(&d.id).unwrap();
+        let image = store
+            .read_body_images(&d.id, &token, &paths)
+            .unwrap()
+            .pop()
+            .unwrap();
+        d.format = "rich".into();
+        d.html = format!("<p><span style=\"font-family:SimSun;font-size:10.5pt\">Test</span><img src=\"{}\"><img src=\"{}\"></p>",image.src,image.src);
+        store.save_draft(&d).unwrap();
+        store.close_compose_session(&d.id, &token).unwrap();
+        assert!(store.read_body_images(&d.id, &token, &paths).is_err());
+        assert_eq!(fs::read(&file).unwrap(), png);
+        fs::remove_file(&file).unwrap();
+        let reopened = Store::new(dir.path().into()).unwrap();
+        let saved = reopened.drafts().unwrap().pop().unwrap();
+        assert_eq!(saved.html, d.html);
+        let raw = network::build_message(&a, &saved).unwrap().formatted();
+        let parsed = mailparse::parse_mail(&raw).unwrap();
+        let mut parts = vec![];
+        archive::leaves(&parsed, &mut parts);
+        let images: Vec<_> = parts
+            .iter()
+            .filter(|p| p.ctype.mimetype == "image/png")
+            .collect();
+        assert_eq!(images.len(), 1);
+        assert_eq!(images[0].get_body_raw().unwrap(), png);
+        let html = parts
+            .iter()
+            .find(|p| p.ctype.mimetype == "text/html")
+            .unwrap()
+            .get_body()
+            .unwrap();
+        assert!(
+            html.contains("font-size:10.5pt")
+                && html.contains("cid:anser-")
+                && !html.contains("data:image/")
+        );
+    }
+    #[test]
+    fn body_image_reader_rejects_non_images_large_files_and_symlinks() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = Store::new(dir.path().into()).unwrap();
+        let d = draft();
+        let token = store.open_compose_session(&d.id).unwrap();
+        let file = dir.path().join("fake.png");
+        fs::write(&file, b"<svg/>").unwrap();
+        let paths = vec![file.to_string_lossy().into_owned()];
+        assert!(store.read_body_images(&d.id, &token, &paths).is_err());
+        fs::File::create(&file)
+            .unwrap()
+            .set_len(10 * 1024 * 1024 + 1)
+            .unwrap();
+        assert!(store.read_body_images(&d.id, &token, &paths).is_err());
+        #[cfg(unix)]
+        {
+            let link = dir.path().join("link.png");
+            std::os::unix::fs::symlink(&file, &link).unwrap();
+            assert!(store
+                .read_body_images(&d.id, &token, &[link.to_string_lossy().into_owned()])
+                .is_err());
+        }
+    }
     fn raw() -> Vec<u8> {
         b"From: alice@example.com\r\nTo: test@example.com\r\nSubject: Fictional files\r\nMessage-ID: <files@example.com>\r\nDate: Thu, 1 Oct 2026 08:00:00 +0800\r\nContent-Type: multipart/mixed; boundary=x\r\n\r\n--x\r\nContent-Type: text/plain\r\n\r\nBody\r\n--x\r\nContent-Type: application/pdf; name=report.pdf\r\nContent-Disposition: attachment; filename=report.pdf\r\nContent-Transfer-Encoding: base64\r\n\r\nAP/+AQ==\r\n--x\r\nContent-Type: text/plain; name=report.pdf\r\nContent-Disposition: attachment; filename=report.pdf\r\nContent-Transfer-Encoding: base64\r\n\r\naGVsbG8=\r\n--x--\r\n".to_vec()
     }

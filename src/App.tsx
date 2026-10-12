@@ -2627,6 +2627,8 @@ export default function App() {
         }}
       />
       <ComposeDialog
+        dark={dark}
+        onToggleTheme={() => setDark((value) => !value)}
         draft={draft}
         onClose={() => {
           setDraft(null);

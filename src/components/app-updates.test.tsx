@@ -89,6 +89,44 @@ it("hides the top entry without an available update and displays release notes w
   ).not.toBeNull();
   expect(document.body.textContent).toContain("修复邮件收取");
 });
+it("renders Markdown release notes and sanitizes unsafe content", async () => {
+  const next = update();
+  next.body =
+    '## 更新内容\n\n- **修复**邮件收取\n- `收件箱`\n\n[发布说明](https://github.com/ansermail/anser/releases/tag/v0.2.0)\n\n![安全图片](https://github.com/ansermail/anser/image.png) ![危险图片](javascript:alert(1))\n\n<script>alert(1)</script><a href="javascript:alert(1)">危险链接</a>';
+  mocks.check.mockResolvedValue(next);
+  await click("检查更新");
+  const notes = document.querySelector(".release-notes")!;
+  expect(notes.querySelector("h2")?.textContent).toBe("更新内容");
+  expect(notes.querySelectorAll("li")).toHaveLength(2);
+  expect(notes.querySelector("strong")?.textContent).toBe("修复");
+  expect(notes.querySelector("code")?.textContent).toBe("收件箱");
+  expect(notes.querySelector("script")).toBeNull();
+  expect(notes.querySelectorAll("img")).toHaveLength(1);
+  expect(notes.querySelector("img")?.getAttribute("alt")).toBe("安全图片");
+  expect(notes.querySelector("a:not([href])")?.textContent).toBe("危险链接");
+  const link = notes.querySelector<HTMLAnchorElement>("a[href]")!;
+  const event = new MouseEvent("click", { bubbles: true, cancelable: true });
+  await act(async () => link.dispatchEvent(event));
+  expect(event.defaultPrevented).toBe(true);
+  expect(mocks.invoke).toHaveBeenCalledWith("open_mail_link", {
+    url: "https://github.com/ansermail/anser/releases/tag/v0.2.0",
+  });
+});
+it("reports a release note link opening failure", async () => {
+  const error = vi.spyOn(toast, "error").mockReturnValue(0);
+  const next = update();
+  next.body = "[详情](https://github.com/ansermail/anser)";
+  mocks.check.mockResolvedValue(next);
+  mocks.invoke.mockRejectedValueOnce(new Error("browser unavailable"));
+  await click("检查更新");
+  await act(async () =>
+    document.querySelector<HTMLAnchorElement>(".release-notes a")!.click(),
+  );
+  expect(error).toHaveBeenCalledWith(
+    "无法打开更新说明链接：Error: browser unavailable",
+  );
+  error.mockRestore();
+});
 it("downloads first and installs only on explicit confirmation, then restarts", async () => {
   const next = update();
   mocks.check.mockResolvedValue(next);

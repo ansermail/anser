@@ -287,6 +287,7 @@ function QuickReply({
         setDraft(
           existing || {
             ...newDraft(account.id),
+            format: "plain",
             replyAnchorId: target.mail.id,
             ...replyHeaders(target.mail),
             ...recipients,
@@ -352,6 +353,7 @@ function QuickReply({
       persisted.current = false;
       setDraft({
         ...newDraft(draft.accountId),
+        format: "plain",
         replyAnchorId: target.mail.id,
         ...replyHeaders(target.mail),
         to: draft.to,

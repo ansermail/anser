@@ -103,7 +103,8 @@ kbd {
   font-weight: 400;
 }
 ::selection {
-  background: var(--secondary);
+  background: var(--primary);
+  color: var(--primary-foreground);
 }
 ::-webkit-scrollbar {
   width: 5px;
@@ -130,6 +131,85 @@ kbd {
   --sidebar-accent-foreground: hsl(240 4.8% 95.9%);
   --sidebar-border: hsl(240 3.7% 15.9%);
   --sidebar-ring: hsl(217.2 91.2% 59.8%);
+}
+.release-notes {
+  min-width: 0;
+  overflow-wrap: break-word;
+}
+.release-notes > * + * {
+  margin-top: 0.75em;
+}
+.release-notes :is(h1, h2, h3, h4, h5, h6) {
+  font-weight: 650;
+  line-height: 1.4;
+}
+.release-notes h1 {
+  font-size: 1.35em;
+}
+.release-notes h2 {
+  font-size: 1.2em;
+}
+.release-notes h3 {
+  font-size: 1.1em;
+}
+.release-notes :is(ul, ol) {
+  padding-left: 1.5em;
+}
+.release-notes ul {
+  list-style: disc;
+}
+.release-notes ol {
+  list-style: decimal;
+}
+.release-notes li + li {
+  margin-top: 0.25em;
+}
+.release-notes li > :is(ul, ol) {
+  margin-top: 0.25em;
+}
+.release-notes a {
+  color: var(--foreground);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.release-notes :is(pre, code) {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+.release-notes :not(pre) > code,
+.release-notes pre {
+  background: var(--secondary);
+  border-radius: 4px;
+}
+.release-notes :not(pre) > code {
+  padding: 0.1em 0.3em;
+}
+.release-notes pre {
+  padding: 0.75em;
+  overflow-x: auto;
+}
+.release-notes blockquote {
+  border-left: 3px solid var(--border);
+  padding-left: 0.75em;
+  color: var(--muted);
+}
+.release-notes table {
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  border-collapse: collapse;
+}
+.release-notes :is(th, td) {
+  border: 1px solid var(--border);
+  padding: 0.35em 0.6em;
+  text-align: left;
+}
+.release-notes img {
+  max-width: 100%;
+  height: auto;
+}
+.release-notes hr {
+  border: 0;
+  border-top: 1px solid var(--border);
 }
 .app-shell {
   display: flex;
@@ -1805,6 +1885,14 @@ kbd {
   gap: 2px;
   padding: 6px 23px;
   border-bottom: 1px solid var(--border);
+  align-items: center;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  min-height: 45px;
+  flex-shrink: 0;
+}
+.format-toolbar > * {
+  flex-shrink: 0;
 }
 .format-toolbar button[aria-pressed="true"] {
   background: var(--secondary);
@@ -1835,8 +1923,17 @@ kbd {
   overflow: auto;
   padding: 18px 28px;
   outline: 0;
-  font-size: 14px;
+  font-size: 12pt;
   line-height: 1.8;
+}
+.rich-body img {
+  max-width: 100%;
+  height: auto;
+  -webkit-user-select: none;
+  user-select: none;
+}
+.rich-body img.ProseMirror-selectednode {
+  outline: 2px solid var(--ring);
 }
 .rich-body p {
   margin: 0 0 8px;
@@ -1846,6 +1943,62 @@ kbd {
 .rich-body h3 {
   font-weight: 600;
   margin: 12px 0;
+}
+.rich-body h1 {
+  font-size: 2em;
+}
+.rich-body h2 {
+  font-size: 1.5em;
+}
+.rich-body h3 {
+  font-size: 1.17em;
+}
+.rich-body h4 {
+  font-size: 1em;
+  font-weight: 600;
+  margin: 12px 0;
+}
+.rich-body code {
+  font-family: monospace;
+  background: var(--muted);
+  border-radius: 4px;
+  padding: 2px 4px;
+}
+.rich-body pre {
+  font-family: monospace;
+  background: var(--muted);
+  padding: 12px;
+  border-radius: 8px;
+  white-space: pre-wrap;
+}
+.rich-body pre code {
+  padding: 0;
+  background: none;
+}
+.rich-body ul[data-type="taskList"] {
+  padding: 0;
+  list-style: none;
+}
+.rich-body li[data-type="taskItem"] {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+.rich-body li[data-type="taskItem"] > label {
+  flex-shrink: 0;
+  user-select: none;
+  padding-top: 3px;
+}
+.rich-body li[data-type="taskItem"] > div {
+  flex: 1;
+  min-width: 0;
+}
+.rich-body .find-and-replace-result {
+  background: var(--accent);
+  box-shadow: inset 0 -2px var(--ring);
+}
+.rich-body .find-and-replace-result-current {
+  outline: 2px solid var(--ring);
 }
 .rich-body ul {
   list-style: disc;
@@ -2699,6 +2852,37 @@ kbd {
   border-radius: 5px;
   font-size: 13px;
   min-height: 30px;
+}
+/* Compact compose menus without changing the density of other app menus. */
+.rich-format-menu[data-slot="dropdown-menu-content"] {
+  min-width: 136px;
+  max-height: min(320px, var(--radix-dropdown-menu-content-available-height));
+  padding: 4px;
+}
+.rich-format-menu[data-format-menu="正文字体"] {
+  min-width: 176px;
+}
+.rich-format-menu[data-format-menu="正文字号"] {
+  min-width: 104px;
+}
+.rich-format-menu [data-slot="dropdown-menu-radio-item"],
+.rich-format-menu [data-slot="dropdown-menu-item"] {
+  min-height: 26px;
+  padding-top: 3px;
+  padding-bottom: 3px;
+  font-size: 12px;
+}
+.rich-search-panel [data-slot="input"] {
+  height: 30px;
+  padding: 4px 8px;
+  font-size: 12px;
+}
+.rich-search-panel [data-slot="field-label"] {
+  font-size: 12px;
+}
+.rich-search-panel [data-slot="button"] {
+  height: 28px;
+  font-size: 12px;
 }
 .select-field {
   min-width: 0;

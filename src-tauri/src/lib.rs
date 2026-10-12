@@ -733,6 +733,18 @@ async fn prepare_forward_files(
         .await
         .map_err(err)?
 }
+#[tauri::command]
+async fn read_body_images(
+    state: tauri::State<'_, AppState>,
+    id: String,
+    token: String,
+    paths: Vec<String>,
+) -> Result<Vec<compose_files::BodyImage>> {
+    let store = state.store.clone();
+    tauri::async_runtime::spawn_blocking(move || store.read_body_images(&id, &token, &paths))
+        .await
+        .map_err(err)?
+}
 // SMTP work has its own guard. Long IMAP downloads must never occupy it.
 fn with_send_gate<T>(gate: &Mutex<()>, send: impl FnOnce() -> Result<T>) -> Result<T> {
     let _guard = gate
@@ -1371,6 +1383,7 @@ pub fn run() {
             open_compose_session,
             close_compose_session,
             prepare_forward_files,
+            read_body_images,
             send_mail,
             schedule_mail,
             cancel_schedule,

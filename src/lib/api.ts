@@ -803,6 +803,7 @@ export function newDraft(accountId: string): Compose {
     bcc: "",
     subject: "",
     body: "",
+    format: "rich",
     attachments: [],
   };
 }

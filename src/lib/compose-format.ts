@@ -175,10 +175,35 @@ function withSignature(editor: Compose) {
   return { body, html: sanitizeComposeHtml(doc.documentElement.outerHTML) };
 }
 
+function staticTaskMarkup(html: string): string {
+  if (!html.includes("taskItem")) return html;
+  const doc = new DOMParser().parseFromString(html, "text/html");
+  for (const item of doc.querySelectorAll('li[data-type="taskItem"]')) {
+    item.querySelector(":scope > label")?.remove();
+    const paragraph = item.querySelector(":scope > div > p") || item;
+    if (paragraph.querySelector("[data-anser-task-prefix]")) continue;
+    const marker = doc.createElement("span");
+    marker.setAttribute("data-anser-task-prefix", "true");
+    marker.textContent =
+      item.getAttribute("data-checked") === "true" ? "☑ " : "☐ ";
+    paragraph.prepend(marker);
+  }
+  return doc.documentElement.outerHTML;
+}
+
 // Preserve the editable text separately; scheduling/cancellation must not quote twice.
 export function prepareCompose(draft: Compose): Compose {
   const editor = prepareEditorCompose(draft);
-  const signed = withSignature(editor);
+  // Task checkboxes are editor controls. Mail gets static checked/unchecked
+  // markers before sanitization removes inputs; the draft stays editable.
+  const taskHtml = staticTaskMarkup(editor.html || "");
+  const signed = withSignature({
+    ...editor,
+    html: taskHtml,
+    body: editor.html?.includes("taskItem")
+      ? htmlToText(taskHtml)
+      : editor.body,
+  });
   const ownHtml = signed.html ? sanitizeComposeHtml(signed.html) : "";
   if (!draft.quote?.included)
     return { ...editor, deliveryBody: signed.body, deliveryHtml: ownHtml };

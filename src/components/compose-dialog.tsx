@@ -65,16 +65,23 @@ const RichEditor = lazy(() =>
 import { RecipientInput } from "./recipient-input";
 import { addressTokens, parseAddresses } from "@/lib/addresses";
 import { toast } from "sonner";
+import { isImagePath, type BodyImage } from "@/lib/rich-body";
+import type { RichEditorHandle } from "./rich-editor";
+import { RichEditorBoundary } from "./rich-editor-boundary";
 export function ComposeDialog({
   draft,
   onClose,
   accounts,
   onSent,
+  dark = false,
+  onToggleTheme,
 }: {
   draft: Compose | null;
   onClose: () => void;
   accounts: Account[];
   onSent: () => void;
+  dark?: boolean;
+  onToggleTheme?: () => void;
 }) {
   const { askConfirmation, cancelConfirmation, confirmationDialog } =
     useConfirmation();
@@ -87,6 +94,9 @@ export function ComposeDialog({
   const [signatureError, setSignatureError] = useState("");
   const [forwardError, setForwardError] = useState("");
   const [forwardLoading, setForwardLoading] = useState(false);
+  const [imageLoading, setImageLoading] = useState(false);
+  const imageBusy = useRef(false);
+  const richEditor = useRef<RichEditorHandle>(null);
   const [forwardReload, setForwardReload] = useState(0);
   const [sessionReload, setSessionReload] = useState(0);
   const sessionChain = useRef<Promise<void>>(Promise.resolve());
@@ -209,11 +219,25 @@ export function ComposeDialog({
             toast.error("附件路径无效，未添加文件");
             return;
           }
+          const images = paths.filter(isImagePath);
+          const embedded =
+            images.length &&
+            richEditor.current?.insertPaths(images, {
+              x: event.payload.position.x / window.devicePixelRatio,
+              y: event.payload.position.y / window.devicePixelRatio,
+            });
+          const attached = embedded
+            ? paths.filter((path) => !isImagePath(path))
+            : paths;
+          if (!attached.length) return;
           setValue((current) =>
             current?.id === id
               ? {
                   ...current,
-                  attachments: mergeAttachmentPaths(current.attachments, paths),
+                  attachments: mergeAttachmentPaths(
+                    current.attachments,
+                    attached,
+                  ),
                 }
               : current,
           );
@@ -251,6 +275,8 @@ export function ComposeDialog({
     setSignatureError("");
     setForwardError("");
     setForwardLoading(false);
+    imageBusy.current = false;
+    setImageLoading(false);
     setExtra(!!draft?.cc || !!draft?.bcc);
     setExpanded(false);
     setPlanning(false);
@@ -331,6 +357,10 @@ export function ComposeDialog({
   }
   async function close() {
     if (sending || closingNow.current) return;
+    if (imageBusy.current) {
+      toast.info("正文图片正在读取，请稍后关闭");
+      return;
+    }
     const current = latest.current;
     closingNow.current = true;
     setClosing(true);
@@ -380,6 +410,10 @@ export function ComposeDialog({
     }
   }
   async function valid() {
+    if (imageBusy.current) {
+      toast.error("正文图片正在读取，请稍后发送");
+      return false;
+    }
     if (forwardLoading || value?.forwardSource) {
       toast.error("原附件尚未准备完成，请重试或选择不携带原附件");
       return false;
@@ -465,7 +499,7 @@ export function ComposeDialog({
     }
   }
   function changeFormat(format: ComposeFormat) {
-    if (!value) return;
+    if (!value || imageBusy.current) return;
     const prepared = prepareEditorCompose(value);
     if (format === "plain")
       update({ format, body: prepared.body, html: "", source: "" });
@@ -575,7 +609,7 @@ export function ComposeDialog({
                 variant="ghost"
                 size="icon-sm"
                 aria-label={hasContent ? "保存草稿并关闭" : "舍弃空白邮件"}
-                disabled={sending || closing}
+                disabled={sending || closing || imageLoading}
                 onClick={() => void close()}
               >
                 <X size={18} />
@@ -735,22 +769,57 @@ export function ComposeDialog({
                 className={`compose-editor ${(format === "markdown" || format === "html") && preview ? "source-with-preview" : ""}`}
               >
                 {format === "rich" ? (
-                  <Suspense
-                    fallback={
-                      <div className="editor-loading">
-                        <LoaderCircle className="animate-spin" size={18} />
-                        正在加载编辑器…
-                      </div>
-                    }
-                  >
-                    <RichEditor
-                      key={`${value.id}-${format}`}
-                      body={value.body}
-                      html={value.html || textToHtml(value.body)}
-                      disabled={sending || closing || countdown !== null}
-                      onChange={(body, html) => update({ body, html })}
-                    />
-                  </Suspense>
+                  <RichEditorBoundary key={value.id}>
+                    <Suspense
+                      fallback={
+                        <div className="editor-loading">
+                          <LoaderCircle className="animate-spin" size={18} />
+                          正在加载编辑器…
+                        </div>
+                      }
+                    >
+                      <RichEditor
+                        ref={richEditor}
+                        dark={dark}
+                        onToggleTheme={onToggleTheme}
+                        key={`${value.id}-${format}`}
+                        body={value.body}
+                        html={value.html || textToHtml(value.body)}
+                        disabled={sending || closing || countdown !== null}
+                        onChange={(body, html) => update({ body, html })}
+                        onBusy={(busy) => {
+                          imageBusy.current = busy;
+                          setImageLoading(busy);
+                        }}
+                        readImages={async (paths) => {
+                          const id = value.id;
+                          const lease = session.current;
+                          if (
+                            !native ||
+                            isDemo() ||
+                            !lease ||
+                            lease.id !== id ||
+                            interactionLocked.current
+                          )
+                            throw new Error(
+                              "正文图片只能在当前桌面写信窗口读取",
+                            );
+                          const token = await lease.promise;
+                          if (
+                            latest.current?.id !== id ||
+                            closingNow.current ||
+                            interactionLocked.current
+                          )
+                            throw new Error("写信窗口已关闭或提交");
+                          return call<BodyImage[]>("read_body_images", {
+                            id,
+                            token,
+                            paths,
+                          });
+                        }}
+                      />
+                    </Suspense>
+                  </RichEditorBoundary>
                 ) : format === "markdown" || format === "html" ? (
                   <>
                     <Textarea
@@ -976,6 +1045,7 @@ export function ComposeDialog({
                   sending ||
                   closing ||
                   forwardLoading ||
+                  imageLoading ||
                   !!value.forwardSource ||
                   isDemo() ||
                   !native
@@ -1009,6 +1079,7 @@ export function ComposeDialog({
                   sending ||
                   closing ||
                   forwardLoading ||
+                  imageLoading ||
                   !!value.forwardSource ||
                   countdown !== null ||
                   (!native && !isDemo())

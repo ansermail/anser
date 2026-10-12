@@ -8,34 +8,64 @@ import {
 } from "./ui/dialog";
 import { FieldGroup, Field, FieldLabel, FieldError } from "./ui/field";
 import { Input } from "./ui/input";
-import { useEffect, useState } from "react";
-import { EditorContent, useEditor, useEditorState } from "@tiptap/react";
-import StarterKit from "@tiptap/starter-kit";
 import {
-  Bold,
-  Italic,
-  Underline,
-  List,
-  ListOrdered,
-  Link,
-  Quote,
-  Undo2,
-} from "lucide-react";
+  useEffect,
+  useState,
+  useRef,
+  useImperativeHandle,
+  type Ref,
+} from "react";
+import { useEditor } from "@tiptap/react";
+import type { Editor } from "@tiptap/core";
+import { richExtensions } from "@/lib/rich-extensions";
+import { RichToolbar } from "./rich-toolbar";
+import { RichImageControls } from "./rich-image-controls";
+import type { Transaction } from "@tiptap/pm/state";
 import DOMPurify from "dompurify";
 import { Button } from "./ui/button";
 import { textToHtml } from "@/lib/compose-format";
+import { native, isDemo } from "@/lib/api";
+import { toast } from "sonner";
+import { TooltipProvider } from "./ui/tooltip";
+import {
+  readBodyImage,
+  inlineImageBytes,
+  isImagePath,
+  type BodyImage,
+} from "@/lib/rich-body";
+
+export type RichEditorHandle = {
+  insertPaths: (paths: string[], point: { x: number; y: number }) => boolean;
+};
 
 export function RichEditor({
   body,
   html,
   disabled,
   onChange,
+  onBusy,
+  readImages,
+  ref,
+  dark = false,
+  onToggleTheme,
 }: {
   body: string;
   html: string;
   disabled: boolean;
   onChange: (body: string, html: string) => void;
+  onBusy: (busy: boolean) => void;
+  readImages: (paths: string[]) => Promise<BodyImage[]>;
+  ref?: Ref<RichEditorHandle>;
+  dark?: boolean;
+  onToggleTheme?: () => void;
 }) {
+  const [imageBusy, setImageBusy] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(false);
+  const latest = useRef({ disabled, onBusy, readImages });
+  latest.current = { disabled, onBusy, readImages };
+  const busy = useRef(false);
+  const alive = useRef(true);
+  const instance = useRef<Editor | null>(null);
   const [linkDialog, setLinkDialog] = useState<{
     from: number;
     to: number;
@@ -43,12 +73,7 @@ export function RichEditor({
   const [href, setHref] = useState("");
   const [linkError, setLinkError] = useState("");
   const editor = useEditor({
-    extensions: [
-      StarterKit.configure({
-        link: { openOnClick: false, protocols: ["http", "https", "mailto"] },
-        heading: { levels: [1, 2, 3] },
-      }),
-    ],
+    extensions: richExtensions(),
     content: html || textToHtml(body),
     editorProps: {
       attributes: {
@@ -57,6 +82,56 @@ export function RichEditor({
         "aria-label": "邮件正文",
         "aria-multiline": "true",
       },
+      handleKeyDown: (_view, event) => {
+        if (
+          (event.metaKey || event.ctrlKey) &&
+          event.key.toLowerCase() === "f" &&
+          !event.altKey &&
+          !event.shiftKey &&
+          !event.isComposing &&
+          !latest.current.disabled
+        ) {
+          event.preventDefault();
+          setSearchOpen(true);
+          return true;
+        }
+        return false;
+      },
+      transformPastedHTML: (html) => DOMPurify.sanitize(html),
+      handlePaste: (_view, event) => {
+        const files = [...(event.clipboardData?.files || [])].filter((file) =>
+          file.type.startsWith("image/"),
+        );
+        if (!files.length) return false;
+        if (
+          files.length > 20 ||
+          files.reduce((sum, file) => sum + file.size, 0) > 50 * 1024 * 1024
+        ) {
+          toast.error("每次最多插入20张图片，总大小不能超过50 MB");
+          return true;
+        }
+        void insertImages(() => Promise.all(files.map(readBodyImage)));
+        return true;
+      },
+      handleDrop: (view, event, _slice, moved) => {
+        const files = [...(event.dataTransfer?.files || [])].filter(
+          (file) => file.type.startsWith("image/") || isImagePath(file.name),
+        );
+        if (moved || !files.length) return false;
+        if (
+          files.length > 20 ||
+          files.reduce((sum, file) => sum + file.size, 0) > 50 * 1024 * 1024
+        ) {
+          toast.error("每次最多插入20张图片，总大小不能超过50 MB");
+          return true;
+        }
+        const pos = view.posAtCoords({
+          left: event.clientX,
+          top: event.clientY,
+        })?.pos;
+        void insertImages(() => Promise.all(files.map(readBodyImage)), pos);
+        return true;
+      },
     },
     onUpdate: ({ editor }) =>
       onChange(
@@ -64,177 +139,217 @@ export function RichEditor({
         DOMPurify.sanitize(editor.getHTML()),
       ),
   });
+  instance.current = editor;
+  async function insertImages(load: () => Promise<BodyImage[]>, pos?: number) {
+    const editor = instance.current;
+    if (!native || isDemo()) {
+      toast.info("请在桌面客户端中插入正文图片");
+      return;
+    }
+    if (
+      !editor ||
+      editor.isDestroyed ||
+      latest.current.disabled ||
+      busy.current
+    )
+      return;
+    busy.current = true;
+    setImageBusy(true);
+    latest.current.onBusy(true);
+    let bookmark = editor.state.selection.getBookmark();
+    if (pos !== undefined) {
+      editor.commands.setTextSelection(pos);
+      bookmark = editor.state.selection.getBookmark();
+    }
+    const map = ({ transaction }: { transaction: Transaction }) => {
+      bookmark = bookmark.map(transaction.mapping);
+    };
+    editor.on("transaction", map);
+    try {
+      const images = await load();
+      if (
+        !images.length ||
+        !alive.current ||
+        editor.isDestroyed ||
+        latest.current.disabled
+      )
+        return;
+      inlineImageBytes(editor.getHTML(), images);
+      const selection = bookmark.resolve(editor.state.doc);
+      editor
+        .chain()
+        .focus()
+        .command(({ tr }) => {
+          tr.setSelection(selection);
+          return true;
+        })
+        .insertContent(
+          images.map((image) => ({
+            type: "image",
+            attrs: { src: image.src, alt: image.name },
+          })),
+        )
+        .run();
+    } catch (error) {
+      if (alive.current && !editor.isDestroyed)
+        toast.error(`正文图片未插入：${String(error)}`);
+    } finally {
+      editor.off("transaction", map);
+      busy.current = false;
+      if (alive.current) {
+        setImageBusy(false);
+        latest.current.onBusy(false);
+      }
+    }
+  }
+  useImperativeHandle(ref, () => ({
+    insertPaths(paths, point) {
+      const rect = editor?.view.dom.getBoundingClientRect();
+      if (
+        !rect ||
+        point.x < rect.left ||
+        point.x > rect.right ||
+        point.y < rect.top ||
+        point.y > rect.bottom
+      )
+        return false;
+      const pos = editor?.view.posAtCoords({
+        left: point.x,
+        top: point.y,
+      })?.pos;
+      void insertImages(() => latest.current.readImages(paths), pos);
+      return true;
+    },
+  }));
   useEffect(() => {
-    editor?.setEditable(!disabled);
+    alive.current = true;
+    return () => {
+      alive.current = false;
+      latest.current.onBusy(false);
+    };
+  }, []);
+  useEffect(() => {
+    editor?.setEditable(!disabled, false);
   }, [editor, disabled]);
-  const state = useEditorState({
-    editor,
-    selector: ({ editor }) => ({
-      bold: editor?.isActive("bold"),
-      italic: editor?.isActive("italic"),
-      underline: editor?.isActive("underline"),
-      bullet: editor?.isActive("bulletList"),
-      ordered: editor?.isActive("orderedList"),
-      quote: editor?.isActive("blockquote"),
-      link: editor?.isActive("link"),
-    }),
-  });
   if (!editor) return null;
-  const tools = [
-    {
-      name: "加粗",
-      icon: Bold,
-      active: state?.bold,
-      run: () => editor.chain().focus().toggleBold().run(),
-    },
-    {
-      name: "斜体",
-      icon: Italic,
-      active: state?.italic,
-      run: () => editor.chain().focus().toggleItalic().run(),
-    },
-    {
-      name: "下划线",
-      icon: Underline,
-      active: state?.underline,
-      run: () => editor.chain().focus().toggleUnderline().run(),
-    },
-    {
-      name: "无序列表",
-      icon: List,
-      active: state?.bullet,
-      run: () => editor.chain().focus().toggleBulletList().run(),
-    },
-    {
-      name: "有序列表",
-      icon: ListOrdered,
-      active: state?.ordered,
-      run: () => editor.chain().focus().toggleOrderedList().run(),
-    },
-    {
-      name: "引用",
-      icon: Quote,
-      active: state?.quote,
-      run: () => editor.chain().focus().toggleBlockquote().run(),
-    },
-    {
-      name: "插入链接",
-      icon: Link,
-      active: state?.link,
-      run: () => {
-        setHref(editor.getAttributes("link").href || "https://");
-        setLinkError("");
-        setLinkDialog({
-          from: editor.state.selection.from,
-          to: editor.state.selection.to,
-        });
-      },
-    },
-    {
-      name: "撤销编辑",
-      icon: Undo2,
-      active: false,
-      run: () => editor.chain().focus().undo().run(),
-    },
-  ];
   return (
-    <div className="rich-editor">
-      <div className="format-toolbar" role="toolbar" aria-label="正文格式">
-        {tools.map((t) => (
-          <Button
-            key={t.name}
-            type="button"
-            variant="ghost"
-            size="icon-sm"
-            title={t.name}
-            aria-label={t.name}
-            aria-pressed={!!t.active}
-            disabled={disabled}
-            onClick={t.run}
-          >
-            <t.icon size={15} />
-          </Button>
-        ))}
-      </div>
-      <EditorContent editor={editor} />
-      <Dialog
-        open={!!linkDialog}
-        onOpenChange={(open) => {
-          if (!open) setLinkDialog(null);
-        }}
-      >
-        <DialogContent
-          onCloseAutoFocus={(e) => {
-            e.preventDefault();
-            editor.commands.focus();
+    <TooltipProvider>
+      <div className="rich-editor">
+        <RichToolbar
+          dark={dark}
+          onToggleTheme={onToggleTheme}
+          editor={editor}
+          disabled={disabled}
+          imageBusy={imageBusy}
+          searchOpen={searchOpen}
+          onSearchOpen={setSearchOpen}
+          onLink={() => {
+            setHref(editor.getAttributes("link").href || "https://");
+            setLinkError("");
+            setLinkDialog({
+              from: editor.state.selection.from,
+              to: editor.state.selection.to,
+            });
+          }}
+          onImage={() =>
+            void insertImages(async () => {
+              const { open } = await import("@tauri-apps/plugin-dialog");
+              const selected = await open({
+                multiple: true,
+                filters: [
+                  {
+                    name: "正文图片",
+                    extensions: ["png", "jpg", "jpeg", "gif", "webp"],
+                  },
+                ],
+              });
+              if (!selected) return [];
+              return latest.current.readImages(
+                Array.isArray(selected) ? selected : [selected],
+              );
+            })
+          }
+        />
+        <RichImageControls editor={editor} disabled={disabled || imageBusy} />
+        <Dialog
+          open={!!linkDialog}
+          onOpenChange={(open) => {
+            if (!open) setLinkDialog(null);
           }}
         >
-          <DialogHeader>
-            <DialogTitle>插入链接</DialogTitle>
-            <DialogDescription>
-              支持网页和邮箱地址。留空可移除当前链接。
-            </DialogDescription>
-          </DialogHeader>
-          <form
-            onSubmit={(e) => {
+          <DialogContent
+            onCloseAutoFocus={(e) => {
               e.preventDefault();
-              const url = href.trim();
-              if (url) {
-                try {
-                  if (
-                    !["http:", "https:", "mailto:"].includes(
-                      new URL(url).protocol,
-                    )
-                  )
-                    throw new Error();
-                } catch {
-                  setLinkError("请输入有效的 http、https 或 mailto 链接");
-                  return;
-                }
-              }
-              if (!linkDialog || disabled) return;
-              const chain = editor
-                .chain()
-                .focus()
-                .setTextSelection(linkDialog)
-                .extendMarkRange("link");
-              if (url) chain.setLink({ href: url }).run();
-              else chain.unsetLink().run();
-              setLinkDialog(null);
+              editor.commands.focus();
             }}
           >
-            <FieldGroup>
-              <Field data-invalid={!!linkError}>
-                <FieldLabel htmlFor="rich-link-url">链接地址</FieldLabel>
-                <Input
-                  id="rich-link-url"
-                  autoFocus
-                  value={href}
-                  aria-invalid={!!linkError}
-                  disabled={disabled}
-                  onChange={(e) => {
-                    setHref(e.target.value);
-                    setLinkError("");
-                  }}
-                />
-                {linkError && <FieldError>{linkError}</FieldError>}
-              </Field>
-              <DialogFooter>
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => setLinkDialog(null)}
-                >
-                  取消
-                </Button>
-                <Button type="submit" disabled={disabled}>
-                  保存链接
-                </Button>
-              </DialogFooter>
-            </FieldGroup>
-          </form>
-        </DialogContent>
-      </Dialog>
-    </div>
+            <DialogHeader>
+              <DialogTitle>插入链接</DialogTitle>
+              <DialogDescription>
+                支持网页和邮箱地址。留空可移除当前链接。
+              </DialogDescription>
+            </DialogHeader>
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                const url = href.trim();
+                if (url) {
+                  try {
+                    if (
+                      !["http:", "https:", "mailto:"].includes(
+                        new URL(url).protocol,
+                      )
+                    )
+                      throw new Error();
+                  } catch {
+                    setLinkError("请输入有效的 http、https 或 mailto 链接");
+                    return;
+                  }
+                }
+                if (!linkDialog || disabled) return;
+                const chain = editor
+                  .chain()
+                  .focus()
+                  .setTextSelection(linkDialog)
+                  .extendMarkRange("link");
+                if (url) chain.setLink({ href: url }).run();
+                else chain.unsetLink().run();
+                setLinkDialog(null);
+              }}
+            >
+              <FieldGroup>
+                <Field data-invalid={!!linkError}>
+                  <FieldLabel htmlFor="rich-link-url">链接地址</FieldLabel>
+                  <Input
+                    id="rich-link-url"
+                    autoFocus
+                    value={href}
+                    aria-invalid={!!linkError}
+                    disabled={disabled}
+                    onChange={(e) => {
+                      setHref(e.target.value);
+                      setLinkError("");
+                    }}
+                  />
+                  {linkError && <FieldError>{linkError}</FieldError>}
+                </Field>
+                <DialogFooter>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => setLinkDialog(null)}
+                  >
+                    取消
+                  </Button>
+                  <Button type="submit" disabled={disabled}>
+                    保存链接
+                  </Button>
+                </DialogFooter>
+              </FieldGroup>
+            </form>
+          </DialogContent>
+        </Dialog>
+      </div>
+    </TooltipProvider>
   );
 }

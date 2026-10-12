@@ -1113,12 +1113,12 @@ describe("reading unread mail within its current category", () => {
         ) ?? null,
       );
       expect(
-        (
-          document.querySelector(
-            'textarea[aria-label="邮件正文"]',
-          ) as HTMLTextAreaElement
-        ).value,
-      ).toBe("");
+        document.querySelector('button[aria-label="正文格式"]')?.textContent,
+      ).toContain("富文本");
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 20));
+      });
+      expect(document.querySelector(".rich-body")?.textContent).toBe("");
       const toggle = document.querySelector(
         '[role="switch"]',
       ) as HTMLButtonElement;
@@ -1271,6 +1271,7 @@ describe("reading unread mail within its current category", () => {
         ...api.newDraft(mail.accountId),
         replyAnchorId: mail.id,
         body: "Previously saved text",
+        format: "plain",
       },
     });
     await click(host.querySelector("button.mail-row-main"));

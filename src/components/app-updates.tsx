@@ -1,4 +1,11 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type MouseEvent,
+} from "react";
 import { version as buildVersion } from "../../package.json";
 import { getVersion } from "@tauri-apps/api/app";
 import { invoke, isTauri } from "@tauri-apps/api/core";
@@ -23,6 +30,7 @@ import {
 } from "./ui/dialog";
 import { Progress } from "./ui/progress";
 import { Alert, AlertDescription } from "./ui/alert";
+import { externalUrl, renderReleaseNotes } from "../lib/release-notes";
 
 const releasePage = "https://github.com/ansermail/anser/releases";
 type Phase =
@@ -188,6 +196,29 @@ export function useAppUpdate() {
 }
 type Updates = ReturnType<typeof useAppUpdate>;
 
+function ReleaseNotes({ body, native }: { body: string; native: boolean }) {
+  const html = useMemo(() => renderReleaseNotes(body), [body]);
+  const openLink = (event: MouseEvent<HTMLDivElement>) => {
+    if (!native) return;
+    const target = event.target;
+    const anchor = target instanceof Element ? target.closest("a[href]") : null;
+    if (!anchor || !event.currentTarget.contains(anchor)) return;
+    event.preventDefault();
+    const url = externalUrl(anchor.getAttribute("href") || "");
+    if (url)
+      void invoke("open_mail_link", { url }).catch((error) =>
+        toast.error(`无法打开更新说明链接：${String(error)}`),
+      );
+  };
+  return (
+    <div
+      className="release-notes min-h-0 overflow-y-auto text-sm leading-relaxed"
+      onClick={openLink}
+      dangerouslySetInnerHTML={{ __html: html }}
+    />
+  );
+}
+
 export function UpdateIndicator({ updates }: { updates: Updates }) {
   if (!updates.update) return null;
   return (
@@ -294,14 +325,17 @@ export function UpdateDialog({
               : `当前版本 ${u.version || "—"}`}
           </DialogDescription>
         </DialogHeader>
-        <div className="min-h-0 overflow-y-auto whitespace-pre-wrap text-sm leading-relaxed">
-          {u.update?.body ||
-            (u.phase === "checking"
+        {u.update?.body ? (
+          <ReleaseNotes body={u.update.body} native={u.native} />
+        ) : (
+          <div className="min-h-0 overflow-y-auto text-sm leading-relaxed">
+            {u.phase === "checking"
               ? "正在检查更新…"
               : u.error
                 ? "暂时无法获取更新信息。"
-                : "当前没有可用更新。")}
-        </div>
+                : "当前没有可用更新。"}
+          </div>
+        )}
         {u.preview && (
           <Alert>
             <AlertDescription>
@@ -344,7 +378,7 @@ export function UpdateDialog({
             variant="outline"
             onClick={() =>
               void invoke("open_mail_link", { url: releasePage }).catch(
-                () => {},
+                (error) => toast.error(`无法打开发布页：${String(error)}`),
               )
             }
             disabled={!u.native || locked}

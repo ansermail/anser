@@ -481,7 +481,6 @@ SQLite 只在本机计数时短读；网络和 fs2 可用空间查询不持有�
 
 新增模拟 socket 回归覆盖正文与邮件头 literal 中途、完整正文后的 tagged 回执等待、普通断线、EOF 后禁止命令、原件/日期/标记/来源保留和新连接续收；注册竞态、正常 drop、unwind 和账号/目录/存储隔离另有覆盖。真实大附件繁忙到达/网络睡眠矩阵仍保留待验收。
 
-
 ## 2026-10-10 列表跨时区排序与未读标识修复
 
 原生 snapshot 先用 SQLite `julianday(date) DESC, id ASC` 排序，再汇总对话与截取返回范围；RFC3339 日期的时区偏移参与实际时间换算，不能按字符串比较。无效时间置后，同时间用 ID 稳定排列。对话阅读使用 chrono RFC3339 解析后比较时间，仍从旧到新显示。原件、原始日期字符串、来源和标记不修改，不需要数据迁移。
@@ -535,3 +534,11 @@ build_prepared_message先读取并校验归属/元信息/length/hash，沿用50M
 拖拽采用[官方Webview.onDragDropEvent](https://v2.tauri.app/reference/javascript/api/namespacewebview/#ondragdropevent)及已安装type声明，physical坐标按devicePixelRatio核对当前Dialog边界，生命周期解绑；窗口状态和草稿ID保护丢弃迟到返回。Pages alias/stub与native/isDemo守卫不提供真文件功能。
 
 代码/227前端/305Rust与8副本专项通过，但原生视觉、系统实际拖拽、双邮箱实际附件转发与重启/定时边界未完成；工作点ATTACHMENTS_NEXT_WORKING.md，版本仍0.1.10、工作分支未发布。
+
+## 2026-10-12：富文本正文与紧凑工具条（开发分支）
+
+Tiptap 3.31.3/ProseMirror引擎继续按需加载。使用官方Image、TextStyle/FontFamily/FontSize、Highlight、上下标、TextAlign、TaskList/TaskItem与MIT FindAndReplace（RE2正则），shadcn DropdownMenu/Toggle/ToggleGroup/Popover组合业务工具条。标题/字体/字号/列表使用图标菜单，菜单/查找面板密度只作用于本编辑器的Portal内容，不改变全应用菜单。选择结束恢复正文焦点，字体识别兼容浏览器CSS序列化引号。新完整草稿format=rich，旧草稿及独立快速回复保留原有格式。
+
+图片读取分浏览器FileReader粘贴/拖入与原生read_body_images会话接口；按字节识别四种位图、 bounded读取/预算校验，文件读取在SQLite写事务外，完成再次核对窗口租约和发送状态。编辑器异步结果核对存活/可编辑状态，并用transaction mapping恢复图片插入选区。正文独立data URI快照继续由既有发送层转cid及related MIME；不写入真实存档原件、不调用上传服务。发送前清理任务列表输入控件为静态勾选标识，草稿保持编辑结构。Pages拒绝真实读取，编辑器错误边界保留父级草稿。
+
+本轮249前端全量、307Rust（1性能项忽略）、最新8项相关回归、UI/生产/Pages构建通过。原生工具条选择虚构PNG并保存草稿通过；原生粘贴/拖拽/重开和真实收发不标记通过。详细接续见RICH_BODY_WORKING.md，版本仍0.1.11，未发布新包。

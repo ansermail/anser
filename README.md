@@ -8,7 +8,7 @@
 
 [下载最新版本](https://github.com/ansermail/anser/releases/latest) · [界面预览](https://ansermail.github.io/anser/) · [使用说明](docs/USAGE.md) · [开发进度](docs/DEVELOPMENT_STATUS.md) · [反馈问题](https://github.com/ansermail/anser/issues)
 
-> 当前版本为 **0.1.11 Alpha**，支持 Apple Silicon 与 Intel Mac。核心功能已实现，长期稳定性、部分服务商兼容性及完整发布验收仍在持续完善。
+> 当前已发布版本为 **0.1.11 Alpha**；**0.1.12 Alpha** 正在准备双架构发布。支持 Apple Silicon 与 Intel Mac，长期稳定性、部分服务商兼容性及完整发布验收仍在持续完善。
 
 ![雁信的多账号收件箱与邮件阅读界面](docs/screenshots/inbox-demo.png)
 
@@ -21,6 +21,8 @@ _所有展示截图均来自浏览器演示模式，使用项目内置的虚构�
 0.1.10 已由 GitHub 双架构构建并发布，增加本地全文候选索引、日期筛选和正文检索范围说明；逐封与对话列表改为固定页，解除累计 5000 条限制，并支持远距离连续阅读。完整本地保存、规则、附件预览及 Finder 打开 EML 保留。真实繁忙收件、部分服务商兼容性和正式升级仍在验收。
 
 0.1.11 增加原附件转发与逐项选择、原生文件拖拽及阅读快捷键，并修复筛选菜单层级、日期入口和 HTML 表格窄列排版。双架构安装包与更新资源已核验发布；真实大附件、故障矩阵及原位升级仍独立验收。
+
+0.1.12 候选增加完整写信默认富文本、正文图片与中英文字体工具，修复图片右键菜单、图片内文字误选和输入选区对比度；更新中心可排版 Markdown 发布说明。真实互发、草稿重开与原位升级安排独立验收，发布状态以 [GitHub Releases](https://github.com/ansermail/anser/releases/latest) 为准。
 
 ## 主要功能
 

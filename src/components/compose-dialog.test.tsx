@@ -78,6 +78,7 @@ beforeEach(async () => {
   });
   seed = {
     ...newDraft(data.accounts[0].id),
+    format: "plain",
     to: "receiver@example.com",
     subject: "Source test",
   };
@@ -394,7 +395,11 @@ describe("empty drafts", () => {
     ).toBe("recipient@example.com");
   });
   it("waits for an in-flight autosave before deleting content that was cleared, so the draft cannot reappear", async () => {
-    seed = { ...newDraft(seed.accountId), id: "blank-after-edit" };
+    seed = {
+      ...newDraft(seed.accountId),
+      format: "plain",
+      id: "blank-after-edit",
+    };
     await renderHarness();
     const original = api.call;
     let finishSave!: () => Promise<void>;

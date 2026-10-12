@@ -57,7 +57,7 @@ describe("mail source formats", () => {
     expect(
       composeFormat({ ...newDraft("account"), html: "<p>old rich draft</p>" }),
     ).toBe("rich");
-    expect(composeFormat(newDraft("account"))).toBe("plain");
+    expect(composeFormat(newDraft("account"))).toBe("rich");
   });
   it("preserves original HTML tables, CSS, body attributes and images outside the editor", () => {
     const draft = {
