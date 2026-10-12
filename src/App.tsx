@@ -20,6 +20,12 @@ import {
   CollapsibleContent,
 } from "./components/ui/collapsible";
 import { Skeleton } from "./components/ui/skeleton";
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuTrigger,
+} from "./components/ui/context-menu";
 import { Separator } from "./components/ui/separator";
 import { FolderHealthPanel } from "./components/folder-health";
 import { Alert, AlertTitle, AlertDescription } from "./components/ui/alert";
@@ -656,6 +662,8 @@ export default function App() {
     accountId = "",
     folder = "",
     remoteFolder = "",
+    remoteFolderTree = false,
+    remoteFolderDelimiter = "",
   ) {
     setPage("mail");
     setSearch("");
@@ -666,6 +674,8 @@ export default function App() {
       accountId,
       folder,
       remoteFolder,
+      remoteFolderTree,
+      remoteFolderDelimiter,
       search: "",
       limit: 200,
       unreadOnly: false,
@@ -1048,13 +1058,34 @@ export default function App() {
     }
     setSyncing(true);
     try {
-      const n =
-        query.remoteFolder && query.accountId
-          ? await call<number>("sync_remote_folder", {
-              id: query.accountId,
-              folder: query.remoteFolder,
-            })
-          : await call<number>("sync_mail");
+      let n: number;
+      if (query.remoteFolderTree && query.accountId && query.remoteFolder) {
+        const prefix = query.remoteFolder + query.remoteFolderDelimiter;
+        const children = (
+          loadedFolders[query.accountId] || serverFolders
+        ).filter(
+          (folder) =>
+            folder.accountId === query.accountId &&
+            folder.selectable &&
+            !folder.syncError &&
+            (folder.name === query.remoteFolder ||
+              (!!query.remoteFolderDelimiter &&
+                folder.name.startsWith(prefix))),
+        );
+        n = 0;
+        for (const folder of children)
+          n += await call<number>("sync_remote_folder", {
+            id: query.accountId,
+            folder: folder.name,
+          });
+      } else if (query.remoteFolder && query.accountId) {
+        n = await call<number>("sync_remote_folder", {
+          id: query.accountId,
+          folder: query.remoteFolder,
+        });
+      } else {
+        n = await call<number>("sync_mail");
+      }
       toast.success(`收取完成，新增 ${n} 封邮件`);
     } catch (e) {
       toast.error(String(e), { duration: 8000 });
@@ -1188,6 +1219,7 @@ export default function App() {
         ...all.filter((f) => f.accountId !== id),
         ...folders,
       ]);
+      await refresh();
     } catch (e) {
       setFolderErrors((errors) => ({ ...errors, [id]: String(e) }));
     } finally {
@@ -1199,9 +1231,14 @@ export default function App() {
       (folder) => folder.accountId === accountId && folder.name === name,
     );
   }
-  async function openRemoteFolder(accountId: string, folder: string) {
-    navigate("remote", accountId, "", folder);
-    if (demo || remoteFolder(accountId, folder)?.syncError) return;
+  async function openRemoteFolder(
+    accountId: string,
+    folder: string,
+    tree = false,
+    delimiter = "",
+  ) {
+    navigate("remote", accountId, "", folder, tree, delimiter);
+    if (demo || tree || remoteFolder(accountId, folder)?.syncError) return;
     try {
       await call("sync_remote_folder", { id: accountId, folder });
       await refresh();
@@ -1215,7 +1252,11 @@ export default function App() {
           const folder = remoteFolder(query.accountId, query.remoteFolder);
           return folder ? remoteFolderLabel(folder) : query.remoteFolder;
         })()
-      : query.folder || activeAccount?.name || viewNames[query.view];
+      : query.folder ||
+        (query.view === "starred" && query.accountId
+          ? "星标邮件"
+          : activeAccount?.name) ||
+        viewNames[query.view];
   const nav = (view: string, Icon: typeof Inbox, count?: number) => (
     <Button
       variant="ghost"
@@ -1422,9 +1463,33 @@ export default function App() {
                                   ? query.remoteFolder || ""
                                   : ""
                               }
-                              onSelect={(name) =>
-                                void openRemoteFolder(a.id, name)
+                              selectedTree={!!query.remoteFolderTree}
+                              starredSelected={
+                                query.accountId === a.id &&
+                                query.view === "starred"
                               }
+                              unread={Object.fromEntries(
+                                (data.remoteFolderUnread || [])
+                                  .filter((count) => count.accountId === a.id)
+                                  .map((count) => [
+                                    count.name,
+                                    { direct: count.direct, tree: count.tree },
+                                  ]),
+                              )}
+                              starredUnread={
+                                data.accountStarredUnread?.find(
+                                  (count) => count.accountId === a.id,
+                                )?.unread || 0
+                              }
+                              onSelect={(name, tree, delimiter) =>
+                                void openRemoteFolder(
+                                  a.id,
+                                  name,
+                                  tree,
+                                  delimiter,
+                                )
+                              }
+                              onSelectStarred={() => navigate("starred", a.id)}
                             />
                           )}
                         </>
@@ -1886,16 +1951,17 @@ export default function App() {
                       />
                     </Button>
                   </div>
-                  {remoteFolder(query.accountId, query.remoteFolder || "")
-                    ?.syncError && (
-                    <Alert className="mx-4 w-auto">
-                      <AlertCircle />
-                      <AlertTitle>目录来源已隔离</AlertTitle>
-                      <AlertDescription>
-                        此目录的服务器响应不可靠。旧来源已暂停使用，本地存档仍可在“本地存档”中查看。请到设置与账号重新核查。
-                      </AlertDescription>
-                    </Alert>
-                  )}
+                  {!query.remoteFolderTree &&
+                    remoteFolder(query.accountId, query.remoteFolder || "")
+                      ?.syncError && (
+                      <Alert className="mx-4 w-auto">
+                        <AlertCircle />
+                        <AlertTitle>目录来源已隔离</AlertTitle>
+                        <AlertDescription>
+                          此目录的服务器响应不可靠。旧来源已暂停使用，本地存档仍可在“本地存档”中查看。请到设置与账号重新核查。
+                        </AlertDescription>
+                      </Alert>
+                    )}
                   <div className="mail-search-row">
                     <div className="search-box">
                       <Search size={16} />
@@ -2067,77 +2133,93 @@ export default function App() {
                       <MailListSkeleton />
                     ) : data.messages.length ? (
                       data.messages.map((m) => (
-                        <div
-                          key={m.id}
-                          className={`mail-row ${selected === m.id || (grouped && !!m.conversationId && m.conversationId === detail?.mail.conversationId) ? "selected" : ""} ${!m.isRead ? "unread" : ""}`}
-                        >
-                          <div className="row-check">
-                            <Checkbox
-                              aria-label={`选择 ${m.subject}`}
-                              checked={checked.includes(m.id)}
-                              onCheckedChange={(v) =>
-                                setChecked((ids) =>
-                                  v
-                                    ? [...ids, m.id]
-                                    : ids.filter((id) => id !== m.id),
-                                )
-                              }
-                            />
-                          </div>
-                          <Button
-                            variant="ghost"
-                            className="mail-row-main"
-                            onClick={() => void openMail(m)}
-                          >
-                            <div className="row-top">
-                              <span className="sender-name">
-                                {senderName(m.sender)}
-                              </span>
-                              <time dateTime={m.date}>{time(m.date)}</time>
-                            </div>
-                            <div className="row-subject">
-                              {!m.isRead && (
-                                <i aria-label="未读" title="未读" />
-                              )}
-                              <span className="row-subject-text">
-                                {m.subject}
-                              </span>
-                              {grouped && (m.conversationCount || 0) > 1 && (
-                                <Badge
-                                  variant="secondary"
-                                  className="conversation-count"
-                                >
-                                  {m.conversationCount}
-                                </Badge>
-                              )}
-                            </div>
-                            <p>{m.preview}</p>
-                            <div className="row-meta">
-                              <span
-                                className={`mini-dot color-${data.accounts.findIndex((a) => a.id === m.accountId) % 4}`}
-                                aria-hidden="true"
-                                title="邮箱颜色标识"
-                              />
-                              <span>
-                                {data.accounts.find((a) => a.id === m.accountId)
-                                  ?.name || "已移除账号"}
-                              </span>
-                              {m.localFolder !== "全部存档" && (
-                                <small>{m.localFolder}</small>
-                              )}
-                              <span className="row-spacer" />
-                              {m.starred && (
-                                <Star size={13} className="star-on" />
-                              )}
-                              {m.hasAttachments && (
-                                <Paperclip
-                                  className="size-3 shrink-0"
-                                  aria-label="包含附件"
+                        <ContextMenu key={m.id}>
+                          <ContextMenuTrigger asChild>
+                            <div
+                              key={m.id}
+                              className={`mail-row ${selected === m.id || (grouped && !!m.conversationId && m.conversationId === detail?.mail.conversationId) ? "selected" : ""} ${!m.isRead ? "unread" : ""}`}
+                            >
+                              <div className="row-check">
+                                <Checkbox
+                                  aria-label={`选择 ${m.subject}`}
+                                  checked={checked.includes(m.id)}
+                                  onCheckedChange={(v) =>
+                                    setChecked((ids) =>
+                                      v
+                                        ? [...ids, m.id]
+                                        : ids.filter((id) => id !== m.id),
+                                    )
+                                  }
                                 />
-                              )}
+                              </div>
+                              <Button
+                                variant="ghost"
+                                className="mail-row-main"
+                                onClick={() => void openMail(m)}
+                              >
+                                <div className="row-top">
+                                  <span className="sender-name">
+                                    {senderName(m.sender)}
+                                  </span>
+                                  <time dateTime={m.date}>{time(m.date)}</time>
+                                </div>
+                                <div className="row-subject">
+                                  {!m.isRead && (
+                                    <i aria-label="未读" title="未读" />
+                                  )}
+                                  <span className="row-subject-text">
+                                    {m.subject}
+                                  </span>
+                                  {grouped &&
+                                    (m.conversationCount || 0) > 1 && (
+                                      <Badge
+                                        variant="secondary"
+                                        className="conversation-count"
+                                      >
+                                        {m.conversationCount}
+                                      </Badge>
+                                    )}
+                                </div>
+                                <p>{m.preview}</p>
+                                <div className="row-meta">
+                                  <span
+                                    className={`mini-dot color-${data.accounts.findIndex((a) => a.id === m.accountId) % 4}`}
+                                    aria-hidden="true"
+                                    title="邮箱颜色标识"
+                                  />
+                                  <span>
+                                    {data.accounts.find(
+                                      (a) => a.id === m.accountId,
+                                    )?.name || "已移除账号"}
+                                  </span>
+                                  {m.localFolder !== "全部存档" && (
+                                    <small>{m.localFolder}</small>
+                                  )}
+                                  <span className="row-spacer" />
+                                  {m.starred && (
+                                    <Star size={13} className="star-on" />
+                                  )}
+                                  {m.hasAttachments && (
+                                    <Paperclip
+                                      className="size-3 shrink-0"
+                                      aria-label="包含附件"
+                                    />
+                                  )}
+                                </div>
+                              </Button>
                             </div>
-                          </Button>
-                        </div>
+                          </ContextMenuTrigger>
+                          <ContextMenuContent>
+                            <ContextMenuItem
+                              onSelect={() =>
+                                void mutate([m.id], "read", String(!m.isRead))
+                              }
+                            >
+                              <MailOpen />
+                              {m.isRead ? "标记为未读" : "标记为已读"}
+                            </ContextMenuItem>
+                          </ContextMenuContent>
+                        </ContextMenu>
                       ))
                     ) : (
                       <div className="list-empty">

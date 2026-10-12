@@ -88,7 +88,13 @@ export async function snapshot(query: Query): Promise<Snapshot> {
       (m) =>
         (!query.accountId || m.accountId === query.accountId) &&
         (!query.folder || m.localFolder === query.folder) &&
-        (!query.remoteFolder || m.sourceFolder === query.remoteFolder) &&
+        (!query.remoteFolder ||
+          m.sourceFolder === query.remoteFolder ||
+          (query.remoteFolderTree &&
+            !!query.remoteFolderDelimiter &&
+            m.sourceFolder.startsWith(
+              query.remoteFolder + query.remoteFolderDelimiter,
+            ))) &&
         (query.view !== "local" || m.savedLocally !== false) &&
         (query.view === "trash" ? m.trashed : !m.trashed) &&
         (!query.unreadOnly || !m.isRead) &&
@@ -250,6 +256,14 @@ export async function call<T = void>(
             )[name] || name,
           delimiter: "/",
           selectable: true,
+          roles:
+            name === "INBOX"
+              ? ["inbox"]
+              : name === "Sent"
+                ? ["sent"]
+                : name === "Drafts"
+                  ? ["drafts"]
+                  : [],
         }));
         break;
       }

@@ -713,7 +713,11 @@ impl Store {
                     q.attachments_only,
                     q.search_field,
                     q.remote_folder,
-                    phrase.as_deref().unwrap_or("")
+                    phrase.as_deref().unwrap_or(""),
+                    Option::<f64>::None,
+                    Option::<f64>::None,
+                    q.remote_folder_tree,
+                    q.remote_folder_delimiter
                 ],
                 |r| r.get::<_, String>(0),
             )
@@ -752,6 +756,47 @@ impl Store {
             .map_err(err)?
             .collect::<std::result::Result<Vec<String>, _>>()
             .map_err(err)?;
+        let mut counts = db.prepare("WITH unread_sources AS (
+            SELECT s.account_id,s.folder,s.mail_id FROM trusted_sources s
+            JOIN search_documents d ON d.mail_id=s.mail_id AND d.account_id=s.account_id
+            WHERE s.active=1 AND d.is_read=0 AND d.trashed=0
+        ) SELECT f.account_id,f.name,
+            COUNT(DISTINCT CASE WHEN u.folder=f.name THEN u.mail_id END),
+            COUNT(DISTINCT u.mail_id)
+            FROM remote_folders f LEFT JOIN unread_sources u ON u.account_id=f.account_id
+            AND (u.folder=f.name OR (
+                COALESCE(json_extract(f.data,'$.delimiter'),'')!='' AND
+                substr(u.folder,1,length(f.name||json_extract(f.data,'$.delimiter')))=f.name||json_extract(f.data,'$.delimiter')
+            )) GROUP BY f.account_id,f.name").map_err(err)?;
+        let remote_folder_unread = counts
+            .query_map([], |r| {
+                Ok(RemoteFolderUnread {
+                    account_id: r.get(0)?,
+                    name: r.get(1)?,
+                    direct: r.get(2)?,
+                    tree: r.get(3)?,
+                })
+            })
+            .map_err(err)?
+            .collect::<std::result::Result<Vec<_>, _>>()
+            .map_err(err)?;
+        let mut starred = db
+            .prepare(
+                "SELECT d.account_id,COUNT(*) FROM search_documents d
+            JOIN readable_listing listing ON listing.id=d.mail_id
+            WHERE d.is_read=0 AND d.starred=1 AND d.trashed=0 GROUP BY d.account_id",
+            )
+            .map_err(err)?;
+        let account_starred_unread = starred
+            .query_map([], |r| {
+                Ok(AccountUnread {
+                    account_id: r.get(0)?,
+                    unread: r.get(1)?,
+                })
+            })
+            .map_err(err)?
+            .collect::<std::result::Result<Vec<_>, _>>()
+            .map_err(err)?;
         let mut ls = db
             .prepare("SELECT time || '  ' || message FROM logs ORDER BY id DESC LIMIT 30")
             .map_err(err)?;
@@ -782,6 +827,8 @@ impl Store {
             data_dir: crate::archive_location::display_path(&self.root),
             matched,
             remote_folders: self.remote_folders_in(db, None)?,
+            remote_folder_unread,
+            account_starred_unread,
         })
     }
     pub fn detail(&self, id: &str) -> Result<Detail> {

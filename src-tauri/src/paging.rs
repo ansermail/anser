@@ -209,6 +209,8 @@ fn bindings(
         .into(),
         from.into(),
         before.into(),
+        (q.remote_folder_tree as i64).into(),
+        q.remote_folder_delimiter.clone().into(),
     ]
 }
 fn filtered(indexed: bool) -> String {
@@ -268,11 +270,11 @@ impl Store {
             let mut values=bindings(request,from,before,true);
             values.extend([instant.into(),id.to_string().into(),if request.query.list_mode==ListMode::Conversations {root.unwrap_or_default()}else{String::new()}.into()]);
             let (condition,order)=if direction=="next" {
-                ("CASE WHEN ?13 IS NULL THEN u.instant IS NULL AND u.id>?14 ELSE u.instant<?13 OR u.instant IS NULL OR (u.instant=?13 AND u.id>?14) END","u.instant DESC,u.id ASC")
+                ("CASE WHEN ?15 IS NULL THEN u.instant IS NULL AND u.id>?16 ELSE u.instant<?15 OR u.instant IS NULL OR (u.instant=?15 AND u.id>?16) END","u.instant DESC,u.id ASC")
             }else{
-                ("CASE WHEN ?13 IS NULL THEN u.instant IS NOT NULL OR (u.instant IS NULL AND u.id<?14) ELSE u.instant>?13 OR (u.instant=?13 AND u.id<?14) END","u.instant ASC,u.id DESC")
+                ("CASE WHEN ?15 IS NULL THEN u.instant IS NOT NULL OR (u.instant IS NULL AND u.id<?16) ELSE u.instant>?15 OR (u.instant=?15 AND u.id<?16) END","u.instant ASC,u.id DESC")
             };
-            let sql=format!("{} SELECT listing.data,u.is_read,u.starred,u.has_attachments,u.root,u.count FROM units u JOIN message_listing listing ON listing.id=u.id WHERE ({condition}) AND (?15='' OR u.root!=?15) ORDER BY {order} LIMIT 1",units(request));
+            let sql=format!("{} SELECT listing.data,u.is_read,u.starred,u.has_attachments,u.root,u.count FROM units u JOIN message_listing listing ON listing.id=u.id WHERE ({condition}) AND (?17='' OR u.root!=?17) ORDER BY {order} LIMIT 1",units(request));
             let mut stmt=tx.prepare(&sql).map_err(err)?;let mut rows=stmt.query(params_from_iter(values.iter())).map_err(err)?;
             let mail=if let Some(row)=rows.next().map_err(err)? {
                 let mut mail:Mail=serde_json::from_str(&row.get::<_,String>(0).map_err(err)?).map_err(err)?;
@@ -309,7 +311,7 @@ impl Store {
                 let mut anchor = values.clone();
                 anchor.push(c.id.clone().into());
                 anchor.push(c.instant.into());
-                let exists:bool=tx.query_row(&format!("{cte} SELECT EXISTS(SELECT 1 FROM units WHERE id=?13 AND instant IS ?14)"),params_from_iter(anchor.iter()),|r|r.get(0)).map_err(err)?;
+                let exists:bool=tx.query_row(&format!("{cte} SELECT EXISTS(SELECT 1 FROM units WHERE id=?15 AND instant IS ?16)"),params_from_iter(anchor.iter()),|r|r.get(0)).map_err(err)?;
                 if !exists {
                     return Err("分页位置无效，请重新搜索".into());
                 }
@@ -323,8 +325,8 @@ impl Store {
                 ((size + 1) as i64).into(),
             ]);
             let sql=format!("{cte} SELECT listing.data,u.instant,u.is_read,u.starred,u.has_attachments,u.root,u.count FROM units u JOIN message_listing listing ON listing.id=u.id
-                WHERE ?13=0 OR CASE WHEN ?14 IS NULL THEN u.instant IS NULL AND u.id>?15 ELSE u.instant<?14 OR u.instant IS NULL OR (u.instant=?14 AND u.id>?15) END
-                ORDER BY u.instant DESC,u.id ASC LIMIT ?16");
+                WHERE ?15=0 OR CASE WHEN ?16 IS NULL THEN u.instant IS NULL AND u.id>?17 ELSE u.instant<?16 OR u.instant IS NULL OR (u.instant=?16 AND u.id>?17) END
+                ORDER BY u.instant DESC,u.id ASC LIMIT ?18");
             let mut stmt = tx.prepare(&sql).map_err(err)?;
             let mut rows = stmt
                 .query(params_from_iter(page_values.iter()))
@@ -510,6 +512,102 @@ mod tests {
             date_from: String::new(),
             date_before: String::new(),
         }
+    }
+    #[test]
+    fn parent_folder_scope_and_unread_counts_use_trusted_descendants_without_duplicates() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = Store::new(dir.path().into()).unwrap();
+        let account = account();
+        store.save_account(&account).unwrap();
+        let folder = |name: &str| RemoteFolder {
+            account_id: account.id.clone(),
+            name: name.into(),
+            display_name: name.into(),
+            delimiter: Some("/".into()),
+            selectable: true,
+            sync_error: None,
+            roles: vec![],
+            detected_roles: None,
+        };
+        store
+            .save_remote_folders(
+                &account.id,
+                &[
+                    folder("其他文件夹"),
+                    folder("其他文件夹/恰饭"),
+                    folder("其他文件夹/归档"),
+                    folder("其他文件夹X"),
+                ],
+            )
+            .unwrap();
+        let first = raw();
+        let second = String::from_utf8(raw())
+            .unwrap()
+            .replace("Project invoice", "Second invoice")
+            .into_bytes();
+        let sibling = String::from_utf8(raw())
+            .unwrap()
+            .replace("Project invoice", "Sibling invoice")
+            .into_bytes();
+        store
+            .ingest_with_flags(&account, "其他文件夹/恰饭", "1:1", &first, false, true)
+            .unwrap();
+        store
+            .ingest(&account, "其他文件夹/归档", "2:1", &first, false)
+            .unwrap();
+        store
+            .ingest(&account, "其他文件夹/归档", "2:2", &second, false)
+            .unwrap();
+        store
+            .ingest(&account, "其他文件夹X", "3:1", &sibling, false)
+            .unwrap();
+        store.db().unwrap().execute(
+            "INSERT INTO folder_health VALUES(?1,'其他文件夹','test-identity','目录响应不可靠','now','{}')",
+            [&account.id],
+        ).unwrap();
+        let mut scoped = request(ListMode::Messages, 20);
+        scoped.query.view = "remote".into();
+        scoped.query.account_id = account.id.clone();
+        scoped.query.remote_folder = "其他文件夹".into();
+        scoped.query.remote_folder_tree = true;
+        scoped.query.remote_folder_delimiter = "/".into();
+        let page = store.mail_page(&scoped).unwrap();
+        assert_eq!(page.snapshot.matched, 2);
+        let parent = page
+            .snapshot
+            .remote_folder_unread
+            .iter()
+            .find(|c| c.name == "其他文件夹")
+            .unwrap();
+        assert_eq!((parent.direct, parent.tree), (0, 2));
+        assert_eq!(
+            page.snapshot
+                .account_starred_unread
+                .iter()
+                .find(|c| c.account_id == account.id)
+                .unwrap()
+                .unread,
+            1
+        );
+        scoped.query.remote_folder = "其他文件夹/归档".into();
+        scoped.query.remote_folder_tree = false;
+        assert_eq!(store.mail_page(&scoped).unwrap().snapshot.matched, 2);
+        scoped.query.remote_folder = "其他文件夹/恰饭".into();
+        assert_eq!(store.mail_page(&scoped).unwrap().snapshot.matched, 1);
+        let mut mail = store.mail(&page.snapshot.messages[0].id).unwrap();
+        mail.is_read = true;
+        store.update_mail(&mail).unwrap();
+        let refreshed = store.mail_page(&scoped).unwrap();
+        assert_eq!(
+            refreshed
+                .snapshot
+                .remote_folder_unread
+                .iter()
+                .find(|c| c.name == "其他文件夹")
+                .unwrap()
+                .tree,
+            1
+        );
     }
     fn all(store: &Store, mut r: PageRequest) -> Vec<Mail> {
         let mut list = vec![];

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 import {
   Archive,
   AlertCircle,
@@ -25,22 +25,61 @@ import type { RemoteFolder } from "../lib/types";
 export function RemoteFolderList({
   folders,
   selected,
+  selectedTree = false,
+  starredSelected = false,
+  unread = {},
+  starredUnread = 0,
   onSelect,
+  onSelectStarred,
 }: {
   folders: RemoteFolder[];
   selected: string;
-  onSelect: (name: string) => void;
+  selectedTree?: boolean;
+  starredSelected?: boolean;
+  unread?: Record<string, { direct: number; tree: number }>;
+  starredUnread?: number;
+  onSelect: (name: string, tree: boolean, delimiter: string) => void;
+  onSelectStarred?: () => void;
 }) {
   const tree = useMemo(() => remoteFolderTree(folders), [folders]);
+  const hasFlagged = folders.some((folder) =>
+    folder.roles?.includes("flagged"),
+  );
+  const starred = !hasFlagged && onSelectStarred && (
+    <div className="remote-folder-row" key="virtual-starred">
+      <span className="folder-toggle-space" />
+      <Button
+        variant="ghost"
+        size="sm"
+        className={`nav-item folder-item ${starredSelected ? "active" : ""}`}
+        onClick={onSelectStarred}
+      >
+        <Star data-icon="inline-start" />
+        <span>星标邮件</span>
+        {starredUnread > 0 && (
+          <em aria-label={`未读 ${starredUnread} 封`}>{starredUnread}</em>
+        )}
+      </Button>
+    </div>
+  );
+  const hasInbox = tree.some((node) => node.folder?.roles?.includes("inbox"));
   return (
     <div className="remote-folder-tree">
+      {!hasInbox && starred}
       {tree.map((node) => (
-        <FolderBranch
-          key={node.key}
-          node={node}
-          selected={selected}
-          onSelect={onSelect}
-        />
+        <Fragment key={node.key}>
+          <FolderBranch
+            node={node}
+            selected={selected}
+            selectedTree={selectedTree}
+            unread={unread}
+            starredSelected={starredSelected}
+            starredUnread={starredUnread}
+            onSelect={onSelect}
+            onSelectStarred={onSelectStarred}
+          />
+          {node.folder?.roles?.includes("inbox") && starred}
+        </Fragment>
       ))}
     </div>
   );
@@ -49,15 +88,26 @@ export function RemoteFolderList({
 function FolderBranch({
   node,
   selected,
+  selectedTree,
+  unread,
+  starredSelected,
+  starredUnread,
   onSelect,
+  onSelectStarred,
 }: {
   node: FolderNode;
   selected: string;
-  onSelect: (name: string) => void;
+  selectedTree: boolean;
+  unread: Record<string, { direct: number; tree: number }>;
+  starredSelected: boolean;
+  starredUnread: number;
+  onSelect: (name: string, tree: boolean, delimiter: string) => void;
+  onSelectStarred?: () => void;
 }) {
   const containsSelected = (node: FolderNode): boolean =>
-    node.folder?.name === selected || node.children.some(containsSelected);
+    node.path === selected || node.children.some(containsSelected);
   const hasChildren = node.children.length > 0;
+  const flagged = !!node.folder?.roles?.includes("flagged");
   const activePath = containsSelected(node);
   const [open, setOpen] = useState(activePath);
   const RoleIcon = {
@@ -75,6 +125,15 @@ function FolderBranch({
     : open && hasChildren
       ? FolderOpen
       : Folder;
+  const unreadCount = unread[node.path];
+  const count = flagged
+    ? starredUnread
+    : hasChildren
+      ? unreadCount?.tree
+      : unreadCount?.direct;
+  const active = flagged
+    ? starredSelected
+    : node.path === selected && hasChildren === selectedTree;
   useEffect(() => {
     if (activePath) setOpen(true);
   }, [activePath]);
@@ -96,18 +155,24 @@ function FolderBranch({
       <Button
         variant="ghost"
         size="sm"
-        className={`nav-item folder-item ${node.folder?.name === selected ? "active" : ""}`}
+        className={`nav-item folder-item ${active ? "active" : ""}`}
         title={node.folder?.syncError || node.folder?.displayName || node.label}
-        aria-current={node.folder?.name === selected ? "page" : undefined}
-        onClick={() =>
-          node.folder?.selectable
-            ? onSelect(node.folder.name)
-            : setOpen((v) => !v)
-        }
+        aria-current={active ? "page" : undefined}
+        onClick={() => {
+          if (flagged && onSelectStarred) {
+            onSelectStarred();
+          } else if (hasChildren) {
+            setOpen(true);
+            onSelect(node.path, true, node.delimiter || "");
+          } else if (node.folder?.selectable) {
+            onSelect(node.folder.name, false, "");
+          }
+        }}
         disabled={!node.folder?.selectable && !hasChildren}
       >
         <Icon data-icon="inline-start" />
         <span>{node.label}</span>
+        {!!count && <em aria-label={`未读 ${count} 封`}>{count}</em>}
         {node.folder?.syncError && (
           <AlertCircle
             className="text-destructive"
@@ -127,7 +192,12 @@ function FolderBranch({
             key={child.key}
             node={child}
             selected={selected}
+            selectedTree={selectedTree}
+            unread={unread}
+            starredSelected={starredSelected}
+            starredUnread={starredUnread}
             onSelect={onSelect}
+            onSelectStarred={onSelectStarred}
           />
         ))}
       </CollapsibleContent>

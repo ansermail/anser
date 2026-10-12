@@ -33,7 +33,13 @@ export function filteredMail(all: Mail[], query: Query, searching = true) {
       return (
         (!query.accountId || mail.accountId === query.accountId) &&
         (!query.folder || mail.localFolder === query.folder) &&
-        (!query.remoteFolder || mail.sourceFolder === query.remoteFolder) &&
+        (!query.remoteFolder ||
+          mail.sourceFolder === query.remoteFolder ||
+          (query.remoteFolderTree &&
+            !!query.remoteFolderDelimiter &&
+            mail.sourceFolder.startsWith(
+              query.remoteFolder + query.remoteFolderDelimiter,
+            ))) &&
         (query.view !== "local" || mail.savedLocally !== false) &&
         (query.view === "trash" ? mail.trashed : !mail.trashed) &&
         (!query.unreadOnly || !mail.isRead) &&
@@ -71,6 +77,8 @@ function scope(query: Query) {
     attachmentsOnly: !!query.attachmentsOnly,
     searchField: query.searchField || "",
     remoteFolder: query.remoteFolder || "",
+    remoteFolderTree: !!query.remoteFolderTree,
+    remoteFolderDelimiter: query.remoteFolderDelimiter || "",
     listMode: query.listMode || "conversations",
     dateFrom: query.dateFrom || "",
     dateBefore: query.dateBefore || "",
@@ -124,6 +132,56 @@ export class DemoPager {
     const covered = filteredMail(base.messages, query, false),
       known = covered.filter(bodyKnown).length;
     const saved = base.messages.filter((mail) => mail.savedLocally !== false);
+    const unread = base.messages.filter(
+      (mail) => !mail.isRead && !mail.trashed,
+    );
+    const folderCounts = new Map<
+      string,
+      {
+        accountId: string;
+        name: string;
+        direct: Set<string>;
+        tree: Set<string>;
+      }
+    >();
+    const countFor = (accountId: string, name: string) => {
+      const key = `${accountId}\0${name}`;
+      let count = folderCounts.get(key);
+      if (!count) {
+        count = { accountId, name, direct: new Set(), tree: new Set() };
+        folderCounts.set(key, count);
+      }
+      return count;
+    };
+    for (const folder of base.remoteFolders || [])
+      countFor(folder.accountId, folder.name);
+    for (const mail of unread) {
+      const delimiter =
+        base.remoteFolders?.find(
+          (folder) =>
+            folder.accountId === mail.accountId &&
+            folder.name === mail.sourceFolder,
+        )?.delimiter || "/";
+      const parts = mail.sourceFolder.split(delimiter);
+      for (let index = 1; index <= parts.length; index++) {
+        const name = parts.slice(0, index).join(delimiter);
+        const count = countFor(mail.accountId, name);
+        count.tree.add(mail.id);
+        if (index === parts.length) count.direct.add(mail.id);
+      }
+    }
+    const remoteFolderUnread = [...folderCounts.values()].map((count) => ({
+      accountId: count.accountId,
+      name: count.name,
+      direct: count.direct.size,
+      tree: count.tree.size,
+    }));
+    const accountStarredUnread = base.accounts.map((account) => ({
+      accountId: account.id,
+      unread: unread.filter(
+        (mail) => mail.accountId === account.id && mail.starred,
+      ).length,
+    }));
     return {
       ...structuredClone({ ...base, messages: [] }),
       messages: structuredClone(current.map((mail) => ({ ...mail, body: "" }))),
@@ -142,6 +200,8 @@ export class DemoPager {
           .length,
         bytes: saved.reduce((n, mail) => n + mail.size, 0),
       },
+      remoteFolderUnread,
+      accountStarredUnread,
     };
   }
   neighbor(

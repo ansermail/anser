@@ -167,6 +167,10 @@ pub struct Query {
     #[serde(default)]
     pub remote_folder: String,
     #[serde(default)]
+    pub remote_folder_tree: bool,
+    #[serde(default)]
+    pub remote_folder_delimiter: String,
+    #[serde(default)]
     pub unread_only: bool,
     #[serde(default)]
     pub starred_only: bool,
@@ -204,6 +208,24 @@ pub struct Snapshot {
     pub data_dir: String,
     pub matched: u64,
     pub remote_folders: Vec<RemoteFolder>,
+    #[serde(default)]
+    pub remote_folder_unread: Vec<RemoteFolderUnread>,
+    #[serde(default)]
+    pub account_starred_unread: Vec<AccountUnread>,
+}
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RemoteFolderUnread {
+    pub account_id: String,
+    pub name: String,
+    pub direct: u64,
+    pub tree: u64,
+}
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AccountUnread {
+    pub account_id: String,
+    pub unread: u64,
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]

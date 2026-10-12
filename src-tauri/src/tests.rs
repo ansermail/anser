@@ -349,6 +349,8 @@ pub(super) fn query() -> Query {
         search: "".into(),
         limit: 100,
         remote_folder: String::new(),
+        remote_folder_tree: false,
+        remote_folder_delimiter: String::new(),
         unread_only: false,
         starred_only: false,
         attachments_only: false,

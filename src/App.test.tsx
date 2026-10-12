@@ -1322,13 +1322,13 @@ describe("reading unread mail within its current category", () => {
       host.querySelector('button[aria-label="展开 工作邮箱 的服务器文件夹"]'),
     );
     const sent = [...host.querySelectorAll(".remote-folder-list button")].find(
-      (b) => b.textContent === "已发送",
+      (b) => b.querySelector("span")?.textContent === "已发送",
     )!;
     await click(sent);
     expect(host.querySelector(".list-heading h1")?.textContent).toBe("已发送");
     expect(host.querySelectorAll(".mail-row-main")).toHaveLength(0);
     const inbox = [...host.querySelectorAll(".remote-folder-list button")].find(
-      (b) => b.textContent === "收件箱",
+      (b) => b.querySelector("span")?.textContent === "收件箱",
     )!;
     await click(inbox);
     expect(host.querySelector(".list-heading h1")?.textContent).toBe("收件箱");
@@ -1343,11 +1343,13 @@ describe("reading unread mail within its current category", () => {
       displayName: "收件箱",
       delimiter: "/",
       selectable: true,
+      roles: ["inbox"],
     };
     const fresh: RemoteFolder = {
       ...cached,
       name: "Sent",
       displayName: "已发送",
+      roles: ["sent"],
     };
     await act(async () => root.unmount());
     leaveDemo();
@@ -1397,13 +1399,117 @@ describe("reading unread mail within its current category", () => {
       [...host.querySelectorAll(".remote-folder-list .folder-item")].map(
         (item) => item.textContent,
       ),
-    ).toEqual(["收件箱", "已发送"]);
+    ).toEqual(["收件箱", "星标邮件", "已发送"]);
 
     await click(account);
     expect(account?.getAttribute("aria-expanded")).toBe("false");
     expect(
       host.querySelector(".remote-folder-list")?.hasAttribute("hidden"),
     ).toBe(true);
+  });
+  it("shows a parent folder union, per-folder unread counts, account stars and a direct read action", async () => {
+    const seed = await snapshot(localQuery);
+    const accountId = seed.accounts[0].id;
+    const first = {
+      ...seed.messages[0],
+      id: "folder-first",
+      accountId,
+      sourceFolder: "其他文件夹/归档",
+      isRead: false,
+      starred: true,
+    };
+    const second = {
+      ...seed.messages[1],
+      id: "folder-second",
+      accountId,
+      sourceFolder: "其他文件夹/恰饭",
+      isRead: false,
+      starred: false,
+    };
+    const sibling = {
+      ...seed.messages[2],
+      id: "folder-sibling",
+      accountId,
+      sourceFolder: "其他文件夹X",
+      isRead: false,
+      starred: false,
+    };
+    seed.messages = [first, second, sibling];
+    const folder = (name: string): RemoteFolder => ({
+      accountId,
+      name,
+      displayName: name,
+      delimiter: "/",
+      selectable: true,
+    });
+    seed.remoteFolders = [
+      { ...folder("其他文件夹"), syncError: "目录响应不可靠" },
+      folder("其他文件夹/归档"),
+      folder("其他文件夹/恰饭"),
+      folder("其他文件夹X"),
+    ];
+    await act(async () => root.unmount());
+    localStorage.setItem("mail-desktop-demo-v1", JSON.stringify(seed));
+    api.restoreDemo();
+    const realCall = api.call;
+    const commands = vi
+      .spyOn(api, "call")
+      .mockImplementation(
+        async <T,>(
+          command: string,
+          args?: Record<string, unknown>,
+        ): Promise<T> =>
+          command === "account_folders"
+            ? (seed.remoteFolders as T)
+            : realCall<T>(command, args),
+      );
+    root = createRoot(host);
+    await act(async () => root.render(<App />));
+    await click(host.querySelector(".account-navigation .account-item"));
+    const folderButton = (label: string) =>
+      [...host.querySelectorAll(".remote-folder-list .folder-item")].find(
+        (button) => button.querySelector("span")?.textContent === label,
+      ) ?? null;
+    await click(folderButton("其他文件夹"));
+    expect(host.querySelector(".list-heading h1")?.textContent).toBe(
+      "其他文件夹",
+    );
+    expect(host.querySelectorAll(".mail-row-main")).toHaveLength(2);
+    expect(host.textContent).not.toContain("此目录的服务器响应不可靠");
+    expect(folderButton("其他文件夹")?.textContent).toContain("2");
+    expect(folderButton("归档")?.textContent).toContain("1");
+
+    const row = host.querySelector(".mail-row-main");
+    await act(async () => {
+      row!.dispatchEvent(
+        new MouseEvent("contextmenu", {
+          bubbles: true,
+          cancelable: true,
+          button: 2,
+          clientX: 20,
+          clientY: 20,
+        }),
+      );
+    });
+    const markRead = [
+      ...document.querySelectorAll('[data-slot="context-menu-item"]'),
+    ].find((item) => item.textContent?.includes("标记为已读"));
+    await click(markRead ?? null);
+    expect(
+      commands.mock.calls.some(
+        ([command, args]) =>
+          command === "update_mail" && args?.action === "read",
+      ),
+    ).toBe(true);
+    expect(folderButton("其他文件夹")?.textContent).toContain("1");
+
+    await click(folderButton("归档"));
+    expect(host.querySelectorAll(".mail-row-main")).toHaveLength(1);
+    await click(folderButton("星标邮件"));
+    expect(host.querySelector(".list-heading h1")?.textContent).toBe(
+      "星标邮件",
+    );
+    expect(host.querySelectorAll(".mail-row-main")).toHaveLength(1);
   });
   it("opens an isolated directory explanation without automatically retrying its server selection", async () => {
     const seed = await snapshot(localQuery);

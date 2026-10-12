@@ -2,6 +2,8 @@ import type { RemoteFolder } from "./types";
 
 export interface FolderNode {
   key: string;
+  path: string;
+  delimiter: string | null;
   label: string;
   folder?: RemoteFolder;
   children: FolderNode[];
@@ -26,6 +28,8 @@ export function remoteFolderTree(folders: RemoteFolder[]): FolderNode[] {
       if (!node) {
         node = {
           key,
+          path,
+          delimiter: separator,
           label: labels.length === parts.length ? labels[i] : parts[i],
           children: [],
         };
@@ -40,6 +44,17 @@ export function remoteFolderTree(folders: RemoteFolder[]): FolderNode[] {
       children = node.children;
     }
   }
+  // Some servers expose an isolated empty placeholder although the account
+  // has no user folders. Keep a real parent when it has children.
+  for (let i = roots.length - 1; i >= 0; i--) {
+    const node = roots[i];
+    if (
+      node.label === "其他文件夹" &&
+      node.children.length === 0 &&
+      node.folder?.syncError
+    )
+      roots.splice(i, 1);
+  }
   const sort = (nodes: FolderNode[]) => {
     const rank = (node: FolderNode) => {
       const role =
@@ -47,11 +62,11 @@ export function remoteFolderTree(folders: RemoteFolder[]): FolderNode[] {
         (node.folder?.name.toUpperCase() === "INBOX" ? "inbox" : "");
       const index = [
         "inbox",
+        "flagged",
         "sent",
         "drafts",
         "archive",
         "all",
-        "flagged",
         "junk",
         "trash",
       ].indexOf(role);

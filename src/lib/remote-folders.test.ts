@@ -40,6 +40,17 @@ describe("server folder hierarchy", () => {
     expect(roots.filter((n) => n.label === "INBOX")).toHaveLength(2);
     expect(roots.find((n) => n.label === "literal/name")?.children).toEqual([]);
   });
+  it("omits an isolated empty placeholder but keeps a parent with real children", () => {
+    const empty = {
+      ...folder("其他文件夹"),
+      syncError: "目录响应不可靠",
+    };
+    expect(remoteFolderTree([empty])).toHaveLength(0);
+    const roots = remoteFolderTree([empty, folder("其他文件夹/归档")]);
+    expect(roots).toHaveLength(1);
+    expect(roots[0].path).toBe("其他文件夹");
+    expect(roots[0].children[0].path).toBe("其他文件夹/归档");
+  });
 });
 
 it("sorts special-use locations without changing their wire paths", () => {

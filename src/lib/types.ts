@@ -100,6 +100,8 @@ export interface Query {
   attachmentsOnly?: boolean;
   searchField?: string;
   remoteFolder?: string;
+  remoteFolderTree?: boolean;
+  remoteFolderDelimiter?: string;
   listMode?: "conversations" | "messages";
   dateFrom?: string;
   dateBefore?: string;
@@ -114,6 +116,13 @@ export interface Snapshot {
   dataDir: string;
   matched: number;
   remoteFolders?: RemoteFolder[];
+  remoteFolderUnread?: {
+    accountId: string;
+    name: string;
+    direct: number;
+    tree: number;
+  }[];
+  accountStarredUnread?: { accountId: string; unread: number }[];
 }
 export interface Detail {
   originalHash?: string;

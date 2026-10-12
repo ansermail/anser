@@ -3383,6 +3383,13 @@ kbd {
   overflow: hidden;
   text-overflow: ellipsis;
 }
+.remote-folder-list .folder-item em {
+  margin-left: auto;
+  flex-shrink: 0;
+  font-size: 11px;
+  font-style: normal;
+  color: var(--muted);
+}
 
 .settings-workspace {
   --settings-card-gap: 24px;
