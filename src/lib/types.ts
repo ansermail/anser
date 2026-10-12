@@ -267,7 +267,8 @@ export type FolderRole =
   | "junk"
   | "archive"
   | "all"
-  | "flagged";
+  | "flagged"
+  | "important";
 export interface FolderMapping {
   role: FolderRole;
   folder: string | null;

@@ -411,4 +411,5 @@ pub enum FolderRole {
     Archive,
     All,
     Flagged,
+    Important,
 }

@@ -415,6 +415,7 @@ pub fn folder_roles<'a>(
             "\\archive" => FolderRole::Archive,
             "\\all" | "\\allmail" => FolderRole::All,
             "\\flagged" | "\\starred" => FolderRole::Flagged,
+            "\\important" => FolderRole::Important,
             _ => continue,
         };
         if !roles.contains(&role) {
@@ -444,6 +445,12 @@ pub fn folder_roles<'a>(
         "archive" | "archives" | "归档" | "存档" => FolderRole::Archive,
         "all mail" | "所有邮件" => FolderRole::All,
         "starred" | "星标邮件" => FolderRole::Flagged,
+        "important" | "重要邮件"
+            if parent.eq_ignore_ascii_case("[gmail]")
+                || parent.eq_ignore_ascii_case("[googlemail]") =>
+        {
+            FolderRole::Important
+        }
         _ => return roles,
     };
     roles.push(role);
@@ -489,6 +496,7 @@ pub(crate) fn normalize_folder(folder: &mut RemoteFolder) {
         Some(FolderRole::Archive) => "归档",
         Some(FolderRole::All) => "所有邮件",
         Some(FolderRole::Flagged) => "星标邮件",
+        Some(FolderRole::Important) => "重要邮件",
         None => return,
     };
     let decoded = display_name(&folder.name);
@@ -595,6 +603,11 @@ mod folder_tests {
             folder_roles("Important", None, ["\\Flagged"]),
             vec![FolderRole::Flagged]
         );
+        assert_eq!(
+            folder_roles("[Gmail]/Important", Some("/"), []),
+            vec![FolderRole::Important]
+        );
+        assert!(folder_roles("Important", Some("/"), []).is_empty());
     }
     #[test]
     fn aliases_are_exact_and_do_not_skip_personal_folders() {

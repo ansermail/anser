@@ -63,6 +63,7 @@ export function remoteFolderTree(folders: RemoteFolder[]): FolderNode[] {
       const index = [
         "inbox",
         "flagged",
+        "important",
         "sent",
         "drafts",
         "archive",
@@ -70,7 +71,7 @@ export function remoteFolderTree(folders: RemoteFolder[]): FolderNode[] {
         "junk",
         "trash",
       ].indexOf(role);
-      return index < 0 ? 8 : index;
+      return index < 0 ? 9 : index;
     };
     nodes.sort(
       (a, b) => rank(a) - rank(b) || a.label.localeCompare(b.label, "zh-CN"),

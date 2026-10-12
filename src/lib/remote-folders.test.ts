@@ -68,3 +68,26 @@ it("sorts special-use locations without changing their wire paths", () => {
   ]);
   expect(roots[1].folder?.name).toBe("CompanySent");
 });
+
+it("shows server-discovered Gmail labels under their real IMAP hierarchy", () => {
+  const roots = remoteFolderTree([
+    {
+      ...folder("[Gmail]/Important"),
+      displayName: "[Gmail]/重要邮件",
+      roles: ["important"],
+    },
+    {
+      ...folder("[Gmail]/Starred"),
+      displayName: "[Gmail]/星标邮件",
+      roles: ["flagged"],
+    },
+    { ...folder("[Gmail]", "/", false), displayName: "[Gmail]" },
+    folder("购物"),
+  ]);
+  expect(roots.map((node) => node.label)).toEqual(["[Gmail]", "购物"]);
+  expect(roots[0].children.map((node) => node.label)).toEqual([
+    "星标邮件",
+    "重要邮件",
+  ]);
+  expect(roots[0].children[1].path).toBe("[Gmail]/Important");
+});

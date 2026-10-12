@@ -7,6 +7,7 @@ import {
   Folder,
   FolderOpen,
   Inbox,
+  MailWarning,
   Mail,
   Send,
   ShieldAlert,
@@ -119,6 +120,7 @@ function FolderBranch({
     archive: Archive,
     all: Mail,
     flagged: Star,
+    important: MailWarning,
   }[node.folder?.roles?.[0] || "inbox"];
   const Icon = node.folder?.roles?.length
     ? RoleIcon

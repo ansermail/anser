@@ -2890,6 +2890,22 @@ mod tests {
         assert!(!commands.contains("LIST (SPECIAL-USE)"));
     }
     #[test]
+    fn gmail_list_discovers_system_and_user_labels_without_fixed_names() {
+        let (folders, commands) = discovery_round(b"a1 OK Login\r\n* CAPABILITY IMAP4rev1 SPECIAL-USE\r\na2 OK Capabilities\r\n* LIST (\\HasNoChildren) \"/\" \"INBOX\"\r\n* LIST (\\Noselect \\HasChildren) \"/\" \"[Gmail]\"\r\n* LIST (\\Flagged) \"/\" \"[Gmail]/Starred\"\r\n* LIST (\\Important) \"/\" \"[Gmail]/Important\"\r\n* LIST (\\All) \"/\" \"[Gmail]/All Mail\"\r\n* LIST () \"/\" \"Orders\"\r\na3 OK Listed\r\n");
+        let folders = folders.unwrap();
+        assert_eq!(folders.len(), 6);
+        assert_eq!(folders[1].name, "[Gmail]");
+        assert!(!folders[1].selectable);
+        assert_eq!(folders[2].roles, vec![FolderRole::Flagged]);
+        assert_eq!(folders[2].display_name, "[Gmail]/星标邮件");
+        assert_eq!(folders[3].roles, vec![FolderRole::Important]);
+        assert_eq!(folders[3].display_name, "[Gmail]/重要邮件");
+        assert_eq!(folders[4].roles, vec![FolderRole::All]);
+        assert_eq!(folders[5].name, "Orders");
+        assert!(folders[5].roles.is_empty());
+        assert!(commands.contains("LIST \"\" \"*\" RETURN (SPECIAL-USE)"));
+    }
+    #[test]
     fn ordinary_list_keeps_special_flags_without_extension_capability() {
         let (folders, commands) = discovery_round(b"a1 OK Login\r\n* CAPABILITY IMAP4rev1\r\na2 OK Capabilities\r\n* LIST (\\Junk) \"/\" \"Custom spam folder\"\r\na3 OK Listed\r\n");
         assert_eq!(folders.unwrap()[0].roles, vec![FolderRole::Junk]);
