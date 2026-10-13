@@ -45,3 +45,5 @@
 - App仅在搜索值实际变化时更新Query，防抖回调也保留同值Query身份；搜索/手动导航真正变化时的过期通知保护继续保留。原测试增加明确跨越初始防抖的控制步骤，修复前稳定得到与云端一致的失败。
 - 修复后通知4项及前端全量49文件/290项通过，format:check、check:ui、TypeScript/生产构建、Pages构建/原生桥隔离和diff检查通过。ego-browser空间28仅用虚构演示账号核对实际搜索：Notion筛选为1条，清空恢复8条，已关闭检查空间；不把演示检查作为原生通知验收。即将提交main触发新的Checks验证。
 - 已发布0.1.14标签/资源不改写；本轮修复先进入main，尚未构建或发布含此修复的新桌面版本。
+- 修复提交`542aadc7a6488a2a03e9543d11802ac05d66c89a`已推送组织main，[Checks #42 / 38400126975](https://github.com/ansermail/anser/actions/runs/38400126975)已触发，headSha核对一致，正在等待完整云端结果。
+- 后续实际结果：Checks #42完整check成功，格式、前端、桌面脚本、生产构建、Rust及IMAP各步骤全部通过；同源[Preview Pages 38400126993](https://github.com/ansermail/anser/actions/runs/38400126993)成功。#41作为原失败记录保留，没有重跑旧源码冒充已验证修复，也未改写0.1.14标签/资源。新增修复在main，公开安装包仍为f1921c2构建的0.1.14。
