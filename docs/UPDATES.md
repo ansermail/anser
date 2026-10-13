@@ -1,5 +1,9 @@
 # 发布与应用内更新
 
+## 0.1.13 候选准备（2026-10-12，未发布）
+
+用户要求将本地目录修复与新增的单封邮件打印经组织仓库远程双架构流水线发布 0.1.13。五处版本已同步，说明见 [v0.1.13](releases/v0.1.13.md)。当前公开 latest 仍为 0.1.12；本机全量门槛、远程构建、资源审计和正式发布需按 [0.1.13 发布工作点](RELEASE_013_WORKING.md) 分开记录，不能提前标记完成。
+
 ## 当前正式版本：0.1.12（2026-10-12）
 
 0.1.12 Alpha 已于 2026-10-12 15:38:33（Asia/Shanghai）正式发布为 latest。源码 `996738d82f5e55af5f0dddb13ddba9a5248a9d05`，组织 [Release macOS 流水线](https://github.com/ansermail/anser/actions/runs/38217856007) 的 check、Apple Silicon、Intel 和 draft 全部成功；[v0.1.12 下载页](https://github.com/ansermail/anser/releases/tag/v0.1.12)。本机255前端、307Rust（1独立性能项忽略）、28桌面脚本、39 IMAP及 UI/格式/生产/Pages构建通过；远程检查与双架构完成。七资源大小/SHA-256、两架构更新签名、App版本/架构/稳定标识/完整codesign/许可/EML、原生OAuth编译配置及DMG与归档逐文件一致均已核验。标签指向固定源码，发布前后草稿说明及资源ID/摘要未变；匿名标准更新端点已逐字节匹配新清单，两架构安装包和更新归档公开下载字节一致。实际安装、原位升级及完整富文本真实互发尚待用户下载后验收；Apple Developer ID 签名/公证仍未完成。详情见 [0.1.12 发布工作点](RELEASE_012_WORKING.md)。

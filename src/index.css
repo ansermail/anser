@@ -3462,3 +3462,82 @@ kbd {
     grid-template-columns: minmax(0, 1fr);
   }
 }
+.mail-print-header,
+.mail-print-body,
+.mail-print-attachments {
+  display: none;
+}
+
+#mail-print-root {
+  display: none;
+}
+
+@media print {
+  @page {
+    margin: 16mm;
+  }
+
+  body > #root {
+    display: none !important;
+  }
+
+  body > #mail-print-root {
+    display: block !important;
+    color: #111;
+    background: #fff;
+    font:
+      12pt/1.5 Arial,
+      sans-serif;
+  }
+
+  #mail-print-root .mail-print-header,
+  #mail-print-root .mail-print-body,
+  #mail-print-root .mail-print-attachments {
+    display: block;
+  }
+
+  .mail-print-header {
+    border-bottom: 1px solid #bbb;
+    margin-bottom: 18pt;
+    padding-bottom: 10pt;
+  }
+
+  .mail-print-header h1 {
+    font-size: 17pt;
+    margin: 0 0 10pt;
+    overflow-wrap: break-word;
+  }
+
+  .mail-print-header p {
+    margin: 2pt 0;
+    overflow-wrap: anywhere;
+  }
+
+  .mail-print-body {
+    overflow-wrap: break-word;
+  }
+
+  .mail-print-body.plain {
+    white-space: pre-wrap;
+  }
+
+  .mail-print-body img,
+  .mail-print-body table {
+    max-width: 100%;
+  }
+
+  .mail-print-body img {
+    height: auto;
+  }
+
+  .mail-print-attachments {
+    border-top: 1px solid #bbb;
+    margin-top: 18pt;
+    padding-top: 8pt;
+  }
+
+  .mail-print-attachments h2 {
+    font-size: 12pt;
+    margin: 0;
+  }
+}

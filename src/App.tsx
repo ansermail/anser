@@ -37,6 +37,7 @@ import { RetentionDialog } from "./components/retention-dialog";
 import { ArchiveJobsPanel } from "./components/archive-jobs";
 import { RemoteFolderList } from "./components/remote-folder-list";
 import { remoteFolderLabel } from "./lib/remote-folders";
+import { printMail } from "./lib/mail-print";
 import { coalesceRefresh } from "./lib/refresh-queue";
 import { ConversationReader } from "./components/conversation-reader";
 import { replyHeaders } from "./lib/conversations";
@@ -74,6 +75,7 @@ import {
   List,
   Paperclip,
   Plus,
+  Printer,
   RefreshCw,
   Reply,
   ReplyAll,
@@ -2391,6 +2393,19 @@ export default function App() {
                                 />
                               </Button>
                             </MailActionTooltip>
+                            <Button
+                              variant="ghost"
+                              size="icon-sm"
+                              title="打印这封邮件"
+                              aria-label="打印这封邮件"
+                              onClick={() =>
+                                void printMail(detail).catch((error) =>
+                                  toast.error(`打印失败：${String(error)}`),
+                                )
+                              }
+                            >
+                              <Printer size={17} />
+                            </Button>
                             <Button
                               variant="ghost"
                               size="icon-sm"
