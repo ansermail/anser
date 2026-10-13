@@ -67,3 +67,9 @@ export async function signDevelopmentBundle(bundle, identity, execute = run) {
   ]);
   await execute("/usr/bin/codesign", ["--verify", "--strict", bundle]);
 }
+
+export function localBuildSigningConfig(identity) {
+  return JSON.stringify({
+    bundle: { macOS: { signingIdentity: identity.hash } },
+  });
+}

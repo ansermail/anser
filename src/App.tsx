@@ -3,6 +3,7 @@ import { MailFilters } from "./components/mail-filters";
 import { ArchiveLocation } from "./components/archive-location";
 import { MailSignatures } from "./components/mail-signatures";
 import { useConfirmation } from "./hooks/use-confirmation";
+import { useNotificationMail } from "./hooks/use-notification-mail";
 import {
   useAppUpdate,
   UpdateIndicator,
@@ -36,7 +37,7 @@ import { FolderMappingDialog } from "./components/folder-mapping-dialog";
 import { RetentionDialog } from "./components/retention-dialog";
 import { ArchiveJobsPanel } from "./components/archive-jobs";
 import { RemoteFolderList } from "./components/remote-folder-list";
-import { remoteFolderLabel } from "./lib/remote-folders";
+import { remoteFolderLabel, sidebarAccountError } from "./lib/remote-folders";
 import { printMail } from "./lib/mail-print";
 import { coalesceRefresh } from "./lib/refresh-queue";
 import { ConversationReader } from "./components/conversation-reader";
@@ -261,6 +262,7 @@ export default function App() {
     [contactSeed, setContactSeed] = useState<Address | null>(null),
     [draft, setDraft] = useState<Compose | null>(null),
     [drafts, setDrafts] = useState<Compose[]>([]),
+    [clearingDrafts, setClearingDrafts] = useState(false),
     [syncing, setSyncing] = useState(false),
     [syncText, setSyncText] = useState(""),
     [loading, setLoading] = useState(true),
@@ -272,6 +274,7 @@ export default function App() {
   const searchRef = useRef<HTMLInputElement>(null),
     request = useRef(0),
     draftRequest = useRef(0),
+    clearingDraftsNow = useRef(false),
     queryRef = useRef(query),
     readerRef = useRef<HTMLDivElement>(null);
   const selectionRef = useRef(selected);
@@ -312,6 +315,74 @@ export default function App() {
   const localChanges = useRef(new Map<string, Partial<Mail>>());
   queryRef.current = query;
   const grouped = query.listMode !== "messages";
+  const [notificationToken, setNotificationToken] = useState<{
+    token: string;
+    click: number;
+  } | null>(null);
+  const [notificationSelected, setNotificationSelected] = useState("");
+  const notificationGeneration = useRef(0);
+  const notificationReading = useRef("");
+  const notificationContext = useRef({ page, search, draft, demo });
+  notificationContext.current = { page, search, draft, demo };
+  useNotificationMail(native && !demo, (token) => {
+    const click = ++notificationGeneration.current;
+    setNotificationToken({ token, click });
+  });
+  useEffect(() => {
+    if (!notificationToken || draft || demo) return;
+    let live = true;
+    const ticket = ++notificationGeneration.current;
+    const scope = queryRef.current;
+    const reading = selectionRef.current;
+    const context = notificationContext.current;
+    void call<Mail>("notification_mail", { token: notificationToken.token })
+      .then((mail) => {
+        if (
+          !live ||
+          ticket !== notificationGeneration.current ||
+          scope !== queryRef.current ||
+          reading !== selectionRef.current ||
+          context.page !== notificationContext.current.page ||
+          context.search !== notificationContext.current.search ||
+          context.draft !== notificationContext.current.draft ||
+          context.demo !== notificationContext.current.demo
+        )
+          return;
+        setSearch("");
+        setChecked([]);
+        setPage("mail");
+        setQuery({
+          view: mail.trashed
+            ? "trash"
+            : mail.savedLocally !== false
+              ? "local"
+              : "remote",
+          accountId: mail.accountId,
+          folder: "",
+          remoteFolder: mail.savedLocally === false ? mail.sourceFolder : "",
+          search: "",
+          unreadOnly: false,
+          limit: 200,
+          listMode: queryRef.current.listMode,
+        });
+        notificationReading.current = mail.id;
+        setNotificationSelected(mail.id);
+        readingNeighbors.current = null;
+        setSelected(mail.id);
+        setDetailRetry((value) => value + 1);
+      })
+      .catch((error) => {
+        if (live && ticket === notificationGeneration.current)
+          toast.error(`无法打开通知邮件：${String(error)}`);
+      })
+      .finally(() => {
+        if (live && ticket === notificationGeneration.current)
+          setNotificationToken(null);
+      });
+    return () => {
+      live = false;
+    };
+  }, [notificationToken, draft, demo]);
   useEffect(() => {
     try {
       localStorage.setItem("mail-list-mode", query.listMode || "conversations");
@@ -450,11 +521,19 @@ export default function App() {
     if (selected)
       void call<Detail>("mail_detail", { id: selected })
         .then((d) => {
-          if (live)
+          if (live) {
             setDetail({
               ...d,
               mail: { ...d.mail, ...localChanges.current.get(d.mail.id) },
             });
+            if (notificationReading.current === d.mail.id) {
+              notificationReading.current = "";
+              if (!d.mail.isRead)
+                void updateMail(d.mail.id, "read", "true")
+                  .then(() => refresh())
+                  .catch((error) => toast.error(String(error)));
+            }
+          }
         })
         .catch((e) => {
           if (live) {
@@ -521,6 +600,7 @@ export default function App() {
   }, [refresh]);
   const compose = useCallback(
     (mail?: Mail, forward = false, all = false, origin?: Detail) => {
+      if (clearingDraftsNow.current) return;
       if (!data.accounts.some((a) => a.enabled)) {
         setAccountDialog(true);
         return;
@@ -668,6 +748,10 @@ export default function App() {
     remoteFolderTree = false,
     remoteFolderDelimiter = "",
   ) {
+    ++notificationGeneration.current;
+    setNotificationToken(null);
+    setNotificationSelected("");
+    notificationReading.current = "";
     setPage("mail");
     setSearch("");
     setSelected("");
@@ -1020,6 +1104,10 @@ export default function App() {
     }
   }
   async function openMail(m: Mail, messages = data.messages) {
+    ++notificationGeneration.current;
+    setNotificationToken(null);
+    setNotificationSelected("");
+    notificationReading.current = "";
     const index = messages.findIndex(
       (item) =>
         item.id === m.id ||
@@ -1133,6 +1221,41 @@ export default function App() {
     setPage("drafts");
     await reloadDrafts();
   }
+  async function clearDrafts() {
+    if (!drafts.length || draft || clearingDraftsNow.current) return;
+    const expected = drafts;
+    clearingDraftsNow.current = true;
+    setClearingDrafts(true);
+    try {
+      if (
+        !(await askConfirmation({
+          title: "清空草稿箱？",
+          description: `将删除这 ${expected.length} 份本地草稿，删除后无法恢复。正在编辑的草稿请先关闭。`,
+          action: "清空草稿",
+          destructive: true,
+        }))
+      )
+        return;
+      ++draftRequest.current;
+      const result = await call<{ deleted: number; cleanupPending: number }>(
+        "clear_drafts",
+        { drafts: expected },
+      );
+      ++draftRequest.current;
+      const ids = new Set(expected.map((draft) => draft.id));
+      setDrafts((current) => current.filter((draft) => !ids.has(draft.id)));
+      await reloadDrafts();
+      toast.success(`已清空 ${result.deleted} 份草稿`);
+      if (result.cleanupPending)
+        toast.warning("草稿已清空，部分临时附件待后续清理");
+    } catch (e) {
+      toast.error(String(e));
+      await reloadDrafts();
+    } finally {
+      clearingDraftsNow.current = false;
+      setClearingDrafts(false);
+    }
+  }
   async function queueArchives(ids: string[], conversations = false) {
     if (archiving) return;
     setArchiving(true);
@@ -1225,6 +1348,7 @@ export default function App() {
       await refresh();
     } catch (e) {
       setFolderErrors((errors) => ({ ...errors, [id]: String(e) }));
+      await refresh();
     } finally {
       setFolderLoading((ids) => ids.filter((value) => value !== id));
     }
@@ -1365,7 +1489,11 @@ export default function App() {
                   α
                 </Badge>
               </div>
-              <Button className="compose-button" onClick={() => compose()}>
+              <Button
+                className="compose-button"
+                disabled={clearingDrafts}
+                onClick={() => compose()}
+              >
                 <SquarePen size={17} />
                 写邮件<kbd>⌘ N</kbd>
               </Button>
@@ -1432,7 +1560,7 @@ export default function App() {
                           {!a.enabled && <span className="paused-dot" />}
                         </Button>
                       </CollapsibleTrigger>
-                      {a.error && (
+                      {sidebarAccountError(a, serverFolders) && (
                         <Tooltip>
                           <TooltipTrigger asChild>
                             <Button
@@ -1451,7 +1579,7 @@ export default function App() {
                             className="max-w-80 break-words"
                           >
                             <p>{a.email}</p>
-                            <p>{a.error}</p>
+                            <p>{sidebarAccountError(a, serverFolders)}</p>
                           </TooltipContent>
                         </Tooltip>
                       )}
@@ -1831,7 +1959,7 @@ export default function App() {
                 </ArchiveLocation>
               </Card>
               <Separator className="settings-section-divider" />
-              <StorageTools />
+              <StorageTools testMailId={selected} />
               {page === "settings" && (
                 <MailSignatures accounts={data.accounts} />
               )}
@@ -1920,15 +2048,31 @@ export default function App() {
                   </div>
                   <p>草稿自动保存到本机，随时继续。</p>
                 </div>
-                <Button onClick={() => compose()}>
-                  <SquarePen size={16} />
-                  写邮件
-                </Button>
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="outline"
+                    disabled={!drafts.length || clearingDrafts || !!draft}
+                    onClick={() => void clearDrafts()}
+                  >
+                    <Trash2 data-icon="inline-start" />
+                    {clearingDrafts ? "正在清空…" : "清空草稿"}
+                  </Button>
+                  <Button disabled={clearingDrafts} onClick={() => compose()}>
+                    <SquarePen data-icon="inline-start" />
+                    写邮件
+                  </Button>
+                </div>
               </div>
               {drafts.length ? (
                 drafts.map((d) => (
                   <article className="draft-card" key={d.id}>
-                    <Button variant="ghost" onClick={() => setDraft(d)}>
+                    <Button
+                      variant="ghost"
+                      disabled={clearingDrafts}
+                      onClick={() => {
+                        if (!clearingDraftsNow.current) setDraft(d);
+                      }}
+                    >
                       <h3>{d.subject || "（无主题）"}</h3>
                       <p>收件人：{d.to || "尚未填写"}</p>
                       <small>{d.body.slice(0, 120) || "空白草稿"}</small>
@@ -1937,7 +2081,9 @@ export default function App() {
                       variant="ghost"
                       size="icon"
                       title="删除草稿"
+                      disabled={clearingDrafts}
                       onClick={async () => {
+                        if (clearingDraftsNow.current) return;
                         if (
                           await askConfirmation({
                             title: "删除草稿？",
@@ -2623,7 +2769,9 @@ export default function App() {
                     <ConversationReader
                       key={`${selected}:${query.listMode}`}
                       selected={detail}
-                      singleMessage={!grouped}
+                      singleMessage={
+                        !grouped || notificationSelected === selected
+                      }
                       revision={data.messages}
                       accounts={data.accounts}
                       demo={demo}

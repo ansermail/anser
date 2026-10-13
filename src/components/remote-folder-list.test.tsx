@@ -5,6 +5,61 @@ import { expect, it, vi } from "vitest";
 import { RemoteFolderList } from "./remote-folder-list";
 import type { RemoteFolder } from "../lib/types";
 
+it("renders Gmail system folders beside inbox and selects their original paths", async () => {
+  Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
+  const host = document.createElement("div");
+  document.body.append(host);
+  const root = createRoot(host);
+  const onSelect = vi.fn();
+  const folders: RemoteFolder[] = [
+    {
+      accountId: "a",
+      name: "INBOX",
+      displayName: "收件箱",
+      delimiter: "/",
+      selectable: true,
+      roles: ["inbox"],
+    },
+    {
+      accountId: "a",
+      name: "[Gmail]",
+      displayName: "[Gmail]",
+      delimiter: "/",
+      selectable: false,
+    },
+    {
+      accountId: "a",
+      name: "[Gmail]/Important",
+      displayName: "[Gmail]/重要邮件",
+      delimiter: "/",
+      selectable: true,
+      roles: ["important"],
+    },
+  ];
+  await act(async () =>
+    root.render(
+      <RemoteFolderList
+        folders={folders}
+        selected="[Gmail]/Important"
+        unread={{ "[Gmail]/Important": { direct: 3, tree: 3 } }}
+        onSelect={onSelect}
+      />,
+    ),
+  );
+  const items = [...host.querySelectorAll(".folder-item")];
+  expect(items.map((item) => item.querySelector("span")?.textContent)).toEqual([
+    "收件箱",
+    "重要邮件",
+  ]);
+  expect(host.querySelector(".remote-folder-children")).toBeNull();
+  expect(items[1].getAttribute("aria-current")).toBe("page");
+  expect(items[1].textContent).toContain("3");
+  await act(async () => (items[1] as HTMLElement).click());
+  expect(onSelect).toHaveBeenCalledWith("[Gmail]/Important", false, "");
+  await act(async () => root.unmount());
+  host.remove();
+});
+
 it("uses an existing flagged folder as the account's starred view", async () => {
   Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
   const host = document.createElement("div");

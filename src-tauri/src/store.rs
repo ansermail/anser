@@ -104,6 +104,7 @@ impl Store {
         crate::search::initialize(&db)?;
         crate::paging::initialize(&db)?;
         crate::compose_files::initialize(&db)?;
+        crate::notification_open::initialize(&db)?;
         s.migrate_folder_roles()?;
         if let Err(error) = s.cleanup_archive_migration() {
             s.log(&format!("存档迁移清理待完成：{error}"))?;

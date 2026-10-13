@@ -63,14 +63,7 @@ pub fn show(app: &tauri::AppHandle, title: &str, body: &str) -> Result<()> {
     #[cfg(target_os = "macos")]
     {
         let _ = app;
-        // Unlike the plugin's detached desktop task, propagate preparation errors
-        // to the test button and activity log. The .app identity is set at startup.
-        notify_rust::Notification::new()
-            .summary(title)
-            .body(body)
-            .show()
-            .map(|_| ())
-            .map_err(err)
+        crate::notification_open::show(title, body, "")
     }
     #[cfg(not(target_os = "macos"))]
     app.notification()
@@ -81,6 +74,8 @@ pub fn show(app: &tauri::AppHandle, title: &str, body: &str) -> Result<()> {
         .map_err(err)
 }
 pub fn received(store: &Store, app: &tauri::AppHandle, account: &Account, after: i64) {
+    #[cfg(target_os = "macos")]
+    let _ = app;
     if !store
         .preferences()
         .unwrap_or_default()
@@ -91,16 +86,16 @@ pub fn received(store: &Store, app: &tauri::AppHandle, account: &Account, after:
     if let Ok(mails) = incoming(store, account, after, chrono::Utc::now())
         .and_then(|mails| claim_received(store, mails))
     {
-        if mails.is_empty() {
-            return;
-        }
-        let body = if mails.len() == 1 {
-            format!("{}\n{}", mails[0].sender, mails[0].subject)
-        } else {
-            format!("{} 收到 {} 封新邮件", account.email, mails.len())
-        };
-        if let Err(error) = show(app, "雁信 · 新邮件", &body) {
-            let _ = store.log(&format!("系统通知失败：{error}"));
+        for mail in mails {
+            let body = format!("{}\n{}", mail.sender, mail.subject);
+            #[cfg(target_os = "macos")]
+            let result = crate::notification_open::bind(store, &mail)
+                .and_then(|token| crate::notification_open::show("雁信 · 新邮件", &body, &token));
+            #[cfg(not(target_os = "macos"))]
+            let result = show(app, "雁信 · 新邮件", &body);
+            if let Err(error) = result {
+                let _ = store.log(&format!("系统通知失败：{error}"));
+            }
         }
     }
 }

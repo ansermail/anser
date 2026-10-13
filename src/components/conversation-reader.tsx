@@ -211,12 +211,15 @@ function Turn({
           )
         ) : detail.html ? (
           <MailContent
+            inspectable
             html={detail.html}
             title={`邮件正文：${mail.id}`}
             onOpenLink={onLink}
           />
         ) : (
-          <div className="message-body">{detail.mail.body}</div>
+          <div className="message-body" data-mail-debug-region="">
+            {detail.mail.body}
+          </div>
         )}
         <MailAttachments
           mailId={mail.id}
@@ -609,10 +612,15 @@ export function ConversationReader({
       !selected.mail.references?.length)
   ) {
     return (
-      <div className="reader-scroll" id="mail-reader-content" ref={scrollRef}>
+      <div
+        className="reader-scroll"
+        data-mail-debug-region=""
+        id="mail-reader-content"
+        ref={scrollRef}
+      >
         <ParseWarnings mail={selected.mail} />
         {selected.html ? (
-          <MailContent html={selected.html} onOpenLink={onLink} />
+          <MailContent inspectable html={selected.html} onOpenLink={onLink} />
         ) : (
           <div className="message-body">{selected.mail.body}</div>
         )}
@@ -629,6 +637,7 @@ export function ConversationReader({
     <>
       <div
         className="reader-scroll conversation-scroll"
+        data-mail-debug-region=""
         id="mail-reader-content"
         ref={scrollRef}
       >

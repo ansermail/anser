@@ -1,4 +1,64 @@
-import type { RemoteFolder } from "./types";
+import type { Account, RemoteFolder } from "./types";
+
+const gmailContainer = (name: string) =>
+  ["[gmail]", "[google mail]", "[googlemail]"].includes(name.toLowerCase());
+
+// These provider roots group mailboxes; they never identify a mailbox source.
+export function providerFolderContainer(
+  account: Pick<Account, "incomingHost">,
+  folder: RemoteFolder,
+) {
+  const host = account.incomingHost.toLowerCase();
+  return (
+    !folder.roles?.length &&
+    ((["imap.qq.com", "imap.exmail.qq.com"].includes(host) &&
+      ["其他文件夹", "我的文件夹"].includes(folder.displayName)) ||
+      (host === "imap.gmail.com" && gmailContainer(folder.name)))
+  );
+}
+
+export function sidebarFolderError(folder: RemoteFolder) {
+  if (
+    !folder.selectable &&
+    (["其他文件夹", "我的文件夹"].includes(folder.displayName) ||
+      gmailContainer(folder.name)) &&
+    (folder.syncError?.includes("服务器报告该文件夹为空，但又返回邮件 UID") ||
+      folder.syncError?.includes("服务器未返回该文件夹的邮件数量") ||
+      (gmailContainer(folder.name) &&
+        folder.syncError?.includes("[NONEXISTENT]")))
+  )
+    return undefined;
+  return folder.syncError;
+}
+
+// Old persisted sync summaries can outlive corrected LIST metadata. Suppress
+// only the known container-selection failure; keep other folders/errors visible.
+export function sidebarAccountError(account: Account, folders: RemoteFolder[]) {
+  if (!account.error) return null;
+  const summary =
+    /；其余文件夹已继续检查，本次新增 \d+ 封邮件$/.exec(account.error)?.[0] ||
+    "";
+  const failures = account.error.slice(
+    0,
+    account.error.length - summary.length,
+  );
+  const visible = failures.split(/；(?=文件夹「)/).filter((failure) => {
+    const name = /^文件夹「([^」]+)」/.exec(failure)?.[1];
+    if (!name) return true;
+    const folder = folders.find(
+      (folder) =>
+        folder.accountId === account.id &&
+        (folder.name === name || folder.displayName === name) &&
+        providerFolderContainer(account, folder),
+    );
+    return (
+      !folder ||
+      !!sidebarFolderError({ ...folder, selectable: false, syncError: failure })
+    );
+  });
+  if (!visible.length) return null;
+  return visible.join("；") + summary;
+}
 
 export interface FolderNode {
   key: string;
@@ -49,11 +109,16 @@ export function remoteFolderTree(folders: RemoteFolder[]): FolderNode[] {
   for (let i = roots.length - 1; i >= 0; i--) {
     const node = roots[i];
     if (
-      node.label === "其他文件夹" &&
+      ["其他文件夹", "我的文件夹"].includes(node.label) &&
       node.children.length === 0 &&
-      node.folder?.syncError
+      (node.folder?.syncError || node.folder?.selectable === false)
     )
       roots.splice(i, 1);
+    else if (
+      gmailContainer(node.path) &&
+      (!node.folder || node.folder.selectable === false)
+    )
+      roots.splice(i, 1, ...node.children);
   }
   const sort = (nodes: FolderNode[]) => {
     const rank = (node: FolderNode) => {

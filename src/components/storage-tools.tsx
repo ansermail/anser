@@ -9,7 +9,7 @@ import { Card } from "./ui/card";
 import { Button } from "./ui/button";
 import { toast } from "sonner";
 
-export function StorageTools() {
+export function StorageTools({ testMailId = "" }: { testMailId?: string }) {
   const [preferences, setPreferences] = useState<Preferences>({
       syncIntervalMinutes: 5,
       newMailNotifications: true,
@@ -119,7 +119,7 @@ export function StorageTools() {
           variant="outline"
           size="sm"
           onClick={() =>
-            void call("test_notification")
+            void call("test_notification", { id: testMailId || null })
               .then(() =>
                 toast.success(
                   isDemo()

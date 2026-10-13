@@ -2709,6 +2709,8 @@ kbd {
 .sidebar {
   flex: 1;
   min-height: 0;
+  overflow-y: scroll;
+  scrollbar-gutter: stable;
 }
 .sidebar > * {
   flex-shrink: 0;
@@ -3337,11 +3339,24 @@ kbd {
 .account-navigation {
   display: flex;
   align-items: center;
-  border-radius: var(--radius);
+  padding-block: 6px;
+  border-radius: var(--radius-md);
+  overflow: hidden;
 }
-.account-navigation.active {
+.account-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.account-navigation.active,
+.account-navigation:hover,
+.account-navigation:focus-within {
   background: var(--secondary);
   color: var(--foreground);
+}
+.account-navigation > button:hover,
+.dark .account-navigation > button:hover {
+  background: transparent;
 }
 .account-navigation .account-item {
   flex: 1;

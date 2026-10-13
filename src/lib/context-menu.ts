@@ -1,5 +1,9 @@
 // Bubble phase keeps future application ContextMenu triggers working.
 export function suppressNativeContextMenu(event: Event) {
+  const node = event.target as Node | null;
+  const element =
+    node?.nodeType === 1 ? (node as Element) : node?.parentElement;
+  if (element?.closest("[data-mail-debug-region]")) return;
   event.preventDefault();
 }
 export function disableNativeContextMenu(doc: Document) {

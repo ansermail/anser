@@ -2137,6 +2137,62 @@ mod tests {
         (result, written)
     }
     #[test]
+    fn provider_grouping_roots_are_not_selected_and_old_sources_stay_isolated() {
+        for host in ["imap.qq.com", "imap.exmail.qq.com", "imap.gmail.com"] {
+            let temp = tempfile::tempdir().unwrap();
+            let store = Store::new(temp.path().into()).unwrap();
+            let mut account = crate::tests::account();
+            account.incoming_host = host.into();
+            store.save_account(&account).unwrap();
+            let root = if host == "imap.gmail.com" {
+                "[Gmail]"
+            } else {
+                "&UXZO1mWHTvZZOQ-"
+            };
+            let child = format!("{root}/Archive");
+            store
+                .ingest(&account, root, "7:12", &crate::tests::raw(), false)
+                .unwrap();
+            store
+                .isolate_folder(&account, root, INCONSISTENT_SELECTION, &Default::default())
+                .unwrap();
+            let commands = Arc::new(Mutex::new(Vec::new()));
+            // Even a faulty LIST that marks the grouping root selectable must
+            // not lead to EXAMINE/SEARCH of that root or trust restoration.
+            let responses = format!("a1 OK Login\r\n* CAPABILITY IMAP4rev1\r\na2 OK Capabilities\r\n* LIST () \"/\" \"INBOX\"\r\n* LIST () \"/\" \"{root}\"\r\n* LIST () \"/\" \"{child}\"\r\na3 OK Listed\r\n* 0 EXISTS\r\na4 OK [READ-ONLY] Opened\r\n* SEARCH\r\na5 OK Searched\r\n* 0 EXISTS\r\na6 OK [READ-ONLY] Opened\r\n* SEARCH\r\na7 OK Searched\r\n");
+            let stream = ImapTranscript {
+                responses: Cursor::new(responses.into_bytes()),
+                commands: commands.clone(),
+            };
+            let mut session = imap::Client::new(stream)
+                .login("test", "fixture-only")
+                .unwrap();
+            assert_eq!(sync_imap(&store, &account, &mut session).unwrap(), 0);
+            let written = String::from_utf8(commands.lock().unwrap().clone()).unwrap();
+            assert!(!written.contains(&format!("EXAMINE \"{root}\"")));
+            assert!(written.contains(&format!("EXAMINE \"{child}\"")));
+            assert_eq!(written.matches("UID SEARCH ALL").count(), 2);
+            assert!(store
+                .folder_isolated_reason(&account.id, root)
+                .unwrap()
+                .is_some());
+            assert!(store.has_source(&account.id, root, "7:12").unwrap());
+            assert_eq!(
+                store.snapshot(&crate::tests::query()).unwrap().stats.saved,
+                1
+            );
+            assert!(
+                !store
+                    .remote_folders(Some(&account.id))
+                    .unwrap()
+                    .iter()
+                    .find(|folder| folder.name == root)
+                    .unwrap()
+                    .selectable
+            );
+        }
+    }
+    #[test]
     fn missing_selection_metadata_cannot_publish_stale_folder_sources() {
         let temp = tempfile::tempdir().unwrap();
         let store = Store::new(temp.path().into()).unwrap();
@@ -2890,6 +2946,85 @@ mod tests {
         assert!(!commands.contains("LIST (SPECIAL-USE)"));
     }
     #[test]
+    fn complete_directory_list_closes_without_waiting_for_logout() {
+        for close in ["a4 OK Logged out\r\n", "* BYE Closing connection\r\n"] {
+            let temp = tempfile::tempdir().unwrap();
+            let store = Store::new(temp.path().into()).unwrap();
+            let a = crate::tests::account();
+            store.save_account(&a).unwrap();
+            let commands = Arc::new(Mutex::new(Vec::new()));
+            let response = format!("a1 OK Login\r\n* CAPABILITY IMAP4rev1\r\na2 OK Capabilities\r\n* LIST () \"/\" \"INBOX\"\r\n* LIST (\\All) \"/\" \"[Gmail]/All Mail\"\r\na3 OK Listed\r\n{close}");
+            let stream = ImapTranscript {
+                responses: Cursor::new(response.into_bytes()),
+                commands: commands.clone(),
+            };
+            let session = imap::Client::new(stream)
+                .login("test", "fixture-only")
+                .unwrap();
+            let folders = discover_and_cache_folders(&store, &a, session).unwrap();
+            assert_eq!(folders.len(), 2);
+            assert_eq!(folders[1].roles, vec![FolderRole::Inbox]);
+            assert!(folders
+                .iter()
+                .any(|folder| folder.roles == vec![FolderRole::All]));
+            let written = String::from_utf8(commands.lock().unwrap().clone()).unwrap();
+            assert!(!written.contains("LOGOUT"));
+            assert!(
+                !written.contains("EXAMINE")
+                    && !written.contains("FETCH")
+                    && !written.contains("STORE")
+            );
+        }
+    }
+    #[test]
+    fn failed_directory_list_preserves_the_previous_complete_cache() {
+        let temp = tempfile::tempdir().unwrap();
+        let store = Store::new(temp.path().into()).unwrap();
+        let a = crate::tests::account();
+        store.save_account(&a).unwrap();
+        let cached = RemoteFolder {
+            account_id: a.id.clone(),
+            name: "Cached".into(),
+            display_name: "Cached".into(),
+            delimiter: Some("/".into()),
+            selectable: true,
+            roles: vec![],
+            detected_roles: None,
+            sync_error: None,
+        };
+        store.save_remote_folders(&a.id, &[cached]).unwrap();
+        let commands = Arc::new(Mutex::new(Vec::new()));
+        let stream = ImapTranscript { responses: Cursor::new(b"a1 OK Login\r\n* CAPABILITY IMAP4rev1\r\na2 OK Capabilities\r\na3 NO Rate limited\r\n".to_vec()), commands: commands.clone() };
+        let session = imap::Client::new(stream)
+            .login("test", "fixture-only")
+            .unwrap();
+        assert!(discover_and_cache_folders(&store, &a, session)
+            .unwrap_err()
+            .starts_with("获取服务器文件夹失败："));
+        assert_eq!(store.remote_folders(Some(&a.id)).unwrap()[0].name, "Cached");
+        assert!(!String::from_utf8(commands.lock().unwrap().clone())
+            .unwrap()
+            .contains("LOGOUT"));
+    }
+    #[test]
+    fn a_directory_response_for_old_connection_settings_cannot_replace_the_cache() {
+        let temp = tempfile::tempdir().unwrap();
+        let store = Store::new(temp.path().into()).unwrap();
+        let a = crate::tests::account();
+        store.save_account(&a).unwrap();
+        let stream = ImapTranscript { responses: Cursor::new(b"a1 OK Login\r\n* CAPABILITY IMAP4rev1\r\na2 OK Capabilities\r\n* LIST () \"/\" \"INBOX\"\r\na3 OK Listed\r\na4 OK Logged out\r\n".to_vec()), commands: Arc::new(Mutex::new(Vec::new())) };
+        let session = imap::Client::new(stream)
+            .login("test", "fixture-only")
+            .unwrap();
+        let mut edited = a.clone();
+        edited.incoming_host = "changed.example.com".into();
+        store.save_account(&edited).unwrap();
+        assert!(discover_and_cache_folders(&store, &a, session)
+            .unwrap_err()
+            .contains("连接配置已变化"));
+        assert!(store.remote_folders(Some(&a.id)).unwrap().is_empty());
+    }
+    #[test]
     fn gmail_list_discovers_system_and_user_labels_without_fixed_names() {
         let (folders, commands) = discovery_round(b"a1 OK Login\r\n* CAPABILITY IMAP4rev1 SPECIAL-USE\r\na2 OK Capabilities\r\n* LIST (\\HasNoChildren) \"/\" \"INBOX\"\r\n* LIST (\\Noselect \\HasChildren) \"/\" \"[Gmail]\"\r\n* LIST (\\Flagged) \"/\" \"[Gmail]/Starred\"\r\n* LIST (\\Important) \"/\" \"[Gmail]/Important\"\r\n* LIST (\\All) \"/\" \"[Gmail]/All Mail\"\r\n* LIST () \"/\" \"Orders\"\r\na3 OK Listed\r\n");
         let folders = folders.unwrap();
@@ -3529,10 +3664,27 @@ pub fn folder_list(store: &Store, a: &Account) -> Result<Vec<RemoteFolder>> {
             roles: vec![FolderRole::Inbox],
         }]);
     }
-    let mut session = imap_session(a, &auth::credentials(a)?)?;
-    let folders = discover_remote_folders(&a.id, &mut session)?;
-    session.logout().map_err(err)?;
-    store.save_remote_folders(&a.id, &folders)?;
+    let secret = auth::credentials(a).map_err(|e| format!("读取或刷新邮箱授权失败：{e}"))?;
+    let session = imap_session(a, &secret).map_err(|e| format!("连接或登录邮件服务器失败：{e}"))?;
+    discover_and_cache_folders(store, a, session)
+}
+fn discover_and_cache_folders<T: std::io::Read + Write>(
+    store: &Store,
+    a: &Account,
+    mut session: imap::Session<T>,
+) -> Result<Vec<RemoteFolder>> {
+    let folders = discover_remote_folders(&a.id, &mut session)
+        .map_err(|e| format!("获取服务器文件夹失败：{e}"))?;
+    // This is a dedicated read-only LIST connection. Once the tagged result
+    // is complete, close it without another network round trip; a delayed or
+    // absent LOGOUT receipt must not hold up or discard the valid directory.
+    drop(session);
+    if !store.account(&a.id)?.same_connection(a) {
+        return Err("账号连接配置已变化，请重新加载文件夹".into());
+    }
+    store
+        .save_remote_folders(&a.id, &folders)
+        .map_err(|e| format!("保存文件夹目录失败：{e}"))?;
     store.remote_folders(Some(&a.id))
 }
 pub fn sync_folder(store: &Store, a: &Account, folder: &str) -> Result<u32> {

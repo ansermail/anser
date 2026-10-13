@@ -9,6 +9,12 @@ use std::{
 };
 const MAX_BYTES: usize = 50 * 1024 * 1024;
 const MARKER: &[u8] = b"Anser managed compose attachments v1\n";
+#[derive(Debug, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ClearDraftsResult {
+    pub deleted: usize,
+    pub cleanup_pending: usize,
+}
 type Gates = Mutex<HashMap<PathBuf, Weak<Mutex<()>>>>;
 fn gate(root: &Path) -> Result<Arc<Mutex<()>>> {
     static GATES: OnceLock<Gates> = OnceLock::new();
@@ -654,6 +660,69 @@ impl Store {
             .map_err(err)?;
         self.collect_compose_files(id)
     }
+    pub fn clear_compose_drafts(&self, drafts: &[Compose]) -> Result<ClearDraftsResult> {
+        let mut ids = HashSet::new();
+        for draft in drafts {
+            if draft.id.is_empty() || draft.id.len() > 512 || !ids.insert(draft.id.clone()) {
+                return Err("草稿列表无效，请刷新后重试".into());
+            }
+        }
+        {
+            // Serialize against autosave, editor leases and managed attachments.
+            // Validate the entire confirmation snapshot before deleting anything.
+            let g = gate(&self.root)?;
+            let _guard = g.lock().map_err(err)?;
+            let mut db = self.db()?;
+            let tx = db
+                .transaction_with_behavior(TransactionBehavior::Immediate)
+                .map_err(err)?;
+            for expected in drafts {
+                let stored: Option<String> = tx
+                    .query_row("SELECT data FROM drafts WHERE id=?1", [&expected.id], |r| {
+                        r.get(0)
+                    })
+                    .optional()
+                    .map_err(err)?;
+                let current: Compose =
+                    serde_json::from_str(&stored.ok_or("草稿列表已变化，请刷新后重新清空")?)
+                        .map_err(err)?;
+                if serde_json::to_value(&current).map_err(err)?
+                    != serde_json::to_value(expected).map_err(err)?
+                {
+                    return Err("草稿内容已变化，请刷新后重新清空".into());
+                }
+                let editing: bool = tx
+                    .query_row(
+                        "SELECT EXISTS(SELECT 1 FROM compose_sessions WHERE draft_id=?1)",
+                        [&expected.id],
+                        |r| r.get(0),
+                    )
+                    .map_err(err)?;
+                if editing {
+                    return Err("有草稿正在编辑，请先关闭写信窗口再清空".into());
+                }
+                let locked: bool = tx.query_row("SELECT EXISTS(SELECT 1 FROM outbox WHERE id=?1 AND status IN ('scheduled','overdue','paused','sending','sent','uncertain'))", [&expected.id], |r| r.get(0)).map_err(err)?;
+                if locked {
+                    return Err("有草稿已进入发送记录，请刷新后重新核对".into());
+                }
+            }
+            for id in &ids {
+                tx.execute("DELETE FROM drafts WHERE id=?1", [id])
+                    .map_err(err)?;
+            }
+            tx.commit().map_err(err)?;
+        }
+        // Draft removal is committed. Cleanup can safely retry independently;
+        // do not report it as a failed deletion or discard held outbox files.
+        let cleanup_pending = ids
+            .iter()
+            .filter(|id| self.collect_compose_files(id).is_err())
+            .count();
+        Ok(ClearDraftsResult {
+            deleted: ids.len(),
+            cleanup_pending,
+        })
+    }
 }
 
 #[cfg(test)]
@@ -764,6 +833,112 @@ mod tests {
             },
             token,
         )
+    }
+    #[test]
+    fn bulk_draft_clear_only_removes_confirmed_drafts_and_owned_files() {
+        let (_dir, store, mut d, source, token) = fixture();
+        d.forward_files = store.prepare_forward_files(&d.id, &token, &source).unwrap();
+        let paths = d
+            .forward_files
+            .iter()
+            .map(|f| payload(&store.root, &f.id).unwrap())
+            .collect::<Vec<_>>();
+        store.save_draft(&d).unwrap();
+        store.close_compose_session(&d.id, &token).unwrap();
+        let mut second = draft();
+        second.id = "bulk-two".into();
+        store.save_draft(&second).unwrap();
+        let mut newer = draft();
+        newer.id = "created-after-confirmation".into();
+        store.save_draft(&newer).unwrap();
+        let result = store.clear_compose_drafts(&[d, second]).unwrap();
+        assert_eq!(result.deleted, 2);
+        assert_eq!(result.cleanup_pending, 0);
+        assert_eq!(store.drafts().unwrap()[0].id, newer.id);
+        assert_eq!(store.drafts().unwrap().len(), 1);
+        assert!(paths.iter().all(|path| !path.exists()));
+        assert_eq!(
+            store.message_raw(&store.mail(&source.id).unwrap()).unwrap(),
+            raw()
+        );
+    }
+    #[test]
+    fn bulk_draft_clear_rejects_editing_changed_and_frozen_drafts_atomically() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = Store::new(dir.path().into()).unwrap();
+        let first = draft();
+        let mut second = draft();
+        second.id = "bulk-two".into();
+        store.save_draft(&first).unwrap();
+        store.save_draft(&second).unwrap();
+        let expected = vec![first.clone(), second.clone()];
+        let token = store.open_compose_session(&second.id).unwrap();
+        assert!(store
+            .clear_compose_drafts(&expected)
+            .unwrap_err()
+            .contains("正在编辑"));
+        assert_eq!(store.drafts().unwrap().len(), 2);
+        store.close_compose_session(&second.id, &token).unwrap();
+        second.subject = "Changed while confirming".into();
+        store.save_draft(&second).unwrap();
+        assert!(store
+            .clear_compose_drafts(&expected)
+            .unwrap_err()
+            .contains("内容已变化"));
+        assert_eq!(store.drafts().unwrap().len(), 2);
+        let expected = vec![first, second.clone()];
+        for status in ["scheduled", "sending", "uncertain"] {
+            store.db().unwrap().execute("INSERT INTO outbox(id,status,data,raw) VALUES(?1,?2,?3,?4) ON CONFLICT(id) DO UPDATE SET status=excluded.status", params![second.id, status, serde_json::to_string(&second).unwrap(), raw()]).unwrap();
+            assert!(store
+                .clear_compose_drafts(&expected)
+                .unwrap_err()
+                .contains("发送记录"));
+            assert_eq!(store.drafts().unwrap().len(), 2);
+            assert_eq!(
+                store
+                    .db()
+                    .unwrap()
+                    .query_row("SELECT status FROM outbox WHERE id=?1", [&second.id], |r| r
+                        .get::<_, String>(0))
+                    .unwrap(),
+                status
+            );
+        }
+    }
+    #[test]
+    fn bulk_draft_clear_database_failure_rolls_back_every_deletion() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = Store::new(dir.path().into()).unwrap();
+        let first = draft();
+        let mut second = draft();
+        second.id = "bulk-two".into();
+        store.save_draft(&first).unwrap();
+        store.save_draft(&second).unwrap();
+        store.db().unwrap().execute_batch("CREATE TRIGGER reject_bulk_delete BEFORE DELETE ON drafts WHEN OLD.id='bulk-two' BEGIN SELECT RAISE(ABORT,'fixture failure'); END").unwrap();
+        assert!(store.clear_compose_drafts(&[first, second]).is_err());
+        assert_eq!(store.drafts().unwrap().len(), 2);
+    }
+    #[cfg(unix)]
+    #[test]
+    fn bulk_draft_clear_reports_pending_cleanup_without_following_symlinks() {
+        let (dir, store, mut d, source, token) = fixture();
+        d.forward_files = store.prepare_forward_files(&d.id, &token, &source).unwrap();
+        store.save_draft(&d).unwrap();
+        store.close_compose_session(&d.id, &token).unwrap();
+        let path = payload(&store.root, &d.forward_files[0].id).unwrap();
+        fs::remove_file(&path).unwrap();
+        let external = dir.path().join("user-owned.txt");
+        fs::write(&external, b"keep me").unwrap();
+        std::os::unix::fs::symlink(&external, &path).unwrap();
+        let result = store.clear_compose_drafts(&[d]).unwrap();
+        assert_eq!(result.deleted, 1);
+        assert_eq!(result.cleanup_pending, 1);
+        assert!(store.drafts().unwrap().is_empty());
+        assert_eq!(fs::read(&external).unwrap(), b"keep me");
+        assert_eq!(
+            store.message_raw(&store.mail(&source.id).unwrap()).unwrap(),
+            raw()
+        );
     }
     #[test]
     fn forward_copies_preserve_same_names_distinct_bytes_types_and_original_after_restart() {

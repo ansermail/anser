@@ -55,9 +55,10 @@ dependencies = [
 
 [[package]]
 name = "anser"
-version = "0.1.13"
+version = "0.1.14"
 dependencies = [
  "base64 0.22.1",
+ "cc",
  "chrono",
  "encoding_rs",
  "fs2",
@@ -67,7 +68,6 @@ dependencies = [
  "lettre",
  "mailparse",
  "native-tls",
- "notify-rust",
  "open",
  "reqwest 0.12.28",
  "rusqlite",

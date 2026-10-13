@@ -1,6 +1,9 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi } from "vitest";
-import { disableFrameContextMenu } from "./context-menu";
+import {
+  disableFrameContextMenu,
+  disableNativeContextMenu,
+} from "./context-menu";
 
 function readableDocument() {
   const doc = document.implementation.createHTMLDocument("preview");
@@ -15,6 +18,21 @@ const context = (doc: Document) =>
     new MouseEvent("contextmenu", { bubbles: true, cancelable: true }),
   );
 describe("preview context menu suppression", () => {
+  it("allows browser inspection only in the marked reading region", () => {
+    const doc = document.implementation.createHTMLDocument("mail");
+    doc.body.innerHTML =
+      '<div data-mail-debug-region><p>mail text</p></div><input><div class="sidebar">sidebar</div>';
+    const stop = disableNativeContextMenu(doc);
+    const event = (element: Element) =>
+      element.dispatchEvent(
+        new MouseEvent("contextmenu", { bubbles: true, cancelable: true }),
+      );
+    expect(event(doc.querySelector("p")!)).toBe(true);
+    expect(event(doc.querySelector("input")!)).toBe(false);
+    expect(event(doc.querySelector(".sidebar")!)).toBe(false);
+    stop();
+    expect(event(doc.querySelector("input")!)).toBe(true);
+  });
   it("follows a new iframe document before remote images finish loading and cleans up", () => {
     vi.useFakeTimers();
     const frame = document.createElement("iframe");

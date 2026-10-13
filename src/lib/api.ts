@@ -510,6 +510,29 @@ export async function call<T = void>(
         );
         break;
       }
+      case "clear_drafts": {
+        const list = JSON.parse(
+          demoStorage.getItem(key + "-drafts") || "[]",
+        ) as Compose[];
+        const expected = args.drafts as Compose[];
+        const ids = new Set(expected.map((draft) => draft.id));
+        if (
+          ids.size !== expected.length ||
+          expected.some((draft) => {
+            const current = list.find((item) => item.id === draft.id);
+            return (
+              !current || JSON.stringify(current) !== JSON.stringify(draft)
+            );
+          })
+        )
+          throw new Error("草稿列表或内容已变化，请刷新后重新清空");
+        demoStorage.setItem(
+          key + "-drafts",
+          JSON.stringify(list.filter((draft) => !ids.has(draft.id))),
+        );
+        result = { deleted: ids.size, cleanupPending: 0 };
+        break;
+      }
       case "account_action":
         if (args.remove)
           demo.accounts = demo.accounts.filter((a) => a.id !== args.id);

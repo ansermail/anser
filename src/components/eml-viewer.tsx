@@ -203,6 +203,7 @@ export function EmlViewer() {
               </Alert>
             ) : null}
             <MailContent
+              inspectable
               html={detail.html}
               onOpenLink={(href) => {
                 void invoke("open_mail_link", { url: href }).catch((cause) =>

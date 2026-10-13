@@ -7,6 +7,14 @@ import { enterDemo, leaveDemo, snapshot } from "./lib/api";
 import * as api from "./lib/api";
 import type { Query, RemoteFolder } from "./lib/types";
 import { toast } from "sonner";
+const notificationFixture = vi.hoisted(() => ({
+  open: (_token: string) => {},
+}));
+vi.mock("./hooks/use-notification-mail", () => ({
+  useNotificationMail: (_enabled: boolean, open: (token: string) => void) => {
+    notificationFixture.open = open;
+  },
+}));
 
 let root: Root;
 let host: HTMLDivElement;
@@ -198,6 +206,109 @@ describe("draft list after composing", () => {
         (record) => record.id === draft.id && record.status === "scheduled",
       ),
     ).toBe(true);
+  });
+});
+describe("bulk draft clearing", () => {
+  const clearButton = () =>
+    [...host.querySelectorAll("button")].find(
+      (button) => button.textContent?.trim() === "清空草稿",
+    ) as HTMLButtonElement;
+  const confirmation = (text: string) =>
+    [...document.querySelectorAll('[role="alertdialog"] button')].find(
+      (button) => button.textContent?.trim() === text,
+    ) || null;
+  async function seedDrafts() {
+    const seed = await snapshot(localQuery);
+    for (const subject of ["First draft", "Second draft"])
+      await api.call("save_draft", {
+        draft: { ...api.newDraft(seed.accounts[0].id), subject },
+      });
+    await click(nav("草稿箱"));
+    return api.call<import("./lib/types").Compose[]>("list_drafts");
+  }
+  it("disables empty clearing, cancels without deleting, and clears only after confirmation", async () => {
+    await click(nav("草稿箱"));
+    expect(clearButton().disabled).toBe(true);
+    await seedDrafts();
+    await click(clearButton());
+    expect(
+      document.querySelector('[role="alertdialog"]')?.textContent,
+    ).toContain("2 份本地草稿");
+    await click(confirmation("取消"));
+    expect(await api.call("list_drafts")).toHaveLength(2);
+    expect(host.querySelectorAll(".draft-card")).toHaveLength(2);
+    await click(clearButton());
+    await click(confirmation("清空草稿"));
+    expect(await api.call("list_drafts")).toHaveLength(0);
+    expect(host.querySelector(".draft-card")).toBeNull();
+    expect(clearButton().disabled).toBe(true);
+    expect(host.textContent).toContain("暂时没有草稿");
+  });
+  it("keeps drafts and reports a clearing failure", async () => {
+    await seedDrafts();
+    const original = api.call;
+    vi.spyOn(api, "call").mockImplementation(
+      async <T,>(command: string, args: Record<string, unknown> = {}) => {
+        if (command === "clear_drafts")
+          throw new Error("fixture database unavailable");
+        return original<T>(command, args);
+      },
+    );
+    const error = vi.spyOn(toast, "error");
+    await click(clearButton());
+    await click(confirmation("清空草稿"));
+    expect(error).toHaveBeenCalledWith("Error: fixture database unavailable");
+    expect(host.querySelectorAll(".draft-card")).toHaveLength(2);
+    expect(clearButton().disabled).toBe(false);
+  });
+  it("blocks new composing while clearing and ignores a stale draft list response", async () => {
+    const old = await seedDrafts();
+    const original = api.call;
+    let releaseClear: (() => Promise<void>) | undefined;
+    let releaseOld: ((drafts: unknown) => void) | undefined;
+    let captureOld = false;
+    const calls = vi
+      .spyOn(api, "call")
+      .mockImplementation(
+        async <T,>(command: string, args: Record<string, unknown> = {}) => {
+          if (command === "clear_drafts")
+            return new Promise<T>((resolve) => {
+              releaseClear = async () =>
+                resolve(await original<T>(command, args));
+            });
+          if (command === "list_drafts" && captureOld) {
+            captureOld = false;
+            return new Promise<T>((resolve) => {
+              releaseOld = resolve as (value: unknown) => void;
+            });
+          }
+          return original<T>(command, args);
+        },
+      );
+    await click(clearButton());
+    await click(confirmation("清空草稿"));
+    await act(async () =>
+      document.body.dispatchEvent(
+        new KeyboardEvent("keydown", {
+          key: "n",
+          metaKey: true,
+          bubbles: true,
+          cancelable: true,
+        }),
+      ),
+    );
+    expect(document.querySelector(".compose-dialog")).toBeNull();
+    captureOld = true;
+    await click(nav("草稿箱"));
+    await act(async () => {
+      await releaseClear!();
+    });
+    expect(host.querySelector(".draft-card")).toBeNull();
+    await act(async () => releaseOld!(old));
+    expect(host.querySelector(".draft-card")).toBeNull();
+    expect(
+      calls.mock.calls.filter(([command]) => command === "clear_drafts"),
+    ).toHaveLength(1);
   });
 });
 describe("mail action shortcuts", () => {
@@ -1334,6 +1445,80 @@ describe("reading unread mail within its current category", () => {
     expect(host.querySelector(".list-heading h1")?.textContent).toBe("收件箱");
     expect(host.querySelectorAll(".mail-row-main").length).toBeGreaterThan(0);
   });
+  it("keeps folder failure feedback compact and restores discovery after retry", async () => {
+    const original = api.call;
+    let first = true;
+    const diagnostic =
+      "14:00 Gmail 文件夹目录加载失败：连接或登录邮件服务器失败：连接超时";
+    vi.spyOn(api, "call").mockImplementation(
+      async <T,>(command: string, args?: Record<string, unknown>) => {
+        if (command === "account_folders" && first) {
+          first = false;
+          const seed = await snapshot(localQuery);
+          seed.logs.unshift(diagnostic);
+          localStorage.setItem("mail-desktop-demo-v1", JSON.stringify(seed));
+          api.restoreDemo();
+          throw new Error("连接或登录邮件服务器失败：连接超时");
+        }
+        return original<T>(command, args);
+      },
+    );
+    await click(
+      host.querySelector('button[aria-label="展开 工作邮箱 的服务器文件夹"]'),
+    );
+    expect(host.querySelector(".remote-folder-list")?.textContent).toContain(
+      "加载失败，重试",
+    );
+    expect(
+      host.querySelector(".remote-folder-list")?.textContent,
+    ).not.toContain("连接超时");
+    expect(host.querySelector(".remote-folder-list .folder-item")).toBeNull();
+    await click(nav("设置与账号"));
+    await click(host.querySelector('[aria-label="展开或收起最近活动"]'));
+    expect(host.querySelector(".activity-list")?.textContent).toContain(
+      diagnostic,
+    );
+    const retry = [...host.querySelectorAll(".remote-folder-list button")].find(
+      (button) => button.textContent === "加载失败，重试",
+    );
+    await click(retry || null);
+    expect(
+      host.querySelector(".remote-folder-list")?.textContent,
+    ).not.toContain("加载失败，重试");
+    expect(
+      host.querySelectorAll(".remote-folder-list .folder-item").length,
+    ).toBeGreaterThan(0);
+  });
+  it("shows only retry feedback after a cached directory discovery fails", async () => {
+    const toggle = host.querySelector(
+      'button[aria-label="展开 工作邮箱 的服务器文件夹"]',
+    );
+    await click(toggle);
+    const count = host.querySelectorAll(
+      ".remote-folder-list .folder-item",
+    ).length;
+    expect(count).toBeGreaterThan(0);
+    await click(toggle);
+    const original = api.call;
+    vi.spyOn(api, "call").mockImplementation(
+      async <T,>(command: string, args?: Record<string, unknown>) => {
+        if (command === "account_folders")
+          throw new Error("读取或刷新邮箱授权失败：授权服务暂时不可用");
+        return original<T>(command, args);
+      },
+    );
+    await click(toggle);
+    expect(host.querySelector(".remote-folder-list")?.textContent).toContain(
+      "加载失败，重试",
+    );
+    expect(
+      host.querySelector(".remote-folder-list")?.textContent,
+    ).not.toContain("授权服务暂时不可用");
+    expect(host.querySelector(".remote-folder-list [role='alert']")).toBeNull();
+    expect(
+      host.querySelectorAll(".remote-folder-list .folder-item"),
+    ).toHaveLength(0);
+  });
   it("toggles folders from the account row and waits for the complete directory response", async () => {
     const seed = await snapshot(localQuery);
     const accountId = seed.accounts[0].id;
@@ -1927,4 +2112,125 @@ it("opens saving guidance after a new account connects without submitting folder
     ) || null,
   );
   expect(document.querySelector('[role="dialog"]')).toBeNull();
+});
+
+describe("notification mail opening", () => {
+  beforeEach(async () => {
+    await act(async () => root.unmount());
+    vi.spyOn(api, "isDemo").mockReturnValue(false);
+    root = createRoot(host);
+    await act(async () => root.render(<App />));
+  });
+  function notificationMail() {
+    const original = api.call;
+    return vi
+      .spyOn(api, "call")
+      .mockImplementation(
+        async <T,>(command: string, args: Record<string, unknown> = {}) => {
+          if (command === "notification_mail")
+            return original<T>("mail_metadata", { id: args.token });
+          return original<T>(command, args);
+        },
+      );
+  }
+  it("opens the exact mail from settings, clears filters, and only marks that mail read", async () => {
+    await seedReplyThread();
+    const seed = await snapshot({ ...localQuery, listMode: "messages" });
+    for (const mail of seed.messages) mail.isRead = false;
+    localStorage.setItem("mail-desktop-demo-v1", JSON.stringify(seed));
+    api.restoreDemo();
+    const target = seed.messages.find((mail) => mail.id === "older-reply")!;
+    const calls = notificationMail();
+    await click(
+      [...host.querySelectorAll("button.nav-item")].find((b) =>
+        b.textContent?.includes("设置"),
+      )!,
+    );
+    await act(async () => notificationFixture.open(target.id));
+    expect(host.querySelector(".message-heading h1")?.textContent).toBe(
+      target.subject,
+    );
+    expect(host.querySelector(".conversation-stream")).toBeNull();
+    expect(
+      calls.mock.calls
+        .filter(([command]) => command === "update_mail")
+        .map(([, args]) => args?.id),
+    ).toEqual([target.id]);
+    expect(localStorage.getItem("mail-list-mode")).toBe("conversations");
+    expect(
+      host.querySelector<HTMLInputElement>(
+        'input[placeholder="搜索当前范围的邮件…"]',
+      )?.value,
+    ).toBe("");
+  });
+  it("defers while composing and opens after closing without replacing the draft", async () => {
+    const seed = await snapshot({ ...localQuery, listMode: "messages" });
+    const calls = notificationMail();
+    await click(
+      [...host.querySelectorAll("button")].find((b) =>
+        b.textContent?.startsWith("写邮件"),
+      )!,
+    );
+    const composer = document.querySelector(".compose-dialog");
+    expect(composer).not.toBeNull();
+    await act(async () => notificationFixture.open(seed.messages[0].id));
+    expect(document.querySelector(".compose-dialog")).toBe(composer);
+    expect(
+      calls.mock.calls.some(([command]) => command === "notification_mail"),
+    ).toBe(false);
+    await click(
+      [...document.querySelectorAll(".compose-dialog button")].find(
+        (b) => b.getAttribute("aria-label") === "舍弃空白邮件",
+      )!,
+    );
+    expect(document.querySelector(".compose-dialog")).toBeNull();
+    expect(host.querySelector(".message-heading h1")?.textContent).toBe(
+      seed.messages[0].subject,
+    );
+  });
+  it("ignores a late earlier click and a late result after manual navigation", async () => {
+    const seed = await snapshot({ ...localQuery, listMode: "messages" });
+    const original = api.call;
+    const pending = new Map<string, (mail: unknown) => void>();
+    vi.spyOn(api, "call").mockImplementation(
+      async <T,>(command: string, args: Record<string, unknown> = {}) => {
+        if (command === "notification_mail")
+          return new Promise<T>((resolve) =>
+            pending.set(String(args.token), resolve as (mail: unknown) => void),
+          );
+        return original<T>(command, args);
+      },
+    );
+    await act(async () => notificationFixture.open("first"));
+    await act(async () => notificationFixture.open("second"));
+    await act(async () => pending.get("second")!(seed.messages[1]));
+    await act(async () => pending.get("first")!(seed.messages[0]));
+    expect(host.querySelector(".message-heading h1")?.textContent).toBe(
+      seed.messages[1].subject,
+    );
+    await act(async () => notificationFixture.open("third"));
+    await click(nav("草稿箱"));
+    await act(async () => pending.get("third")!(seed.messages[0]));
+    expect(host.querySelector(".message-heading")).toBeNull();
+    expect(host.querySelector("h1")?.textContent).toBe("草稿箱");
+  });
+  it("reports an unavailable target without changing the reading mail", async () => {
+    await click(host.querySelector("button.mail-row-main"));
+    const subject = host.querySelector(".message-heading h1")?.textContent;
+    const original = api.call;
+    vi.spyOn(api, "call").mockImplementation(
+      async <T,>(command: string, args: Record<string, unknown> = {}) => {
+        if (command === "notification_mail") throw new Error("通知邮件已移除");
+        return original<T>(command, args);
+      },
+    );
+    const error = vi.spyOn(toast, "error");
+    await act(async () => notificationFixture.open("missing"));
+    expect(host.querySelector(".message-heading h1")?.textContent).toBe(
+      subject,
+    );
+    expect(error).toHaveBeenCalledWith(
+      "无法打开通知邮件：Error: 通知邮件已移除",
+    );
+  });
 });

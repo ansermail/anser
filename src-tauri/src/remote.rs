@@ -31,6 +31,7 @@ impl ReceiveLookup {
 }
 impl Store {
     pub fn save_remote_folders(&self, account: &str, folders: &[RemoteFolder]) -> Result<()> {
+        let owner = self.account(account)?;
         let mut db = self.db()?;
         let tx = db
             .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
@@ -41,6 +42,7 @@ impl Store {
         for folder in folders {
             let mut folder = folder.clone();
             normalize_folder(&mut folder);
+            normalize_provider_container(&owner, &mut folder);
             folder.detected_roles = Some(
                 folder
                     .detected_roles
@@ -89,13 +91,15 @@ impl Store {
         db: &rusqlite::Connection,
         account: Option<&str>,
     ) -> Result<Vec<RemoteFolder>> {
-        let mut q = db.prepare("SELECT data FROM remote_folders WHERE ?1='' OR account_id=?1 ORDER BY name COLLATE NOCASE").map_err(err)?;
+        let mut q = db.prepare("SELECT f.data,a.data FROM remote_folders f LEFT JOIN accounts a ON a.id=f.account_id WHERE ?1='' OR f.account_id=?1 ORDER BY f.name COLLATE NOCASE").map_err(err)?;
         let rows = q
-            .query_map([account.unwrap_or("")], |r| r.get::<_, String>(0))
+            .query_map([account.unwrap_or("")], |r| {
+                Ok((r.get::<_, String>(0)?, r.get::<_, Option<String>>(1)?))
+            })
             .map_err(err)?
             .map(|r| {
-                let mut folder: RemoteFolder =
-                    serde_json::from_str(&r.map_err(err)?).map_err(err)?;
+                let (data, owner) = r.map_err(err)?;
+                let mut folder: RemoteFolder = serde_json::from_str(&data).map_err(err)?;
                 folder.sync_error = db
                     .query_row(
                         "SELECT reason FROM folder_health WHERE account_id=?1 AND folder=?2",
@@ -107,6 +111,10 @@ impl Store {
                 if folder.detected_roles.is_none() {
                     normalize_folder(&mut folder);
                     folder.detected_roles = Some(folder.roles.clone());
+                }
+                if let Some(owner) = owner {
+                    let owner: Account = serde_json::from_str(&owner).map_err(err)?;
+                    normalize_provider_container(&owner, &mut folder);
                 }
                 Ok(folder)
             })
@@ -509,6 +517,25 @@ pub(crate) fn normalize_folder(folder: &mut RemoteFolder) {
     } else {
         label.into()
     };
+}
+fn normalize_provider_container(account: &Account, folder: &mut RemoteFolder) {
+    if !folder.roles.is_empty() {
+        return;
+    }
+    let host = account.incoming_host.to_ascii_lowercase();
+    let name = display_name(&folder.name);
+    let tencent = matches!(host.as_str(), "imap.qq.com" | "imap.exmail.qq.com")
+        && matches!(name.as_str(), "其他文件夹" | "我的文件夹");
+    let gmail = host == "imap.gmail.com"
+        && matches!(
+            name.to_ascii_lowercase().as_str(),
+            "[gmail]" | "[google mail]" | "[googlemail]"
+        );
+    if tencent || gmail {
+        // LIST occasionally calls these grouping roots selectable. Never
+        // EXAMINE them or reconcile their old, unverified direct sources.
+        folder.selectable = false;
+    }
 }
 pub fn excluded_from_auto_sync(folder: &RemoteFolder) -> bool {
     folder

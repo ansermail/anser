@@ -2,6 +2,9 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { isTauri } from "@tauri-apps/api/core";
 import { MailBodySkeleton } from "./mail-skeleton";
 import { disableNativeContextMenu } from "../lib/context-menu";
+import { Button } from "./ui/button";
+import { Alert, AlertDescription } from "./ui/alert";
+import { watchMailImages, type MailImageStatus } from "../lib/mail-images";
 import {
   interceptMailLinks,
   isMailDocument,
@@ -13,16 +16,23 @@ export function MailContent({
   html,
   onOpenLink,
   title = "邮件正文",
+  inspectable = false,
 }: {
   html: string;
   title?: string;
+  inspectable?: boolean;
   onOpenLink: (href: string) => void;
 }) {
   const frame = useRef<HTMLIFrameElement>(null);
   const cleanup = useRef<() => void>(() => {});
   const initialized = useRef<Document | null>(null);
   const [ready, setReady] = useState(false);
-  const [pendingImages, setPendingImages] = useState(0);
+  const [images, setImages] = useState<MailImageStatus>({
+    waiting: 0,
+    timedOut: 0,
+    failed: 0,
+  });
+  const retryImages = useRef(() => {});
   const content = useMemo(() => {
     const id = crypto.randomUUID();
     return { id, srcDoc: safeMailHtml(html, id, isTauri()) };
@@ -32,7 +42,8 @@ export function MailContent({
   open.current = onOpenLink;
   useEffect(() => {
     setReady(false);
-    setPendingImages(0);
+    setImages({ waiting: 0, timedOut: 0, failed: 0 });
+    retryImages.current = () => {};
     initialized.current = null;
     cleanup.current();
     // DOM can be readable before onLoad, which waits for every remote image.
@@ -52,7 +63,7 @@ export function MailContent({
       cancelAnimationFrame(pending);
       cleanup.current();
     };
-  }, [srcDoc]);
+  }, [srcDoc, inspectable]);
   function loaded() {
     const iframe = frame.current;
     const doc = iframe?.contentDocument;
@@ -82,10 +93,18 @@ export function MailContent({
       if (iframe.style.height !== height) iframe.style.height = height;
     };
     let pendingResize = 0;
+    const nativeFrame = isTauri();
+    const imageTracker = watchMailImages(
+      doc,
+      (status) => {
+        setImages(status);
+        resize();
+      },
+      !nativeFrame,
+    );
+    retryImages.current = imageTracker.retry;
     const scheduleResize = () => {
-      setPendingImages(
-        [...doc.images].filter((image) => !image.complete).length,
-      );
+      imageTracker.refresh();
       cancelAnimationFrame(pendingResize);
       pendingResize = requestAnimationFrame(resize);
     };
@@ -99,29 +118,57 @@ export function MailContent({
       attributes: true,
       characterData: true,
     });
-    const restoreContextMenu = disableNativeContextMenu(doc);
-    const restoreLinks = interceptMailLinks(doc, (href) => open.current(href));
-    doc.addEventListener("load", scheduleResize, true);
-    doc.addEventListener("error", scheduleResize, true);
+    // Keep the WebView's native "Inspect Element" menu inside read-only mail.
+    // The frame remains scripts-disabled; editor/signature menus are unchanged.
+    const restoreContextMenu = inspectable
+      ? () => {}
+      : disableNativeContextMenu(doc);
+    const restoreLinks = nativeFrame
+      ? () => {}
+      : interceptMailLinks(doc, (href) => open.current(href));
+    if (!nativeFrame) {
+      doc.addEventListener("load", scheduleResize, true);
+      doc.addEventListener("error", scheduleResize, true);
+    }
     resize();
-    setPendingImages([...doc.images].filter((image) => !image.complete).length);
     setReady(true);
     cleanup.current = () => {
       cancelAnimationFrame(pendingResize);
       observer.disconnect();
       mutations.disconnect();
+      imageTracker.dispose();
       restoreContextMenu();
+      retryImages.current = () => {};
       restoreLinks();
-      doc.removeEventListener("load", scheduleResize, true);
-      doc.removeEventListener("error", scheduleResize, true);
+      if (!nativeFrame) {
+        doc.removeEventListener("load", scheduleResize, true);
+        doc.removeEventListener("error", scheduleResize, true);
+      }
     };
   }
   return (
     <div
       className="mail-html-container"
-      aria-busy={!ready || pendingImages > 0}
+      data-mail-debug-region={inspectable ? "" : undefined}
+      aria-busy={!ready || images.waiting > 0}
     >
-      {(!ready || pendingImages > 0) && <MailBodySkeleton images={ready} />}
+      {(!ready || images.waiting > 0) && <MailBodySkeleton images={ready} />}
+      {ready && images.timedOut + images.failed > 0 && (
+        <Alert className="mb-2">
+          <AlertDescription className="flex flex-wrap items-center justify-between gap-2">
+            <span>
+              {images.timedOut > 0 ? "部分图片加载超时" : "部分图片加载失败"}
+            </span>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => retryImages.current()}
+            >
+              重新加载图片
+            </Button>
+          </AlertDescription>
+        </Alert>
+      )}
       <iframe
         ref={frame}
         className="mail-html"

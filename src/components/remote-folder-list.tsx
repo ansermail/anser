@@ -26,7 +26,11 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from "./ui/collapsible";
-import { remoteFolderTree, type FolderNode } from "../lib/remote-folders";
+import {
+  remoteFolderTree,
+  sidebarFolderError,
+  type FolderNode,
+} from "../lib/remote-folders";
 import type { RemoteFolder } from "../lib/types";
 
 export function RemoteFolderList({
@@ -166,6 +170,7 @@ function FolderBranch({
   const active = flagged
     ? starredSelected
     : node.path === selected && hasChildren === selectedTree;
+  const syncError = node.folder && sidebarFolderError(node.folder);
   useEffect(() => {
     if (activePath) setOpen(true);
   }, [activePath]);
@@ -190,9 +195,7 @@ function FolderBranch({
             variant="ghost"
             size="sm"
             className={`nav-item folder-item ${active ? "active" : ""}`}
-            title={
-              node.folder?.syncError || node.folder?.displayName || node.label
-            }
+            title={syncError || node.folder?.displayName || node.label}
             aria-current={active ? "page" : undefined}
             onClick={() => {
               if (flagged && onSelectStarred) {
@@ -209,7 +212,7 @@ function FolderBranch({
             <Icon data-icon="inline-start" />
             <span>{node.label}</span>
             {!!count && <em aria-label={`未读 ${count} 封`}>{count}</em>}
-            {node.folder?.syncError && (
+            {syncError && (
               <AlertCircle
                 className="text-destructive"
                 aria-label="目录来源已隔离"

@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   getDevelopmentSigningIdentity,
+  localBuildSigningConfig,
   parseSigningIdentities,
   selectSigningIdentity,
   signDevelopmentBundle,
@@ -25,6 +26,12 @@ test("only valid numbered identities are parsed, without invalid or expired entr
 `),
     [certificate],
   );
+});
+
+test("local desktop build uses the stable development certificate", () => {
+  assert.deepEqual(JSON.parse(localBuildSigningConfig(certificate)), {
+    bundle: { macOS: { signingIdentity: certificate.hash } },
+  });
 });
 
 test("automatic selection requires exactly one development identity", () => {
