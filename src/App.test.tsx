@@ -1503,6 +1503,55 @@ describe("reading unread mail within its current category", () => {
     ).toBe(true);
     expect(folderButton("其他文件夹")?.textContent).toContain("1");
 
+    await act(async () => {
+      folderButton("其他文件夹")!.dispatchEvent(
+        new MouseEvent("contextmenu", {
+          bubbles: true,
+          cancelable: true,
+          button: 2,
+          clientX: 20,
+          clientY: 20,
+        }),
+      );
+    });
+    const markFolderRead = [
+      ...document.querySelectorAll('[data-slot="context-menu-item"]'),
+    ].find((item) => item.textContent?.includes("标记为已读"));
+    await click(markFolderRead ?? null);
+    expect(
+      commands.mock.calls.some(
+        ([command, args]) =>
+          command === "mark_folder_read" &&
+          args?.folder === "其他文件夹" &&
+          args?.tree === true,
+      ),
+    ).toBe(true);
+    expect(folderButton("其他文件夹")?.textContent).not.toContain("1");
+    expect(folderButton("其他文件夹X")?.textContent).toContain("1");
+
+    await act(async () => {
+      folderButton("星标邮件")!.dispatchEvent(
+        new MouseEvent("contextmenu", {
+          bubbles: true,
+          cancelable: true,
+          button: 2,
+          clientX: 20,
+          clientY: 20,
+        }),
+      );
+    });
+    await click(
+      [...document.querySelectorAll('[data-slot="context-menu-item"]')].find(
+        (item) => item.textContent?.includes("标记为已读"),
+      ) ?? null,
+    );
+    expect(
+      commands.mock.calls.some(
+        ([command, args]) =>
+          command === "mark_folder_read" && args?.starred === true,
+      ),
+    ).toBe(true);
+
     await click(folderButton("归档"));
     expect(host.querySelectorAll(".mail-row-main")).toHaveLength(1);
     await click(folderButton("星标邮件"));

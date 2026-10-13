@@ -16,6 +16,12 @@ import {
 } from "lucide-react";
 import { Button } from "./ui/button";
 import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuTrigger,
+} from "./ui/context-menu";
+import {
   Collapsible,
   CollapsibleContent,
   CollapsibleTrigger,
@@ -32,6 +38,7 @@ export function RemoteFolderList({
   starredUnread = 0,
   onSelect,
   onSelectStarred,
+  onMarkRead,
 }: {
   folders: RemoteFolder[];
   selected: string;
@@ -41,6 +48,12 @@ export function RemoteFolderList({
   starredUnread?: number;
   onSelect: (name: string, tree: boolean, delimiter: string) => void;
   onSelectStarred?: () => void;
+  onMarkRead?: (
+    name: string,
+    tree: boolean,
+    delimiter: string,
+    starred: boolean,
+  ) => void;
 }) {
   const tree = useMemo(() => remoteFolderTree(folders), [folders]);
   const hasFlagged = folders.some((folder) =>
@@ -49,18 +62,27 @@ export function RemoteFolderList({
   const starred = !hasFlagged && onSelectStarred && (
     <div className="remote-folder-row" key="virtual-starred">
       <span className="folder-toggle-space" />
-      <Button
-        variant="ghost"
-        size="sm"
-        className={`nav-item folder-item ${starredSelected ? "active" : ""}`}
-        onClick={onSelectStarred}
-      >
-        <Star data-icon="inline-start" />
-        <span>星标邮件</span>
-        {starredUnread > 0 && (
-          <em aria-label={`未读 ${starredUnread} 封`}>{starredUnread}</em>
-        )}
-      </Button>
+      <ContextMenu>
+        <ContextMenuTrigger asChild>
+          <Button
+            variant="ghost"
+            size="sm"
+            className={`nav-item folder-item ${starredSelected ? "active" : ""}`}
+            onClick={onSelectStarred}
+          >
+            <Star data-icon="inline-start" />
+            <span>星标邮件</span>
+            {starredUnread > 0 && (
+              <em aria-label={`未读 ${starredUnread} 封`}>{starredUnread}</em>
+            )}
+          </Button>
+        </ContextMenuTrigger>
+        <ContextMenuContent>
+          <ContextMenuItem onSelect={() => onMarkRead?.("", false, "", true)}>
+            标记为已读
+          </ContextMenuItem>
+        </ContextMenuContent>
+      </ContextMenu>
     </div>
   );
   const hasInbox = tree.some((node) => node.folder?.roles?.includes("inbox"));
@@ -78,6 +100,7 @@ export function RemoteFolderList({
             starredUnread={starredUnread}
             onSelect={onSelect}
             onSelectStarred={onSelectStarred}
+            onMarkRead={onMarkRead}
           />
           {node.folder?.roles?.includes("inbox") && starred}
         </Fragment>
@@ -95,6 +118,7 @@ function FolderBranch({
   starredUnread,
   onSelect,
   onSelectStarred,
+  onMarkRead,
 }: {
   node: FolderNode;
   selected: string;
@@ -104,6 +128,12 @@ function FolderBranch({
   starredUnread: number;
   onSelect: (name: string, tree: boolean, delimiter: string) => void;
   onSelectStarred?: () => void;
+  onMarkRead?: (
+    name: string,
+    tree: boolean,
+    delimiter: string,
+    starred: boolean,
+  ) => void;
 }) {
   const containsSelected = (node: FolderNode): boolean =>
     node.path === selected || node.children.some(containsSelected);
@@ -154,34 +184,54 @@ function FolderBranch({
       ) : (
         <span className="folder-toggle-space" />
       )}
-      <Button
-        variant="ghost"
-        size="sm"
-        className={`nav-item folder-item ${active ? "active" : ""}`}
-        title={node.folder?.syncError || node.folder?.displayName || node.label}
-        aria-current={active ? "page" : undefined}
-        onClick={() => {
-          if (flagged && onSelectStarred) {
-            onSelectStarred();
-          } else if (hasChildren) {
-            setOpen(true);
-            onSelect(node.path, true, node.delimiter || "");
-          } else if (node.folder?.selectable) {
-            onSelect(node.folder.name, false, "");
-          }
-        }}
-        disabled={!node.folder?.selectable && !hasChildren}
-      >
-        <Icon data-icon="inline-start" />
-        <span>{node.label}</span>
-        {!!count && <em aria-label={`未读 ${count} 封`}>{count}</em>}
-        {node.folder?.syncError && (
-          <AlertCircle
-            className="text-destructive"
-            aria-label="目录来源已隔离"
-          />
-        )}
-      </Button>
+      <ContextMenu>
+        <ContextMenuTrigger asChild>
+          <Button
+            variant="ghost"
+            size="sm"
+            className={`nav-item folder-item ${active ? "active" : ""}`}
+            title={
+              node.folder?.syncError || node.folder?.displayName || node.label
+            }
+            aria-current={active ? "page" : undefined}
+            onClick={() => {
+              if (flagged && onSelectStarred) {
+                onSelectStarred();
+              } else if (hasChildren) {
+                setOpen(true);
+                onSelect(node.path, true, node.delimiter || "");
+              } else if (node.folder?.selectable) {
+                onSelect(node.folder.name, false, "");
+              }
+            }}
+            disabled={!node.folder?.selectable && !hasChildren}
+          >
+            <Icon data-icon="inline-start" />
+            <span>{node.label}</span>
+            {!!count && <em aria-label={`未读 ${count} 封`}>{count}</em>}
+            {node.folder?.syncError && (
+              <AlertCircle
+                className="text-destructive"
+                aria-label="目录来源已隔离"
+              />
+            )}
+          </Button>
+        </ContextMenuTrigger>
+        <ContextMenuContent>
+          <ContextMenuItem
+            onSelect={() =>
+              onMarkRead?.(
+                flagged ? "" : node.path,
+                !flagged && hasChildren,
+                flagged ? "" : node.delimiter || "",
+                flagged,
+              )
+            }
+          >
+            标记为已读
+          </ContextMenuItem>
+        </ContextMenuContent>
+      </ContextMenu>
     </div>
   );
   if (!hasChildren) return row;
@@ -200,6 +250,7 @@ function FolderBranch({
             starredUnread={starredUnread}
             onSelect={onSelect}
             onSelectStarred={onSelectStarred}
+            onMarkRead={onMarkRead}
           />
         ))}
       </CollapsibleContent>

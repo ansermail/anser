@@ -609,6 +609,87 @@ mod tests {
             1
         );
     }
+    #[test]
+    fn folder_mark_read_covers_all_trusted_descendants_without_touching_sibling() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = Store::new(dir.path().into()).unwrap();
+        let account = account();
+        store.save_account(&account).unwrap();
+        let folder = |name: &str| RemoteFolder {
+            account_id: account.id.clone(),
+            name: name.into(),
+            display_name: name.into(),
+            delimiter: Some("/".into()),
+            selectable: true,
+            sync_error: None,
+            roles: vec![],
+            detected_roles: None,
+        };
+        store
+            .save_remote_folders(
+                &account.id,
+                &[
+                    folder("其他文件夹/归档"),
+                    folder("其他文件夹/恰饭"),
+                    folder("其他文件夹X"),
+                ],
+            )
+            .unwrap();
+        for (name, remote_id, subject) in [
+            ("其他文件夹/归档", "1:1", "First invoice"),
+            ("其他文件夹/恰饭", "2:1", "Second invoice"),
+            ("其他文件夹X", "3:1", "Sibling invoice"),
+        ] {
+            let bytes = String::from_utf8(raw())
+                .unwrap()
+                .replace("Project invoice", subject)
+                .into_bytes();
+            store
+                .ingest_with_flags(
+                    &account,
+                    name,
+                    remote_id,
+                    &bytes,
+                    false,
+                    name == "其他文件夹X",
+                )
+                .unwrap();
+        }
+        assert!(store
+            .mark_folder_read(&account.id, "其他文件夹/不存在", false, "", false)
+            .is_err());
+        assert_eq!(
+            store
+                .mark_folder_read(&account.id, "其他文件夹", true, "/", false)
+                .unwrap(),
+            2
+        );
+        assert_eq!(
+            store
+                .mark_folder_read(&account.id, "其他文件夹", true, "/", false)
+                .unwrap(),
+            0
+        );
+        let mut scoped = request(ListMode::Messages, 20);
+        scoped.query.view = "remote".into();
+        scoped.query.account_id = account.id.clone();
+        scoped.query.remote_folder = "其他文件夹X".into();
+        assert!(!store.mail_page(&scoped).unwrap().snapshot.messages[0].is_read);
+        scoped.query.remote_folder = "其他文件夹/归档".into();
+        assert!(store.mail_page(&scoped).unwrap().snapshot.messages[0].is_read);
+        assert_eq!(
+            store
+                .mark_folder_read(&account.id, "", false, "", true)
+                .unwrap(),
+            1
+        );
+        assert_eq!(
+            store
+                .mark_folder_read(&account.id, "其他文件夹X", false, "", false)
+                .unwrap(),
+            0
+        );
+    }
     fn all(store: &Store, mut r: PageRequest) -> Vec<Mail> {
         let mut list = vec![];
         let mut cursors = HashSet::new();

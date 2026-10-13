@@ -137,6 +137,66 @@ pub(crate) fn projection(db: &rusqlite::Connection) -> Result<(Index, Vec<Member
 }
 
 impl Store {
+    pub fn mark_folder_read(
+        &self,
+        account_id: &str,
+        folder: &str,
+        tree: bool,
+        delimiter: &str,
+        starred: bool,
+    ) -> Result<u64> {
+        self.account(account_id)?;
+        let db = self.db()?;
+        if starred && (!folder.is_empty() || tree || !delimiter.is_empty()) {
+            return Err("星标邮件范围无效".into());
+        }
+        if !starred {
+            if folder.is_empty() || (tree && delimiter.is_empty()) {
+                return Err("文件夹范围无效".into());
+            }
+            let known: bool = db
+                .query_row(
+                    "SELECT EXISTS(SELECT 1 FROM remote_folders WHERE account_id=?1 AND (name=?2 OR (?3=1 AND json_extract(data,'$.delimiter')=?4 AND substr(name,1,length(?2||?4))=?2||?4)))",
+                    rusqlite::params![account_id, folder, tree, delimiter],
+                    |r| r.get(0),
+                )
+                .map_err(err)?;
+            if !known {
+                return Err("服务器文件夹不存在，请重新展开账号目录".into());
+            }
+        }
+        // Select every unread message in the trusted folder scope before changing
+        // flags. This is independent of the currently loaded UI page or filter.
+        let mut stmt = db
+            .prepare(
+                "SELECT DISTINCT d.mail_id FROM search_documents d
+                 JOIN trusted_sources s ON s.mail_id=d.mail_id AND s.account_id=d.account_id
+                 WHERE d.account_id=?1 AND d.is_read=0 AND d.trashed=0 AND s.active=1
+                 AND ((?5=1 AND d.starred=1) OR (?5=0 AND
+                      (s.folder=?2 OR (?3=1 AND ?4!='' AND substr(s.folder,1,length(?2||?4))=?2||?4))))
+                 ORDER BY d.mail_id",
+            )
+            .map_err(err)?;
+        let ids = stmt
+            .query_map(
+                rusqlite::params![account_id, folder, tree, delimiter, starred],
+                |r| r.get::<_, String>(0),
+            )
+            .map_err(err)?
+            .collect::<std::result::Result<Vec<_>, _>>()
+            .map_err(err)?;
+        drop(stmt);
+        drop(db);
+        let mut changed = 0;
+        for id in ids {
+            if let Err(error) = self.change_mail(&id, "read", "true") {
+                return Err(format!("已标记 {changed} 封，下一封失败：{error}").into());
+            }
+            changed += 1;
+        }
+        Ok(changed)
+    }
+
     pub fn change_mail(&self, id: &str, action: &str, value: &str) -> Result<()> {
         if matches!(action, "read" | "star" | "trash") && !matches!(value, "true" | "false") {
             return Err("无效状态值".into());

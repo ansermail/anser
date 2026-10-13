@@ -141,6 +141,22 @@ async fn update_mail(
         .map_err(err)?
 }
 #[tauri::command]
+async fn mark_folder_read(
+    state: tauri::State<'_, AppState>,
+    account_id: String,
+    folder: String,
+    tree: bool,
+    delimiter: String,
+    starred: bool,
+) -> Result<u64> {
+    let store = state.store.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        store.mark_folder_read(&account_id, &folder, tree, &delimiter, starred)
+    })
+    .await
+    .map_err(err)?
+}
+#[tauri::command]
 async fn folder_health(
     state: tauri::State<'_, AppState>,
 ) -> Result<Vec<folder_health::FolderHealth>> {
@@ -1342,6 +1358,7 @@ pub fn run() {
             mail_metadata,
             mail_conversation,
             update_mail,
+            mark_folder_read,
             folder_health,
             copy_sources,
             queue_server_copy,

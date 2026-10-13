@@ -12,6 +12,7 @@ it("uses an existing flagged folder as the account's starred view", async () => 
   const root = createRoot(host);
   const onSelect = vi.fn();
   const onSelectStarred = vi.fn();
+  const onMarkRead = vi.fn();
   const folders: RemoteFolder[] = [
     {
       accountId: "a",
@@ -39,6 +40,7 @@ it("uses an existing flagged folder as the account's starred view", async () => 
         starredUnread={2}
         onSelect={onSelect}
         onSelectStarred={onSelectStarred}
+        onMarkRead={onMarkRead}
       />,
     ),
   );
@@ -51,6 +53,19 @@ it("uses an existing flagged folder as the account's starred view", async () => 
   await act(async () => (starred[0] as HTMLElement).click());
   expect(onSelectStarred).toHaveBeenCalledOnce();
   expect(onSelect).not.toHaveBeenCalled();
+  await act(async () => {
+    starred[0].dispatchEvent(
+      new MouseEvent("contextmenu", {
+        bubbles: true,
+        cancelable: true,
+        button: 2,
+      }),
+    );
+  });
+  const markRead = document.querySelector('[data-slot="context-menu-item"]');
+  expect(markRead?.textContent).toBe("标记为已读");
+  await act(async () => (markRead as HTMLElement).click());
+  expect(onMarkRead).toHaveBeenCalledWith("", false, "", true);
   await act(async () => root.unmount());
   host.remove();
 });

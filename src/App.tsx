@@ -276,6 +276,7 @@ export default function App() {
     readerRef = useRef<HTMLDivElement>(null);
   const selectionRef = useRef(selected);
   const detailRef = useRef(detail);
+  const markingFolders = useRef(new Set<string>());
   detailRef.current = detail;
   const readingNeighbors = useRef<{
     scope: string;
@@ -1248,6 +1249,35 @@ export default function App() {
       toast.error(String(e));
     }
   }
+  async function markRemoteFolderRead(
+    accountId: string,
+    folder: string,
+    tree: boolean,
+    delimiter: string,
+    starred: boolean,
+  ) {
+    const key = `${accountId}\u0000${starred ? "starred" : folder}`;
+    if (markingFolders.current.has(key)) return;
+    markingFolders.current.add(key);
+    try {
+      const changed = await call<number>("mark_folder_read", {
+        accountId,
+        folder,
+        tree,
+        delimiter,
+        starred,
+      });
+      await refresh();
+      toast.success(
+        changed ? `已将 ${changed} 封邮件标记为已读` : "没有未读邮件",
+      );
+    } catch (error) {
+      toast.error(String(error));
+      await refresh();
+    } finally {
+      markingFolders.current.delete(key);
+    }
+  }
   const activeAccount = data.accounts.find((a) => a.id === query.accountId),
     title = query.remoteFolder
       ? (() => {
@@ -1492,6 +1522,15 @@ export default function App() {
                                 )
                               }
                               onSelectStarred={() => navigate("starred", a.id)}
+                              onMarkRead={(name, tree, delimiter, starred) =>
+                                void markRemoteFolderRead(
+                                  a.id,
+                                  name,
+                                  tree,
+                                  delimiter,
+                                  starred,
+                                )
+                              }
                             />
                           )}
                         </>

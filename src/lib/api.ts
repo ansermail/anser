@@ -312,6 +312,31 @@ export async function call<T = void>(
         }
         break;
       }
+      case "mark_folder_read": {
+        const folder = String(args.folder);
+        const delimiter = String(args.delimiter);
+        let changed = 0;
+        for (const mail of demo.messages) {
+          if (
+            mail.accountId !== args.accountId ||
+            mail.isRead ||
+            mail.trashed ||
+            (args.starred
+              ? !mail.starred
+              : mail.sourceFolder !== folder &&
+                !(
+                  args.tree &&
+                  delimiter &&
+                  mail.sourceFolder.startsWith(folder + delimiter)
+                ))
+          )
+            continue;
+          mail.isRead = true;
+          changed++;
+        }
+        result = changed;
+        break;
+      }
       case "save_rules":
         demo.rules = args.rules as Rule[];
         break;
