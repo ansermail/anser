@@ -1,10 +1,14 @@
 # 发布与应用内更新
 
-## 0.1.14 发布准备（2026-10-13）
+## 当前正式版本：0.1.14（2026-10-13）
+
+0.1.14 Alpha已于2026-10-13 20:14:21（Asia/Shanghai）正式发布为latest。固定源码`f1921c2cb9704b6641bb255be86c579b8b4ed542`，[Release macOS 38391912165](https://github.com/ansermail/anser/actions/runs/38391912165)的check、Apple Silicon、Intel与draft全部成功；[v0.1.14下载页](https://github.com/ansermail/anser/releases/tag/v0.1.14)。本机/云端290前端、321Rust通过（1独立性能项忽略）、30脚本、39IMAP与格式/UI/生产检查通过。七资源摘要/大小、更新签名、公钥、App版本/架构/标识/codesign/许可/EML及原生OAuth配置、DMG与归档全部8文件一致性核验通过；草稿发布前后说明和资源不变，标签指向固定源码，匿名标准更新清单逐字节等于审计清单，两架构四份安装/更新文件公开下载字节一致。正式包实际安装/原位升级与Developer ID/公证仍独立未完成，详情见[发布工作点](RELEASE_014_WORKING.md)。
+
+## 0.1.14 发布准备记录（2026-10-13，历史）
 
 用户已要求提交本地修复并远程发版，五处版本同步0.1.14。范围为邮件打印权限、账号侧栏背景/间距/稳定宽度、服务商目录分组与加载、草稿清空、macOS通知定位、正文图片超时及隐藏统计像素误提示、正文原生调试。说明见[v0.1.14](releases/v0.1.14.md)，全量门槛/固定源码/双架构构建/资源审计/正式发布分开记录于[发布工作点](RELEASE_014_WORKING.md)。当前公开latest仍0.1.13，Developer ID/公证及原位升级未完成。
 
-## 当前正式版本：0.1.13（2026-10-13）
+## 前一正式版本：0.1.13（2026-10-13）
 
 0.1.13 Alpha 已于 2026-10-13 10:02:13（Asia/Shanghai）正式发布为 latest。固定源码 `887e297859938b640fd51104690f8be8c66a53f0`，组织 [Release macOS 流水线](https://github.com/ansermail/anser/actions/runs/38334231416) 的 check、Apple Silicon、Intel 和 draft 全部成功；[v0.1.13 下载页](https://github.com/ansermail/anser/releases/tag/v0.1.13)。本机 262 前端、310 Rust（1 独立性能项忽略）、28 桌面脚本、39 IMAP 及 UI/格式/生产/Pages 构建通过；云端全量检查通过。七资源大小/SHA-256、两架构更新签名、公钥、App 版本/架构/标识/完整 codesign/许可/EML 与原生 OAuth 配置均已核验；两份 DMG 的全部 8 个 App 文件逐个匹配更新归档。草稿发布前后说明原文及七资源 ID/大小/摘要不变，标签指向固定源码；匿名公开标准更新端点逐字节匹配已审计清单，四份公开安装/更新资源与审计资源逐字节一致。实际安装、原位升级、真实邮箱目录批量已读和 macOS 系统打印仍待用户下载验收；Apple Developer ID 签名/公证未完成。详情见 [0.1.13 发布工作点](RELEASE_013_WORKING.md)。
 
