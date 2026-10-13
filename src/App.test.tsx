@@ -2203,6 +2203,11 @@ describe("notification mail opening", () => {
     );
     await act(async () => notificationFixture.open("first"));
     await act(async () => notificationFixture.open("second"));
+    // Let the startup search debounce expire while notification metadata is
+    // pending. An unchanged empty search must not invalidate the latest click.
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 250));
+    });
     await act(async () => pending.get("second")!(seed.messages[1]));
     await act(async () => pending.get("first")!(seed.messages[0]));
     expect(host.querySelector(".message-heading h1")?.textContent).toBe(

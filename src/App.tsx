@@ -502,8 +502,14 @@ export default function App() {
     void refresh();
   }, [query, refresh]);
   useEffect(() => {
+    // An unchanged search must retain the query identity. The startup debounce
+    // otherwise looks like navigation and cancels a pending notification open.
+    if (search === queryRef.current.search) return;
     const timer = setTimeout(
-      () => setQuery((q) => ({ ...q, search, limit: 200 })),
+      () =>
+        setQuery((q) =>
+          q.search === search ? q : { ...q, search, limit: 200 },
+        ),
       200,
     );
     return () => clearTimeout(timer);

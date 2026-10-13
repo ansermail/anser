@@ -37,3 +37,11 @@
 - 发布前匿名canonical latest为0.1.13。PATCH draft=false/make_latest=true于20:14:21发布，返回公开0.1.14；发布前后七资源和说明未改，GitHub latest为同一Release ID，轻量/附注标签保护入口确认tag指向固定源码。
 - 匿名`releases/latest/download/latest.json`逐字节匹配本次审计清单；Apple Silicon和Intel两份DMG、两份更新归档及两份签名分别公开重新下载，大小/摘要与审计资源一致。审计与日志全部在`/tmp/anser-release014-audit-f1921c2`，没有提交资源、配置或原件。
 - 发布目标已完成。接续用户下载/应用内原位升级及长期实际使用；正式稳定Apple签名/公证仍从DEVELOPER_ID_WORKING继续，不能把更新签名/codesign或本地开发签名当作该验收通过。
+
+## 发布记录提交后的Checks #41失败（2026-10-13）
+
+- 用户报告`docs: record verified 0.1.14 release #41`失败。已定位[Checks 38396331257](https://github.com/ansermail/anser/actions/runs/38396331257)，源码为`c8752fe`，失败步骤npm test；289项通过、1项通知迟到结果回归失败，邮件标题为undefined。0.1.14 Release 38391912165及之前Checks #40的成功结果保留，失败记录不冒充通过。
+- 已可控复现：在通知元信息待返回期间，等待启动时200ms空搜索防抖执行；旧逻辑即使搜索未变化也创建新Query对象，通知保护将其误认为用户导航，丢弃最新点击。该问题属于真实时序，不通过重试CI或延长断言掩盖。
+- App仅在搜索值实际变化时更新Query，防抖回调也保留同值Query身份；搜索/手动导航真正变化时的过期通知保护继续保留。原测试增加明确跨越初始防抖的控制步骤，修复前稳定得到与云端一致的失败。
+- 修复后通知4项及前端全量49文件/290项通过，format:check、check:ui、TypeScript/生产构建、Pages构建/原生桥隔离和diff检查通过。ego-browser空间28仅用虚构演示账号核对实际搜索：Notion筛选为1条，清空恢复8条，已关闭检查空间；不把演示检查作为原生通知验收。即将提交main触发新的Checks验证。
+- 已发布0.1.14标签/资源不改写；本轮修复先进入main，尚未构建或发布含此修复的新桌面版本。

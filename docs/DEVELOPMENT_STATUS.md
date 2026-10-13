@@ -4,6 +4,8 @@
 
 ## 当前未完成事项总览（2026-10-13 核对）
 
+**当前排查：Checks #41通知时序根因已修复，本机门槛通过，准备推送新Checks验证（2026-10-13）**。[Checks 38396331257](https://github.com/ansermail/anser/actions/runs/38396331257)在npm test中289通过/1失败。已稳定复现启动空搜索防抖创建无变化Query，误取消待返回的通知点击；App改为同值不更新Query，测试显式跨越初始防抖。修复后4项通知及290项完整前端、格式/UI/生产/Pages隔离/diff通过，虚构浏览器搜索/清空通过；新Checks待完成。详情见[0.1.14发布工作点](RELEASE_014_WORKING.md)末节。0.1.14的Release构建/资源审计结果保留，已发布标签与资源不改写；新增修复尚未进入公开包。
+
 **当前执行检查点：0.1.14已正式发布，公开更新及安装资源已核验（2026-10-13）**。固定源码`f1921c2cb9704b6641bb255be86c579b8b4ed542`经组织[Release macOS 38391912165](https://github.com/ansermail/anser/actions/runs/38391912165)全量检查/双架构/draft成功，于20:14:21（Asia/Shanghai）发布[0.1.14](https://github.com/ansermail/anser/releases/tag/v0.1.14)为latest。本轮包含打印ACL、账号侧栏/目录、草稿清空、通知直达邮件及正文图片/原生调试修复。290前端、321Rust通过（1独立性能项忽略）、30脚本、39IMAP与版本/格式/UI/生产/Pages隔离/diff通过，隐私核对通过；七资源/更新签名/两架构App/DMG及固定tag/匿名标准更新清单核验完成，两架构四份安装/更新文件公开下载字节一致。详情见[发布工作点](RELEASE_014_WORKING.md)，实际正式安装/原位升级及Developer ID/公证继续独立待验收。此前“用户确认前不发布”的记录属于历史阶段，本次授权已完成发布。
 
 
