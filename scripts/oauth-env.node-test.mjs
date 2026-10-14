@@ -6,7 +6,7 @@ import { join } from "node:path";
 import { loadOAuthEnvironment } from "./oauth-env.mjs";
 
 test("OAuth config stays backend-only and explicit environment takes precedence", async () => {
-  const root = await mkdtemp(join(tmpdir(), "yanxin-oauth-env-"));
+  const root = await mkdtemp(join(tmpdir(), "anser-oauth-env-"));
   try {
     const inherited = {
       MAIL_GOOGLE_CLIENT_ID: "explicit-client",
@@ -36,7 +36,7 @@ test("OAuth config stays backend-only and explicit environment takes precedence"
 });
 
 test("read failures never include config contents", async () => {
-  const root = await mkdtemp(join(tmpdir(), "yanxin-oauth-env-"));
+  const root = await mkdtemp(join(tmpdir(), "anser-oauth-env-"));
   try {
     const { mkdir } = await import("node:fs/promises");
     await mkdir(join(root, ".env.local"));

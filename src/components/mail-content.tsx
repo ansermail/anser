@@ -173,7 +173,7 @@ export function MailContent({
         ref={frame}
         className="mail-html"
         title={title}
-        sandbox="allow-same-origin"
+        sandbox="allow-same-origin allow-top-navigation-by-user-activation"
         referrerPolicy="no-referrer"
         srcDoc={srcDoc}
         onLoad={loaded}

@@ -166,9 +166,9 @@ describe("mail link navigation", () => {
     ] as const) {
       const routed = new URL(links[index].getAttribute("href")!);
       expect(routed.protocol).toBe("https:");
-      expect(routed.hostname).toBe("yanxin-mail-link.invalid");
+      expect(routed.hostname).toBe("anser-mail-link.invalid");
       expect(routed.searchParams.get("url")).toBe(original);
-      expect(links[index].hasAttribute("target")).toBe(false);
+      expect(links[index].getAttribute("target")).toBe("_top");
     }
     expect(links[2].getAttribute("href")).toBe("#bottom");
     expect(links[3].hasAttribute("href")).toBe(false);

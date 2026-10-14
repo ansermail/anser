@@ -7,7 +7,7 @@ import {
   SelectValue,
 } from "./select";
 
-const empty = "__yanxin_empty_option__";
+const empty = "__anser_empty_option__";
 const encode = (value: string | number) => String(value) || empty;
 
 export function SelectField({

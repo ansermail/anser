@@ -1158,7 +1158,7 @@ fn open_mail_link(url: String) -> Result<()> {
 }
 fn mail_navigation_target(url: &url::Url) -> Option<String> {
     if url.scheme() != "https"
-        || url.host_str() != Some("yanxin-mail-link.invalid")
+        || url.host_str() != Some("anser-mail-link.invalid")
         || url.path() != "/open"
     {
         return None;
@@ -1266,7 +1266,7 @@ pub fn run() {
         .plugin(
             tauri::plugin::Builder::<tauri::Wry, ()>::new("mail-links")
                 .on_navigation(|webview, url| {
-                    if url.host_str() == Some("yanxin-mail-link.invalid") {
+                    if url.host_str() == Some("anser-mail-link.invalid") {
                         if let Some(target) = mail_navigation_target(url) {
                             let _ = webview.emit("mail-link-open", target);
                         }

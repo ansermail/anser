@@ -102,7 +102,9 @@ it("allows Inspect Element for reading but keeps scripts disabled and signature 
       new MouseEvent("contextmenu", { bubbles: true, cancelable: true }),
     );
   expect(context()).toBe(true);
-  expect(frame.getAttribute("sandbox")).toBe("allow-same-origin");
+  expect(frame.getAttribute("sandbox")).toBe(
+    "allow-same-origin allow-top-navigation-by-user-activation",
+  );
   expect(host.querySelector("[data-mail-debug-region]")).not.toBeNull();
   await act(async () =>
     root.render(<MailContent html="<p>signature</p>" onOpenLink={() => {}} />),
@@ -159,10 +161,12 @@ it("tracks native images without child-frame script callbacks and retains routed
     ),
   ).toHaveLength(0);
   expect(next.querySelector("a")?.getAttribute("href")).toContain(
-    "https://yanxin-mail-link.invalid/open?",
+    "https://anser-mail-link.invalid/open?",
   );
   complete = true;
   await act(async () => vi.advanceTimersByTime(1000));
   expect(host.querySelector('[aria-label="正在加载图片"]')).toBeNull();
-  expect(frame.getAttribute("sandbox")).toBe("allow-same-origin");
+  expect(frame.getAttribute("sandbox")).toBe(
+    "allow-same-origin allow-top-navigation-by-user-activation",
+  );
 });

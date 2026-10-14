@@ -1,7 +1,7 @@
 import DOMPurify from "dompurify";
 export function safeMailHtml(
   html: string,
-  documentId = "yanxin-mail",
+  documentId = "anser-mail",
   nativeNavigation = false,
 ) {
   const content = DOMPurify.sanitize(html, {
@@ -59,14 +59,15 @@ export function safeMailHtml(
       anchor.setAttribute(
         "href",
         nativeNavigation
-          ? `https://yanxin-mail-link.invalid/open?url=${encodeURIComponent(url.href)}`
+          ? `https://anser-mail-link.invalid/open?url=${encodeURIComponent(url.href)}`
           : "#",
       );
+      if (nativeNavigation) anchor.setAttribute("target", "_top");
       anchor.setAttribute("rel", "noopener noreferrer");
     } else anchor.removeAttribute("href");
   }
   const marker = doc.createElement("meta");
-  marker.name = "yanxin-mail-document";
+  marker.name = "anser-mail-document";
   marker.content = documentId;
   doc.head.prepend(marker);
   // break-word wraps long prose/URLs without reducing table cells' min-content
@@ -101,7 +102,7 @@ export function isMailDocument(
 ) {
   return (
     doc
-      ?.querySelector('meta[name="yanxin-mail-document"]')
+      ?.querySelector('meta[name="anser-mail-document"]')
       ?.getAttribute("content") === documentId
   );
 }

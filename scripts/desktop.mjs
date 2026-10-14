@@ -11,7 +11,7 @@ let runnerDirectory;
 if (process.platform === "darwin") {
   // Cargo still builds an ASCII executable; launch it inside a named app bundle.
   // A single runner path also works when the checkout or Node path has spaces.
-  runnerDirectory = await mkdtemp(join(tmpdir(), "yanxin-runner-"));
+  runnerDirectory = await mkdtemp(join(tmpdir(), "anser-runner-"));
   const runner = join(runnerDirectory, "run.mjs");
   await writeFile(
     runner,

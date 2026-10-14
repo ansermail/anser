@@ -6,19 +6,26 @@ import {
   ResizablePanelGroup,
 } from "./ui/resizable";
 
-function readLayout(key: string, ids: string[]): Layout | undefined {
-  try {
-    const value = JSON.parse(localStorage.getItem(key) || "null");
-    if (
-      value &&
-      ids.every(
-        (id) => Number.isFinite(value[id]) && value[id] > 0 && value[id] < 100,
-      ) &&
-      Math.abs(ids.reduce((sum, id) => sum + value[id], 0) - 100) < 0.1
-    )
-      return value;
-  } catch {
-    /* Discard an invalid saved layout. */
+function readLayout(
+  key: string,
+  ids: string[],
+  legacyKey?: string,
+): Layout | undefined {
+  for (const candidate of [key, legacyKey].filter(Boolean) as string[]) {
+    try {
+      const value = JSON.parse(localStorage.getItem(candidate) || "null");
+      if (
+        value &&
+        ids.every(
+          (id) =>
+            Number.isFinite(value[id]) && value[id] > 0 && value[id] < 100,
+        ) &&
+        Math.abs(ids.reduce((sum, id) => sum + value[id], 0) - 100) < 0.1
+      )
+        return value;
+    } catch {
+      /* Discard an invalid saved layout. */
+    }
   }
 }
 function remember(key: string, layout: Layout) {
@@ -45,7 +52,11 @@ export function NavigationLayout({
   const restoreWidth = visibleWidth.current;
   const hidden = !open || expanded;
   const [layout] = useState(() =>
-    readLayout("yanxin-navigation-layout", ["navigation", "workspace"]),
+    readLayout(
+      "anser-navigation-layout",
+      ["navigation", "workspace"],
+      "yanxin-navigation-layout",
+    ),
   );
   useEffect(() => {
     // Apply the button action after Resizable has registered the new constraints.
@@ -64,7 +75,7 @@ export function NavigationLayout({
       defaultLayout={layout}
       onLayoutChanged={(next) => {
         if (!hidden && next.navigation > 0)
-          remember("yanxin-navigation-layout", next);
+          remember("anser-navigation-layout", next);
       }}
     >
       <ResizablePanel
@@ -114,7 +125,11 @@ export function MailLayout({
   const visibleWidth = useRef<number | undefined>(undefined);
   const restoreWidth = visibleWidth.current;
   const [layout] = useState(() =>
-    readLayout("yanxin-mail-layout", ["mail-list", "mail-reader"]),
+    readLayout(
+      "anser-mail-layout",
+      ["mail-list", "mail-reader"],
+      "yanxin-mail-layout",
+    ),
   );
   useEffect(() => {
     const frame = requestAnimationFrame(() => {
@@ -132,7 +147,7 @@ export function MailLayout({
       defaultLayout={layout}
       onLayoutChanged={(next) => {
         if (!expanded && next["mail-list"] > 0)
-          remember("yanxin-mail-layout", next);
+          remember("anser-mail-layout", next);
       }}
     >
       <ResizablePanel

@@ -5,7 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import { manifest, validateVersion } from "./release-assets.mjs";
 function fixture(t) {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), "yanxin-release-"));
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "anser-release-"));
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));
   fs.mkdirSync(path.join(root, "src-tauri"));
   fs.mkdirSync(path.join(root, "docs/releases"), { recursive: true });

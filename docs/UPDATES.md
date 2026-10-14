@@ -1,10 +1,18 @@
 # 发布与应用内更新
 
-## 0.1.15 发布准备（2026-10-14）
+## 0.1.16 修复准备（2026-10-14）
 
-用户已要求提交全局网络代理改动并启动组织仓库远程发版。候选 0.1.15 同步五处版本，说明见 [v0.1.15](releases/v0.1.15.md)；本地门槛、固定源码、双架构构建、资源审计及正式发布按 [0.1.15 发布工作点](RELEASE_015_WORKING.md) 分别记录。在发布完成前，公开 latest 仍为 0.1.14。真实代理收发与 OAuth 刷新、正式原位升级和 Apple Developer ID/公证尚未验收。
+0.1.15 发布后发现邮件正文外链在桌面版被 CSP `frame-src` 拦截。0.1.16 使用新的 Anser 内部路由并修复用户点击的原生导航，五处版本及说明见 [v0.1.16](releases/v0.1.16.md)。本地/云端门槛、草稿审计及正式发布进展见 [0.1.16 发布工作点](RELEASE_0_1_16_WORKING.md)；截至本记录，公开 latest 为 0.1.15。
 
-## 当前正式版本：0.1.14（2026-10-13）
+## 当前正式版本：0.1.15（2026-10-14）
+
+0.1.15 Alpha 已于 12:35:05（Asia/Shanghai）正式发布为 latest。固定源码 `63fb6c25e62506a790b61532127199251f701f5d`，[Release macOS 38510852394](https://github.com/ansermail/anser/actions/runs/38510852394) 的检查、双架构与草稿任务全部成功；[下载页](https://github.com/ansermail/anser/releases/tag/v0.1.15)。七资源元数据/摘要、更新签名、公钥、App 版本/架构/标识/codesign/许可/EML/OAuth 原生配置、两份 DMG 与归档一致性及公开 latest 清单已核验。真实代理收发/OAuth 刷新和正式原位升级未验收；本版邮件正文链接存在 CSP 拦截，见上方修复准备及 [发布工作点](RELEASE_015_WORKING.md)。Apple Developer ID 签名与公证未完成。
+
+## 0.1.15 发布准备记录（历史）
+
+用户已要求提交全局网络代理改动并启动组织仓库远程发版。候选 0.1.15 同步五处版本，说明见 [v0.1.15](releases/v0.1.15.md)；本地门槛、固定源码、双架构构建、资源审计及正式发布按 [0.1.15 发布工作点](RELEASE_015_WORKING.md) 分别记录。当时公开 latest 为 0.1.14；后续正式结果见上方。真实代理收发与 OAuth 刷新、正式原位升级和 Apple Developer ID/公证尚未验收。
+
+## 前一正式版本：0.1.14（2026-10-13）
 
 0.1.14 Alpha已于2026-10-13 20:14:21（Asia/Shanghai）正式发布为latest。固定源码`f1921c2cb9704b6641bb255be86c579b8b4ed542`，[Release macOS 38391912165](https://github.com/ansermail/anser/actions/runs/38391912165)的check、Apple Silicon、Intel与draft全部成功；[v0.1.14下载页](https://github.com/ansermail/anser/releases/tag/v0.1.14)。本机/云端290前端、321Rust通过（1独立性能项忽略）、30脚本、39IMAP与格式/UI/生产检查通过。七资源摘要/大小、更新签名、公钥、App版本/架构/标识/codesign/许可/EML及原生OAuth配置、DMG与归档全部8文件一致性核验通过；草稿发布前后说明和资源不变，标签指向固定源码，匿名标准更新清单逐字节等于审计清单，两架构四份安装/更新文件公开下载字节一致。正式包实际安装/原位升级与Developer ID/公证仍独立未完成，详情见[发布工作点](RELEASE_014_WORKING.md)。
 

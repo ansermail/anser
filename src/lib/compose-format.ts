@@ -228,7 +228,7 @@ export function prepareCompose(draft: Compose): Compose {
     "text/html",
   );
   const content = original.createElement("div");
-  content.setAttribute("data-yanxin-authored", "true");
+  content.setAttribute("data-anser-authored", "true");
   for (const attribute of authored.body.attributes)
     content.setAttribute(attribute.name, attribute.value);
   content.style.fontFamily ||=
@@ -245,7 +245,7 @@ export function prepareCompose(draft: Compose): Compose {
   for (const style of authored.head.querySelectorAll("style"))
     original.head.append(original.importNode(style, true));
   const heading = original.createElement("div");
-  heading.setAttribute("data-yanxin-quote-header", "true");
+  heading.setAttribute("data-anser-quote-header", "true");
   heading.style.cssText =
     "white-space:pre-wrap;font-family:Arial,sans-serif;font-size:13px;line-height:1.7;color:#666;border-top:1px solid #ddd;padding-top:12px;margin-bottom:16px";
   heading.textContent = header;

@@ -6,7 +6,7 @@ import path from "node:path";
 import { spawnSync } from "node:child_process";
 const script = path.resolve("scripts/check-ui.mjs");
 function check(code) {
-  const temp = fs.mkdtempSync(path.join(os.tmpdir(), "yanxin-ui-guard-"));
+  const temp = fs.mkdtempSync(path.join(os.tmpdir(), "anser-ui-guard-"));
   try {
     fs.mkdirSync(path.join(temp, "src"));
     fs.writeFileSync(path.join(temp, "src", "page.tsx"), code);

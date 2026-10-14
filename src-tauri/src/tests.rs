@@ -1847,7 +1847,7 @@ fn mail_navigation_routes_only_valid_web_and_mailto_links() {
         "http://example.com",
         "mailto:team@example.com?subject=hello",
     ] {
-        let mut routed = url::Url::parse("https://yanxin-mail-link.invalid/open").unwrap();
+        let mut routed = url::Url::parse("https://anser-mail-link.invalid/open").unwrap();
         routed.query_pairs_mut().append_pair("url", target);
         assert_eq!(
             crate::mail_navigation_target(&routed),
@@ -1855,12 +1855,12 @@ fn mail_navigation_routes_only_valid_web_and_mailto_links() {
         );
     }
     for routed in [
-        "https://yanxin-mail-link.invalid/open?url=file%3A%2F%2F%2Ftmp%2Fprivate",
-        "https://yanxin-mail-link.invalid/open?url=javascript%3Aalert%281%29",
-        "https://yanxin-mail-link.invalid/open?url=relative",
+        "https://anser-mail-link.invalid/open?url=file%3A%2F%2F%2Ftmp%2Fprivate",
+        "https://anser-mail-link.invalid/open?url=javascript%3Aalert%281%29",
+        "https://anser-mail-link.invalid/open?url=relative",
         "https://other.invalid/open?url=https%3A%2F%2Fexample.com",
         "https://example.com/?url=https%3A%2F%2Fexample.com",
-        "https://yanxin-mail-link.invalid/open",
+        "https://anser-mail-link.invalid/open",
     ] {
         assert!(crate::mail_navigation_target(&url::Url::parse(routed).unwrap()).is_none());
     }
