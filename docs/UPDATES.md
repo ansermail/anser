@@ -1,10 +1,14 @@
 # 发布与应用内更新
 
-## 0.1.16 修复准备（2026-10-14）
+## 当前正式版本：0.1.16（2026-10-14）
 
-0.1.15 发布后发现邮件正文外链在桌面版被 CSP `frame-src` 拦截。0.1.16 使用新的 Anser 内部路由并修复用户点击的原生导航，五处版本及说明见 [v0.1.16](releases/v0.1.16.md)。本地/云端门槛、草稿审计及正式发布进展见 [0.1.16 发布工作点](RELEASE_0_1_16_WORKING.md)；截至本记录，公开 latest 为 0.1.15。
+0.1.16 Alpha 已于 18:16:42（Asia/Shanghai）正式发布为 latest。固定源码 `8a13673a5bdd0cc8f13f976956f84e035e64ec61` 经 [Release macOS 38547036796](https://github.com/ansermail/anser/actions/runs/38547036796) 完整检查、Apple Silicon / Intel 构建和草稿任务成功；[v0.1.16 下载页](https://github.com/ansermail/anser/releases/tag/v0.1.16)。七资源大小/摘要、两架构更新签名与公钥、App 版本/架构/标识/codesign/许可/EML/OAuth 原生配置及 DMG 与归档逐文件一致性已核验；发布前后草稿说明与资源身份不变，标签指向固定源码，七份按版本公开下载资源逐字节匹配。标准 latest 端点经短暂 CDN 缓存后也已逐字节匹配审计清单，见 [发布工作点](RELEASE_0_1_16_WORKING.md)。真实代理收发、正式包原位升级与 Apple Developer ID 签名/公证仍待验收。
 
-## 当前正式版本：0.1.15（2026-10-14）
+## 0.1.16 修复准备记录（历史）
+
+0.1.15 发布后发现邮件正文外链在桌面版被 CSP `frame-src` 拦截。0.1.16 使用新的 Anser 内部路由并修复用户点击的原生导航，五处版本及说明见 [v0.1.16](releases/v0.1.16.md)。本地/云端门槛、草稿审计及正式发布进展见 [0.1.16 发布工作点](RELEASE_0_1_16_WORKING.md)；准备时公开 latest 为 0.1.15，正式结果见上方。
+
+## 前一正式版本：0.1.15（2026-10-14）
 
 0.1.15 Alpha 已于 12:35:05（Asia/Shanghai）正式发布为 latest。固定源码 `63fb6c25e62506a790b61532127199251f701f5d`，[Release macOS 38510852394](https://github.com/ansermail/anser/actions/runs/38510852394) 的检查、双架构与草稿任务全部成功；[下载页](https://github.com/ansermail/anser/releases/tag/v0.1.15)。七资源元数据/摘要、更新签名、公钥、App 版本/架构/标识/codesign/许可/EML/OAuth 原生配置、两份 DMG 与归档一致性及公开 latest 清单已核验。真实代理收发/OAuth 刷新和正式原位升级未验收；本版邮件正文链接存在 CSP 拦截，见上方修复准备及 [发布工作点](RELEASE_015_WORKING.md)。Apple Developer ID 签名与公证未完成。
 

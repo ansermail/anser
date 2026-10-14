@@ -8,9 +8,9 @@
 
 [下载最新版本](https://github.com/ansermail/anser/releases/latest) · [界面预览](https://ansermail.github.io/anser/) · [使用说明](docs/USAGE.md) · [开发进度](docs/DEVELOPMENT_STATUS.md) · [反馈问题](https://github.com/ansermail/anser/issues)
 
-> 当前公开版本为 **0.1.15 Alpha**，支持 Apple Silicon 与 Intel Mac。0.1.16 正在修复邮件正文链接点击问题；长期稳定性、部分服务商兼容性及真实场景验收仍在持续完善。
+> 当前公开版本为 **0.1.16 Alpha**，支持 Apple Silicon 与 Intel Mac。长期稳定性、部分服务商兼容性及真实场景验收仍在持续完善。
 
-0.1.15 已发布：设置页新增一个全局 SOCKS5/HTTP/HTTPS 代理，覆盖新建邮件连接与应用内 OAuth 令牌请求，具体目标由本地代理软件分流。真实代理收发待验收。0.1.15 桌面版邮件正文外链点击会被 CSP 拦截，修复候选 0.1.16 正在验证和构建，发布结果以[开发进度](docs/DEVELOPMENT_STATUS.md)为准。
+0.1.15 新增设置页全局 SOCKS5/HTTP/HTTPS 代理，覆盖新建邮件连接与应用内 OAuth 令牌请求，具体目标由本地代理软件分流；真实代理收发待验收。0.1.16 已修复桌面版邮件正文外链被 CSP 拦截的问题，并将该链接的内部路由改用 Anser 名称。
 
 ![雁信的多账号收件箱与邮件阅读界面](docs/screenshots/inbox-demo.png)
 

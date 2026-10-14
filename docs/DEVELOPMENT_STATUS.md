@@ -4,7 +4,7 @@
 
 ## 当前未完成事项总览（2026-10-14 核对）
 
-**当前执行检查点：修复邮件正文链接并准备 0.1.16（2026-10-14）**。用户报告 0.1.15 桌面版邮件正文外链点击被 CSP `frame-src` 拦截，控制台出现旧内部路由名 `yanxin-mail-link.invalid`。根因是禁脚本 iframe 内的链接导航先于 Tauri 钩子被 CSP 拦截；源码已改为用户点击触发顶层安全路由，并将新路由/标记命名为 Anser，旧持久数据标识保持兼容。原生开发预览用虚构邮件点击 `https://example.com/` 后，系统 Chrome 打开 Example Domain，应用未离开阅读页；临时测试邮件已从源码移除。完整本地门槛通过：前端 290、Rust 326/1 忽略、桌面脚本 30、IMAP 39，版本/格式/UI/生产/Pages 隔离检查均通过。本地 arm64 0.1.16 已稳定签名、备份旧包后安装至 `/Applications/雁信.app` 并启动；设置页显示新版本，账号及代理配置可见。正式包/原位升级另行验收。下一步从 [发布工作点](RELEASE_0_1_16_WORKING.md) 接续提交及云端构建；当前公开 latest 为 0.1.15，旧版本资源不覆盖。
+**当前发布检查点：0.1.16 已正式发布并完成公开资源核对（2026-10-14）**。0.1.15 桌面版邮件正文外链被 CSP `frame-src` 拦截；0.1.16 改用用户点击触发的顶层安全路由及 Anser 内部标识。原生开发预览用虚构邮件点击 `https://example.com/`，系统 Chrome 成功打开，应用未离开阅读页。完整本地门槛通过：前端 290、Rust 326/1 忽略、桌面脚本 30、IMAP 39，版本/格式/UI/生产/Pages 隔离检查均通过；本地 arm64 0.1.16 稳定签名并安装启动，账号和代理配置可见。固定源码 `8a13673a5bdd0cc8f13f976956f84e035e64ec61` 经组织 [Release macOS 38547036796](https://github.com/ansermail/anser/actions/runs/38547036796) 完整成功并于 18:16:42（Asia/Shanghai）发布 [v0.1.16](https://github.com/ansermail/anser/releases/tag/v0.1.16)。七资源、更新签名、App/DMG 与 OAuth 编译配置已审计，标签与七份公开按版本下载资源匹配；标准 `releases/latest/download/latest.json` 经短暂缓存后已逐字节匹配 0.1.16。真实代理收发、正式包原位升级、Developer ID/公证仍待验收，见 [发布工作点](RELEASE_0_1_16_WORKING.md)。
 
 **上一发布检查点：0.1.15 已正式发布（2026-10-14）**。全局代理源码 `63fb6c25e62506a790b61532127199251f701f5d` 经组织 [Release macOS 38510852394](https://github.com/ansermail/anser/actions/runs/38510852394) 的完整检查、双架构构建与草稿任务通过；七资源、两架构更新签名/App/DMG/OAuth 配置已审计，于 12:35:05（Asia/Shanghai）发布 [v0.1.15](https://github.com/ansermail/anser/releases/tag/v0.1.15)，标签与源码一致，公开 latest 清单逐字节匹配。用户随后发现正文链接故障，修复见上方；真实代理收发/OAuth 刷新、正式安装/原位升级与 Developer ID/公证仍待验收。细节见 [0.1.15 发布工作点](RELEASE_015_WORKING.md)。
 
