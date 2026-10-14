@@ -240,6 +240,15 @@ export interface Preferences {
   syncIntervalMinutes: number;
   newMailNotifications?: boolean;
   sendResultNotifications?: boolean;
+  proxy?: NetworkProxy | null;
+}
+export interface NetworkProxy {
+  name: string;
+  kind: "socks5" | "http" | "https";
+  host: string;
+  port: number;
+  username: string;
+  directOnFailure: boolean;
 }
 export interface ArchiveHealth {
   checked: number;

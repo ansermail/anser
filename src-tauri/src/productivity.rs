@@ -40,6 +40,9 @@ impl Store {
             .unwrap_or(Ok(Preferences::default()))
     }
     pub fn save_preferences(&self, p: &Preferences) -> Result<()> {
+        if let Some(proxy) = &p.proxy {
+            proxy.validate()?;
+        }
         if ![1, 5, 10, 15, 30, 60].contains(&p.sync_interval_minutes) {
             return Err("请选择有效的后台检查间隔".into());
         }

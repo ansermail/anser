@@ -1195,6 +1195,24 @@ fn configurable_sync_interval_and_wakeup_are_persistent_and_keep_busy_catchup_pe
             ..Default::default()
         })
         .is_err());
+    let mut preferences = s.preferences().unwrap();
+    preferences.proxy = Some(ProxyConfig {
+        name: "本地代理".into(),
+        kind: "socks5".into(),
+        host: "127.0.0.1".into(),
+        port: 7890,
+        username: String::new(),
+        direct_on_failure: false,
+    });
+    s.save_preferences(&preferences).unwrap();
+    assert_eq!(
+        Store::new(dir.path().into())
+            .unwrap()
+            .preferences()
+            .unwrap()
+            .proxy,
+        preferences.proxy
+    );
     let mut schedule = crate::productivity::SyncSchedule::default();
     assert!(schedule.due(100, 900));
     schedule.completed(100);

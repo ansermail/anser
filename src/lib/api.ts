@@ -703,12 +703,32 @@ export async function call<T = void>(
             '{"syncIntervalMinutes":5,"newMailNotifications":true,"sendResultNotifications":true}',
         );
         break;
-      case "save_preferences":
+      case "save_preferences": {
+        const previous = JSON.parse(
+          demoStorage.getItem(key + "-preferences") || "{}",
+        ) as Record<string, unknown>;
         demoStorage.setItem(
           key + "-preferences",
-          JSON.stringify(args.preferences),
+          JSON.stringify({
+            ...(args.preferences as Record<string, unknown>),
+            ...(Object.hasOwn(previous, "proxy")
+              ? { proxy: previous.proxy }
+              : {}),
+          }),
         );
         break;
+      }
+      case "save_network_proxy": {
+        const preferences = JSON.parse(
+          demoStorage.getItem(key + "-preferences") ||
+            '{"syncIntervalMinutes":5,"newMailNotifications":true,"sendResultNotifications":true}',
+        );
+        demoStorage.setItem(
+          key + "-preferences",
+          JSON.stringify({ ...preferences, proxy: args.proxy }),
+        );
+        break;
+      }
       case "archive_deletion_preview": {
         const mails = demo.messages.filter(
           (m) =>

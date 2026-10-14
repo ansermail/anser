@@ -1,5 +1,13 @@
 # 实施与验收状态
 
+## 全局网络代理（2026-10-14）
+
+`Preferences.proxy` 保存 SOCKS5/HTTP/HTTPS 类型、主机、端口、可选用户名及预握手失败时直连选项，默认关闭；密码以 `dev.maildesk.desktop` 的 `network-proxy` 条目存入系统钥匙串。设置页独立 `save_network_proxy` 更新配置，普通通知/检查间隔保存保留当前代理，避免旧前端快照覆盖。进程启动时从 Store 恢复配置，运行中修改只影响新连接。
+
+`proxy::route` 先连接代理并完成 SOCKS5 或 HTTP CONNECT（HTTPS 代理先验证代理 TLS），再建立仅供当前连接使用的回环隧道；IMAP/POP3 在其上继续以真实邮件服务器名验证 TLS，SMTP 的 lettre 传输也显式使用真实服务器名作为 TLS 参数。代理握手失败且用户开启直连回退时才建立直接连接；SMTP 协议数据开始传输后不换路线重发。OAuth 令牌交换由 reqwest 使用同一代理配置，系统浏览器的授权页面不在此范围。代理密码不写入 SQLite、前端持久数据或日志。
+
+此阶段合成代理握手/隧道测试和演示设置页验证与真实服务器收发分开记录，见 [代理工作点](PROXY_WORKING.md)。
+
 ## 本地草稿箱一键清空（2026-10-13，未发布）
 
 - 草稿箱组合现有 Button 与 useConfirmation/AlertDialog，显示确认数量，空箱及清空期间禁用入口。确认前捕获当前 Compose 快照；原生 clear_drafts 在 compose gate 与 SQLite 短写事务中整批核对内容、编辑租约及发送状态后删除，变化或失败全部回滚，不扩大到确认期间新建的草稿。

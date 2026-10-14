@@ -66,15 +66,49 @@ fn exchange(a: &Account, mut fields: Vec<(&str, String)>) -> Result<Secret> {
             fields.push(("client_secret", secret.into()));
         }
     }
-    let res = reqwest::blocking::Client::builder()
+    let mut builder = reqwest::blocking::Client::builder()
         .connect_timeout(Duration::from_secs(10))
         .timeout(Duration::from_secs(30))
-        .build()
-        .map_err(err)?
-        .post(endpoint)
-        .form(&fields)
-        .send()
-        .map_err(err)?;
+        .no_proxy();
+    let (config, proxy_password) = crate::proxy::current()?;
+    if let Some(config) = &config {
+        config.validate()?;
+        let scheme = if config.kind == "socks5" {
+            "socks5h"
+        } else {
+            &config.kind
+        };
+        let host = if config.host.contains(':') && !config.host.starts_with('[') {
+            format!("[{}]", config.host)
+        } else {
+            config.host.clone()
+        };
+        let url = format!("{scheme}://{host}:{}", config.port);
+        let mut proxy = reqwest::Proxy::all(&url).map_err(err)?;
+        if !config.username.is_empty() {
+            proxy = proxy.basic_auth(&config.username, &proxy_password);
+        }
+        builder = builder.proxy(proxy);
+    }
+    let client = builder.build().map_err(err)?;
+    let res = match client.post(endpoint).form(&fields).send() {
+        Ok(response) => response,
+        Err(error)
+            if error.is_connect() && config.as_ref().is_some_and(|p| p.direct_on_failure) =>
+        {
+            reqwest::blocking::Client::builder()
+                .connect_timeout(Duration::from_secs(10))
+                .timeout(Duration::from_secs(30))
+                .no_proxy()
+                .build()
+                .map_err(err)?
+                .post(endpoint)
+                .form(&fields)
+                .send()
+                .map_err(err)?
+        }
+        Err(error) => return Err(err(error)),
+    };
     if !res.status().is_success() {
         return Err(format!(
             "授权服务返回 {}，请检查应用注册、重定向地址与授权范围",

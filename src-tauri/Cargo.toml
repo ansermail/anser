@@ -1,6 +1,6 @@
 [package]
 name = "anser"
-version = "0.1.14"
+version = "0.1.15"
 edition = "2021"
 license-file = "../LICENSE"
 [lib]
@@ -26,7 +26,9 @@ imap-proto = "0.10.2"
 native-tls = "0.2"
 lettre = "0.11"
 keyring = { version = "3", features = ["apple-native"] }
-reqwest = { version = "0.12", features = ["blocking", "json"] }
+reqwest = { version = "0.12", features = ["blocking", "json", "socks"] }
+tokio = { version = "1", features = ["rt", "net", "io-util", "time"] }
+tokio-native-tls = "0.3"
 base64 = "0.22"
 url = "2"
 open = "5"

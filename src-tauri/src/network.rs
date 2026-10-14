@@ -15,6 +15,7 @@ use lettre::{
         Attachment, Body, MultiPart, SinglePart,
     },
     transport::smtp::authentication::{Credentials, Mechanism},
+    transport::smtp::client::{Tls, TlsParameters},
     Message, SmtpTransport, Transport,
 };
 use native_tls::{TlsConnector, TlsStream};
@@ -27,7 +28,12 @@ use std::{
     time::Duration,
 };
 fn socket(host: &str, port: u16) -> Result<TcpStream> {
-    let addresses = (host, port).to_socket_addrs().map_err(err)?;
+    let route = crate::proxy::route(host, port)?;
+    let addresses = if let Some(local_port) = route {
+        ("127.0.0.1", local_port).to_socket_addrs().map_err(err)?
+    } else {
+        (host, port).to_socket_addrs().map_err(err)?
+    };
     let mut last = "服务器没有可用地址".into();
     for address in addresses {
         match TcpStream::connect_timeout(&address, Duration::from_secs(12)) {
@@ -317,12 +323,22 @@ pub fn watch_imap(
     result
 }
 fn smtp(a: &Account, s: &Secret) -> Result<SmtpTransport> {
-    let builder = if a.smtp_tls == "starttls" {
-        SmtpTransport::starttls_relay(&a.smtp_host)
+    let route = crate::proxy::route(&a.smtp_host, a.smtp_port)?;
+    let builder = if let Some(local_port) = route {
+        let parameters = TlsParameters::new(a.smtp_host.clone()).map_err(err)?;
+        let tls = if a.smtp_tls == "starttls" {
+            Tls::Required(parameters)
+        } else {
+            Tls::Wrapper(parameters)
+        };
+        SmtpTransport::builder_dangerous("127.0.0.1")
+            .port(local_port)
+            .tls(tls)
+    } else if a.smtp_tls == "starttls" {
+        SmtpTransport::starttls_relay(&a.smtp_host).map_err(err)?
     } else {
-        SmtpTransport::relay(&a.smtp_host)
-    }
-    .map_err(err)?;
+        SmtpTransport::relay(&a.smtp_host).map_err(err)?
+    };
     let user = if a.smtp_username.is_empty() {
         a.username.clone()
     } else {
@@ -336,7 +352,7 @@ fn smtp(a: &Account, s: &Secret) -> Result<SmtpTransport> {
         s.smtp_password.clone()
     };
     let mut builder = builder
-        .port(a.smtp_port)
+        .port(route.unwrap_or(a.smtp_port))
         .timeout(Some(Duration::from_secs(45)))
         .credentials(Credentials::new(user, pass));
     if a.auth == "oauth" {

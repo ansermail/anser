@@ -149,6 +149,7 @@ import { ContactsPanel } from "./components/contacts-panel";
 import { OutboxPanel } from "./components/outbox-panel";
 import { ArchiveIntegrity } from "./components/archive-integrity";
 import { StorageTools } from "./components/storage-tools";
+import { NetworkProxySettings } from "./components/network-proxy-settings";
 import { DeleteArchiveDialog } from "./components/delete-archive-dialog";
 import {
   replyRecipients,
@@ -1966,6 +1967,7 @@ export default function App() {
               </Card>
               <Separator className="settings-section-divider" />
               <StorageTools testMailId={selected} />
+              {page === "settings" && <NetworkProxySettings />}
               {page === "settings" && (
                 <MailSignatures accounts={data.accounts} />
               )}

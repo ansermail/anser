@@ -17,6 +17,7 @@ mod notifications;
 mod operations;
 mod paging;
 mod productivity;
+mod proxy;
 mod realtime;
 mod remote;
 mod retention;
@@ -515,7 +516,33 @@ fn get_preferences(state: tauri::State<AppState>) -> Result<Preferences> {
 }
 #[tauri::command]
 fn save_preferences(state: tauri::State<AppState>, preferences: Preferences) -> Result<()> {
+    let mut preferences = preferences;
+    preferences.proxy = state.store.preferences()?.proxy;
     state.store.save_preferences(&preferences)
+}
+#[tauri::command]
+async fn save_network_proxy(
+    state: tauri::State<'_, AppState>,
+    proxy: Option<ProxyConfig>,
+    password: String,
+) -> Result<()> {
+    let store = state.store.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        if let Some(config) = &proxy {
+            config.validate()?;
+        }
+        let previous = store.preferences()?;
+        let mut preferences = previous.clone();
+        preferences.proxy = proxy.clone();
+        store.save_preferences(&preferences)?;
+        if let Err(error) = proxy::apply(proxy, Some(&password)) {
+            let _ = store.save_preferences(&previous);
+            return Err(error);
+        }
+        Ok(())
+    })
+    .await
+    .map_err(err)?
 }
 #[derive(serde::Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -1280,6 +1307,8 @@ pub fn run() {
                 }
             }
             let store = Store::new(app.path().app_data_dir()?).map_err(std::io::Error::other)?;
+            proxy::initialize(store.preferences().map_err(std::io::Error::other)?.proxy)
+                .map_err(std::io::Error::other)?;
             let gate = Arc::new(Mutex::new(()));
             let send_gate = Arc::new(Mutex::new(()));
             let realtime = Arc::new(realtime::RealtimeControl::default());
@@ -1435,6 +1464,7 @@ pub fn run() {
             archive_outbox,
             get_preferences,
             save_preferences,
+            save_network_proxy,
             desktop_settings,
             set_auto_start,
             test_notification,

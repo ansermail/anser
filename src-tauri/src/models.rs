@@ -88,6 +88,36 @@ impl Account {
         Ok(())
     }
 }
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProxyConfig {
+    pub name: String,
+    pub kind: String,
+    pub host: String,
+    pub port: u16,
+    #[serde(default)]
+    pub username: String,
+    #[serde(default)]
+    pub direct_on_failure: bool,
+}
+impl ProxyConfig {
+    pub fn validate(&self) -> Result<()> {
+        if self.name.trim().is_empty()
+            || self.name.len() > 80
+            || !["socks5", "http", "https"].contains(&self.kind.as_str())
+            || self.host.trim().is_empty()
+            || !self
+                .host
+                .chars()
+                .all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '-' | '_' | ':'))
+            || self.port == 0
+            || self.username.contains(['\r', '\n', ':'])
+        {
+            return Err("请检查代理名称、类型、服务器地址、端口和用户名".into());
+        }
+        Ok(())
+    }
+}
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Mail {
@@ -346,6 +376,8 @@ pub struct Preferences {
     #[serde(default = "default_true")]
     pub send_result_notifications: bool,
     pub sync_interval_minutes: u32,
+    #[serde(default)]
+    pub proxy: Option<ProxyConfig>,
 }
 impl Default for Preferences {
     fn default() -> Self {
@@ -353,6 +385,7 @@ impl Default for Preferences {
             sync_interval_minutes: 5,
             new_mail_notifications: true,
             send_result_notifications: true,
+            proxy: None,
         }
     }
 }
