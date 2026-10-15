@@ -17,12 +17,16 @@ export function MailContent({
   onOpenLink,
   title = "邮件正文",
   inspectable = false,
+  onDocumentReady,
 }: {
   html: string;
   title?: string;
   inspectable?: boolean;
+  onDocumentReady?: (doc: Document | null) => void;
   onOpenLink: (href: string) => void;
 }) {
+  const notifyDocument = useRef(onDocumentReady);
+  notifyDocument.current = onDocumentReady;
   const frame = useRef<HTMLIFrameElement>(null);
   const cleanup = useRef<() => void>(() => {});
   const initialized = useRef<Document | null>(null);
@@ -93,25 +97,44 @@ export function MailContent({
       if (iframe.style.height !== height) iframe.style.height = height;
     };
     let pendingResize = 0;
+    const scheduleResize = () => {
+      if (pendingResize) return;
+      pendingResize = requestAnimationFrame(() => {
+        pendingResize = 0;
+        resize();
+      });
+    };
     const nativeFrame = isTauri();
     const imageTracker = watchMailImages(
       doc,
       (status) => {
         setImages(status);
-        resize();
+        scheduleResize();
       },
       !nativeFrame,
     );
     retryImages.current = imageTracker.retry;
-    const scheduleResize = () => {
+    const refresh = () => {
       imageTracker.refresh();
-      cancelAnimationFrame(pendingResize);
-      pendingResize = requestAnimationFrame(resize);
+      scheduleResize();
     };
-    const observer = new ResizeObserver(scheduleResize);
+    // Height changes are the result of this observer's work, not a reason to
+    // measure the frame again. Width changes still need text/table reflow.
+    let frameWidth = iframe.getBoundingClientRect().width;
+    const observer = new ResizeObserver((entries) => {
+      if (
+        entries.some((entry) => {
+          if (entry.target !== iframe) return true;
+          const changed = entry.contentRect.width !== frameWidth;
+          frameWidth = entry.contentRect.width;
+          return changed;
+        })
+      )
+        refresh();
+    });
     observer.observe(doc.body);
     observer.observe(iframe);
-    const mutations = new MutationObserver(scheduleResize);
+    const mutations = new MutationObserver(refresh);
     mutations.observe(doc.body, {
       subtree: true,
       childList: true,
@@ -127,12 +150,14 @@ export function MailContent({
       ? () => {}
       : interceptMailLinks(doc, (href) => open.current(href));
     if (!nativeFrame) {
-      doc.addEventListener("load", scheduleResize, true);
-      doc.addEventListener("error", scheduleResize, true);
+      doc.addEventListener("load", refresh, true);
+      doc.addEventListener("error", refresh, true);
     }
     resize();
     setReady(true);
+    notifyDocument.current?.(doc);
     cleanup.current = () => {
+      notifyDocument.current?.(null);
       cancelAnimationFrame(pendingResize);
       observer.disconnect();
       mutations.disconnect();
@@ -141,8 +166,8 @@ export function MailContent({
       retryImages.current = () => {};
       restoreLinks();
       if (!nativeFrame) {
-        doc.removeEventListener("load", scheduleResize, true);
-        doc.removeEventListener("error", scheduleResize, true);
+        doc.removeEventListener("load", refresh, true);
+        doc.removeEventListener("error", refresh, true);
       }
     };
   }

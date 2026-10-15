@@ -1,11 +1,15 @@
 import DOMPurify from "dompurify";
+import { routeNativeMailResources } from "./mail-image-resources";
+import { normalizeMailSpacers } from "./mail-image-decorations";
 export function safeMailHtml(
   html: string,
   documentId = "anser-mail",
   nativeNavigation = false,
+  nativeImages = nativeNavigation,
 ) {
   const content = DOMPurify.sanitize(html, {
     WHOLE_DOCUMENT: true,
+    ADD_TAGS: ["link"],
     FORBID_TAGS: [
       "script",
       "iframe",
@@ -20,11 +24,29 @@ export function safeMailHtml(
       "math",
       "base",
       "meta",
-      "link",
     ],
     FORBID_ATTR: ["action", "formaction", "data-mail-href"],
   });
   const doc = new DOMParser().parseFromString(content, "text/html");
+  // Keep stylesheet links only; preload/prefetch/icons and other relationships
+  // have no role in the isolated email and must not initiate requests.
+  for (const link of doc.querySelectorAll("link")) {
+    const href = secureResources(link.getAttribute("href") || "").replace(
+      /^\/\//,
+      "https://",
+    );
+    const url = mailLink(href);
+    if (
+      link.getAttribute("rel")?.toLowerCase() !== "stylesheet" ||
+      url?.protocol !== "https:"
+    ) {
+      link.remove();
+      continue;
+    }
+    link.setAttribute("rel", "stylesheet");
+    link.setAttribute("href", url.href);
+    link.setAttribute("referrerpolicy", "no-referrer");
+  }
   // Legacy mail often embeds HTTP image/font URLs. Upgrade resource references
   // before WKWebView evaluates ATS; keep navigation links exactly as authored.
   for (const element of doc.querySelectorAll(
@@ -45,6 +67,8 @@ export function safeMailHtml(
   for (const style of doc.querySelectorAll("style")) {
     style.textContent = secureResources(style.textContent || "");
   }
+  normalizeMailSpacers(doc);
+  if (nativeImages) routeNativeMailResources(doc);
   // WebKit suppresses frame event listeners in a scripts-disabled sandbox.
   // Native links use a route the navigation delegate cancels and emits to the
   // app; browser links are neutralized before their listeners attach.
@@ -76,7 +100,7 @@ export function safeMailHtml(
   // A body-only sanitizer otherwise drops leading styles in HTML email fragments.
   doc.head.insertAdjacentHTML(
     "afterbegin",
-    `<meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data: https:; style-src 'unsafe-inline'; font-src data: https:; upgrade-insecure-requests; base-uri 'none'; form-action 'none'"><style>body{font-family:-apple-system,BlinkMacSystemFont,sans-serif;font-size:14px;line-height:1.6;color:#242424;margin:0;padding:0;overflow-wrap:break-word}img{max-width:100%;height:auto}table{max-width:100%}pre{white-space:pre-wrap}</style>`,
+    `<meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data: https:${nativeImages ? " anser-image:" : ""}; style-src 'unsafe-inline' ${nativeImages ? "anser-style:" : "https:"}; font-src data: ${nativeImages ? "anser-font:" : "https:"}; upgrade-insecure-requests; base-uri 'none'; form-action 'none'"><style>body{font-family:-apple-system,BlinkMacSystemFont,sans-serif;font-size:14px;line-height:1.6;color:#242424;margin:0;padding:0;overflow-wrap:break-word}img{max-width:100%;height:auto}table{max-width:100%}pre{white-space:pre-wrap}</style>`,
   );
   return `<!doctype html>${doc.documentElement.outerHTML}`;
 }
@@ -84,7 +108,8 @@ export function safeMailHtml(
 function secureResources(value: string) {
   return value
     .replace(/\bhttp:\/\//gi, "https://")
-    .replace(/(url\(\s*["']?)\/\//gi, "$1https://");
+    .replace(/(url\(\s*["']?)\/\//gi, "$1https://")
+    .replace(/(@import\s+["'])\/\//gi, "$1https://");
 }
 
 export function mailLink(href: string): URL | null {

@@ -29,6 +29,42 @@ function fixture() {
   };
 }
 describe("mail image deadline", () => {
+  it("ignores failed unlabelled 130×1 and 1×130 strips, but reports actual missing content", () => {
+    const f = fixture(),
+      changed = vi.fn();
+    f.finish();
+    f.doc.body.insertAdjacentHTML(
+      "beforeend",
+      '<img src="https://example.com/spacer.png" width="130" height="1"><img src="https://example.com/blank.png" style="width:1px;height:130px"><img src="https://example.com/photo.png"><img src="https://example.com/chart.png" width="130" height="1" alt="Chart">',
+    );
+    const [horizontal, vertical, photo, labelled] = [...f.doc.images].slice(2);
+    for (const image of [horizontal, vertical, photo, labelled])
+      Object.defineProperties(image, {
+        complete: { value: true },
+        naturalWidth: { value: 0 },
+      });
+    const writes = [horizontal, vertical].map((i) =>
+      vi.spyOn(i, "setAttribute"),
+    );
+    const tracker = watchMailImages(f.doc, changed, false);
+    expect(changed).toHaveBeenLastCalledWith({
+      waiting: 0,
+      timedOut: 0,
+      failed: 2,
+    });
+    tracker.retry();
+    expect(writes.every((s) => s.mock.calls.length === 0)).toBe(true);
+    photo.remove();
+    labelled.remove();
+    tracker.refresh();
+    expect(changed).toHaveBeenLastCalledWith({
+      waiting: 0,
+      timedOut: 0,
+      failed: 0,
+    });
+    expect(vi.getTimerCount()).toBe(0);
+    tracker.dispose();
+  });
   it("ignores hidden tracking pixels without masking an unsized pending content image", () => {
     const f = fixture(),
       changed = vi.fn();

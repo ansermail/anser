@@ -878,11 +878,19 @@ kbd {
   align-items: center;
   gap: 16px;
 }
+.message-title-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  margin-top: 10px;
+}
 .message-heading h1 {
+  flex: 1;
+  min-width: 0;
+  padding-top: 5px;
   font-size: 16px;
   line-height: 1.4;
   font-weight: 600;
-  margin-top: 10px;
   overflow-wrap: anywhere;
 }
 .sender-block {
@@ -3554,5 +3562,28 @@ kbd {
   .mail-print-attachments h2 {
     font-size: 12pt;
     margin: 0;
+  }
+}
+
+.translation-settings-card {
+  container-type: inline-size;
+  container-name: translation-settings;
+}
+.translation-settings-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.15fr) auto minmax(0, 0.85fr);
+  gap: 24px;
+}
+.translation-settings-grid > .translation-settings-divider {
+  height: auto;
+  align-self: stretch;
+}
+@container translation-settings (max-width: 760px) {
+  .translation-settings-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .translation-settings-grid > .translation-settings-divider {
+    width: auto;
+    height: 1px;
   }
 }

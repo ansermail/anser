@@ -82,7 +82,7 @@ export function NetworkProxySettings() {
         <CardHeader>
           <CardTitle>网络代理</CardTitle>
           <CardDescription>
-            所有邮箱的收信、发信和 OAuth
+            所有邮箱的收信、发信、邮件正文资源、模型翻译及 OAuth
             令牌请求使用同一代理。是否转发目标地址由代理软件决定。
           </CardDescription>
           <CardAction>

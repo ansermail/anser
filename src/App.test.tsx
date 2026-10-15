@@ -5,7 +5,7 @@ import { beforeEach, afterEach, describe, it, expect, vi } from "vitest";
 import App from "./App";
 import { enterDemo, leaveDemo, snapshot } from "./lib/api";
 import * as api from "./lib/api";
-import type { Query, RemoteFolder } from "./lib/types";
+import type { Detail, Query, RemoteFolder } from "./lib/types";
 import { toast } from "sonner";
 const notificationFixture = vi.hoisted(() => ({
   open: (_token: string) => {},
@@ -137,6 +137,115 @@ afterEach(async () => {
   leaveDemo();
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
+});
+it("refreshes recent activity immediately after a translation connection test without navigation", async () => {
+  await click(nav("设置与账号"));
+  await click(host.querySelector('[aria-label="展开或收起最近活动"]'));
+  const before = host.querySelector(".activity-list")!.textContent;
+  expect(before).not.toContain("大模型翻译连接测试完成");
+  await act(async () => {
+    await api.call("test_translation_settings", {
+      requestId: crypto.randomUUID(),
+      revision: "demo",
+    });
+  });
+  expect(host.querySelector(".activity-list")!.textContent).toContain(
+    "大模型翻译连接测试完成",
+  );
+  expect(host.querySelector(".activity-list")!.textContent).toContain(
+    "【演示记录】",
+  );
+});
+
+describe("title translation action", () => {
+  function readerCalls() {
+    const original = api.call;
+    return vi
+      .spyOn(api, "call")
+      .mockImplementation(
+        async <T,>(command: string, args?: Record<string, unknown>) => {
+          if (command === "get_translation_settings")
+            return {
+              model: "preview",
+              targetLanguage: "zh-CN",
+              revision: "preview",
+            } as T;
+          const result = await original<T>(command, args);
+          if (command === "mail_detail") {
+            const detail = result as Detail;
+            return {
+              ...detail,
+              html: "",
+              mail: { ...detail.mail, body: `Body for ${detail.mail.id}` },
+            } as T;
+          }
+          return result;
+        },
+      );
+  }
+  it("shows only an icon at the end of the title row and resets it when switching messages", async () => {
+    const calls = readerCalls();
+    await chooseListMode("逐封邮件");
+    await click(host.querySelector("button.mail-row-main"));
+    const row = host.querySelector(".message-title-row")!;
+    const button = row.querySelector('button[aria-label="翻译"]')!;
+    expect(button.textContent).toBe("");
+    expect(button.querySelector("svg")).not.toBeNull();
+    expect(row.firstElementChild?.tagName).toBe("H1");
+    expect(row.lastElementChild?.contains(button)).toBe(true);
+    expect(
+      host.querySelector('.reader-scroll button[aria-label="翻译"]'),
+    ).toBeNull();
+    expect(
+      calls.mock.calls.some(([command]) => command === "translate_mail_parts"),
+    ).toBe(false);
+    await click(button);
+    expect(host.querySelectorAll("[data-anser-translation]")).toHaveLength(1);
+    expect(row.querySelector('button[aria-label="隐藏译文"]')).not.toBeNull();
+    await click(host.querySelectorAll("button.mail-row-main")[1]);
+    expect(host.querySelectorAll(".message-title-row button")).toHaveLength(1);
+    expect(
+      host.querySelector('.message-title-row button[aria-label="翻译"]'),
+    ).not.toBeNull();
+    expect(host.querySelector("[data-anser-translation]")).toBeNull();
+  });
+  it("binds the title icon to the selected mail while other conversation turns translate independently", async () => {
+    await seedReplyThread();
+    const calls = readerCalls();
+    await click(nav("本地存档"));
+    await chooseListMode("按对话分组");
+    await click(host.querySelector("button.mail-row-main"));
+    const turns = [...host.querySelectorAll(".conversation-turn")];
+    expect(turns).toHaveLength(2);
+    const other = turns.find((turn) =>
+      turn.querySelector('.turn-byline button[aria-label="翻译"]'),
+    )!;
+    const selected = turns.find((turn) => turn !== other)!;
+    await click(
+      host.querySelector('.message-title-row button[aria-label="翻译"]'),
+    );
+    expect(selected.querySelectorAll("[data-anser-translation]")).toHaveLength(
+      1,
+    );
+    expect(other.querySelector("[data-anser-translation]")).toBeNull();
+    const requests = calls.mock.calls.filter(
+      ([command]) => command === "translate_mail_parts",
+    );
+    expect(requests).toHaveLength(1);
+    expect(requests[0][1]?.parts).toEqual([
+      {
+        id: "p0_t0",
+        text: `Body for ${selected.getAttribute("data-mail-id")}`,
+      },
+    ]);
+    await click(other.querySelector('.turn-byline button[aria-label="翻译"]'));
+    expect(other.querySelectorAll("[data-anser-translation]")).toHaveLength(1);
+    await click(
+      host.querySelector('.message-title-row button[aria-label="隐藏译文"]'),
+    );
+    expect(selected.querySelector("[data-anser-translation]")).toBeNull();
+    expect(other.querySelectorAll("[data-anser-translation]")).toHaveLength(1);
+  });
 });
 describe("draft list after composing", () => {
   async function openDraft() {

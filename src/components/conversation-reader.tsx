@@ -32,7 +32,7 @@ import {
 } from "./ui/dropdown-menu";
 import { MailBodySkeleton } from "./mail-skeleton";
 import { Alert, AlertTitle, AlertDescription } from "./ui/alert";
-import { MailContent } from "./mail-content";
+import { TranslatableMailBody } from "./translatable-mail-body";
 import { MailAttachments } from "./mail-attachments";
 import { call, newDraft } from "../lib/api";
 import { parseAddresses, replyRecipients } from "../lib/addresses";
@@ -68,6 +68,7 @@ function Turn({
   onAction,
   onLink,
   onLoaded,
+  translationActions,
 }: {
   mail: Mail;
   selected: Detail | null;
@@ -79,7 +80,9 @@ function Turn({
   onAction: (mail: Mail, action: string, value: string) => void;
   onLink: (href: string) => void;
   onLoaded: (detail: Detail) => void;
+  translationActions: HTMLElement | null;
 }) {
+  const [localActions, setLocalActions] = useState<HTMLDivElement | null>(null);
   const [detail, setDetail] = useState<Detail | null>(selected);
   const [error, setError] = useState("");
   const [retry, setRetry] = useState(0);
@@ -186,6 +189,7 @@ function Turn({
             </DropdownMenuGroup>
           </DropdownMenuContent>
         </DropdownMenu>
+        {!selected && <div className="shrink-0" ref={setLocalActions} />}
       </div>
       <Card className={`conversation-bubble ${detail?.html ? "has-html" : ""}`}>
         {mail.recipients.trim() && (
@@ -209,17 +213,15 @@ function Turn({
           ) : (
             <MailBodySkeleton />
           )
-        ) : detail.html ? (
-          <MailContent
-            inspectable
+        ) : (
+          <TranslatableMailBody
+            key={`${mail.id}:${mail.hash}`}
             html={detail.html}
+            body={detail.mail.body}
             title={`邮件正文：${mail.id}`}
+            actionsContainer={selected ? translationActions : localActions}
             onOpenLink={onLink}
           />
-        ) : (
-          <div className="message-body" data-mail-debug-region="">
-            {detail.mail.body}
-          </div>
         )}
         <MailAttachments
           mailId={mail.id}
@@ -493,6 +495,7 @@ export function ConversationReader({
   accounts,
   demo,
   scrollRef,
+  translationActions,
   editorOpen,
   onReply,
   onEdit,
@@ -509,6 +512,7 @@ export function ConversationReader({
   demo: boolean;
   editorOpen: boolean;
   scrollRef: RefObject<HTMLDivElement | null>;
+  translationActions: HTMLElement | null;
   onReply: (detail: Detail, forward?: boolean, all?: boolean) => void;
   onEdit: (draft: Compose) => void;
   onSent: () => void;
@@ -619,11 +623,13 @@ export function ConversationReader({
         ref={scrollRef}
       >
         <ParseWarnings mail={selected.mail} />
-        {selected.html ? (
-          <MailContent inspectable html={selected.html} onOpenLink={onLink} />
-        ) : (
-          <div className="message-body">{selected.mail.body}</div>
-        )}
+        <TranslatableMailBody
+          key={`${selected.mail.id}:${selected.mail.hash}`}
+          html={selected.html}
+          body={selected.mail.body}
+          actionsContainer={translationActions}
+          onOpenLink={onLink}
+        />
         <MailAttachments
           mailId={selected.mail.id}
           demo={demo}
@@ -671,6 +677,7 @@ export function ConversationReader({
               onAction={onAction}
               onLink={onLink}
               onLoaded={loaded}
+              translationActions={translationActions}
             />
           ))}
         </div>

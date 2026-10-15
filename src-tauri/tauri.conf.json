@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "雁信",
-  "version": "0.1.16",
+  "version": "0.1.17",
   "identifier": "dev.maildesk.desktop",
   "build": {
     "beforeDevCommand": "npm run dev",
@@ -24,7 +24,7 @@
       }
     ],
     "security": {
-      "csp": "default-src 'self'; img-src 'self' data: blob: http: https:; font-src 'self' data: https:; style-src 'self' 'unsafe-inline'; connect-src ipc: http://ipc.localhost; frame-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action 'none'",
+      "csp": "default-src 'self'; img-src 'self' data: blob: http: https: anser-image:; font-src 'self' data: https: anser-font:; style-src 'self' 'unsafe-inline' anser-style:; connect-src ipc: http://ipc.localhost; frame-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action 'none'",
       "capabilities": ["main"]
     }
   },
@@ -39,7 +39,8 @@
     ],
     "macOS": {
       "minimumSystemVersion": "12.0",
-      "signingIdentity": "-"
+      "signingIdentity": "-",
+      "infoPlist": "Info.plist"
     },
     "createUpdaterArtifacts": true,
     "fileAssociations": [

@@ -150,6 +150,57 @@ describe("untrusted email rendering", () => {
 });
 
 describe("mail link navigation", () => {
+  it("routes every native image source through the proxy transport while routing fonts separately and preserving embedded bytes and links", () => {
+    const html = `<style>@import url('https://fonts.example/css?family=Font'); @font-face{font-family:Mail;src:url('https://fonts.example/font.woff2')} @media screen{.hero{background-image:url('https://images.example/css.png?x=1&y=2')}}</style><table background="http://images.example/bg.png"><tr><td style="background:url(//images.example/inline.png)"><picture><source srcset="https://images.example/large.png 2x"><img src="https://images.example/hero.gif?x=1&amp;y=2" srcset="https://images.example/a,b.png 1x, https://images.example/retina.png 2x" onerror="alert(1)"></picture><img src="data:image/png;base64,aGVsbG8="><a href="https://example.com/path">open</a></td></tr></table>`;
+    const doc = new DOMParser().parseFromString(
+      safeMailHtml(html, "native-images", true),
+      "text/html",
+    );
+    const original = (value: string) => new URL(value).searchParams.get("url");
+    expect(original(doc.images[0].getAttribute("src")!)).toBe(
+      "https://images.example/hero.gif?x=1&y=2",
+    );
+    expect(doc.images[0].hasAttribute("onerror")).toBe(false);
+    const candidates = doc.images[0].getAttribute("srcset")!.split(", ");
+    expect(original(candidates[0].split(" ")[0])).toBe(
+      "https://images.example/a,b.png",
+    );
+    expect(candidates[1]).toContain(" 2x");
+    expect(doc.querySelector("source")?.getAttribute("srcset")).toContain(
+      "anser-image://localhost/fetch?",
+    );
+    expect(
+      original(doc.querySelector("table")!.getAttribute("background")!),
+    ).toBe("https://images.example/bg.png");
+    expect(doc.querySelector("td")!.getAttribute("style")).toContain(
+      "anser-image://localhost/fetch?",
+    );
+    expect(doc.head.textContent).toContain("anser-image://localhost/fetch?");
+    expect(doc.head.textContent).toContain(
+      "anser-font://localhost/fetch?url=https%3A%2F%2Ffonts.example%2Ffont.woff2",
+    );
+    expect(doc.head.textContent).toContain(
+      '@import url("anser-style://localhost/fetch?url=https%3A%2F%2Ffonts.example%2Fcss%3Ffamily%3DFont")',
+    );
+    expect(doc.images[1].getAttribute("src")).toBe(
+      "data:image/png;base64,aGVsbG8=",
+    );
+    expect(doc.querySelector("a")?.getAttribute("data-mail-href")).toBe(
+      "https://example.com/path",
+    );
+    expect(
+      doc
+        .querySelector('meta[http-equiv="Content-Security-Policy"]')
+        ?.getAttribute("content"),
+    ).toContain("img-src data: https: anser-image:");
+    const browser = safeMailHtml(html);
+    expect(browser).not.toContain("anser-image:");
+    expect(browser).toContain("https://images.example/hero.gif");
+    // Printing may use native images without native reader link navigation.
+    const print = safeMailHtml(html, "print", false, true);
+    expect(print).toContain("anser-image:");
+    expect(print).not.toContain("anser-mail-link.invalid");
+  });
   it("routes native links without scripts or navigation inside the email frame", () => {
     const doc = new DOMParser().parseFromString(
       safeMailHtml(
@@ -228,4 +279,44 @@ describe("mail link navigation", () => {
     anchor.click();
     expect(open).toHaveBeenCalledTimes(3);
   });
+});
+
+it("loads font stylesheet links and imports only inside the isolated reader", () => {
+  const html = `<link rel="stylesheet" href="//fonts.googleapis.com/css?family=Roboto"><link rel="preload" as="script" href="https://evil.example/code.js"><link rel="stylesheet" href="file:///private"><style>@import "//fonts.example/font.css"; @FONT-FACE{font-family:Mail;src:URL('https://fonts.example/font.woff2')} .hero{background:url(https://images.example/a.png)}</style><script>alert(1)</script><form action="https://evil.example"></form>`;
+  for (const native of [false, true]) {
+    const doc = new DOMParser().parseFromString(
+      safeMailHtml(html, "font", native),
+      "text/html",
+    );
+    const links = doc.querySelectorAll("link");
+    expect(links).toHaveLength(1);
+    expect(links[0].href).toContain(
+      native
+        ? "anser-style://localhost/fetch?"
+        : "https://fonts.googleapis.com/css?",
+    );
+    expect(links[0].getAttribute("referrerpolicy")).toBe("no-referrer");
+    expect(doc.head.textContent).toContain(
+      native ? "anser-font://" : "https://fonts.example/font.woff2",
+    );
+    expect(doc.head.textContent).toContain(
+      native
+        ? "anser-style://localhost/fetch?url=https%3A%2F%2Ffonts.example%2Ffont.css"
+        : "//fonts.example/font.css",
+    );
+    const csp = doc
+      .querySelector('meta[http-equiv="Content-Security-Policy"]')!
+      .getAttribute("content")!;
+    expect(csp).toContain(
+      native
+        ? "style-src 'unsafe-inline' anser-style:"
+        : "style-src 'unsafe-inline' https:",
+    );
+    expect(csp).toContain(
+      native ? "font-src data: anser-font:" : "font-src data: https:",
+    );
+    expect(csp).toContain("default-src 'none'");
+    expect(csp).toContain("form-action 'none'");
+    expect(doc.querySelector("script,form")).toBeNull();
+  }
 });

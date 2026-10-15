@@ -29,12 +29,16 @@ afterEach(async () => {
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
 });
-async function load(inspectable = true, hiddenTracking = false) {
+async function load(
+  inspectable = true,
+  hiddenTracking = false,
+  layoutStrip = false,
+) {
   await act(async () =>
     root.render(
       <MailContent
         inspectable={inspectable}
-        html={`<p>Unchanged body</p><img src="https://example.com/slow.png" ${hiddenTracking ? 'style="display:none;width:1px;height:1px"' : ""}><img src="data:image/png;base64,aGVsbG8=">`}
+        html={`<p>Unchanged body</p><img src="https://example.com/${layoutStrip ? "spacer-123" : "slow"}.png" ${layoutStrip ? 'width="130" height="1"' : hiddenTracking ? 'style="display:none;width:1px;height:1px"' : ""}><img src="data:image/png;base64,aGVsbG8=">`}
         onOpenLink={() => {}}
       />,
     ),
@@ -67,6 +71,17 @@ async function load(inspectable = true, hiddenTracking = false) {
     },
   };
 }
+it("native spacer strips do not produce a loading/error banner or remote resource retry", async () => {
+  platform.native = true;
+  const { doc } = await load(true, false, true);
+  const spacer = doc.images[0];
+  expect(spacer.src).toMatch(/^data:image\/gif/);
+  expect(spacer.getAttribute("width")).toBe("130");
+  expect(host.querySelector('[aria-busy="false"]')).not.toBeNull();
+  await act(async () => vi.advanceTimersByTime(MAIL_IMAGE_TIMEOUT_MS + 1000));
+  expect(host.querySelector('[role="alert"]')).toBeNull();
+  expect(host.querySelector('[aria-label="正在加载图片"]')).toBeNull();
+});
 it("does not keep a loaded native mail busy or show a timeout for a hidden analytics image", async () => {
   platform.native = true;
   const { doc } = await load(true, true);
@@ -169,4 +184,46 @@ it("tracks native images without child-frame script callbacks and retains routed
   expect(frame.getAttribute("sandbox")).toBe(
     "allow-same-origin allow-top-navigation-by-user-activation",
   );
+});
+
+it("defers body resize writes and ignores iframe height-only notifications", async () => {
+  let observed: ResizeObserverCallback = () => {};
+  vi.stubGlobal(
+    "ResizeObserver",
+    class {
+      constructor(callback: ResizeObserverCallback) {
+        observed = callback;
+      }
+      observe() {}
+      disconnect() {}
+    },
+  );
+  const { frame, doc } = await load();
+  await act(async () => vi.advanceTimersByTime(20));
+  const measure = vi
+    .spyOn(doc.body, "getBoundingClientRect")
+    .mockReturnValue(new DOMRect(0, 0, 400, 800));
+  const notify = (target: Element, width: number) =>
+    observed(
+      [
+        {
+          target,
+          contentRect: new DOMRect(0, 0, width, 900),
+        } as ResizeObserverEntry,
+      ],
+      {} as ResizeObserver,
+    );
+  await act(async () => notify(frame, 0));
+  expect(measure).not.toHaveBeenCalled();
+  await act(async () => notify(doc.body, 400));
+  expect(measure).not.toHaveBeenCalled();
+  await act(async () => vi.advanceTimersByTime(20));
+  expect(frame.style.height).toBe("802px");
+  const calls = measure.mock.calls.length;
+  await act(async () => notify(frame, 0));
+  await act(async () => vi.advanceTimersByTime(20));
+  expect(measure).toHaveBeenCalledTimes(calls);
+  await act(async () => notify(frame, 500));
+  await act(async () => vi.advanceTimersByTime(20));
+  expect(measure.mock.calls.length).toBeGreaterThan(calls);
 });

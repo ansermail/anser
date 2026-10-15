@@ -149,6 +149,7 @@ import { ContactsPanel } from "./components/contacts-panel";
 import { OutboxPanel } from "./components/outbox-panel";
 import { ArchiveIntegrity } from "./components/archive-integrity";
 import { StorageTools } from "./components/storage-tools";
+import { MailTranslationSettings } from "./components/mail-translation-settings";
 import { NetworkProxySettings } from "./components/network-proxy-settings";
 import { DeleteArchiveDialog } from "./components/delete-archive-dialog";
 import {
@@ -278,6 +279,8 @@ export default function App() {
     clearingDraftsNow = useRef(false),
     queryRef = useRef(query),
     readerRef = useRef<HTMLDivElement>(null);
+  const [translationActions, setTranslationActions] =
+    useState<HTMLDivElement | null>(null);
   const selectionRef = useRef(selected);
   const detailRef = useRef(detail);
   const markingFolders = useRef(new Set<string>());
@@ -502,6 +505,11 @@ export default function App() {
   useEffect(() => {
     void refresh();
   }, [query, refresh]);
+  useEffect(() => {
+    const changed = () => void refresh();
+    window.addEventListener("anser-activity-changed", changed);
+    return () => window.removeEventListener("anser-activity-changed", changed);
+  }, [refresh]);
   useEffect(() => {
     // An unchanged search must retain the query identity. The startup debounce
     // otherwise looks like navigation and cancels a pending notification open.
@@ -1968,6 +1976,7 @@ export default function App() {
               <Separator className="settings-section-divider" />
               <StorageTools testMailId={selected} />
               {page === "settings" && <NetworkProxySettings />}
+              {page === "settings" && <MailTranslationSettings />}
               {page === "settings" && (
                 <MailSignatures accounts={data.accounts} />
               )}
@@ -1983,7 +1992,7 @@ export default function App() {
                   <CardHeader>
                     <CardTitle>最近活动</CardTitle>
                     <CardDescription>
-                      查看邮件收取、发送及规则执行的最近记录。
+                      查看邮件收取、发送、规则执行及大模型翻译的最近记录。
                     </CardDescription>
                     <CardAction className="flex items-center gap-2">
                       <CollapsibleTrigger asChild>
@@ -2016,7 +2025,9 @@ export default function App() {
                           </p>
                         ))
                       ) : (
-                        <p>连接邮箱后，这里会显示收取和规则执行记录。</p>
+                        <p>
+                          这里会显示邮件收取、发送、规则执行及大模型翻译记录。
+                        </p>
                       )}
                     </CardContent>
                   </CollapsibleContent>
@@ -2772,7 +2783,10 @@ export default function App() {
                           )}
                         </div>
                       </div>
-                      <h1>{detail.mail.subject}</h1>
+                      <div className="message-title-row">
+                        <h1>{detail.mail.subject}</h1>
+                        <div className="shrink-0" ref={setTranslationActions} />
+                      </div>
                     </div>
                     <ConversationReader
                       key={`${selected}:${query.listMode}`}
@@ -2784,6 +2798,7 @@ export default function App() {
                       accounts={data.accounts}
                       demo={demo}
                       scrollRef={readerRef}
+                      translationActions={translationActions}
                       editorOpen={!!draft}
                       onReply={(source, forward = false, all = false) =>
                         compose(source.mail, forward, all, source)

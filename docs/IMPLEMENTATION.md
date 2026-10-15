@@ -18,6 +18,7 @@
 
 - 阅读页在星标与本地删除之间调用 `printMail(detail)`，只接收当前已加载的 `Detail`，不遍历对话，也不改变邮件标记或 MIME 原件。打印页由文字节点构造头部与附件清单；HTML 正文先经过现有 `safeMailHtml` 净化，只导入正文节点，不把邮件的 `<style>` 放入主应用文档；纯文本按原换行输出。图片请求设置无 Referrer。
 - 打印页作为临时 DOM 只在打印媒体中显示，`@media print` 隐藏应用根节点，正常界面不显示打印内容。调用当前平台的 `window.print()`；Tauri macOS 将其映射到原生 WebView 打印操作。主窗口的 `main` capability 须包含 `core:webview:allow-print`，否则原生调用会被 ACL 拒绝；浏览器打印成功不能验证该权限。打印结束事件或兜底定时器清理临时节点。附件只打印名称；2026-10-13 本地构建的原生 App 已打开 macOS 打印面板并取消，正式发布包及原位升级仍待验收。
+- macOS 原生打印设置的英文标签由系统面板绘制。0.1.16 应用包原 `CFBundleDevelopmentRegion=English` 且未声明中文本地化；2026-10-14 起通过 `src-tauri/Info.plist` 合入 `zh-Hans` 开发语言及本地化列表，开发预览包的 `scripts/mac-dev-runner.mjs` 写入同样两项。本地重建/安装包的 plist 与签名已检查，原生打印面板实际显示中文，用户确认无问题；公开 0.1.16 包仍不含此改动，开发预览包未在本轮另行打开打印面板。邮件正文不受此配置改动。
 
 ## 账号目录树、未读数与父目录范围（2026-10-12）
 
@@ -580,3 +581,44 @@ UserNotifications 原生代理在后台任务启动前注册；每封新邮件�
 watchMailImages只对正文内容图片按净化后的src/srcset跟踪15秒期限；实际自身/祖先隐藏样式及确定尺寸不超过1×1的小像素不计入状态，未加载导致的零尺寸不能单独判为隐藏。布局观察不重置计时器；超时只停止加载提示，原浏览器请求仍可完成。失败/超时重试复用原地址，不刷新成功图片或MIME。document替换清理监听/计时器，未完成图片状态以1秒检查兼容WebKit脚本禁用帧事件限制。MailContent阅读入口显式inspectable，主文档仅豁免data-mail-debug-region；编辑器和签名保持原菜单边界。启用Tauri devtools feature和main配置，原生Inspect Element使用系统WebView检查器，不增加远程调试端口或修改正文sandbox/CSP。实际验收见MAIL_IMAGES_DEBUG_WORKING.md。
 
 WebKit原生scripts-disabled正文不绑定子文档load/error/click/auxclick事件回调，避免浏览器反复报告Blocked script execution；图片变化由父页面检查及布局观察接管，外链复用原生导航。电子工程网公共图片接口GET返回HTTP200的WAF验证HTML，HEAD的image/gif不代表GET可解码；图片失败须核对实际内容，不为验证码页开启邮件脚本或改写原件。
+
+## 原生正文图片网络入口（2026-10-15，本地修复）
+
+- `safeMailHtml` 在原生模式下将净化后的 img/srcset、HTML 背景及 CSS 图片 URL 映射到 `anser-image://localhost/fetch`；保持 data/CID 派生图片、字体与外链各自入口。网页/Pages 不生成此协议，继续使用隔离示例。原始 MIME 不变。
+- Tauri 异步协议在主 WebView 注册，接收 GET 图片请求。Rust `mail_images` 读取 `proxy::current` 的短时配置快照，reqwest 使用显式全局代理（含 SOCKS5 远端 DNS）或无代理直连，不依赖终端代理环境或系统代理。沿用代理握手失败可选直连，保持 TLS 校验。
+- 初始地址及最多 5 次跳转仅接受无 URL 用户凭据的 HTTPS，拒绝 localhost/本地域名及私有、回环、链路本地 IP 字面量。最多 6 个活动请求、20 MiB/图片、40 秒总期限（包括排队）；按 GET 实际字节识别常见位图，SVG 以图片类型及响应 CSP 隔离，HTML/WAF 验证页不能充当图片返回。
+- 不转发邮箱凭据、浏览器 Cookie、Origin 或 Referer；不写图片缓存到数据库/存档，不把源 URL、跟踪地址、代理凭据或响应正文写入失败日志。响应使用 `no-store`、`nosniff` 及 `default-src 'none'; sandbox`，仅在 img-src 追加图片协议，保留正文脚本禁用与 iframe sandbox。
+- 图片状态继续使用父页面检查，不向禁用脚本的 WebKit 子帧绑定事件。重试复用净化后的地址，请求时读取最新代理；旧正文离开后响应不会发布到新正文。打印在父页面等待图片完成/失败，最多 15 秒后进入系统打印，不无限阻塞。
+
+
+### 原生正文 CSS 与字体通道（2026-10-15，本地未发布）
+
+`mail_styles.rs` 为主 WebView 注册 `anser-style`/`anser-font`，复用 `mail_images` 的配置快照、无 Cookie/Referer 请求、HTTPS 目标/重定向检查、6 并发与 40 秒总期限。样式限 1 MiB、字体限 10 MiB，分别核对 CSS Content-Type/UTF-8 与字体字节签名，拒绝 HTML 错误页，返回 no-store/nosniff 与匿名字体 CORS。CSS 使用 cssparser token 化：导入映射为 style，font-face src 映射为 font，其余 url 映射为 image；相对地址以 GET 最终 URL 解析，嵌套深度限 32。
+
+净化层仅保留 HTTPS stylesheet link，并映射原生正文的 link/@import/@font-face，原生 CSP 只向对应类型放开自有协议；网页示例保留正常 HTTPS，不生成协议入口。主页面不插入邮件 CSS，打印删除 link/style。正文仍保持 scripts-disabled sandbox 与用户激活导航边界。ResizeObserver 不同步写被观察尺寸，iframe 仅宽度变化触发重新测量。
+
+### 排版装饰图片（2026-10-15，未发布）
+
+邮件图片的排版装饰分类位于 `mail-image-decorations.ts`：确定尺寸且没有 alt/ARIA 内容说明的单像素细条不参与正文加载告警。净化派生 DOM 对明确常规 spacer/blank/transparent/clear 文件名、声明单像素尺寸且无响应式候选的透明排版资源使用本地透明 GIF，保留尺寸/结构，避免过期占位服务器请求；其他照片、未知尺寸及有内容说明的图片不替换。图片代理继续按实际 GET 类型/字节拒绝错误 HTML，不改原始 MIME。
+
+### 按需双语翻译（2026-10-15，未发布）
+
+- `translation.rs` 通过独立 preferences key 保存地址、模型、目标语言、revision 和 hasApiKey，不与 sync/proxy 偏好互相覆盖；Key 独立存于 `dev.maildesk.desktop` 钥匙串条目。读取配置/凭据快照和设置更新使用短互斥，HTTP 在锁外；修改服务地址不沿用旧密钥，数据库保存失败恢复原密钥。只允许 HTTPS 或 HTTP loopback，无 URL 凭据/查询/片段，禁止 HTTP 重定向以防转发 Bearer；远程客户端共用全局代理，本机模型绕过代理，代理连接失败可沿用已配置的预发送直连策略。
+- `translate_mail_parts` 只接收用户主动选择的正文纯文本片段与稳定 ID；请求为 OpenAI 兼容 `/chat/completions`，不发送邮件头、附件/图片或 HTML。单批 64 个片段/24 KB，单片段 6 KB，响应 256 KiB，连接 10 秒/请求 180 秒/任务 200 秒，最多 4 个并行任务；JSON 输出校验全部 ID 唯一/完整、结束原因与长度。服务器错误只显示状态，不输出请求、密钥或返回正文。
+- `translation_cache` 为有界派生表，缓存键为协议版本、配置 revision 和完整有序片段的 SHA-256；短事务内重查配置后保存，按时间/rowid 保留 200 批。配置变化/清除缓存增加 revision 并清缓存；不改变 messages、索引或 MIME。服务任务表用 oneshot 取消；保留最近 256 个取消标识处理取消先于注册的时序。
+- `mail-translation.ts` 在净化后的实际正文 DOM（纯文本仅限 message-body 根节点）分段，排除隐藏/代码/媒体等，不读取应用其他区域。每段按内联文字节点拆分并带上下文 ID，译文创建 Text 节点，复制安全原内联结构/排版属性。列表/表格译文留在原条目/单元格内；隐藏译文恢复原节点样式，不将模型 HTML 插入 DOM。
+- `mail-translation.ts` 额外核对祖先计算样式、零尺寸裁剪、clip/clip-path、折叠 details 和文字矩形，保守排除裁剪文字且不解除隐藏边界。连续 BR 与保留换行的正文按空行分组；普通 PRE 保留缩进，显式 code/kbd/samp 仍排除。插入点按原 Text 偏移定位，必要时可撤销拆分内联祖先，避免嵌套链接；隐藏译文逆序恢复原节点与样式。
+- 邮件按钮链接（inline-block/flex/grid、role=button 或带背景/边框的标签）作为独立分段边界，译文留在原链接及实际装饰标签内部，只复制标签文字排版；不复制按钮背景、边框、padding 或第二个链接。flex/grid 译文独占下一行，按既有可见性边界扩展高度，隐藏恢复原节点/样式。恢复前先清空 CSSOM 声明并读取 style 属性完成 WebKit 的延迟同步，避免移除后重新出现空 style 属性。
+- `test_translation_settings` 由 Rust 构造固定 Hello, world.，共用请求、认证/代理、输出校验、取消与配置代际保护，但完全绕过缓存读写；重复测试不能由历史成功掩盖当前 HTTP 错误。演示端仅返回固定虚构测试结果。
+- `translate_parts` 在共用任务边界将批次/连接测试的最终结果写入 `Store::log`，缓存命中也记录，取消在网络任务结束后记录；并发拒绝或提前取消标记未执行，避免冒充在途取消。只写片段/字符数量、耗时和固定错误分类，不记录请求/译文/地址/凭据或原始错误；沿用最多 500 条存储、快照最近 30 条，写日志失败不改变原任务结果。前端 API 在成功或拒绝后发出 `anser-activity-changed`，App 复用既有合并刷新入口；不建立新的日志 IPC 或任意文字写入能力。演示仅保存明确虚构的活动，不调用原生模型。
+- `TranslatableMailBody` 保持每封唯一翻译状态，通过 React Portal 将纯图标按钮放入 App 标题行最右侧；对话中的非选中邮件使用各自头部操作槽。图标复用 shadcn Button/Tooltip，忙碌时点击取消，成功后点击隐藏，错误时重试；正文不保留常驻文字按钮栏，进度条与错误反馈仍保留。配置仅点击时读取，请求只点击后发生。切正文、卸载或配置变化增加代际并取消在途请求，迟到结果不发布。MailContent 通过父页面 ready/dispose 回调提供净化 DOM，不向 scripts-disabled 子文档增加事件监听。打印、回复/转发和 EML 导出继续使用原 Detail/MIME。
+- 演示 API 分支配置只在虚构数据存储，丢弃 API Key，翻译返回明确标识的虚构文字；Pages 继续替换不可调用原生桥，不从浏览器连接真实模型。
+
+
+### 模型服务选择与发现（2026-10-15，未发布）
+
+设置卡片使用容器查询按 760px 卡片宽度切换左右/上下布局，基础交互仍为 shadcn Select/Input/Command/Popover/Separator/Alert。服务预设仅辅助填地址，不限制模型 ID；未保存字段/密钥变化时禁用连接测试，明确测试已保存的当前配置。获取列表与测试任务独立可取消，迟到结果检查请求身份。
+
+`get_translation_models` 在用户点击时使用输入配置和显式输入 Key；只有完整服务地址与已保存配置一致且未要求清 Key 才能从钥匙串复用旧 Key。发现过程不保存配置，未填模型时使用仅用于本地校验的临时占位，不发送 POST。GET 地址从标准 `/chat/completions` 基址生成 `/models`，沿用全局代理/本机直连、TLS 与禁止重定向；请求 30 秒/任务 40 秒、响应 512 KiB/1000 模型，按 ID 去重并过滤明确不支持文字输出的模型。404/非兼容列表提示手工输入，错误不展示服务器正文。
+
+DeepSeek 官方域名/443/标准路径才附加 `thinking.disabled`、JSON 输出和输出上限；其他兼容服务保持标准请求。使用 HTTP/1.1、180 秒请求/200 秒任务期限，区分连接/等待/读取超时、截断与 HTTP 认证/额度/限流等错误。连接测试始终使用固定文本并绕过缓存；新一轮真实 DeepSeek 固定文本返回成功，不将模拟服务或无认证 HEAD 当作认证验收。

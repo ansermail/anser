@@ -42,6 +42,8 @@ await writeFile(
 <key>CFBundleIdentifier</key><string>dev.maildesk.desktop</string>
 <key>CFBundlePackageType</key><string>APPL</string>
 <key>CFBundleIconFile</key><string>icon.icns</string>
+<key>CFBundleDevelopmentRegion</key><string>zh-Hans</string>
+<key>CFBundleLocalizations</key><array><string>zh-Hans</string></array>
 <key>NSHighResolutionCapable</key><true/>
 ${documentTypes(config.bundle.fileAssociations)}
 </dict></plist>`,

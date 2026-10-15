@@ -1,7 +1,37 @@
 import { safeMailHtml } from "./mail-html";
+import { isTauri } from "@tauri-apps/api/core";
 import type { Detail } from "./types";
 
 let activePrint: HTMLElement | null = null;
+
+async function printImagesReady(sheet: HTMLElement) {
+  const pending = new Set(
+    [...sheet.querySelectorAll("img")].filter((image) => !image.complete),
+  );
+  if (!pending.size) return;
+  await new Promise<void>((resolve) => {
+    const finish = () => {
+      clearTimeout(timer);
+      for (const image of pending) {
+        image.removeEventListener("load", settled);
+        image.removeEventListener("error", settled);
+      }
+      resolve();
+    };
+    const settled = (event: Event) => {
+      const image = event.currentTarget as HTMLImageElement;
+      image.removeEventListener("load", settled);
+      image.removeEventListener("error", settled);
+      pending.delete(image);
+      if (!pending.size) finish();
+    };
+    const timer = setTimeout(finish, 15_000);
+    for (const image of pending) {
+      image.addEventListener("load", settled);
+      image.addEventListener("error", settled);
+    }
+  });
+}
 
 export function printableMail(detail: Detail, doc: Document = document) {
   const sheet = doc.createElement("main");
@@ -39,10 +69,11 @@ export function printableMail(detail: Detail, doc: Document = document) {
     // Reuse the same sanitizer as the reader, then import only the body.
     // Mail-owned styles stay out of the app document and print controls.
     const safe = new DOMParser().parseFromString(
-      safeMailHtml(detail.html),
+      safeMailHtml(detail.html, "anser-print", false, isTauri()),
       "text/html",
     );
-    for (const style of safe.body.querySelectorAll("style")) style.remove();
+    for (const style of safe.body.querySelectorAll("style,link"))
+      style.remove();
     for (const image of safe.body.querySelectorAll("img"))
       image.setAttribute("referrerpolicy", "no-referrer");
     for (const child of [...safe.body.childNodes])
@@ -89,6 +120,8 @@ export async function printMail(detail: Detail) {
     await new Promise<void>((resolve) =>
       requestAnimationFrame(() => resolve()),
     );
+    await printImagesReady(sheet);
+    if (activePrint !== sheet) return;
     // Tauri replaces window.print on macOS with its native webview print API.
     await (window.print() as unknown as Promise<void> | void);
   } catch (error) {

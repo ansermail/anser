@@ -47,6 +47,32 @@ it("public preview ignores persisted mailbox data and blocks real operations", a
   expect(localStorage.getItem("mail-desktop-demo-v1")).toContain(
     "private@example.com",
   );
+  const saved = await api.call<{ revision: string; hasApiKey: boolean }>(
+    "save_translation_settings",
+    {
+      config: {
+        baseUrl: "https://model.invalid/v1",
+        model: "demo",
+        targetLanguage: "zh-CN",
+      },
+      apiKey: "synthetic-preview-key",
+      clearKey: false,
+    },
+  );
+  expect(saved.hasApiKey).toBe(false);
+  const resultTest = await api.call("test_translation_settings", {
+    requestId: crypto.randomUUID(),
+    revision: saved.revision,
+  });
+  expect(resultTest).toEqual([
+    { id: "p0_t0", text: "【演示结果】未连接真实模型。" },
+  ]);
+  expect(await api.call("get_translation_settings")).not.toHaveProperty(
+    "apiKey",
+  );
+  expect(Object.values(localStorage).join("")).not.toContain(
+    "synthetic-preview-key",
+  );
   const { invoke } = await import("@tauri-apps/api/core");
   expect(invoke).not.toHaveBeenCalled();
 });

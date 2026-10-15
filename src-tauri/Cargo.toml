@@ -1,6 +1,6 @@
 [package]
 name = "anser"
-version = "0.1.16"
+version = "0.1.17"
 edition = "2021"
 license-file = "../LICENSE"
 [lib]
@@ -20,6 +20,7 @@ chrono = { version = "0.4", features = ["serde"] }
 sha2 = "0.10"
 mailparse = "0.16"
 encoding_rs = "0.8"
+cssparser = "0.37"
 scraper = { version = "0.24", default-features = false }
 imap = "2.4"
 imap-proto = "0.10.2"
@@ -27,7 +28,7 @@ native-tls = "0.2"
 lettre = "0.11"
 keyring = { version = "3", features = ["apple-native"] }
 reqwest = { version = "0.12", features = ["blocking", "json", "socks"] }
-tokio = { version = "1", features = ["rt", "net", "io-util", "time"] }
+tokio = { version = "1", features = ["rt", "net", "io-util", "time", "sync", "macros"] }
 tokio-native-tls = "0.3"
 base64 = "0.22"
 url = "2"

@@ -20,6 +20,25 @@ fn entry() -> Result<keyring::Entry> {
 pub fn current() -> Result<(Option<ProxyConfig>, String)> {
     Ok(state().read().map_err(err)?.clone())
 }
+pub fn http_proxy(config: &ProxyConfig, password: &str) -> Result<reqwest::Proxy> {
+    config.validate()?;
+    let scheme = if config.kind == "socks5" {
+        "socks5h"
+    } else {
+        &config.kind
+    };
+    let host = if config.host.contains(':') && !config.host.starts_with('[') {
+        format!("[{}]", config.host)
+    } else {
+        config.host.clone()
+    };
+    let mut proxy =
+        reqwest::Proxy::all(format!("{scheme}://{host}:{}", config.port)).map_err(err)?;
+    if !config.username.is_empty() {
+        proxy = proxy.basic_auth(&config.username, password);
+    }
+    Ok(proxy)
+}
 pub fn initialize(config: Option<ProxyConfig>) -> Result<()> {
     let password = if config.as_ref().is_some_and(|p| !p.username.is_empty()) {
         entry()?.get_password().unwrap_or_default()
@@ -235,6 +254,40 @@ fn tunnel(config: &ProxyConfig, password: &str, host: &str, port: u16) -> Result
 mod tests {
     use super::*;
     use std::io::{Read, Write};
+
+    #[test]
+    fn image_http_client_uses_the_configured_proxy_and_keeps_auth_on_the_proxy() {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let mut config = config("http", listener.local_addr().unwrap().port());
+        config.username = "user".into();
+        let server = std::thread::spawn(move || {
+            let (mut socket, _) = listener.accept().unwrap();
+            socket
+                .set_read_timeout(Some(Duration::from_secs(5)))
+                .unwrap();
+            let mut buffer = [0u8; 4096];
+            let size = socket.read(&mut buffer).unwrap();
+            let request = String::from_utf8_lossy(&buffer[..size]).to_lowercase();
+            assert!(request.starts_with("get http://images.example/pixel "));
+            assert!(request.contains("proxy-authorization: basic dxnlcjpwyxnz"));
+            assert!(!request.contains("\r\nauthorization:"));
+            socket
+                .write_all(
+                    b"HTTP/1.1 200 OK\r\nContent-Length: 6\r\nConnection: close\r\n\r\nGIF89a",
+                )
+                .unwrap();
+        });
+        let response = reqwest::blocking::Client::builder()
+            .no_proxy()
+            .proxy(http_proxy(&config, "pass").unwrap())
+            .build()
+            .unwrap()
+            .get("http://images.example/pixel")
+            .send()
+            .unwrap();
+        assert_eq!(response.bytes().unwrap().as_ref(), b"GIF89a");
+        server.join().unwrap();
+    }
 
     fn config(kind: &str, port: u16) -> ProxyConfig {
         ProxyConfig {

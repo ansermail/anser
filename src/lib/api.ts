@@ -28,6 +28,14 @@ const demoStorage = publicPreview ? memoryStorage() : localStorage;
 const key = "mail-desktop-demo-v1";
 let demo: Snapshot | null = null;
 const demoPager = new DemoPager();
+const translationActivityCommands = new Set([
+  "translate_mail_parts",
+  "test_translation_settings",
+]);
+function notifyTranslationActivity(command: string) {
+  if (translationActivityCommands.has(command))
+    window.dispatchEvent(new Event("anser-activity-changed"));
+}
 export function isDemo() {
   return demo !== null;
 }
@@ -47,6 +55,7 @@ export function leaveDemo() {
   demoStorage.removeItem(key + "-preferences");
   demoStorage.removeItem(key + "-outbox");
   demoStorage.removeItem(key + "-auto-start");
+  demoStorage.removeItem(key + "-translation");
   for (let i = demoStorage.length - 1; i >= 0; i--) {
     const stored = demoStorage.key(i);
     if (stored?.startsWith(key + "-signature-")) demoStorage.removeItem(stored);
@@ -697,6 +706,61 @@ export async function call<T = void>(
         break;
       case "test_notification":
         break;
+      case "get_translation_settings":
+        result = JSON.parse(
+          demoStorage.getItem(key + "-translation") || "null",
+        );
+        break;
+      case "save_translation_settings": {
+        const input = args.config as Record<string, unknown>;
+        const config = {
+          baseUrl: String(input.baseUrl || ""),
+          model: String(input.model || ""),
+          targetLanguage: String(input.targetLanguage || "zh-CN"),
+          revision: crypto.randomUUID(),
+          hasApiKey: false,
+        };
+        // Preview never stores credentials or calls a model, even if a key is typed.
+        demoStorage.setItem(key + "-translation", JSON.stringify(config));
+        result = config;
+        break;
+      }
+      case "clear_translation_cache": {
+        const config = JSON.parse(
+          demoStorage.getItem(key + "-translation") || "null",
+        );
+        if (config)
+          demoStorage.setItem(
+            key + "-translation",
+            JSON.stringify({ ...config, revision: crypto.randomUUID() }),
+          );
+        break;
+      }
+      case "cancel_translation":
+        break;
+      case "get_translation_models":
+        result = [
+          { id: "demo-model", name: "演示模型" },
+          { id: "demo-model-2", name: "演示模型 2" },
+        ];
+        break;
+      case "test_translation_settings":
+        result = [{ id: "p0_t0", text: "【演示结果】未连接真实模型。" }];
+        demo.logs.unshift(
+          "大模型翻译连接测试完成：【演示记录】未连接真实模型。",
+        );
+        demo.logs = demo.logs.slice(0, 30);
+        break;
+      case "translate_mail_parts":
+        result = (args.parts as { id: string; text: string }[]).map((part) => ({
+          id: part.id,
+          text: "【演示译文】这是用于预览的虚构翻译，不连接真实模型。",
+        }));
+        demo.logs.unshift(
+          "大模型正文翻译批次完成：【演示记录】仅使用虚构译文，未连接真实模型。",
+        );
+        demo.logs = demo.logs.slice(0, 30);
+        break;
       case "get_preferences":
         result = JSON.parse(
           demoStorage.getItem(key + "-preferences") ||
@@ -868,10 +932,15 @@ export async function call<T = void>(
       ].includes(command)
     )
       demoPager.changed();
+    notifyTranslationActivity(command);
     return result as T;
   }
   if (!native) throw new Error("请在 macOS 桌面客户端中使用此功能。");
-  return invoke<T>(command, args);
+  try {
+    return await invoke<T>(command, args);
+  } finally {
+    notifyTranslationActivity(command);
+  }
 }
 export function initialSnapshot() {
   return empty();

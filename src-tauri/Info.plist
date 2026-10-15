@@ -6,5 +6,11 @@
   <string>雁信</string>
   <key>CFBundleName</key>
   <string>雁信</string>
+  <key>CFBundleDevelopmentRegion</key>
+  <string>zh-Hans</string>
+  <key>CFBundleLocalizations</key>
+  <array>
+    <string>zh-Hans</string>
+  </array>
 </dict>
 </plist>

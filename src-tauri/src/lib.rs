@@ -10,6 +10,8 @@ mod directory_operations;
 mod eml_files;
 mod folder_health;
 mod idle;
+mod mail_images;
+mod mail_styles;
 mod models;
 mod network;
 mod notification_open;
@@ -31,6 +33,7 @@ mod sent_uploads;
 mod signatures;
 mod store;
 mod sync_control;
+mod translation;
 use models::*;
 use std::{
     path::Path,
@@ -1261,6 +1264,25 @@ fn queue_eml_arguments(app: &tauri::AppHandle, args: Vec<String>, cwd: &Path) {
 
 pub fn run() {
     tauri::Builder::default()
+        .register_asynchronous_uri_scheme_protocol("anser-image", |context, request, responder| {
+            let allowed = context.webview_label() == "main";
+            tauri::async_runtime::spawn(async move {
+                responder.respond(mail_images::respond(request, allowed).await);
+            });
+        })
+        .register_asynchronous_uri_scheme_protocol("anser-style", |context, request, responder| {
+            let allowed = context.webview_label() == "main";
+            tauri::async_runtime::spawn(async move {
+                responder.respond(mail_styles::respond(request, allowed, true).await);
+            });
+        })
+        .register_asynchronous_uri_scheme_protocol("anser-font", |context, request, responder| {
+            let allowed = context.webview_label() == "main";
+            tauri::async_runtime::spawn(async move {
+                responder.respond(mail_styles::respond(request, allowed, false).await);
+            });
+        })
+        .manage(translation::Service::default())
         .manage(eml_files::EmlFiles::default())
         .manage(notification_open::NotificationOpen::default())
         .plugin(
@@ -1462,6 +1484,13 @@ pub fn run() {
             sent_upload_action,
             retry_outbox,
             archive_outbox,
+            translation::get_translation_models,
+            translation::get_translation_settings,
+            translation::save_translation_settings,
+            translation::translate_mail_parts,
+            translation::test_translation_settings,
+            translation::cancel_translation,
+            translation::clear_translation_cache,
             get_preferences,
             save_preferences,
             save_network_proxy,

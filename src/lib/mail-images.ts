@@ -1,3 +1,5 @@
+import { isMailLayoutStrip } from "./mail-image-decorations";
+
 export const MAIL_IMAGE_TIMEOUT_MS = 15_000;
 export interface MailImageStatus {
   waiting: number;
@@ -50,10 +52,11 @@ function contentImage(
   const width = dimension("width"),
     height = dimension("height");
   return !(
-    width !== undefined &&
-    height !== undefined &&
-    width <= 1 &&
-    height <= 1
+    (width !== undefined &&
+      height !== undefined &&
+      width <= 1 &&
+      height <= 1) ||
+    isMailLayoutStrip(image, width, height)
   );
 }
 

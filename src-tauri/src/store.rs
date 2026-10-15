@@ -49,6 +49,7 @@ impl Store {
         }
         db.execute_batch("CREATE TABLE IF NOT EXISTS folder_mappings(account_id TEXT PRIMARY KEY,data TEXT NOT NULL); CREATE TABLE IF NOT EXISTS remote_folders(account_id TEXT NOT NULL,name TEXT NOT NULL,data TEXT NOT NULL,PRIMARY KEY(account_id,name)); CREATE TABLE IF NOT EXISTS contacts(id TEXT PRIMARY KEY,name TEXT NOT NULL,email TEXT NOT NULL COLLATE NOCASE UNIQUE); CREATE TABLE IF NOT EXISTS preferences(key TEXT PRIMARY KEY,data TEXT NOT NULL);")
             .map_err(err)?;
+        db.execute_batch("CREATE TABLE IF NOT EXISTS translation_cache(key TEXT PRIMARY KEY,data TEXT NOT NULL,updated_at INTEGER NOT NULL)").map_err(err)?;
         for (column, definition) in [
             ("error", "TEXT NOT NULL DEFAULT ''"),
             ("updated_at", "TEXT NOT NULL DEFAULT ''"),

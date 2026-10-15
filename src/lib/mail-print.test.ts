@@ -7,7 +7,7 @@ import type { Detail } from "./types";
 const mail = makeDemo().messages[0];
 const detail: Detail = {
   mail,
-  html: '<style>body{display:none}</style><p>打印正文</p><script>window.bad=1</script><img src="https://images.example/photo.png" onerror="window.bad=2">',
+  html: '<link rel="stylesheet" href="https://fonts.example/mail.css"><style>body{display:none}</style><p>打印正文</p><script>window.bad=1</script><img src="https://images.example/photo.png" onerror="window.bad=2">',
   attachments: [
     { index: 0, name: "收据.pdf", size: 42, mime: "application/pdf" },
   ],
@@ -25,7 +25,7 @@ describe("mail printing", () => {
     expect(sheet.querySelector("h1")?.textContent).toBe(mail.subject);
     expect(sheet.textContent).toContain("打印正文");
     expect(sheet.textContent).toContain("收据.pdf");
-    expect(sheet.querySelector("script,style,[onerror]")).toBeNull();
+    expect(sheet.querySelector("script,style,link,[onerror]")).toBeNull();
     expect(sheet.querySelector("img")?.getAttribute("referrerpolicy")).toBe(
       "no-referrer",
     );
@@ -44,5 +44,23 @@ describe("mail printing", () => {
     );
     window.dispatchEvent(new Event("afterprint"));
     expect(document.getElementById("mail-print-root")).toBeNull();
+  });
+
+  it("waits for proxied print images to settle before opening the native print panel", async () => {
+    vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) => {
+      callback(0);
+      return 1;
+    });
+    const print = vi.spyOn(window, "print").mockImplementation(() => {});
+    const printing = printMail(detail);
+    await Promise.resolve();
+    expect(print).not.toHaveBeenCalled();
+    const image = document.querySelector<HTMLImageElement>(
+      "#mail-print-root img",
+    )!;
+    image.dispatchEvent(new Event("load"));
+    await printing;
+    expect(print).toHaveBeenCalledOnce();
+    window.dispatchEvent(new Event("afterprint"));
   });
 });
