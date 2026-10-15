@@ -1090,7 +1090,9 @@ describe("fixed cursor list loading", () => {
     ).not.toBe("true");
   });
 });
-describe("reading across loaded page boundaries", () => {
+// These integration cases render 205 mails and navigate across the 200-row page.
+// Shared macOS runners need the same bounded budget for every case in this suite.
+describe("reading across loaded page boundaries", { timeout: 15_000 }, () => {
   it.each(["按对话分组", "逐封邮件"])(
     "loads the next page and keeps previous navigation in %s mode",
     async (mode) => {
@@ -1117,9 +1119,6 @@ describe("reading across loaded page boundaries", () => {
           .disabled,
       ).toBe(true);
     },
-    // This integration case renders 205 mails and performs several navigations.
-    // Shared macOS runners can exceed Vitest's default five-second budget.
-    15_000,
   );
   it("extends an unread boundary when the opened mail disappears from its filter", async () => {
     await seedLargeMailbox();
