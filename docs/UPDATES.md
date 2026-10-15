@@ -1,14 +1,18 @@
 # 发布与应用内更新
 
-## 0.1.17 发布准备（2026-10-15）
+## 当前正式版本：0.1.17（2026-10-15）
 
-用户已授权提交当前功能和修复并远程发版。五处版本同步 0.1.17，包含逐段翻译、兼容模型配置/选择/连接与活动记录、按钮双语、正文图片/字体代理与透明占位图修复、中文打印面板。发布说明见 [v0.1.17](releases/v0.1.17.md)，全量门槛/固定源码/双架构运行/七资源审计/正式发布与 Tap 同步见 [工作点](RELEASE_0_1_17_WORKING.md)。公开 latest 仍为 0.1.16，准备完成不等于已发布。
+0.1.17 Alpha 已于 15:05:12（Asia/Shanghai）正式发布为 latest，固定源码 `7312e5c01f7e7cc4f08e8b40e14e4a2a853724c1`。[Release macOS 38695017325](https://github.com/ansermail/anser/actions/runs/38695017325) 的完整检查、Apple Silicon / Intel 构建与草稿任务全部成功；[v0.1.17 下载页](https://github.com/ansermail/anser/releases/tag/v0.1.17)。包含逐段双语翻译、兼容模型配置/切换/连接与最近活动、原按钮内双语、正文图片/CSS/字体全局代理、透明占位图误报修复与中文打印面板。
 
-## Homebrew 分发（2026-10-15）
+七资源大小/摘要、说明与清单完整原文、既有更新公钥及两架构更新签名、App 版本/架构/标识/中文配置/EML/许可/代码签名/原生 OAuth 配置、DMG 与更新归档逐文件一致性均已核验。发布前后资源身份与标签不变，七份公开下载逐字节匹配，标准 latest 更新端点也逐字节匹配。公开包使用既有 ad hoc 应用签名与项目更新签名；按用户决定不办理 Developer ID/公证。0.1.17 实际安装/原位升级与 Intel 实机运行未执行，不沿用此前版本验收。
 
-项目自有 [ansermail/homebrew-tap](https://github.com/ansermail/homebrew-tap) 已公开，可运行 `brew install --cask ansermail/tap/anser`。首次配方复用已发布的 0.1.16 双架构 DMG，没有修改已发布标签、资源或更新清单。后续正式版本发布并核验后，需要同步 Tap 的版本与两架构 SHA-256；具体步骤及验证范围见 [Homebrew 分发说明](HOMEBREW.md)。这次只增加安装渠道，不新增桌面版本或改写原发布说明。
+独立 Checks 首次运行有两项既有 205 封分页集成测试超过默认 5 秒；统一整组有界 15 秒期限后，测试修复 `bc383b4026ea39334e3d68fc0755ab8c30ff52ab` 的 [新 Checks 38695703813](https://github.com/ansermail/anser/actions/runs/38695703813) 与 [Pages 38695703836](https://github.com/ansermail/anser/actions/runs/38695703836) 全部成功。测试修复不改变正式包业务代码，不移动发布标签。完整证据与 Homebrew 同步结果见 [发布工作点](RELEASE_0_1_17_WORKING.md)。
 
-## 当前正式版本：0.1.16（2026-10-14）
+## Homebrew 首次分发记录（2026-10-15）
+
+项目自有 [ansermail/homebrew-tap](https://github.com/ansermail/homebrew-tap) 已公开，可运行 `brew install --cask ansermail/tap/anser`。首次配方复用已发布的 0.1.16 双架构 DMG，没有修改已发布标签、资源或更新清单。后续正式版本发布并核验后，需要同步 Tap 的版本与两架构 SHA-256；具体步骤及验证范围见 [Homebrew 分发说明](HOMEBREW.md)。首次增加渠道时未新增桌面版本或改写原发布说明；当前配方已随 0.1.17 正式发布同步，结果见上方工作点及 Homebrew 文档。
+
+## 前一正式版本：0.1.16（2026-10-14）
 
 0.1.16 Alpha 已于 18:16:42（Asia/Shanghai）正式发布为 latest。固定源码 `8a13673a5bdd0cc8f13f976956f84e035e64ec61` 经 [Release macOS 38547036796](https://github.com/ansermail/anser/actions/runs/38547036796) 完整检查、Apple Silicon / Intel 构建和草稿任务成功；[v0.1.16 下载页](https://github.com/ansermail/anser/releases/tag/v0.1.16)。七资源大小/摘要、两架构更新签名与公钥、App 版本/架构/标识/codesign/许可/EML/OAuth 原生配置及 DMG 与归档逐文件一致性已核验；发布前后草稿说明与资源身份不变，标签指向固定源码，七份按版本公开下载资源逐字节匹配。标准 latest 端点经短暂 CDN 缓存后也已逐字节匹配审计清单，见 [发布工作点](RELEASE_0_1_16_WORKING.md)。2026-10-14 用户反馈真实代理收发及正式包原位升级已验证通过；OAuth 刷新仍待单独验收。用户决定不办理付费 Developer ID/公证，沿用项目自有更新签名；当前公开应用包采用 ad hoc 代码签名，自签固定应用身份尚未接入或验收。
 
