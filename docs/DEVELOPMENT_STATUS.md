@@ -1,8 +1,10 @@
-# 开发计划与继续检查点（更新：2026-10-14）
+# 开发计划与继续检查点（更新：2026-10-15）
 
 依据 PRD 第 5、8、9 节、实施记录和当前代码核查。当前仍为 Alpha；功能代码已存在与真实场景验收通过分别记录。早期回归使用临时存储/演示数据；2026-10-05 用户授权后增加当前腾讯企业邮箱与 QQ 邮箱互发测试，未向其他地址发送，未删除真实邮件。
 
-## 当前未完成事项总览（2026-10-14 核对）
+## 当前未完成事项总览（2026-10-15 核对）
+
+**当前分发检查点：Homebrew Tap 已发布（2026-10-15）**。组织公开仓库 [ansermail/homebrew-tap](https://github.com/ansermail/homebrew-tap) 的配方提交为 `ea1418ffd9a4f9b95eefac4a90ebef53d0d95f6b`，支持 Apple Silicon / Intel，指向既有 0.1.16 DMG。`brew style`、`brew audit`、Apple Silicon 的 `brew fetch` 和 Intel DMG 公开下载 SHA-256 核对通过。重新从公开仓库 tap 后，`brew install --cask --appdir=/tmp/anser-homebrew-install-20261015 ansermail/tap/anser` 实际成功，版本/标识与严格代码签名核对通过；测试副本已用普通 `brew uninstall --cask` 清理，原 `/Applications/雁信.app` 二进制散列不变。未启动测试副本，Intel 实机安装和首次 Gatekeeper 确认未验证。README 已补充安装命令；维护入口见 [Homebrew 分发说明](HOMEBREW.md)。本轮不重发或替换桌面资源，已有打印本地化等未提交改动保留。
 
 **当前发布检查点：0.1.16 已正式发布并完成公开资源核对（2026-10-14）**。0.1.15 桌面版邮件正文外链被 CSP `frame-src` 拦截；0.1.16 改用用户点击触发的顶层安全路由及 Anser 内部标识。原生开发预览用虚构邮件点击 `https://example.com/`，系统 Chrome 成功打开，应用未离开阅读页。完整本地门槛通过：前端 290、Rust 326/1 忽略、桌面脚本 30、IMAP 39，版本/格式/UI/生产/Pages 隔离检查均通过；本地 arm64 0.1.16 稳定签名并安装启动，账号和代理配置可见。固定源码 `8a13673a5bdd0cc8f13f976956f84e035e64ec61` 经组织 [Release macOS 38547036796](https://github.com/ansermail/anser/actions/runs/38547036796) 完整成功并于 18:16:42（Asia/Shanghai）发布 [v0.1.16](https://github.com/ansermail/anser/releases/tag/v0.1.16)。七资源、更新签名、App/DMG 与 OAuth 编译配置已审计，标签与七份公开按版本下载资源匹配；标准 `releases/latest/download/latest.json` 经短暂缓存后已逐字节匹配 0.1.16。真实代理收发、正式包原位升级、Developer ID/公证仍待验收，见 [发布工作点](RELEASE_0_1_16_WORKING.md)。
 
@@ -61,6 +63,8 @@
 0.1.12 源码提交、组织远程流水线、资源审计与正式发布已完成，见 RELEASE_012_WORKING.md；富文本原生图片/草稿/互发矩阵由用户下载后继续验收，入口仍为 RICH_BODY_WORKING.md。0.1.11 已完成远程发版和源码清理。后续优先接 SAVE-01B2 保存范围真实验收、SYNC-02B2 繁忙/网络睡眠矩阵，以及 VERIFICATION_011_WORKING.md 当前边界。安全合并/来源恢复/MOVE复杂冲突、本地单封与选中项永久清理/清空废纸篓、服务商与P1仍需开发；正式安装与升级安排独立验收。
 
 ## 当前执行检查点
+
+- **2026-10-15 当前入口**：Homebrew Tap 的公开配方、双架构下载校验和 arm64 临时目录安装/卸载已验证；README 与维护文档同步。此渠道复用公开 0.1.16，不包含本机尚未提交的中文打印修复。后续正式桌面发版公开后按 [Homebrew 分发说明](HOMEBREW.md) 同步配方，原功能待办按下方工作点继续。
 
 - **0.1.15 全局代理远程发版（2026-10-14，准备中）**：用户已授权提交与启动远程流水线；版本与说明准备中，真实代理收发/OAuth 刷新未验收。固定源码、全量检查、双架构草稿、资源审计和正式发布结果依次记录在 [0.1.15 发布工作点](RELEASE_015_WORKING.md)。公开 latest 在核验发布前仍为 0.1.14。
 

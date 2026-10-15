@@ -1,5 +1,9 @@
 # 发布与应用内更新
 
+## Homebrew 分发（2026-10-15）
+
+项目自有 [ansermail/homebrew-tap](https://github.com/ansermail/homebrew-tap) 已公开，可运行 `brew install --cask ansermail/tap/anser`。首次配方复用已发布的 0.1.16 双架构 DMG，没有修改已发布标签、资源或更新清单。后续正式版本发布并核验后，需要同步 Tap 的版本与两架构 SHA-256；具体步骤及验证范围见 [Homebrew 分发说明](HOMEBREW.md)。这次只增加安装渠道，不新增桌面版本或改写原发布说明。
+
 ## 当前正式版本：0.1.16（2026-10-14）
 
 0.1.16 Alpha 已于 18:16:42（Asia/Shanghai）正式发布为 latest。固定源码 `8a13673a5bdd0cc8f13f976956f84e035e64ec61` 经 [Release macOS 38547036796](https://github.com/ansermail/anser/actions/runs/38547036796) 完整检查、Apple Silicon / Intel 构建和草稿任务成功；[v0.1.16 下载页](https://github.com/ansermail/anser/releases/tag/v0.1.16)。七资源大小/摘要、两架构更新签名与公钥、App 版本/架构/标识/codesign/许可/EML/OAuth 原生配置及 DMG 与归档逐文件一致性已核验；发布前后草稿说明与资源身份不变，标签指向固定源码，七份按版本公开下载资源逐字节匹配。标准 latest 端点经短暂 CDN 缓存后也已逐字节匹配审计清单，见 [发布工作点](RELEASE_0_1_16_WORKING.md)。真实代理收发、正式包原位升级与 Apple Developer ID 签名/公证仍待验收。

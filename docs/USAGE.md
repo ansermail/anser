@@ -2,6 +2,10 @@
 
 本文记录雁信当前功能的具体行为与使用边界。产品概览与下载安装入口见 [README](../README.md)，验收结果和待办见 [开发进度](DEVELOPMENT_STATUS.md)。
 
+## 安装与升级
+
+可使用项目维护的 Homebrew Tap 安装：`brew install --cask ansermail/tap/anser`。Homebrew 自动选择 Apple Silicon 或 Intel 安装包；已由 Homebrew 管理的安装可运行 `brew upgrade --cask ansermail/tap/anser`，或使用应用内更新。手动安装转用 Homebrew 前先退出并备份或移走旧应用包。首次打开的 macOS 安全确认仍可能出现，详细步骤见 [README 的下载安装](../README.md#下载与安装)。
+
 ## 已接入
 
 - 0.1.10 已接入搜索索引与固定页：本地已有标题/发件人/收件人/正文建立派生全文候选索引，短词及不可完整索引的文本回退到精确检索；不自动下载在线正文，也不改变原始内容。后端/界面分页、时间筛选和正文覆盖提示已随0.1.10发布。

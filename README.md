@@ -61,12 +61,24 @@ _所有展示截图均来自浏览器演示模式，使用项目内置的虚构�
 
 ## 下载与安装
 
+### Homebrew 安装
+
+已提供项目维护的 [Homebrew Tap](https://github.com/ansermail/homebrew-tap)。在 macOS 上运行：
+
+```sh
+brew install --cask ansermail/tap/anser
+```
+
+Homebrew 会按 Mac 架构选择已发布的 DMG 并核对 SHA-256。已由 Homebrew 安装的用户可运行 `brew upgrade --cask ansermail/tap/anser`，也可使用应用内更新。若「应用程序」中已有手动安装的「雁信」，先退出并备份或移走旧应用，再用 Homebrew 安装；邮箱账号和本地存档不会因移走应用包而自动删除。维护方式与验证范围见 [Homebrew 分发说明](docs/HOMEBREW.md)。
+
+### 手动安装
+
 1. 前往 [GitHub Releases](https://github.com/ansermail/anser/releases/latest) 下载 DMG。
 2. Apple Silicon Mac 选择文件名含 `aarch64` 的版本；Intel Mac 选择含 `x86_64` 的版本。
 3. 打开 DMG，将「雁信」拖入「应用程序」，再启动应用。
 4. 添加邮箱账号，按服务商要求填写密码、授权码或 OAuth 配置。
 
-当前分发包尚未完成 Apple Developer ID 签名与公证，首次安装可能需要通过 macOS 系统设置确认打开。应用内更新包有独立签名校验，但这不等同于 Apple 公证。
+当前分发包未使用 Apple Developer ID 签名或公证；无论采用 Homebrew 还是手动安装，首次启动都可能需要在 macOS「系统设置 → 隐私与安全性」中确认打开。应用内更新包有独立签名校验，但这不等同于 Apple 公证。
 
 ### 应用内更新
 

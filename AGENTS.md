@@ -127,6 +127,8 @@ Rust 重编译期间不要绑定或读取原生应用 UI；CUA 会在旧实例�
 
 ## 验证与发布
 
+- Homebrew 分发使用组织自有 `ansermail/homebrew-tap` 的 `Casks/anser.rb`；正式版本公开且双架构 DMG 已核验后，再同步版本及两份 SHA-256。配方只引用固定版本的官方 Release，不删除 quarantine、不清理用户数据；不能将 Tap 发布称为 Apple 公证或 Homebrew 官方收录。维护步骤见 `docs/HOMEBREW.md`。
+
 - 按本轮影响运行检查：UI 改动执行 `npm run check:ui`、相关交互测试、`npm run build` 并检查开发预览；Rust 改动执行 `cargo fmt --manifest-path src-tauri/Cargo.toml -- --check` 及相关 Rust/协议回归；脚本改动执行 `npm run test:desktop`；Pages 改动执行 `npm run build:preview` 并核对虚构数据及禁用收发边界。提交前检查 `git diff --check`，代码格式执行 `npm run format:check`。
 - 发布前遵循 `.github/workflows/ci.yml` 和 `docs/UPDATES.md` 的全量门槛：前端、Rust、桌面脚本、vendored IMAP 解析器、格式/UI/生产构建。不以单项通过代替完整发布检查；只修改文档无需反复构建桌面应用。
 - 发版同步 `package.json`、`package-lock.json`、`src-tauri/Cargo.toml`、`src-tauri/Cargo.lock` 和 `src-tauri/tauri.conf.json` 的版本，补充对应发布说明；使用新标签，不改写已发布版本的标签或产物。
