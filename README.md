@@ -8,11 +8,9 @@
 
 [下载最新版本](https://github.com/ansermail/anser/releases/latest) · [界面预览](https://ansermail.github.io/anser/) · [使用说明](docs/USAGE.md) · [开发进度](docs/DEVELOPMENT_STATUS.md) · [反馈问题](https://github.com/ansermail/anser/issues)
 
-> 当前公开版本为 **0.1.18 Alpha**，支持 Apple Silicon 与 Intel Mac。长期稳定性、部分服务商兼容性及真实场景验收仍在持续完善。
+> 当前公开版本为 **0.1.19 Alpha**，支持 Apple Silicon 与 Intel Mac。长期稳定性、部分服务商兼容性及真实场景验收仍在持续完善。
 
-[0.1.18 已发布](https://github.com/ansermail/anser/releases/tag/v0.1.18)：修复双语翻译的同段空片段误判，改善段落分批，细分翻译错误与活动记录。双架构安装包、更新签名、公开资源与 Homebrew 配方已核验，详见 [发布记录](docs/RELEASE_0_1_18_WORKING.md)。开发预览的原邮件已完成 102/102 片段真实翻译；0.1.18 正式包实际安装/升级仍待用户验证。
-
-0.1.19 正在准备发布：通用正文图片状态、跨版本完整升级说明、统一钥匙串与固定项目自签名。完成构建与产物核验后才作为正式版本提供，进度见 [发布工作点](docs/RELEASE_0_1_19_WORKING.md)。
+[0.1.19 已发布](https://github.com/ansermail/anser/releases/tag/v0.1.19)：正文图片按通用规则区分正文与统计/装饰资源，更新中心展示跨版本完整说明，凭据统一存入钥匙串，并使用本地/云端一致的固定项目自签名。双架构资源、签名、公开更新端点与 Homebrew 已核验，见 [发布记录](docs/RELEASE_0_1_19_WORKING.md)。本版实际安装/原位升级仍待用户验证。
 
 ![雁信的多账号收件箱与邮件阅读界面](docs/screenshots/inbox-demo.png)
 
@@ -81,7 +79,7 @@ Homebrew 会按 Mac 架构选择已发布的 DMG 并核对 SHA-256。已由 Home
 3. 打开 DMG，将「雁信」拖入「应用程序」，再启动应用。
 4. 添加邮箱账号，按服务商要求填写密码、授权码或 OAuth 配置。
 
-当前分发包未使用 Apple Developer ID 签名或公证；无论采用 Homebrew 还是手动安装，首次启动都可能需要在 macOS「系统设置 → 隐私与安全性」中确认打开。应用内更新包有独立签名校验，但这不等同于 Apple 公证。
+当前分发包使用固定免费的项目自签名，未使用 Apple Developer ID 签名或公证；无论采用 Homebrew 还是手动安装，首次启动都可能需要在 macOS「系统设置 → 隐私与安全性」中确认打开。应用内更新包有独立签名校验，但这不等同于 Apple 公证。
 
 ### 应用内更新
 

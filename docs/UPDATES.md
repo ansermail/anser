@@ -1,22 +1,14 @@
 # 发布与应用内更新
 
-## 0.1.19 发布准备（2026-10-16）
+## 当前正式版本：0.1.19（2026-10-16）
 
-包含下方正文图片通用状态、跨版本更新记录、统一钥匙串和固定免费项目签名；完整说明见 [0.1.19](releases/v0.1.19.md)。公开仍 0.1.18，新版本按全量检查/双架构构建/七资源审计/正式发布/Homebrew 同步执行，当前入口见 [发布工作点](RELEASE_0_1_19_WORKING.md)。
+0.1.19 Alpha 于 2026-10-16 15:55:41（Asia/Shanghai）正式发布为 latest，固定源码 `037d7aaaa8a2104236af3bd1675e8dd830afb5ee`。[Release macOS 38869273847](https://github.com/ansermail/anser/actions/runs/38869273847)、[Checks 38869273770](https://github.com/ansermail/anser/actions/runs/38869273770)、[Pages 38869273892](https://github.com/ansermail/anser/actions/runs/38869273892) 全部成功，[0.1.19 正式版本](https://github.com/ansermail/anser/releases/tag/v0.1.19) 已公开。包含正文图片通用状态修复、跨版本完整更新说明、统一钥匙串与本地/云端一致的固定免费项目签名。
 
-## 正文图片状态通用修复（待发布）
+七资源大小/SHA-256、说明与清单完整原文（含末尾换行）、两架构更新签名及既有公钥、App 版本/架构/标识/中文配置/EML/许可/原生 OAuth 配置、固定证书与精确 DR、DMG 与更新归档逐文件一致性全部通过。发布前后资源身份与标签不变，七份按版本公开下载及不带查询参数的标准 latest 更新端点逐字节匹配。 [Tap 18a6820](https://github.com/ansermail/homebrew-tap/commit/18a6820f2385e340ce094b202b172ddf1e5fa7f0) 已公开，配方/公开两架构 DMG 摘要及 brew style/audit/Apple Silicon fetch 通过；未覆盖安装本机应用。
 
-排除零尺寸统计资源在 WebKit 中产生的失败占位框，补齐明确裁剪与折叠内容的可见性判断；所有发件人共用规则，保留真实图片、未知尺寸和响应式图片的失败检测。缺图提示显示实际正文图片数量及失败/超时分类。原银行邮件与虚构缺图对照已在原生开发预览验证，专项 54 / 全前端 363 通过，详细边界见 [图片工作点](MAIL_IMAGES_DEBUG_WORKING.md)。未改写 0.1.18 正式产物。
+本次本地完整门槛：前端 363、Rust 368 通过/3 忽略、桌面脚本 28、IMAP 39，格式/UI/生产/Pages 隔离/版本/diff/隐私通过。本机 Rust 1.91.1，与 CI 一致。 本版正式包实际安装/应用内原位升级、Intel 实机及系统拒绝/锁定矩阵未执行，不沿用此前版本结果。自签名不等于 Apple Developer ID、公证或 Gatekeeper 认可；不修改用户系统信任或 quarantine。 完整说明见 [0.1.19](releases/v0.1.19.md)，证据见 [发布工作点](RELEASE_0_1_19_WORKING.md)。
 
-## 跨版本更新记录（待发布）
-
-更新中心按 `(当前版本, 目标版本]` 汇总组织仓库实际已发布的全部适用版本，显示实际数量及每版完整说明；不会只展示 latest 的正文，也不按 patch 号码差猜版本数。历史列表通过独立公共只读接口获取，失败明确反馈/重试，不改变签名包的下载/安装或已打开写信窗口的保护。开发预览仍禁止安装更新，发布状态见 [工作点](UPDATE_HISTORY_WORKING.md)。
-
-## 固定项目签名（开发中，尚未发布）
-
-后续构建将使用仓库固定的免费项目自签证书；本地与 CI 同一指纹/DR，更新密钥保持。统一凭据库减少逐账号授权；从旧 ad hoc/开发身份首次切换可能为统一条目授权一次。0.1.18 已发布产物不改写，本阶段验收状态见 [工作点](KEYCHAIN_WORKING.md)。此签名不提供 Apple 公证。
-
-## 当前正式版本：0.1.18（2026-10-16）
+## 前一正式版本：0.1.18（2026-10-16）
 
 0.1.18 Alpha 于 10:16:28（Asia/Shanghai）正式发布为 latest，固定源码 `71224095b21aefea3f59d2cc89c23a87a85fb86d`；[Release macOS 38838641843](https://github.com/ansermail/anser/actions/runs/38838641843) 的完整检查、Apple Silicon / Intel 构建与草稿任务全部成功，[Checks 38838641804](https://github.com/ansermail/anser/actions/runs/38838641804) 和同源 Pages 也成功。[正式下载](https://github.com/ansermail/anser/releases/tag/v0.1.18)。
 

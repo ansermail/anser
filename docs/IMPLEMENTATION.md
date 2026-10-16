@@ -1,16 +1,16 @@
 # 实施与验收状态
 
-## 跨版本更新历史
+## 跨版本更新历史（0.1.19 起）
 
 原生 `update_history.rs` 按固定组织 Releases API 分页读取公开记录，共用全局代理与 TLS，限制期限/页数/容量，不使用邮箱或 GitHub 凭据。按 SemVer 范围筛选、去重、倒序并确认目标存在，成功结果有界缓存；分页/容量/缺失目标失败不冒充完整。前端 `useAppUpdate` 将历史与包下载状态分开，按目标范围/请求代际废弃迟到结果；每版复用安全 Markdown 与 shadcn Card/对话框，外链仍走系统浏览器。失败保留明确标注的目标说明和独立重试，Pages 不发原生历史请求。
 
-## 统一凭据库与稳定签名
+## 统一凭据库与稳定签名（0.1.19 起）
 
 `credentials.rs` 统一 Keychain 读写、会话缓存/拒绝缓存、无交互迁移、删除墓碑和持久化后发布；邮箱、代理、模型复用该入口。单实例内串行修改，模型设置用可回滚检查点。固定公开证书指纹与 DR 供本地及 GitHub 共用；私钥只在本机和 Secrets。详见 [设计与维护说明](KEYCHAIN.md)。
 
 ## 全局网络代理（2026-10-14）
 
-`Preferences.proxy` 保存 SOCKS5/HTTP/HTTPS 类型、主机、端口、可选用户名及预握手失败时直连选项，默认关闭；密码以 `dev.maildesk.desktop` 的 `network-proxy` 条目存入系统钥匙串。设置页独立 `save_network_proxy` 更新配置，普通通知/检查间隔保存保留当前代理，避免旧前端快照覆盖。进程启动时从 Store 恢复配置，运行中修改只影响新连接。
+`Preferences.proxy` 保存 SOCKS5/HTTP/HTTPS 类型、主机、端口、可选用户名及预握手失败时直连选项，默认关闭；密码以 `network-proxy` 逻辑键保存在 `dev.maildesk.desktop` 的统一钥匙串凭据库中（0.1.19 起）。设置页独立 `save_network_proxy` 更新配置，普通通知/检查间隔保存保留当前代理，避免旧前端快照覆盖。进程启动时从 Store 恢复配置，运行中修改只影响新连接。
 
 `proxy::route` 先连接代理并完成 SOCKS5 或 HTTP CONNECT（HTTPS 代理先验证代理 TLS），再建立仅供当前连接使用的回环隧道；IMAP/POP3 在其上继续以真实邮件服务器名验证 TLS，SMTP 的 lettre 传输也显式使用真实服务器名作为 TLS 参数。代理握手失败且用户开启直连回退时才建立直接连接；SMTP 协议数据开始传输后不换路线重发。OAuth 令牌交换由 reqwest 使用同一代理配置，系统浏览器的授权页面不在此范围。代理密码不写入 SQLite、前端持久数据或日志。
 
@@ -326,7 +326,7 @@ prepareCompose 生成独立的 deliveryBody/deliveryHtml，保留可编辑 body/
 
 最近活动读取时统一将“文件夹「…」”中的 IMAP modified UTF-7 编码转换为实际名称，INBOX 显示为收件箱；已有日志和账号异常提示也生效。数据库原始日志、服务器路径与 SELECT 查询保持原样，避免展示文字影响同步或重复解码。回归测试覆盖旧记录、新记录、嵌套路径、多个文件夹、字面 ampersand 和异常编码回退；该测试、UI 铁律检查及生产构建通过。原生开发预览确认旧活动记录显示“文件夹「其他文件夹」”。
 
-## 开发签名与钥匙串重复授权（2026-10-03）
+## 开发签名与钥匙串重复授权（2026-10-03，历史）
 
 此前开发应用继承 Rust 链接器的 ad hoc 签名，签名要求只有可执行文件 cdhash，重新构建后身份随二进制变化。macOS 开发启动器现在在组装完整应用包后、execve 启动前，使用本机唯一有效的 Apple Development 证书签名并进行严格校验，固定应用标识 dev.maildesk.desktop。多个证书时使用 YANXIN_DEV_SIGNING_IDENTITY 指定完整名称或 SHA-1；无证书、选择歧义或签名失败时停止启动，不退回临时签名。钥匙串服务名、凭据存储和本地数据路径保持不变。
 
@@ -599,19 +599,19 @@ WebKit原生scripts-disabled正文不绑定子文档load/error/click/auxclick事
 - 图片状态继续使用父页面检查，不向禁用脚本的 WebKit 子帧绑定事件。重试复用净化后的地址，请求时读取最新代理；旧正文离开后响应不会发布到新正文。打印在父页面等待图片完成/失败，最多 15 秒后进入系统打印，不无限阻塞。
 
 
-### 原生正文 CSS 与字体通道（2026-10-15，本地未发布）
+### 原生正文 CSS 与字体通道（0.1.17 起）
 
 `mail_styles.rs` 为主 WebView 注册 `anser-style`/`anser-font`，复用 `mail_images` 的配置快照、无 Cookie/Referer 请求、HTTPS 目标/重定向检查、6 并发与 40 秒总期限。样式限 1 MiB、字体限 10 MiB，分别核对 CSS Content-Type/UTF-8 与字体字节签名，拒绝 HTML 错误页，返回 no-store/nosniff 与匿名字体 CORS。CSS 使用 cssparser token 化：导入映射为 style，font-face src 映射为 font，其余 url 映射为 image；相对地址以 GET 最终 URL 解析，嵌套深度限 32。
 
 净化层仅保留 HTTPS stylesheet link，并映射原生正文的 link/@import/@font-face，原生 CSP 只向对应类型放开自有协议；网页示例保留正常 HTTPS，不生成协议入口。主页面不插入邮件 CSS，打印删除 link/style。正文仍保持 scripts-disabled sandbox 与用户激活导航边界。ResizeObserver 不同步写被观察尺寸，iframe 仅宽度变化触发重新测量。
 
-### 排版装饰图片（2026-10-15，未发布）
+### 排版装饰图片（0.1.17 起，0.1.19 补充）
 
 邮件图片的排版装饰分类位于 `mail-image-decorations.ts`：确定尺寸且没有 alt/ARIA 内容说明的单像素细条不参与正文加载告警。净化派生 DOM 对明确常规 spacer/blank/transparent/clear 文件名、声明单像素尺寸且无响应式候选的透明排版资源使用本地透明 GIF，保留尺寸/结构，避免过期占位服务器请求；其他照片、未知尺寸及有内容说明的图片不替换。图片代理继续按实际 GET 类型/字节拒绝错误 HTML，不改原始 MIME。
 
 2026-10-16 补充通用状态分类：明确 authored 零尺寸对且仍有零轴、无语义/响应式候选的图不被 WebKit 失败占位框误计；声明不明确或被 CSS 放大的内容保留检测。祖先明确零面积裁剪/折叠参与可见性判断，内边距、最小尺寸、部分裁剪和可能逃逸的定位后代保守处理。所有发件人共用同一规则，不按资源域名/请求名称猜测用途；此分类不把失败资源替换为空白。UI 按正文内容失败/超时数量提示，继续原期限、迟到成功、代际清理和选择性重试。
 
-### 按需双语翻译（2026-10-15，未发布）
+### 按需双语翻译（0.1.17 起）
 
 - `translation.rs` 通过独立 preferences key 保存地址、模型、目标语言、revision 和 hasApiKey，不与 sync/proxy 偏好互相覆盖；Key 独立存于 `dev.maildesk.desktop` 钥匙串条目。读取配置/凭据快照和设置更新使用短互斥，HTTP 在锁外；修改服务地址不沿用旧密钥，数据库保存失败恢复原密钥。只允许 HTTPS 或 HTTP loopback，无 URL 凭据/查询/片段，禁止 HTTP 重定向以防转发 Bearer；远程客户端共用全局代理，本机模型绕过代理，代理连接失败可沿用已配置的预发送直连策略。
 - `translate_mail_parts` 只接收用户主动选择的正文纯文本片段与稳定 ID；请求为 OpenAI 兼容 `/chat/completions`，不发送邮件头、附件/图片或 HTML。单批 64 个片段/24 KB，单片段 6 KB，响应 256 KiB，连接 10 秒/请求 180 秒/任务 200 秒，最多 4 个并行任务；JSON 输出校验全部 ID 唯一/完整、结束原因与长度。服务器错误只显示状态，不输出请求、密钥或返回正文。
@@ -626,7 +626,7 @@ WebKit原生scripts-disabled正文不绑定子文档load/error/click/auxclick事
 - 演示 API 分支配置只在虚构数据存储，丢弃 API Key，翻译返回明确标识的虚构文字；Pages 继续替换不可调用原生桥，不从浏览器连接真实模型。
 
 
-### 模型服务选择与发现（2026-10-15，未发布）
+### 模型服务选择与发现（0.1.17 起）
 
 设置卡片使用容器查询按 760px 卡片宽度切换左右/上下布局，基础交互仍为 shadcn Select/Input/Command/Popover/Separator/Alert。服务预设仅辅助填地址，不限制模型 ID；未保存字段/密钥变化时禁用连接测试，明确测试已保存的当前配置。获取列表与测试任务独立可取消，迟到结果检查请求身份。
 
