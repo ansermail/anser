@@ -1,5 +1,9 @@
 # 发布与应用内更新
 
+## 0.1.18 发布准备（2026-10-16）
+
+用户已授权将翻译返回校验、段落分批、错误分类与活动记录修复提交并远程发版。五处版本同步 0.1.18，说明见 [v0.1.18](releases/v0.1.18.md)。完整本地门槛、固定源码、远程检查/双架构、七资源审计、正式发布与 Homebrew 同步分别记录在 [发布工作点](RELEASE_0_1_18_WORKING.md)；当前公开仍为 0.1.17。
+
 ## 当前正式版本：0.1.17（2026-10-15）
 
 0.1.17 Alpha 已于 15:05:12（Asia/Shanghai）正式发布为 latest，固定源码 `7312e5c01f7e7cc4f08e8b40e14e4a2a853724c1`。[Release macOS 38695017325](https://github.com/ansermail/anser/actions/runs/38695017325) 的完整检查、Apple Silicon / Intel 构建与草稿任务全部成功；[v0.1.17 下载页](https://github.com/ansermail/anser/releases/tag/v0.1.17)。包含逐段双语翻译、兼容模型配置/切换/连接与最近活动、原按钮内双语、正文图片/CSS/字体全局代理、透明占位图误报修复与中文打印面板。

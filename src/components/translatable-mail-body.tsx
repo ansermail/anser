@@ -6,6 +6,7 @@ import {
   planMailTranslation,
   translationBatches,
   translationLanguages,
+  validateTranslationReply,
   type TranslationConfig,
   type TranslationPart,
 } from "@/lib/mail-translation";
@@ -122,13 +123,7 @@ export function TranslatableMailBody({
         if (!active()) return;
         request.current = "";
         // IPC output is text-only. Reject missing/extra ids before touching DOM.
-        const ids = new Set(parts.map((p) => p.id));
-        if (
-          translated.length !== parts.length ||
-          translated.some((p) => !ids.delete(p.id) || !p.text.trim()) ||
-          ids.size
-        )
-          throw new Error("模型未返回完整段落，请重试。");
+        validateTranslationReply(parts, translated);
         for (const part of translated) values.set(part.id, part.text);
         next.apply(values);
         setProgress({ done: values.size, total });

@@ -115,6 +115,67 @@ it("never sends text on opening and displays returned plain text below each orig
   await click("隐藏译文");
   expect(mock.docs[0].body.textContent).toBe("Hello world");
 });
+it("allows merged inline wording, preserves formatting and restores original DOM", async () => {
+  await render("<p>Hello <b>world</b></p><p>Another paragraph</p>");
+  const original = mock.docs[0].body.innerHTML;
+  await click("翻译");
+  await act(async () =>
+    pending!([
+      { id: "p0_t0", text: "" },
+      { id: "p0_t1", text: "你好世界" },
+      { id: "p1_t0", text: "另一段" },
+    ]),
+  );
+  expect(host.querySelector('[role="alert"]')).toBeNull();
+  expect(
+    mock.docs[0].querySelectorAll("[data-anser-translation]"),
+  ).toHaveLength(2);
+  expect(
+    mock.docs[0].querySelector("[data-anser-translation] b")?.textContent,
+  ).toBe("你好世界");
+  await click("隐藏译文");
+  expect(mock.docs[0].body.innerHTML).toBe(original);
+});
+it("rejects an entirely empty paragraph even when another paragraph has a translation", async () => {
+  await render("<p>Hello <b>world</b></p><p>Another paragraph</p>");
+  await click("翻译");
+  await act(async () =>
+    pending!([
+      { id: "p0_t0", text: "" },
+      { id: "p0_t1", text: " " },
+      { id: "p1_t0", text: "另一段" },
+    ]),
+  );
+  expect(host.querySelector('[role="alert"]')).not.toBeNull();
+  expect(mock.docs[0].querySelector("[data-anser-translation]")).toBeNull();
+});
+it("completes 102 inline pieces across batches, retaining all 51 paragraph translations", async () => {
+  mock.call.mockImplementation(
+    async (command: string, args: { parts: TranslationPart[] }) => {
+      if (command === "get_translation_settings")
+        return { targetLanguage: "zh-CN", revision: "r" };
+      if (command === "translate_mail_parts")
+        return args.parts.map((p) => ({
+          id: p.id,
+          text: p.id.endsWith("_t0") ? "" : "完整译文",
+        }));
+    },
+  );
+  await render(
+    Array.from({ length: 51 }, () => "<p>Hello <b>world</b></p>").join(""),
+  );
+  await click("翻译");
+  expect(
+    mock.call.mock.calls
+      .filter((c) => c[0] === "translate_mail_parts")
+      .map((c) => c[1].parts.length),
+  ).toEqual([64, 38]);
+  expect(
+    mock.docs[0].querySelectorAll("[data-anser-translation]"),
+  ).toHaveLength(51);
+  expect(host.querySelector('[role="alert"]')).toBeNull();
+  expect(actions.querySelector('[aria-label="隐藏译文"]')).not.toBeNull();
+});
 it("cancels on mail replacement and discards a late result instead of changing either the next or old mail", async () => {
   await render();
   await click("翻译");
@@ -149,7 +210,7 @@ it("cancels pending work after configuration changes and rejects malformed parag
   await act(async () =>
     pending!([{ id: "wrong", text: "<script>bad()</script>" }]),
   );
-  expect(host.textContent).toContain("完整段落");
+  expect(host.textContent).toContain("全部文字片段");
   expect(mock.docs[0].querySelector("[data-anser-translation]")).toBeNull();
 });
 

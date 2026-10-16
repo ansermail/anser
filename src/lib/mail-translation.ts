@@ -51,20 +51,72 @@ function chunks(text: string): string[] {
   if (rest) values.push(rest);
   return values;
 }
+function paragraphKey(id: string) {
+  const match = /^(p[0-9]+)_t[0-9]+$/.exec(id);
+  return match ? `paragraph:${match[1]}` : `part:${id}`;
+}
+/** Empty inline pieces are valid after word reordering; empty paragraphs are not. */
+export function validateTranslationReply(
+  requested: TranslationPart[],
+  translated: TranslationPart[],
+) {
+  if (!Array.isArray(translated) || translated.length !== requested.length)
+    throw new Error("模型未返回全部文字片段，请重试。");
+  const ids = new Set(requested.map((p) => p.id));
+  const seen = new Set<string>();
+  const nonempty = new Set<string>();
+  for (const part of translated) {
+    if (typeof part?.id !== "string" || !ids.has(part.id))
+      throw new Error("模型返回了未知文字片段标识，请重试。");
+    if (seen.has(part.id)) throw new Error("模型返回了重复文字片段，请重试。");
+    if (
+      typeof part.text !== "string" ||
+      part.text.includes("\0") ||
+      new TextEncoder().encode(part.text).length > 24_000
+    )
+      throw new Error("模型译文过长或含无效字符，请重试。");
+    seen.add(part.id);
+    if (part.text.trim()) nonempty.add(paragraphKey(part.id));
+  }
+  if (requested.some((part) => !nonempty.has(paragraphKey(part.id))))
+    throw new Error("模型返回的整段译文为空，请重试。");
+}
 export function translationBatches(parts: TranslationPart[]) {
+  const groups: TranslationPart[][] = [];
+  for (const part of parts) {
+    const last = groups.at(-1);
+    if (last && paragraphKey(last[0].id) === paragraphKey(part.id))
+      last.push(part);
+    else groups.push([part]);
+  }
   const batches: TranslationPart[][] = [];
   let batch: TranslationPart[] = [];
   let size = 0;
-  for (const part of parts) {
-    if (batch.length >= 64 || size + part.text.length > 6000) {
+  const flush = () => {
+    if (batch.length) {
       batches.push(batch);
       batch = [];
       size = 0;
     }
-    batch.push(part);
-    size += part.text.length;
+  };
+  for (const group of groups) {
+    const groupSize = group.reduce((n, p) => n + p.text.length, 0);
+    if (group.length <= 64 && groupSize <= 6000) {
+      if (batch.length + group.length > 64 || size + groupSize > 6000) flush();
+      batch.push(...group);
+      size += groupSize;
+    } else {
+      // A single oversized paragraph still obeys both hard request limits.
+      flush();
+      for (const part of group) {
+        if (batch.length >= 64 || size + part.text.length > 6000) flush();
+        batch.push(part);
+        size += part.text.length;
+      }
+      flush();
+    }
   }
-  if (batch.length) batches.push(batch);
+  flush();
   return batches;
 }
 

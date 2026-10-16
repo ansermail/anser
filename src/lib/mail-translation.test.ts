@@ -5,6 +5,7 @@ import {
   planMailTranslation,
   plainMailHtml,
   translationBatches,
+  validateTranslationReply,
 } from "./mail-translation";
 function mail(html: string) {
   const frame = document.createElement("iframe");
@@ -20,6 +21,69 @@ afterEach(() => {
   document.body.replaceChildren();
 });
 describe("bilingual mail display", () => {
+  it("validates ids and whole paragraphs without requiring each inline piece to be nonempty", () => {
+    const requested = [
+      { id: "p0_t0", text: "Hello " },
+      { id: "p0_t1", text: "world" },
+    ];
+    expect(() =>
+      validateTranslationReply(requested, [
+        { id: "p0_t1", text: "你好世界" },
+        { id: "p0_t0", text: "" },
+      ]),
+    ).not.toThrow();
+    for (const translated of [
+      [
+        { id: "p0_t0", text: "" },
+        { id: "p0_t1", text: " " },
+      ],
+      [
+        { id: "p0_t0", text: "你好" },
+        { id: "p0_t0", text: "世界" },
+      ],
+      [
+        { id: "unknown", text: "你好" },
+        { id: "p0_t1", text: "世界" },
+      ],
+      [{ id: "p0_t0", text: "你好" }],
+      [
+        { id: "p0_t0", text: "x".repeat(24001) },
+        { id: "p0_t1", text: "世界" },
+      ],
+      [
+        { id: "p0_t0", text: "bad\0text" },
+        { id: "p0_t1", text: "世界" },
+      ],
+    ])
+      expect(() => validateTranslationReply(requested, translated)).toThrow();
+    expect(() =>
+      validateTranslationReply(
+        [{ id: "p0", text: "Hi" }, requested[0]],
+        [
+          { id: "p0", text: "" },
+          { id: "p0_t0", text: "你好" },
+        ],
+      ),
+    ).toThrow();
+  });
+  it("keeps paragraph context together at the part and character batch boundaries", () => {
+    const prefix = Array.from({ length: 63 }, (_, i) => ({
+      id: `p${i}_t0`,
+      text: "Hello",
+    }));
+    const paragraph = [
+      { id: "p63_t0", text: "Hello " },
+      { id: "p63_t1", text: "world" },
+    ];
+    expect(
+      translationBatches([...prefix, ...paragraph]).map((b) => b.length),
+    ).toEqual([63, 2]);
+    const large = [
+      { id: "p0_t0", text: "x".repeat(5900) },
+      ...paragraph.map((p) => ({ ...p, text: "x".repeat(80) })),
+    ];
+    expect(translationBatches(large).map((b) => b.length)).toEqual([1, 2]);
+  });
   it("按钮译文换行留在原按钮内，不复制链接、背景或边框，隐藏后精确恢复", () => {
     for (const label of [
       'style="display:inline-block;padding:12px 24px;border:1px solid #888;border-radius:30px"',
