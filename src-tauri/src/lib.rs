@@ -6,6 +6,7 @@ mod attachment_preview;
 mod auth;
 mod compose_files;
 mod conversation;
+mod credentials;
 mod directory_operations;
 mod eml_files;
 mod folder_health;
@@ -618,8 +619,12 @@ fn account_action(state: tauri::State<AppState>, id: String, remove: bool) -> Re
         .try_lock()
         .map_err(|_| "正在发送邮件，请稍后修改账号")?;
     if remove {
-        state.store.remove_account(&id)?;
-        auth::remove(&id);
+        let previous = auth::remove(&id)?;
+        if let Err(error) = state.store.remove_account(&id) {
+            auth::restore(&id, previous)
+                .map_err(|_| "移除账号失败，凭据恢复也失败；原账号保留，请重新连接")?;
+            return Err(error);
+        }
     } else {
         let mut a = state.store.account(&id)?;
         a.enabled = !a.enabled;

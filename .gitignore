@@ -27,3 +27,6 @@ src-tauri/gen/
 /backups/
 
 dist-preview/
+
+# Ephemeral CI signing override
+/anser-signing.config.json

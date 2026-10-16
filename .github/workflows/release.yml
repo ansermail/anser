@@ -78,6 +78,11 @@ jobs:
           test -n "$MAIL_GOOGLE_CLIENT_ID" || { echo 'Missing MAIL_GOOGLE_CLIENT_ID'; exit 1; }
           test -n "$MAIL_GOOGLE_CLIENT_SECRET" || { echo 'Missing MAIL_GOOGLE_CLIENT_SECRET'; exit 1; }
           test -n "$MAIL_MICROSOFT_CLIENT_ID" || { echo 'Missing MAIL_MICROSOFT_CLIENT_ID'; exit 1; }
+      - name: Import fixed project signing certificate
+        env:
+          ANSER_CODESIGN_P12_BASE64: ${{ secrets.ANSER_CODESIGN_P12_BASE64 }}
+          ANSER_CODESIGN_P12_PASSWORD: ${{ secrets.ANSER_CODESIGN_P12_PASSWORD }}
+        run: node scripts/mac-ci-signing.mjs import
       - name: Build signed update and first-install DMG
         uses: tauri-apps/tauri-action@944946e3e4cac6603d1fe8f514171e9ecd3c78aa # v1
         env:
@@ -87,7 +92,7 @@ jobs:
           MAIL_GOOGLE_CLIENT_SECRET: ${{ secrets.MAIL_GOOGLE_CLIENT_SECRET }}
           MAIL_MICROSOFT_CLIENT_ID: ${{ secrets.MAIL_MICROSOFT_CLIENT_ID }}
         with:
-          args: --target ${{ matrix.target }} --bundles app,dmg
+          args: --target ${{ matrix.target }} --bundles app,dmg --config anser-signing.config.json
           uploadUpdaterJson: false
       - name: Verify complete macOS app signature
         env:
@@ -95,11 +100,14 @@ jobs:
         run: |
           APP="src-tauri/target/$BUILD_TARGET/release/bundle/macos/雁信.app"
           test -s "$APP/Contents/_CodeSignature/CodeResources"
-          codesign --verify --strict --deep "$APP"
+          node scripts/mac-ci-signing.mjs verify "$APP"
           test -s "$APP/Contents/Resources/LICENSE"
           test -s "$APP/Contents/Resources/NOTICE"
           test -s "$APP/Contents/Resources/LICENSING.md"
           test -s "$APP/Contents/Resources/licenses/shadcn-ui-MIT.txt"
+      - name: Remove temporary signing keychain
+        if: always()
+        run: node scripts/mac-ci-signing.mjs cleanup
       - run: node scripts/release-assets.mjs collect ${{ matrix.target }} release-assets
       - uses: actions/upload-artifact@v6
         with:

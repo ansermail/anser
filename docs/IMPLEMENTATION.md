@@ -1,5 +1,9 @@
 # 实施与验收状态
 
+## 统一凭据库与稳定签名
+
+`credentials.rs` 统一 Keychain 读写、会话缓存/拒绝缓存、无交互迁移、删除墓碑和持久化后发布；邮箱、代理、模型复用该入口。单实例内串行修改，模型设置用可回滚检查点。固定公开证书指纹与 DR 供本地及 GitHub 共用；私钥只在本机和 Secrets。详见 [设计与维护说明](KEYCHAIN.md)。
+
 ## 全局网络代理（2026-10-14）
 
 `Preferences.proxy` 保存 SOCKS5/HTTP/HTTPS 类型、主机、端口、可选用户名及预握手失败时直连选项，默认关闭；密码以 `dev.maildesk.desktop` 的 `network-proxy` 条目存入系统钥匙串。设置页独立 `save_network_proxy` 更新配置，普通通知/检查间隔保存保留当前代理，避免旧前端快照覆盖。进程启动时从 Store 恢复配置，运行中修改只影响新连接。

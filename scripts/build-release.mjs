@@ -6,11 +6,13 @@ import { loadOAuthEnvironment } from "./oauth-env.mjs";
 import {
   getDevelopmentSigningIdentity,
   localBuildSigningConfig,
+  verifyBundleSignature,
 } from "./mac-dev-signing.mjs";
 const config = JSON.parse(fs.readFileSync("src-tauri/tauri.conf.json", "utf8"));
 const key = path.join(os.homedir(), ".config/yanxin-release/updater.key");
 const env = await loadOAuthEnvironment(process.cwd());
-const identity = await getDevelopmentSigningIdentity();
+const identity = await getDevelopmentSigningIdentity(env);
+env.APPLE_SIGNING_IDENTITY = identity.hash;
 if (!env.TAURI_SIGNING_PRIVATE_KEY) {
   if (!fs.existsSync(key))
     throw new Error(
@@ -40,8 +42,25 @@ child.on("error", (e) => {
   console.error(e.message);
   process.exitCode = 1;
 });
-child.on("exit", (code) => {
+child.on("exit", async (code) => {
   process.exitCode = code ?? 1;
+  if (code === 0) {
+    const args = process.argv.slice(2);
+    const targetIndex = args.indexOf("--target");
+    const target = targetIndex >= 0 ? args[targetIndex + 1] : "";
+    const bundle = path.join(
+      "src-tauri/target",
+      target,
+      "release/bundle/macos",
+      config.productName + ".app",
+    );
+    try {
+      await verifyBundleSignature(bundle);
+    } catch (error) {
+      console.error(error.message);
+      process.exitCode = 1;
+    }
+  }
 });
 for (const signal of ["SIGINT", "SIGTERM"])
   process.on(signal, () => child.kill(signal));

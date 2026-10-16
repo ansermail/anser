@@ -10,15 +10,25 @@ use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 trait ProxyStream: AsyncRead + AsyncWrite + Unpin + Send {}
 impl<T: AsyncRead + AsyncWrite + Unpin + Send> ProxyStream for T {}
 
-fn state() -> &'static RwLock<(Option<ProxyConfig>, String)> {
-    static STATE: OnceLock<RwLock<(Option<ProxyConfig>, String)>> = OnceLock::new();
-    STATE.get_or_init(|| RwLock::new((None, String::new())))
+#[derive(Default)]
+struct ProxyState {
+    config: Option<ProxyConfig>,
+    password: String,
+    error: Option<String>,
 }
-fn entry() -> Result<keyring::Entry> {
-    keyring::Entry::new("dev.maildesk.desktop", "network-proxy").map_err(err)
+fn state() -> &'static RwLock<ProxyState> {
+    static STATE: OnceLock<RwLock<ProxyState>> = OnceLock::new();
+    STATE.get_or_init(|| RwLock::new(ProxyState::default()))
+}
+fn entry() -> Result<crate::credentials::Entry> {
+    crate::credentials::entry("network-proxy")
 }
 pub fn current() -> Result<(Option<ProxyConfig>, String)> {
-    Ok(state().read().map_err(err)?.clone())
+    let state = state().read().map_err(err)?;
+    if let Some(error) = &state.error {
+        return Err(error.clone());
+    }
+    Ok((state.config.clone(), state.password.clone()))
 }
 pub fn http_proxy(config: &ProxyConfig, password: &str) -> Result<reqwest::Proxy> {
     config.validate()?;
@@ -41,18 +51,37 @@ pub fn http_proxy(config: &ProxyConfig, password: &str) -> Result<reqwest::Proxy
 }
 pub fn initialize(config: Option<ProxyConfig>) -> Result<()> {
     let password = if config.as_ref().is_some_and(|p| !p.username.is_empty()) {
-        entry()?.get_password().unwrap_or_default()
+        entry()?.get_password()
     } else {
-        String::new()
+        Ok(String::new())
     };
-    *state().write().map_err(err)? = (config, password);
+    let (password, error) = match password {
+        Ok(password) => (password, None),
+        Err(error) => (String::new(), Some(error)),
+    };
+    // Keep the application usable for repair, but do not silently connect using
+    // an empty password when authorization or legacy migration was denied.
+    *state().write().map_err(err)? = ProxyState {
+        config,
+        password,
+        error,
+    };
     Ok(())
 }
 pub fn apply(config: Option<ProxyConfig>, replacement_password: Option<&str>) -> Result<()> {
     if let Some(proxy) = &config {
         proxy.validate()?;
     }
-    let mut password = current()?.1;
+    let old = state().read().map_err(err)?;
+    if let Some(error) = &old.error {
+        if replacement_password.is_none_or(str::is_empty)
+            && config.as_ref().is_some_and(|p| !p.username.is_empty())
+        {
+            return Err(error.clone());
+        }
+    }
+    let mut password = old.password.clone();
+    drop(old);
     if let Some(value) = replacement_password.filter(|value| !value.is_empty()) {
         entry()?.set_password(value).map_err(err)?;
         password = value.to_owned();
@@ -62,11 +91,13 @@ pub fn apply(config: Option<ProxyConfig>, replacement_password: Option<&str>) ->
         .is_none_or(|proxy| proxy.username.is_empty())
     {
         password.clear();
-        if let Ok(entry) = entry() {
-            let _ = entry.delete_credential();
-        }
+        entry()?.delete_credential()?;
     }
-    *state().write().map_err(err)? = (config, password);
+    *state().write().map_err(err)? = ProxyState {
+        config,
+        password,
+        error: None,
+    };
     Ok(())
 }
 

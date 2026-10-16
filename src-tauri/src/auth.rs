@@ -26,8 +26,8 @@ pub struct Secret {
     #[serde(default)]
     pub expires_at: i64,
 }
-fn entry(id: &str) -> Result<keyring::Entry> {
-    keyring::Entry::new("dev.maildesk.desktop", id).map_err(err)
+fn entry(id: &str) -> Result<crate::credentials::Entry> {
+    crate::credentials::entry(id)
 }
 pub fn save(id: &str, s: &Secret) -> Result<()> {
     entry(id)?
@@ -35,16 +35,16 @@ pub fn save(id: &str, s: &Secret) -> Result<()> {
         .map_err(err)
 }
 pub fn load(id: &str) -> Result<Secret> {
-    let raw = entry(id)?
-        .get_password()
-        .map_err(|_| "无法读取钥匙串凭据，请重新连接账号".to_string())?;
-    serde_json::from_str(&raw).map_err(err)
+    let raw = entry(id)?.get_password()?;
+    serde_json::from_str(&raw).map_err(|_| "账号凭据格式无效，原记录已保留，请重新连接账号".into())
 }
-pub fn remove(id: &str) {
-    if let Ok(e) = entry(id) {
-        let _ = e.delete_credential();
-    }
+pub fn remove(id: &str) -> Result<crate::credentials::Previous> {
+    entry(id)?.replace(None)
 }
+pub fn restore(id: &str, previous: crate::credentials::Previous) -> Result<()> {
+    entry(id)?.restore(previous)
+}
+
 fn endpoints(a: &Account) -> Result<(&'static str, &'static str, &'static str)> {
     match a.provider.as_str(){"gmail"=>Ok(("https://accounts.google.com/o/oauth2/v2/auth","https://oauth2.googleapis.com/token","https://mail.google.com/")),"outlook"|"microsoft365"=>Ok(("https://login.microsoftonline.com/common/oauth2/v2.0/authorize","https://login.microsoftonline.com/common/oauth2/v2.0/token","offline_access https://outlook.office.com/IMAP.AccessAsUser.All https://outlook.office.com/POP.AccessAsUser.All https://outlook.office.com/SMTP.Send")),_=>Err("该服务商请使用密码或授权码认证".into())}
 }

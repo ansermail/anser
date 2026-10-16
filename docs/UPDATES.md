@@ -1,5 +1,9 @@
 # 发布与应用内更新
 
+## 固定项目签名（开发中，尚未发布）
+
+后续构建将使用仓库固定的免费项目自签证书；本地与 CI 同一指纹/DR，更新密钥保持。统一凭据库减少逐账号授权；从旧 ad hoc/开发身份首次切换可能为统一条目授权一次。0.1.18 已发布产物不改写，本阶段验收状态见 [工作点](KEYCHAIN_WORKING.md)。此签名不提供 Apple 公证。
+
 ## 当前正式版本：0.1.18（2026-10-16）
 
 0.1.18 Alpha 于 10:16:28（Asia/Shanghai）正式发布为 latest，固定源码 `71224095b21aefea3f59d2cc89c23a87a85fb86d`；[Release macOS 38838641843](https://github.com/ansermail/anser/actions/runs/38838641843) 的完整检查、Apple Silicon / Intel 构建与草稿任务全部成功，[Checks 38838641804](https://github.com/ansermail/anser/actions/runs/38838641804) 和同源 Pages 也成功。[正式下载](https://github.com/ansermail/anser/releases/tag/v0.1.18)。

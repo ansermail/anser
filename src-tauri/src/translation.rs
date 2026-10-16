@@ -120,9 +120,8 @@ impl Service {
         Ok(())
     }
 }
-fn key_entry() -> Result<keyring::Entry> {
-    keyring::Entry::new("dev.maildesk.desktop", "translation-api-key")
-        .map_err(|_| "无法访问翻译密钥钥匙串".into())
+fn key_entry() -> Result<crate::credentials::Entry> {
+    crate::credentials::entry("translation-api-key").map_err(|_| "无法访问翻译密钥钥匙串".into())
 }
 
 impl Store {
@@ -215,35 +214,24 @@ pub async fn save_translation_settings(
     let old = store.translation_config()?;
     let changed_address = old.as_ref().is_some_and(|x| x.base_url != config.base_url);
     let entry = key_entry()?;
-    let old_key = if old.as_ref().is_some_and(|c| c.has_api_key) {
-        Some(
-            entry
-                .get_password()
-                .map_err(|_| "无法读取原翻译密钥，请解锁钥匙串后重试")?,
-        )
-    } else {
-        None
-    };
     let key = if !api_key.trim().is_empty() {
         Some(api_key.trim().to_owned())
     } else if clear_key || changed_address {
         None
+    } else if old.as_ref().is_some_and(|c| c.has_api_key) {
+        Some(entry.get_password()?)
     } else {
-        old_key.clone()
+        None
     };
-    if let Some(key) = &key {
-        entry.set_password(key).map_err(|_| "翻译密钥保存失败")?;
-    } else if old_key.is_some() {
-        entry.delete_credential().map_err(|_| "翻译密钥清理失败")?;
-    }
+    // Checkpoint distinguishes an absent (legacy) entry from a deletion tombstone.
+    // Replacement/clear never needs to authorize an inaccessible legacy item.
+    let previous = entry.replace(key.as_deref())?;
     config.has_api_key = key.is_some();
     config.revision = uuid::Uuid::new_v4().to_string();
     if let Err(error) = store.put_translation_config(&config) {
-        if let Some(key) = old_key {
-            let _ = entry.set_password(&key);
-        } else if key.is_some() {
-            let _ = entry.delete_credential();
-        }
+        entry
+            .restore(previous)
+            .map_err(|_| "翻译配置保存失败，凭据回滚也失败；请重新填写密钥")?;
         return Err(error);
     }
     service.cancel_all()?;
@@ -664,9 +652,7 @@ pub async fn get_translation_models(
                     .as_ref()
                     .is_some_and(|c| c.base_url == config.base_url && c.has_api_key)
             {
-                key_entry()?
-                    .get_password()
-                    .map_err(|_| "无法读取翻译密钥，请解锁钥匙串后重试")?
+                key_entry()?.get_password()?
             } else {
                 String::new()
             }
@@ -863,9 +849,7 @@ async fn translate_parts_work(
             // Read the credential under the same guard as settings changes so
             // a new endpoint can never receive the previous endpoint's key.
             let key = if cached.is_none() && config.has_api_key {
-                key_entry()?
-                    .get_password()
-                    .map_err(|_| "无法读取翻译密钥，请解锁钥匙串后重试")?
+                key_entry()?.get_password()?
             } else {
                 String::new()
             };

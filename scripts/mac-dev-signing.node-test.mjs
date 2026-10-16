@@ -1,94 +1,76 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
+  fixedIdentity,
   getDevelopmentSigningIdentity,
   localBuildSigningConfig,
   parseSigningIdentities,
   selectSigningIdentity,
   signDevelopmentBundle,
+  signingRequirement,
+  verifyBundleSignature,
 } from "./mac-dev-signing.mjs";
-
-const certificate = {
+const certificate = { hash: fixedIdentity.sha1, name: fixedIdentity.name };
+const other = {
   hash: "A".repeat(40),
   name: "Apple Development: Example (TEAM123)",
 };
-const second = {
-  hash: "B".repeat(40),
-  name: "Apple Development: Other (TEAM456)",
-};
 
-test("only valid numbered identities are parsed, without invalid or expired entries", () => {
+test("parse matching identities including untrusted self-signed certificate, excluding expired and duplicate valid section", () => {
   assert.deepEqual(
-    parseSigningIdentities(`
-  1) ${certificate.hash} "${certificate.name}"
-  2) ${second.hash} "${second.name}" (CSSMERR_TP_CERT_EXPIRED)
-     1 valid identities found
-`),
+    parseSigningIdentities(
+      `Policy: Code Signing\n Matching identities\n1) ${certificate.hash} "${certificate.name}" (CSSMERR_TP_NOT_TRUSTED)\n2) ${other.hash} "${other.name}" (CSSMERR_TP_CERT_EXPIRED)\n Valid identities only\n1) ${certificate.hash} "${certificate.name}"`,
+    ),
     [certificate],
   );
 });
-
-test("local desktop build uses the stable development certificate", () => {
+test("development and local release require the exact pinned project certificate", () => {
+  assert.deepEqual(selectSigningIdentity([other, certificate]), certificate);
   assert.deepEqual(JSON.parse(localBuildSigningConfig(certificate)), {
     bundle: { macOS: { signingIdentity: certificate.hash } },
   });
-});
-
-test("automatic selection requires exactly one development identity", () => {
-  const distribution = {
-    hash: "C".repeat(40),
-    name: "Developer ID Application: Example (TEAM123)",
-  };
+  for (const requested of ["-", other.name, other.hash])
+    assert.throws(
+      () => selectSigningIdentity([certificate, other], requested),
+      /固定证书/,
+    );
+  assert.throws(() => selectSigningIdentity([other]), /缺少唯一/);
+  assert.throws(
+    () => selectSigningIdentity([certificate, certificate]),
+    /缺少唯一/,
+  );
   assert.deepEqual(
-    selectSigningIdentity([distribution, certificate]),
+    selectSigningIdentity([certificate], certificate.hash.toLowerCase()),
     certificate,
   );
-  assert.throws(() => selectSigningIdentity([]), /需要固定/);
-  assert.throws(() => selectSigningIdentity([certificate, second]), /多个/);
 });
-
-test("explicit identity is exact, unique, and cannot downgrade to ad hoc signing", () => {
-  assert.deepEqual(
-    selectSigningIdentity([certificate, second], second.hash.toLowerCase()),
-    second,
-  );
-  assert.deepEqual(
-    selectSigningIdentity([certificate, second], certificate.name),
-    certificate,
-  );
-  assert.throws(
-    () => selectSigningIdentity([certificate], "-"),
-    /不能使用临时签名/,
-  );
-  assert.throws(
-    () => selectSigningIdentity([certificate], "Example"),
-    /唯一有效/,
-  );
-  assert.throws(
-    () => selectSigningIdentity([certificate, certificate], certificate.name),
-    /唯一有效/,
-  );
+test("legacy environment overrides remain compatible only for the same pinned certificate", async () => {
+  for (const name of [
+    "ANSER_SIGNING_IDENTITY",
+    "ANSER_DEV_SIGNING_IDENTITY",
+    "YANXIN_DEV_SIGNING_IDENTITY",
+  ]) {
+    const identity = await getDevelopmentSigningIdentity(
+      { [name]: certificate.name },
+      async (file, args) => {
+        assert.equal(file, "/usr/bin/security");
+        assert.deepEqual(args, ["find-identity", "-p", "codesigning"]);
+        return {
+          stdout: `1) ${certificate.hash} "${certificate.name}" (CSSMERR_TP_NOT_TRUSTED)`,
+        };
+      },
+    );
+    assert.deepEqual(identity, certificate);
+  }
 });
-
-test("certificate discovery only lists identities and honors the explicit override", async () => {
-  const identity = await getDevelopmentSigningIdentity(
-    { YANXIN_DEV_SIGNING_IDENTITY: second.name },
-    async (file, args) => {
-      assert.equal(file, "/usr/bin/security");
-      assert.deepEqual(args, ["find-identity", "-v", "-p", "codesigning"]);
-      return {
-        stdout: `1) ${certificate.hash} "${certificate.name}"\n2) ${second.hash} "${second.name}"`,
-      };
-    },
-  );
-  assert.deepEqual(identity, second);
-});
-
-test("sign the complete bundle with the unchanged ID and verify before launch", async () => {
+test("sign complete bundle and verify exact stable DR before launch", async () => {
   const calls = [];
   const bundle = "/tmp/path with spaces/雁信.app";
   await signDevelopmentBundle(bundle, certificate, async (...args) => {
     calls.push(args);
+    return {
+      stderr: `Executable=${bundle}\ndesignated => ${signingRequirement}\n`,
+    };
   });
   assert.deepEqual(calls, [
     [
@@ -103,30 +85,37 @@ test("sign the complete bundle with the unchanged ID and verify before launch", 
         bundle,
       ],
     ],
-    ["/usr/bin/codesign", ["--verify", "--strict", bundle]],
+    [
+      "/usr/bin/codesign",
+      [
+        "--verify",
+        "--strict",
+        "--deep",
+        "-R",
+        `=${signingRequirement}`,
+        bundle,
+      ],
+    ],
+    ["/usr/bin/codesign", ["--display", "--requirements", "-", bundle]],
   ]);
 });
-
-test("signing failure is propagated without verification or a fallback signature", async () => {
+test("verification rejects hash-based or additional restrictions even if membership test succeeded", async () => {
+  for (const dr of ['cdhash H"abc"', `${signingRequirement} and cdhash H"abc"`])
+    await assert.rejects(
+      verifyBundleSignature("/tmp/雁信.app", async () => ({
+        stderr: `designated => ${dr}\n`,
+      })),
+      /designated requirement/,
+    );
+});
+test("signing failure never falls back", async () => {
   let count = 0;
   await assert.rejects(
     signDevelopmentBundle("/tmp/雁信.app", certificate, async () => {
-      count += 1;
-      throw new Error("signing denied");
+      count++;
+      throw new Error("denied");
     }),
-    /signing denied/,
+    /denied/,
   );
   assert.equal(count, 1);
-});
-test("Anser override takes priority while the prior environment name stays compatible", async () => {
-  const identity = await getDevelopmentSigningIdentity(
-    {
-      ANSER_DEV_SIGNING_IDENTITY: certificate.name,
-      YANXIN_DEV_SIGNING_IDENTITY: second.name,
-    },
-    async () => ({
-      stdout: `1) ${certificate.hash} "${certificate.name}"\n2) ${second.hash} "${second.name}"`,
-    }),
-  );
-  assert.deepEqual(identity, certificate);
 });
