@@ -25,7 +25,16 @@ brew upgrade --cask ansermail/tap/anser
 4. 将配方提交推送到 Tap 的 `main`，重新核对公开配方。需要安装回归时使用独立 `--appdir`，不要覆盖正在测试的正式应用；记录执行架构、安装、卸载及首次打开的各自结果。
 5. 在本仓库开发记录中记下 Tap 提交和验证结果。只有新增分发渠道时不提升桌面版本，也不改写已发布标签、资源、原发布说明或 `latest.json`。
 
-## 当前配方：0.1.17（2026-10-15）
+## 当前配方：0.1.18（2026-10-16）
+
+正式资源公开核验后，Tap 提交 [870f4b4](https://github.com/ansermail/homebrew-tap/commit/870f4b43a48e9fc9cbd31ec9da51ed15a2147406) 已推送并核对远端 SHA 及匿名公开配方。brew style、brew audit、Apple Silicon brew fetch 通过，两架构公开 DMG 核对大小/摘要及包内版本/签名/内容一致性。未执行 0.1.18 Homebrew 安装/升级或 Intel 实机运行，首次安装记录仅对应旧版本。
+
+| 架构 | DMG | SHA-256 |
+| --- | --- | --- |
+| Apple Silicon | `Anser_0.1.18_aarch64.dmg` | `c522ed9a0536ca0296a01da94f1b674afa7f9ed34a94fb070932e339fb531ce7` |
+| Intel | `Anser_0.1.18_x86_64.dmg` | `c21a446ba32f7e518d44a8604cd6c3f7e8c4beb1272a8bd9bf30421481133471` |
+
+## 前一配方：0.1.17（2026-10-15）
 
 桌面正式发布和七资源公开核验后，Tap 提交 [`6f4bb79`](https://github.com/ansermail/homebrew-tap/commit/6f4bb790b3e0d5d199498d69853241205725b240) 已推送 main；远端 SHA 与匿名公开配方均核对一致。
 

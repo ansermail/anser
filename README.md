@@ -8,9 +8,9 @@
 
 [下载最新版本](https://github.com/ansermail/anser/releases/latest) · [界面预览](https://ansermail.github.io/anser/) · [使用说明](docs/USAGE.md) · [开发进度](docs/DEVELOPMENT_STATUS.md) · [反馈问题](https://github.com/ansermail/anser/issues)
 
-> 当前公开版本为 **0.1.17 Alpha**，支持 Apple Silicon 与 Intel Mac。长期稳定性、部分服务商兼容性及真实场景验收仍在持续完善。
+> 当前公开版本为 **0.1.18 Alpha**，支持 Apple Silicon 与 Intel Mac。长期稳定性、部分服务商兼容性及真实场景验收仍在持续完善。
 
-[0.1.17 已发布](https://github.com/ansermail/anser/releases/tag/v0.1.17)：新增逐段双语翻译、OpenAI 兼容模型配置及翻译活动记录，完善正文图片/字体的全局代理加载、透明占位图误报和中文打印面板。双架构发布与公开更新资源已核验，记录见 [发布工作点](docs/RELEASE_0_1_17_WORKING.md)。此前全局代理真实收发和正式包原位升级已有用户反馈通过；0.1.17 实际安装/升级仍待用户验证。
+[0.1.18 已发布](https://github.com/ansermail/anser/releases/tag/v0.1.18)：修复双语翻译的同段空片段误判，改善段落分批，细分翻译错误与活动记录。双架构安装包、更新签名、公开资源与 Homebrew 配方已核验，详见 [发布记录](docs/RELEASE_0_1_18_WORKING.md)。开发预览的原邮件已完成 102/102 片段真实翻译；0.1.18 正式包实际安装/升级仍待用户验证。
 
 ![雁信的多账号收件箱与邮件阅读界面](docs/screenshots/inbox-demo.png)
 
