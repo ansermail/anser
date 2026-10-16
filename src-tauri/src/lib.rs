@@ -35,6 +35,7 @@ mod signatures;
 mod store;
 mod sync_control;
 mod translation;
+mod update_history;
 use models::*;
 use std::{
     path::Path,
@@ -1434,6 +1435,7 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             restart_for_update,
+            update_history::update_release_history,
             take_eml_paths,
             take_notification_mail,
             notification_mail,

@@ -73,6 +73,7 @@ dependencies = [
  "reqwest 0.12.28",
  "rusqlite",
  "scraper",
+ "semver",
  "serde",
  "serde_json",
  "sha2",

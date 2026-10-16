@@ -29,9 +29,23 @@ import {
   DialogTitle,
 } from "./ui/dialog";
 import { Progress } from "./ui/progress";
+import { Skeleton } from "./ui/skeleton";
 import { Alert, AlertDescription } from "./ui/alert";
 import { externalUrl, renderReleaseNotes } from "../lib/release-notes";
 
+import {
+  checkedHistory,
+  releaseRange,
+  releaseVersion,
+  type ReleaseRecord,
+} from "../lib/release-history";
+
+type HistoryState = {
+  range: string;
+  phase: "loading" | "ready" | "error";
+  releases: ReleaseRecord[];
+  error: string;
+};
 const releasePage = "https://github.com/ansermail/anser/releases";
 type Phase =
   | "idle"
@@ -50,6 +64,8 @@ export function useAppUpdate() {
   const [error, setError] = useState("");
   const [open, setOpen] = useState(false);
   const [progress, setProgress] = useState<number | null>(null);
+  const [history, setHistory] = useState<HistoryState | null>(null);
+  const historyRequest = useRef(0);
   const resource = useRef<Update | null>(null);
   const busy = useRef(false);
   const pinned = useRef(false);
@@ -71,6 +87,7 @@ export function useAppUpdate() {
       const previous = resource.current;
       resource.current = next;
       setUpdate(next);
+      setHistory(null);
       setPhase(next ? "available" : "idle");
       await previous?.close().catch(() => {});
     } catch (e) {
@@ -101,12 +118,54 @@ export function useAppUpdate() {
         : undefined;
     return () => {
       mounted.current = false;
+      historyRequest.current++;
       window.clearTimeout(timer);
       window.clearInterval(interval);
       void resource.current?.close().catch(() => {});
       resource.current = null;
     };
   }, [checkNow, native, preview]);
+
+  const loadHistory = useCallback(async () => {
+    const current = resource.current;
+    if (!native || !current || !mounted.current) return;
+    const request = ++historyRequest.current;
+    const range = releaseRange(current.currentVersion, current.version);
+    setHistory({ range, phase: "loading", releases: [], error: "" });
+    try {
+      const value = await invoke("update_release_history", {
+        currentVersion: current.currentVersion,
+        targetVersion: current.version,
+      });
+      const data = checkedHistory(
+        value,
+        current.currentVersion,
+        current.version,
+      );
+      if (
+        !mounted.current ||
+        historyRequest.current !== request ||
+        resource.current !== current
+      )
+        return;
+      setHistory({ range, phase: "ready", releases: data.releases, error: "" });
+    } catch (error) {
+      if (
+        !mounted.current ||
+        historyRequest.current !== request ||
+        resource.current !== current
+      )
+        return;
+      setHistory({ range, phase: "error", releases: [], error: String(error) });
+    }
+  }, [native]);
+  useEffect(() => {
+    if (!native || !open || !update) return;
+    void loadHistory();
+    return () => {
+      historyRequest.current++;
+    };
+  }, [native, open, update, loadHistory]);
 
   const download = async () => {
     const current = resource.current;
@@ -186,6 +245,8 @@ export function useAppUpdate() {
     open,
     setOpen,
     progress,
+    history,
+    loadHistory,
     native,
     preview,
     checkNow,
@@ -212,10 +273,102 @@ function ReleaseNotes({ body, native }: { body: string; native: boolean }) {
   };
   return (
     <div
-      className="release-notes min-h-0 overflow-y-auto text-sm leading-relaxed"
+      className="release-notes text-sm leading-relaxed"
       onClick={openLink}
       dangerouslySetInnerHTML={{ __html: html }}
     />
+  );
+}
+
+function VersionNotes({
+  release,
+  native,
+}: {
+  release: ReleaseRecord;
+  native: boolean;
+}) {
+  const date = new Date(release.publishedAt);
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>v{release.version}</CardTitle>
+        <CardDescription>
+          {release.name && <span>{release.name}</span>}
+          {release.name && !Number.isNaN(date.getTime()) && " · "}
+          {!Number.isNaN(date.getTime()) && (
+            <time dateTime={release.publishedAt}>
+              {date.toLocaleDateString("zh-CN", {
+                year: "numeric",
+                month: "long",
+                day: "numeric",
+              })}
+            </time>
+          )}
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        {release.body.trim() ? (
+          <ReleaseNotes body={release.body} native={native} />
+        ) : (
+          <p className="text-sm text-muted-foreground">
+            此版本未提供更新说明。
+          </p>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+function UpdateHistory({ updates: u }: { updates: Updates }) {
+  const next = u.update!;
+  const state =
+    u.history?.range === releaseRange(next.currentVersion, next.version)
+      ? u.history
+      : null;
+  if (!state || state.phase === "loading")
+    return (
+      <div role="status" className="flex flex-col gap-3">
+        <p className="text-sm text-muted-foreground">正在获取各版本更新记录…</p>
+        <Skeleton className="h-24 w-full" />
+        <Skeleton className="h-24 w-full" />
+      </div>
+    );
+  if (state.phase === "ready")
+    return (
+      <div className="flex flex-col gap-6">
+        {state.releases.map((release) => (
+          <VersionNotes
+            key={release.version}
+            release={release}
+            native={u.native}
+          />
+        ))}
+      </div>
+    );
+  return (
+    <div className="flex flex-col gap-6">
+      <Alert>
+        <AlertDescription className="flex flex-col gap-3">
+          <p>版本历史未能完整加载，当前仅展示目标版本说明。{state.error}</p>
+          <Button
+            variant="outline"
+            size="sm"
+            className="self-start"
+            onClick={() => void u.loadHistory()}
+          >
+            重新加载更新记录
+          </Button>
+        </AlertDescription>
+      </Alert>
+      <VersionNotes
+        native={u.native}
+        release={{
+          version: releaseVersion(next.version),
+          name: "目标版本说明",
+          body: next.body || "",
+          publishedAt: "",
+        }}
+      />
+    </div>
   );
 }
 
@@ -300,6 +453,11 @@ export function UpdateDialog({
   blocked: boolean;
 }) {
   const locked = u.phase === "installing" || u.phase === "restarting";
+  const history =
+    u.update &&
+    u.history?.range === releaseRange(u.update.currentVersion, u.update.version)
+      ? u.history
+      : null;
   return (
     <Dialog
       open={u.open}
@@ -321,21 +479,27 @@ export function UpdateDialog({
           <DialogTitle>更新中心</DialogTitle>
           <DialogDescription>
             {u.update
-              ? `雁信 ${u.update.version} 已发布，当前版本 ${u.update.currentVersion}。`
+              ? `${u.update.currentVersion} → ${u.update.version}${history?.phase === "ready" ? ` · 共 ${history.releases.length} 个版本` : " · 版本更新记录"}`
               : `当前版本 ${u.version || "—"}`}
           </DialogDescription>
         </DialogHeader>
-        {u.update?.body ? (
-          <ReleaseNotes body={u.update.body} native={u.native} />
-        ) : (
-          <div className="min-h-0 overflow-y-auto text-sm leading-relaxed">
-            {u.phase === "checking"
-              ? "正在检查更新…"
-              : u.error
-                ? "暂时无法获取更新信息。"
-                : "当前没有可用更新。"}
-          </div>
-        )}
+        <div
+          className="min-h-0 flex-1 overflow-y-auto"
+          role="region"
+          aria-label="版本更新记录"
+        >
+          {u.update ? (
+            <UpdateHistory updates={u} />
+          ) : (
+            <p className="text-sm leading-relaxed">
+              {u.phase === "checking"
+                ? "正在检查更新…"
+                : u.error
+                  ? "暂时无法获取更新信息。"
+                  : "当前没有可用更新。"}
+            </p>
+          )}
+        </div>
         {u.preview && (
           <Alert>
             <AlertDescription>
