@@ -1,3 +1,78 @@
+function hasImageDescription(image: HTMLImageElement) {
+  return !!(
+    image.alt.trim() ||
+    image.getAttribute("aria-label")?.trim() ||
+    image.getAttribute("aria-labelledby")?.trim() ||
+    image.getAttribute("role") === "img"
+  );
+}
+
+// Only exclude provably empty clipping regions. An auto-sized zero layout
+// box before an image loads is not proof of clipping.
+export function isMailImageClipped(
+  element: Element,
+  style: CSSStyleDeclaration,
+) {
+  for (const axis of ["x", "y"] as const) {
+    const dimension = axis === "x" ? "width" : "height";
+    const overflow =
+      style.getPropertyValue(`overflow-${axis}`) || style.overflow;
+    const inline = (element as HTMLElement).style?.getPropertyValue(dimension);
+    const zero = (value: string) => /^0(?:px)?$/.test(value);
+    const sides = axis === "x" ? ["left", "right"] : ["top", "bottom"];
+    const noPadding = sides.every(
+      (side) => !parseFloat(style.getPropertyValue(`padding-${side}`)),
+    );
+    if (
+      /^(hidden|clip|auto|scroll)$/.test(overflow) &&
+      noPadding &&
+      ((zero(style.getPropertyValue(`max-${dimension}`)) &&
+        !parseFloat(style.getPropertyValue(`min-${dimension}`))) ||
+        (inline && zero(inline) && zero(style.getPropertyValue(dimension))))
+    )
+      return true;
+  }
+  // CSS clip only applies to positioned elements. A partial crop is content.
+  if (style.position === "absolute" || style.position === "fixed") {
+    const rect = style.clip.match(
+      /^rect\(\s*(-?\d+(?:\.\d+)?)px\s*,\s*(-?\d+(?:\.\d+)?)px\s*,\s*(-?\d+(?:\.\d+)?)px\s*,\s*(-?\d+(?:\.\d+)?)px\s*\)$/,
+    );
+    if (
+      rect &&
+      (Number(rect[3]) <= Number(rect[1]) || Number(rect[2]) <= Number(rect[4]))
+    )
+      return true;
+  }
+  return false;
+}
+
+// A broken 0×0 analytics image can acquire a nonzero fallback height in
+// WebKit (the reader's height:auto overrides the HTML height). Require an
+// authored zero pair AND a remaining zero axis; CSS-enlarged content, unknown
+// sizes and responsive candidates must still participate in loading feedback.
+export function isMailZeroSizeImage(
+  image: HTMLImageElement,
+  width: number | undefined,
+  height: number | undefined,
+) {
+  if (
+    hasImageDescription(image) ||
+    image.hasAttribute("srcset") ||
+    image.closest("picture")
+  )
+    return false;
+  const declaredZero = (name: "width" | "height") => {
+    const inline = image.style.getPropertyValue(name).trim();
+    const value = inline || image.getAttribute(name)?.trim();
+    return value !== undefined && /^0+(?:\.0+)?(?:px)?$/i.test(value);
+  };
+  return (
+    declaredZero("width") &&
+    declaredZero("height") &&
+    (width === 0 || height === 0)
+  );
+}
+
 // Layout strips carry spacing, not mail content. Require known dimensions so
 // a pending, unsized image with a zero layout box is never mistaken for one.
 export function isMailLayoutStrip(
@@ -11,10 +86,7 @@ export function isMailLayoutStrip(
     width > 0 &&
     height > 0 &&
     (width <= 1 || height <= 1) &&
-    !image.alt.trim() &&
-    !image.getAttribute("aria-label")?.trim() &&
-    !image.getAttribute("aria-labelledby")?.trim() &&
-    image.getAttribute("role") !== "img"
+    !hasImageDescription(image)
   );
 }
 

@@ -29,6 +29,161 @@ function fixture() {
   };
 }
 describe("mail image deadline", () => {
+  it.each([
+    '<div style="display:none">IMAGE</div>',
+    '<div style="opacity:0">IMAGE</div>',
+    '<div style="content-visibility:hidden">IMAGE</div>',
+    '<div style="height:0;overflow-y:hidden">IMAGE</div>',
+    '<div style="max-height:0;overflow-y:clip">IMAGE</div>',
+    '<div style="max-width:0;overflow-x:hidden">IMAGE</div>',
+    '<div style="position:absolute;clip:rect(0px,0px,0px,0px)">IMAGE</div>',
+    "<details><summary>Summary</summary>IMAGE</details>",
+  ])(
+    "excludes non-content image requests inside %s and tracks them once revealed",
+    (wrapper) => {
+      const f = fixture(),
+        changed = vi.fn();
+      f.finish();
+      f.doc.body.insertAdjacentHTML(
+        "beforeend",
+        wrapper.replace(
+          "IMAGE",
+          '<img src="https://other.example/unavailable">',
+        ),
+      );
+      const image = f.doc.images[2];
+      Object.defineProperties(image, {
+        complete: { value: true },
+        naturalWidth: { value: 0 },
+      });
+      const tracker = watchMailImages(f.doc, changed, false);
+      expect(changed).toHaveBeenLastCalledWith({
+        waiting: 0,
+        timedOut: 0,
+        failed: 0,
+      });
+      f.doc.body.append(image);
+      tracker.refresh();
+      expect(changed).toHaveBeenLastCalledWith({
+        waiting: 0,
+        timedOut: 0,
+        failed: 1,
+      });
+      tracker.dispose();
+    },
+  );
+  it.each([
+    '<div style="height:0;overflow-y:visible">IMAGE</div>',
+    '<div style="height:80px;overflow-y:hidden">IMAGE</div>',
+    '<div style="height:0;overflow-y:hidden;padding-bottom:80px">IMAGE</div>',
+    '<div style="height:0;overflow-y:hidden"><div style="position:fixed">IMAGE</div></div>',
+    '<div style="height:0;overflow-y:hidden"><div style="position:absolute">IMAGE</div></div>',
+    '<div style="min-height:80px;max-height:0;overflow-y:hidden">IMAGE</div>',
+    '<div style="position:absolute;clip:rect(0px,80px,40px,0px)">IMAGE</div>',
+    '<div style="overflow-y:auto">IMAGE</div>',
+    "<details open><summary>Summary</summary>IMAGE</details>",
+    "<details><summary>IMAGE</summary></details>",
+  ])("retains content image failures inside %s", (wrapper) => {
+    const f = fixture(),
+      changed = vi.fn();
+    f.finish();
+    f.doc.body.insertAdjacentHTML(
+      "beforeend",
+      wrapper.replace("IMAGE", '<img src="https://other.example/unavailable">'),
+    );
+    Object.defineProperties(f.doc.images[2], {
+      complete: { value: true },
+      naturalWidth: { value: 0 },
+    });
+    const tracker = watchMailImages(f.doc, changed, false);
+    expect(changed).toHaveBeenLastCalledWith({
+      waiting: 0,
+      timedOut: 0,
+      failed: 1,
+    });
+    tracker.dispose();
+  });
+  it("excludes explicit zero-size analytics despite WebKit's broken-image fallback box", () => {
+    const f = fixture(),
+      changed = vi.fn();
+    f.finish();
+    f.doc.body.insertAdjacentHTML(
+      "beforeend",
+      '<img src="https://example.com/statistics" width="0" height="0"><img src="https://example.com/statistics2" style="width:0px;height:0px">',
+    );
+    const analytics = [...f.doc.images].slice(2);
+    for (const image of analytics) {
+      Object.defineProperties(image, {
+        complete: { value: true },
+        naturalWidth: { value: 0 },
+      });
+      vi.spyOn(image, "getBoundingClientRect").mockReturnValue({
+        width: 0,
+        height: 20,
+      } as DOMRect);
+    }
+    const writes = analytics.map((i) => vi.spyOn(i, "setAttribute"));
+    const tracker = watchMailImages(f.doc, changed, false);
+    expect(changed).toHaveBeenLastCalledWith({
+      waiting: 0,
+      timedOut: 0,
+      failed: 0,
+    });
+    tracker.retry();
+    expect(writes.every((s) => s.mock.calls.length === 0)).toBe(true);
+    // A later CSS expansion makes this a real content image again.
+    analytics[0].style.cssText = "width:240px;height:80px";
+    vi.mocked(analytics[0].getBoundingClientRect).mockReturnValue({
+      width: 240,
+      height: 80,
+    } as DOMRect);
+    tracker.refresh();
+    expect(changed).toHaveBeenLastCalledWith({
+      waiting: 0,
+      timedOut: 0,
+      failed: 1,
+    });
+    tracker.dispose();
+    expect(vi.getTimerCount()).toBe(0);
+  });
+  it("keeps semantic, responsive, CSS-overridden and unknown-size failures visible", () => {
+    const f = fixture(),
+      changed = vi.fn();
+    f.finish();
+    f.doc.body.insertAdjacentHTML(
+      "beforeend",
+      [
+        'width="0" height="0" alt="Chart"',
+        'width="0" height="0" aria-label="Chart"',
+        'width="0" height="0" aria-labelledby="caption"',
+        'width="0" height="0" role="img"',
+        'width="0" height="0" srcset="https://example.com/photo2.png 2x"',
+        'width="0" height="0" style="width:100%;height:auto"',
+        'width="0"',
+        "",
+      ]
+        .map((attrs) => `<img src="https://example.com/photo.png" ${attrs}>`)
+        .join("") +
+        '<picture><source srcset="https://example.com/photo2.png"><img src="https://example.com/photo.png" width="0" height="0"></picture>',
+    );
+    for (const image of [...f.doc.images].slice(2)) {
+      Object.defineProperties(image, {
+        complete: { value: true },
+        naturalWidth: { value: 0 },
+      });
+      vi.spyOn(image, "getBoundingClientRect").mockReturnValue({
+        width: 0,
+        height: 20,
+      } as DOMRect);
+    }
+    const tracker = watchMailImages(f.doc, changed, false);
+    expect(changed).toHaveBeenLastCalledWith({
+      waiting: 0,
+      timedOut: 0,
+      failed: 9,
+    });
+    tracker.dispose();
+  });
   it("ignores failed unlabelled 130×1 and 1×130 strips, but reports actual missing content", () => {
     const f = fixture(),
       changed = vi.fn();

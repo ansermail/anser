@@ -98,7 +98,7 @@ it("replaces stalled loading with retry after the deadline and clears the notice
   expect(host.querySelector('[aria-label="正在加载图片"]')).not.toBeNull();
   await act(async () => vi.advanceTimersByTime(MAIL_IMAGE_TIMEOUT_MS));
   expect(host.querySelector('[aria-label="正在加载图片"]')).toBeNull();
-  expect(host.textContent).toContain("部分图片加载超时");
+  expect(host.textContent).toContain("有 1 张正文图片未加载（1 张超时）");
   expect(host.querySelector('[aria-busy="false"]')).not.toBeNull();
   await act(async () =>
     host.querySelector<HTMLButtonElement>("button")!.click(),
@@ -109,6 +109,39 @@ it("replaces stalled loading with retry after the deadline and clears the notice
   await act(async () => vi.advanceTimersByTime(1000));
   expect(host.querySelector('[aria-label="正在加载图片"]')).toBeNull();
   expect(host.querySelector('[role="alert"]')).toBeNull();
+});
+it("reports failed and timed-out content counts together without including decorative resources", async () => {
+  const { doc } = await load();
+  await act(async () => {
+    for (const attrs of [
+      'alt="Chart"',
+      'width="320" height="180"',
+      'width="0" height="0"',
+      'width="130" height="1"',
+    ]) {
+      const template = doc.createElement("template");
+      template.innerHTML = `<img src="https://example.com/unavailable.png" ${attrs}>`;
+      const image = template.content.firstElementChild as HTMLImageElement;
+      Object.defineProperties(image, {
+        complete: { value: true },
+        naturalWidth: { value: 0 },
+      });
+      vi.spyOn(image, "getBoundingClientRect").mockReturnValue(
+        new DOMRect(
+          0,
+          0,
+          Number(image.getAttribute("width") ?? 320),
+          Number(image.getAttribute("height") || 20) || 20,
+        ),
+      );
+      doc.body.append(image);
+    }
+  });
+  await act(async () => vi.advanceTimersByTime(MAIL_IMAGE_TIMEOUT_MS));
+  expect(host.textContent).toContain(
+    "有 3 张正文图片未加载（2 张失败，1 张超时）",
+  );
+  expect(host.querySelectorAll("button")).toHaveLength(1);
 });
 it("allows Inspect Element for reading but keeps scripts disabled and signature preview menus suppressed", async () => {
   let { doc, frame } = await load(true);

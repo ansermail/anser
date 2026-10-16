@@ -182,7 +182,12 @@ export function MailContent({
         <Alert className="mb-2">
           <AlertDescription className="flex flex-wrap items-center justify-between gap-2">
             <span>
-              {images.timedOut > 0 ? "部分图片加载超时" : "部分图片加载失败"}
+              {`有 ${images.failed + images.timedOut} 张正文图片未加载（${[
+                images.failed > 0 && `${images.failed} 张失败`,
+                images.timedOut > 0 && `${images.timedOut} 张超时`,
+              ]
+                .filter(Boolean)
+                .join("，")}）`}
             </span>
             <Button
               variant="ghost"

@@ -26,4 +26,10 @@
 - 显式执行只读公共网络用例 `cargo test --manifest-path src-tauri/Cargo.toml update_history::tests::live_public_release_range -- --ignored --exact` 通过；真实 0.1.13 → 0.1.18 返回 0.1.18/17/16/15/14 共 5 版，均有正文，不以虚构数据冒充网络结果。
 - 生产/Pages 构建、UI 检查通过；Pages 的原生 IPC/真实连接隔离继续通过。
 - 复用实际 UpdateDialog 在浏览器用虚构 0.1.18 → 0.1.23 数据检查：5 张版本卡片、倒序/日期/安全 Markdown、390px 窄屏、滚动到 0.1.19 及固定底部按钮均通过。Ego 截图接口超时，改用应用内浏览器取得实际宽/窄画面；不把仅 DOM 指标当截图成功。
-- 页面临时夹具不进入产品或发布，已清理；未创建 0.1.19～0.1.23 的虚构正式版本。最终开发预览、提交及云端全量检查待补。
+- 页面临时夹具不进入产品或发布，已清理；未创建 0.1.19～0.1.23 的虚构正式版本。
+
+### 提交与远程核验（2026-10-16）
+
+- 功能提交 `2aa8dc6f495d75859826b296ebdeee6fc526a72b`，连同固定签名提交 `e639292` 已快进至组织 main；无未验收分支混入。
+- [Checks 38866145993](https://github.com/ansermail/anser/actions/runs/38866145993)、[Preview Pages 38866146159](https://github.com/ansermail/anser/actions/runs/38866146159)、[Verify macOS signing 38866146219](https://github.com/ansermail/anser/actions/runs/38866146219) 均成功。Checks 最终 Rust 368 通过 / 3 忽略、脚本 28、IMAP 39 通过；双架构 App 构建、固定签名 DR 与临时钥匙串清理通过。
+- 原生开发预览已用最终源码运行；新版本完整升级链仍需正式发布后验收。公开仍 0.1.18，没有新增 Release/标签或修改已发布产物。后续用户反馈图片通用状态修复从 [图片工作点](MAIL_IMAGES_DEBUG_WORKING.md) 继续。

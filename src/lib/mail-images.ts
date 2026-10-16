@@ -1,4 +1,8 @@
-import { isMailLayoutStrip } from "./mail-image-decorations";
+import {
+  isMailLayoutStrip,
+  isMailZeroSizeImage,
+  isMailImageClipped,
+} from "./mail-image-decorations";
 
 export const MAIL_IMAGE_TIMEOUT_MS = 15_000;
 export interface MailImageStatus {
@@ -26,6 +30,7 @@ function contentImage(
   const own = style(image);
   if (own.visibility === "hidden" || own.visibility === "collapse")
     return false;
+  let positionedDescendant = false;
   for (
     let element: Element | null = image;
     element;
@@ -35,9 +40,17 @@ function contentImage(
     if (
       value.display === "none" ||
       value.opacity === "0" ||
-      value.contentVisibility === "hidden"
+      value.contentVisibility === "hidden" ||
+      (!positionedDescendant && isMailImageClipped(element, value)) ||
+      (element.tagName === "DETAILS" &&
+        !element.hasAttribute("open") &&
+        !element.querySelector(":scope > summary")?.contains(image))
     )
       return false;
+    // Positioned descendants can escape overflow clips whose containing block
+    // is outside that ancestor. Keep uncertain cases in content feedback.
+    positionedDescendant ||=
+      value.position === "absolute" || value.position === "fixed";
   }
   const rect = image.getBoundingClientRect();
   const dimension = (name: "width" | "height") => {
@@ -56,7 +69,8 @@ function contentImage(
       height !== undefined &&
       width <= 1 &&
       height <= 1) ||
-    isMailLayoutStrip(image, width, height)
+    isMailLayoutStrip(image, width, height) ||
+    isMailZeroSizeImage(image, width, height)
   );
 }
 

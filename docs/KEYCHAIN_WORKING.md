@@ -46,3 +46,7 @@
 - 同一台 Apple Silicon Mac 直接运行云端 arm64 包，三个账号最近收取为 11:11:59 / 11:12:11 / 11:12:29，继续复用同一次统一条目授权。Intel 只做构建/产物审计，未计作 Intel 实机验收。
 - 本轮实际仅由用户为统一条目选择一次“始终允许”；旧项全部保留。未发真实测试邮件、未改用户代理/模型配置、未覆盖 /Applications 的既有正式包。
 - 固定身份不提供 Gatekeeper/Developer ID 信任。尚未创建新版本标签或 Release，真实自动更新安装仍留待新版本发布后验收。
+
+### main 最终检查（2026-10-16）
+
+固定签名与更新历史提交已快进 main `2aa8dc6`；[同源双架构签名验证 38866146219](https://github.com/ansermail/anser/actions/runs/38866146219)、[Checks 38866145993](https://github.com/ansermail/anser/actions/runs/38866145993) 及 Pages 均成功。此轮云端 App 构建通过不等于新正式版已发布；公开仍 0.1.18，正式自动更新安装及 Intel 实机边界保持。
