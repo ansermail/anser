@@ -8,6 +8,7 @@
 
 ## 已写入代码
 
+- 2026-10-16 后续修正：发送记录按 `updated_at` 的实际时间倒序读取，取消原先“待发送置顶、计划时间优先”的混合排序；同时间由行号稳定排序。演示记录使用相同的最近更新时间倒序，未来计划时间只作为记录信息显示。
 - `scheduling.rs` / `store.rs` / `lib.rs`：完整写信和对话简短回复点击发送即持久入队，八秒内可在待发页取消并重新编辑或立即发送，调度领取后不能撤回。`send_kind` 区分撤回窗口与指定时间计划。待发页默认收起详情；已发送待发记录可复制为新草稿。已发件阅读页可从旧邮件创建新草稿，原邮件保留；旧 MIME 无法恢复密送地址，内嵌图片旧正文改以纯文本编辑。
 - `rules.rs` / `rule_runs.rs` / `rule_operations.rs` / RulesPanel：一条规则最多八个顺序动作，兼容旧单动作配置；文字以此开头/结尾，完整 MIME 大小条件（整数 KB）与未知大小的按需读取。前端演示匹配和执行同步。
 - 托盘增加打开、手动检查、暂停桌面通知、退出；本机未读数每 5 秒刷新。通知前核对持久免打扰偏好。
@@ -15,6 +16,7 @@
 
 ## 实际验证
 
+- 发送记录排序专项：Rust `outbox_lists_newest_activity_first_across_statuses_and_timezones` 通过，覆盖不同状态、时区和未来计划时间；前端演示 `demo-outbox.test.ts` 通过。`npm run build`（含 UI 检查）通过。稳定签名原生开发预览重新编译并启动后，发送记录中的 10 月 16、14、11 日记录依最近更新时间递减，计划取消记录停留在 10 月 11 日对应位置。本项没有真实发送。
 - `cargo test --manifest-path src-tauri/Cargo.toml --quiet`：374 通过、3 忽略；涵盖持久撤回、已发送复制草稿、规则顺序动作及通知偏好。
 - `npm test`：372 通过（54 个文件）；涵盖写信/简短回复入队、已发送重编辑入口、规则编辑与演示执行、目录徽标。`npm run build`：通过，包含 UI 检查；构建仅有既有动态导入及大 chunk 提示。
 - `npm run format:check`、`cargo fmt --manifest-path src-tauri/Cargo.toml -- --check`、`git diff --check`：通过。

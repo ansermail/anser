@@ -165,7 +165,7 @@ impl Store {
     }
     pub fn outbox(&self) -> Result<Vec<OutboxRecord>> {
         let db = self.db()?;
-        let mut query = db.prepare("SELECT id,status,data,error,updated_at,raw,scheduled_at,send_kind FROM outbox ORDER BY CASE WHEN status IN ('scheduled','overdue','paused') THEN 0 ELSE 1 END,scheduled_at, rowid DESC LIMIT 100").map_err(err)?;
+        let mut query = db.prepare("SELECT id,status,data,error,updated_at,raw,scheduled_at,send_kind FROM outbox ORDER BY julianday(NULLIF(updated_at,'')) DESC, rowid DESC LIMIT 100").map_err(err)?;
         let rows = query
             .query_map([], |r| {
                 Ok((

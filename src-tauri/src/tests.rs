@@ -107,6 +107,37 @@ fn local_account_preferences_save_during_sync_and_are_not_overwritten_by_sync_st
 }
 
 #[test]
+fn outbox_lists_newest_activity_first_across_statuses_and_timezones() {
+    let temp = tempfile::tempdir().unwrap();
+    let store = Store::new(temp.path().to_path_buf()).unwrap();
+    store.save_account(&account()).unwrap();
+    let draft = draft();
+    let data = serde_json::to_string(&draft).unwrap();
+    for (id, status, updated_at, scheduled_at) in [
+        (
+            "older-plan",
+            "scheduled",
+            "2026-10-15T23:00:00+08:00",
+            "2027-01-01T00:00:00Z",
+        ),
+        ("newest", "sent", "2026-10-16T08:30:00Z", ""),
+        ("middle", "failed", "2026-10-16T12:00:00+08:00", ""),
+    ] {
+        store.db().unwrap().execute(
+            "INSERT INTO outbox(id,status,data,raw,updated_at,scheduled_at) VALUES(?1,?2,?3,X'',?4,?5)",
+            rusqlite::params![id, status, data, updated_at, scheduled_at],
+        ).unwrap();
+    }
+    let ids: Vec<_> = store
+        .outbox()
+        .unwrap()
+        .into_iter()
+        .map(|row| row.id)
+        .collect();
+    assert_eq!(ids, ["newest", "middle", "older-plan"]);
+}
+
+#[test]
 fn smtp_submission_is_independent_of_receiving_and_cannot_repeat_a_confirmed_send() {
     let temp = tempfile::tempdir().unwrap();
     let store = Store::new(temp.path().to_path_buf()).unwrap();

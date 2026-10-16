@@ -643,7 +643,14 @@ export async function call<T = void>(
         result = { pending: 0, blocked: 0, completed: 0, items: [] };
         break;
       case "list_outbox":
-        result = JSON.parse(demoStorage.getItem(key + "-outbox") || "[]");
+        result = (
+          JSON.parse(
+            demoStorage.getItem(key + "-outbox") || "[]",
+          ) as OutboxRecord[]
+        ).sort(
+          (a, b) =>
+            (Date.parse(b.updatedAt) || 0) - (Date.parse(a.updatedAt) || 0),
+        );
         break;
       case "queue_send":
       case "schedule_mail": {
