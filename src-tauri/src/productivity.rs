@@ -27,6 +27,15 @@ impl SyncSchedule {
 }
 
 impl Store {
+    pub fn unread_total(&self) -> Result<u64> {
+        self.db()?
+            .query_row(
+                "SELECT COALESCE(SUM(is_read=0 AND trashed=0),0) FROM search_documents",
+                [],
+                |row| row.get(0),
+            )
+            .map_err(err)
+    }
     pub fn preferences(&self) -> Result<Preferences> {
         use rusqlite::OptionalExtension;
         let data: Option<String> = self
@@ -156,7 +165,7 @@ impl Store {
     }
     pub fn outbox(&self) -> Result<Vec<OutboxRecord>> {
         let db = self.db()?;
-        let mut query = db.prepare("SELECT id,status,data,error,updated_at,raw,scheduled_at FROM outbox ORDER BY CASE WHEN status IN ('scheduled','overdue','paused') THEN 0 ELSE 1 END,scheduled_at, rowid DESC LIMIT 100").map_err(err)?;
+        let mut query = db.prepare("SELECT id,status,data,error,updated_at,raw,scheduled_at,send_kind FROM outbox ORDER BY CASE WHEN status IN ('scheduled','overdue','paused') THEN 0 ELSE 1 END,scheduled_at, rowid DESC LIMIT 100").map_err(err)?;
         let rows = query
             .query_map([], |r| {
                 Ok((
@@ -167,12 +176,14 @@ impl Store {
                     r.get::<_, String>(4)?,
                     r.get::<_, Vec<u8>>(5)?,
                     r.get::<_, String>(6)?,
+                    r.get::<_, String>(7)?,
                 ))
             })
             .map_err(err)?;
         let mut out = Vec::new();
         for row in rows {
-            let (id, status, data, error, updated_at, raw, scheduled_at) = row.map_err(err)?;
+            let (id, status, data, error, updated_at, raw, scheduled_at, send_kind) =
+                row.map_err(err)?;
             let draft: Compose = serde_json::from_str(&data).map_err(err)?;
             let hash = archive::digest(&raw);
             let exists: bool = db
@@ -195,6 +206,7 @@ impl Store {
                 updated_at,
                 archived,
                 scheduled_at,
+                send_kind,
                 server_copy,
                 server_copy_available,
             });
@@ -210,7 +222,7 @@ impl Store {
                 |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
             )
             .map_err(err)?;
-        if status != "failed" && status != "uncertain" {
+        if status != "failed" && status != "uncertain" && status != "sent" {
             return Err("这条发送记录不能重新发送".into());
         }
         if status == "uncertain" && !confirm_duplicate {

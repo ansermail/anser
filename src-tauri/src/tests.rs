@@ -370,6 +370,7 @@ fn rule(id: &str, action: &str, stop: bool) -> Rule {
             operator: "contains".into(),
             value: "invoice".into(),
         }],
+        actions: Vec::new(),
         action: action.into(),
         destination: "财务/发票".into(),
         source_folder: String::new(),
@@ -1034,6 +1035,7 @@ fn filters_stack_with_category_and_field_search_and_legacy_query_defaults() {
     let s = Store::new(dir.path().into()).unwrap();
     s.save_account(&account()).unwrap();
     s.ingest(&account(), "INBOX", "1:1", &raw(), false).unwrap();
+    assert_eq!(s.unread_total().unwrap(), 1);
     let mut m = s.snapshot(&query()).unwrap().messages.remove(0);
     m.starred = true;
     s.update_mail(&m).unwrap();
@@ -1051,6 +1053,7 @@ fn filters_stack_with_category_and_field_search_and_legacy_query_defaults() {
     assert_eq!(s.snapshot(&q).unwrap().matched, 1);
     m.is_read = true;
     s.update_mail(&m).unwrap();
+    assert_eq!(s.unread_total().unwrap(), 0);
     assert_eq!(s.snapshot(&q).unwrap().matched, 0);
     let legacy: Query = serde_json::from_str(
         r#"{"view":"local","accountId":"","search":"","folder":"","limit":200}"#,
@@ -1178,6 +1181,7 @@ fn configurable_sync_interval_and_wakeup_are_persistent_and_keep_busy_catchup_pe
     assert_eq!(s.preferences().unwrap().sync_interval_minutes, 5);
     s.save_preferences(&Preferences {
         sync_interval_minutes: 15,
+        do_not_disturb: true,
         ..Default::default()
     })
     .unwrap();
@@ -1188,6 +1192,13 @@ fn configurable_sync_interval_and_wakeup_are_persistent_and_keep_busy_catchup_pe
             .unwrap()
             .sync_interval_minutes,
         15
+    );
+    assert!(
+        Store::new(dir.path().into())
+            .unwrap()
+            .preferences()
+            .unwrap()
+            .do_not_disturb
     );
     assert!(s
         .save_preferences(&Preferences {

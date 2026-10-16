@@ -157,6 +157,7 @@ import {
   parseAddresses,
   formatAddress,
 } from "./lib/addresses";
+import { sanitizeComposeHtml } from "./lib/compose-format";
 import {
   mailPage,
   mailNeighbor,
@@ -661,6 +662,43 @@ export default function App() {
       setDraft(d);
     },
     [data.accounts, detail],
+  );
+  const reeditSent = useCallback(
+    (source: Detail) => {
+      const account = data.accounts.find(
+        (a) => a.id === source.mail.accountId && a.enabled,
+      );
+      if (!account) {
+        toast.error("原发件账号已停用或移除，请先启用账号");
+        return;
+      }
+      const draft = newDraft(account.id);
+      draft.to = (source.to || []).map(formatAddress).join(", ");
+      draft.cc = (source.cc || []).map(formatAddress).join(", ");
+      draft.subject = source.mail.subject;
+      draft.body = source.mail.body;
+      draft.signature = {
+        accountId: account.id,
+        included: false,
+        body: "",
+        html: "",
+      };
+      if (source.html && !/<img\b/i.test(source.html)) {
+        draft.format = "rich";
+        draft.html = sanitizeComposeHtml(source.html);
+      } else {
+        draft.format = "plain";
+      }
+      if (native && !isDemo() && source.attachments.length) {
+        if (!source.originalHash) {
+          toast.error("原邮件快照缺失，请重新打开邮件后再试");
+          return;
+        }
+        draft.forwardSource = { id: source.mail.id, hash: source.originalHash };
+      }
+      setDraft(draft);
+    },
+    [data.accounts],
   );
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -2704,6 +2742,16 @@ export default function App() {
                                 <span className="action-label">转发</span>
                               </Button>
                             </MailActionTooltip>
+                            {query.view === "sent" && (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => reeditSent(detail)}
+                              >
+                                <SquarePen size={15} />
+                                重新编辑
+                              </Button>
+                            )}
                             {(["copy", "move"] as const).map((kind) => (
                               <ServerDirectoryMenu
                                 key={kind}
@@ -2804,6 +2852,7 @@ export default function App() {
                         compose(source.mail, forward, all, source)
                       }
                       onEdit={setDraft}
+                      onReedit={reeditSent}
                       onSent={() => void refresh()}
                       onExport={(mail) => void exportMail(mail)}
                       onAttachment={(mail, index, name) =>
@@ -2947,6 +2996,7 @@ export default function App() {
         }}
         accounts={data.accounts}
         onSent={() => void refresh()}
+        onQueued={() => setPage("outbox")}
       />
       <Dialog
         open={moveIds.length > 0}

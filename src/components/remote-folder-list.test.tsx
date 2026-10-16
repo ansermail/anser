@@ -124,3 +124,55 @@ it("uses an existing flagged folder as the account's starred view", async () => 
   await act(async () => root.unmount());
   host.remove();
 });
+it("does not show unread badges for sent or drafts folders", async () => {
+  Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
+  const host = document.createElement("div");
+  document.body.append(host);
+  const root = createRoot(host);
+  const folders: RemoteFolder[] = [
+    {
+      accountId: "a",
+      name: "INBOX",
+      displayName: "收件箱",
+      delimiter: "/",
+      selectable: true,
+      roles: ["inbox"],
+    },
+    {
+      accountId: "a",
+      name: "Sent",
+      displayName: "已发送",
+      delimiter: "/",
+      selectable: true,
+      roles: ["sent"],
+    },
+    {
+      accountId: "a",
+      name: "Drafts",
+      displayName: "草稿",
+      delimiter: "/",
+      selectable: true,
+      roles: ["drafts"],
+    },
+  ];
+  await act(async () =>
+    root.render(
+      <RemoteFolderList
+        folders={folders}
+        selected=""
+        unread={{
+          INBOX: { direct: 2, tree: 2 },
+          Sent: { direct: 3, tree: 3 },
+          Drafts: { direct: 4, tree: 4 },
+        }}
+        onSelect={vi.fn()}
+      />,
+    ),
+  );
+  const buttons = [...host.querySelectorAll(".folder-item")];
+  expect(buttons[0].textContent).toContain("2");
+  expect(buttons[1].querySelector("em")).toBeNull();
+  expect(buttons[2].querySelector("em")).toBeNull();
+  await act(async () => root.unmount());
+  host.remove();
+});

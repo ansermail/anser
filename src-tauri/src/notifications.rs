@@ -76,11 +76,8 @@ pub fn show(app: &tauri::AppHandle, title: &str, body: &str) -> Result<()> {
 pub fn received(store: &Store, app: &tauri::AppHandle, account: &Account, after: i64) {
     #[cfg(target_os = "macos")]
     let _ = app;
-    if !store
-        .preferences()
-        .unwrap_or_default()
-        .new_mail_notifications
-    {
+    let preferences = store.preferences().unwrap_or_default();
+    if !preferences.new_mail_notifications || preferences.do_not_disturb {
         return;
     }
     if let Ok(mails) = incoming(store, account, after, chrono::Utc::now())
@@ -197,11 +194,8 @@ pub fn sent(
     if scheduled {
         let _ = app.emit("send-result", &receipt);
     }
-    if store
-        .preferences()
-        .unwrap_or_default()
-        .send_result_notifications
-    {
+    let preferences = store.preferences().unwrap_or_default();
+    if preferences.send_result_notifications && !preferences.do_not_disturb {
         if let Err(error) = show(
             app,
             &format!("雁信 · {label}"),

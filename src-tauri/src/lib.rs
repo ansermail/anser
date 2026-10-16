@@ -522,7 +522,9 @@ fn get_preferences(state: tauri::State<AppState>) -> Result<Preferences> {
 #[tauri::command]
 fn save_preferences(state: tauri::State<AppState>, preferences: Preferences) -> Result<()> {
     let mut preferences = preferences;
-    preferences.proxy = state.store.preferences()?.proxy;
+    let current = state.store.preferences()?;
+    preferences.proxy = current.proxy;
+    preferences.do_not_disturb = current.do_not_disturb;
     state.store.save_preferences(&preferences)
 }
 #[tauri::command]
@@ -711,49 +713,50 @@ fn sync_all(store: &Store, app: &tauri::AppHandle) -> Result<u32> {
         Err(format!("已保存 {count} 封；{}", errors.join("；")))
     }
 }
+fn sync_inboxes(store: &Store, app: &tauri::AppHandle) -> Result<u32> {
+    // Explicit refresh checks inboxes first. Historical folders continue
+    // through the background sweep and their individual refresh action.
+    let accounts = store
+        .accounts()?
+        .into_iter()
+        .filter(|a| a.enabled)
+        .collect::<Vec<_>>();
+    std::thread::scope(|scope| {
+        let jobs = accounts
+            .into_iter()
+            .map(|account| {
+                let store = &store;
+                let app = &app;
+                scope.spawn(move || {
+                    let email = account.email.clone();
+                    sync_inbox(store, app, account).map_err(|e| format!("{email}：{e}"))
+                })
+            })
+            .collect::<Vec<_>>();
+        let mut count = 0;
+        let mut errors = Vec::new();
+        for job in jobs {
+            match job
+                .join()
+                .unwrap_or_else(|_| Err("收取任务异常结束".into()))
+            {
+                Ok(n) => count += n,
+                Err(e) => errors.push(e),
+            }
+        }
+        if errors.is_empty() {
+            Ok(count)
+        } else {
+            Err(format!("已保存 {count} 封；{}", errors.join("；")))
+        }
+    })
+}
 #[tauri::command]
 async fn sync_mail(state: tauri::State<'_, AppState>, app: tauri::AppHandle) -> Result<u32> {
     let store = state.store.clone();
-    tauri::async_runtime::spawn_blocking(move || {
-        // Explicit refresh checks inboxes first. Historical folders continue
-        // through the background sweep and their individual refresh action.
-        let accounts = store
-            .accounts()?
-            .into_iter()
-            .filter(|a| a.enabled)
-            .collect::<Vec<_>>();
-        std::thread::scope(|scope| {
-            let jobs = accounts
-                .into_iter()
-                .map(|account| {
-                    let store = &store;
-                    let app = &app;
-                    scope.spawn(move || {
-                        let email = account.email.clone();
-                        sync_inbox(store, app, account).map_err(|e| format!("{email}：{e}"))
-                    })
-                })
-                .collect::<Vec<_>>();
-            let mut count = 0;
-            let mut errors = Vec::new();
-            for job in jobs {
-                match job
-                    .join()
-                    .unwrap_or_else(|_| Err("收取任务异常结束".into()))
-                {
-                    Ok(n) => count += n,
-                    Err(e) => errors.push(e),
-                }
-            }
-            if errors.is_empty() {
-                Ok(count)
-            } else {
-                Err(format!("已保存 {count} 封；{}", errors.join("；")))
-            }
-        })
-    })
-    .await
-    .map_err(err)?
+    tauri::async_runtime::spawn_blocking(move || sync_inboxes(&store, &app))
+        .await
+        .map_err(err)?
 }
 #[tauri::command]
 async fn save_draft(state: tauri::State<'_, AppState>, draft: Compose) -> Result<()> {
@@ -857,6 +860,20 @@ async fn schedule_mail(
 ) -> Result<()> {
     let store = state.store.clone();
     tauri::async_runtime::spawn_blocking(move || network::schedule(&store, &draft, &scheduled_at))
+        .await
+        .map_err(err)?
+}
+#[tauri::command]
+async fn queue_send(state: tauri::State<'_, AppState>, draft: Compose) -> Result<()> {
+    let store = state.store.clone();
+    tauri::async_runtime::spawn_blocking(move || network::queue_send(&store, &draft))
+        .await
+        .map_err(err)?
+}
+#[tauri::command]
+async fn send_queued_now(state: tauri::State<'_, AppState>, id: String) -> Result<()> {
+    let store = state.store.clone();
+    tauri::async_runtime::spawn_blocking(move || store.send_queued_now(&id, chrono::Utc::now()))
         .await
         .map_err(err)?
 }
@@ -1356,10 +1373,66 @@ pub fn run() {
             rule_runs::start(store.clone(), app.handle().clone());
             let menu = tauri::menu::Menu::default(app.handle())?;
             app.set_menu(menu)?;
-            tauri::tray::TrayIconBuilder::new()
+            let open_item =
+                tauri::menu::MenuItem::with_id(app, "tray-open", "打开雁信", true, None::<&str>)?;
+            let sync_item = tauri::menu::MenuItem::with_id(
+                app,
+                "tray-sync",
+                "立即检查新邮件",
+                true,
+                None::<&str>,
+            )?;
+            let quiet_item = tauri::menu::CheckMenuItem::with_id(
+                app,
+                "tray-quiet",
+                "暂停新邮件通知",
+                true,
+                store
+                    .preferences()
+                    .map_err(std::io::Error::other)?
+                    .do_not_disturb,
+                None::<&str>,
+            )?;
+            let quit_item =
+                tauri::menu::MenuItem::with_id(app, "tray-quit", "退出雁信", true, None::<&str>)?;
+            let tray_menu = tauri::menu::Menu::with_items(
+                app,
+                &[&open_item, &sync_item, &quiet_item, &quit_item],
+            )?;
+            let quiet_control = quiet_item.clone();
+            let tray = tauri::tray::TrayIconBuilder::new()
                 .tooltip("雁信 · 点击打开")
                 .icon(app.default_window_icon().unwrap().clone())
+                .menu(&tray_menu)
                 .show_menu_on_left_click(false)
+                .on_menu_event(move |app, event| match event.id().as_ref() {
+                    "tray-open" => show_main_window(app),
+                    "tray-sync" => {
+                        let store = app.state::<AppState>().store.clone();
+                        let handle = app.clone();
+                        tauri::async_runtime::spawn_blocking(move || {
+                            let result = sync_inboxes(&store, &handle);
+                            if let Err(error) = result {
+                                let _ = store.log(&format!("托盘手动检查失败：{error}"));
+                            }
+                            let _ = handle.emit("mail-updated", ());
+                        });
+                    }
+                    "tray-quiet" => {
+                        let store = app.state::<AppState>().store.clone();
+                        if let Ok(mut preferences) = store.preferences() {
+                            preferences.do_not_disturb = !preferences.do_not_disturb;
+                            if store.save_preferences(&preferences).is_ok() {
+                                let _ = quiet_control.set_checked(preferences.do_not_disturb);
+                                let _ = app.emit("mail-updated", ());
+                            } else {
+                                let _ = quiet_control.set_checked(!preferences.do_not_disturb);
+                            }
+                        }
+                    }
+                    "tray-quit" => app.exit(0),
+                    _ => {}
+                })
                 .on_tray_icon_event(|tray, event| {
                     if matches!(
                         event,
@@ -1373,6 +1446,23 @@ pub fn run() {
                     }
                 })
                 .build(app)?;
+            let tray_store = store.clone();
+            std::thread::spawn(move || loop {
+                if let Ok(unread) = tray_store.unread_total() {
+                    let count = if unread == 0 {
+                        String::new()
+                    } else {
+                        unread.to_string()
+                    };
+                    let _ = tray.set_title(if count.is_empty() {
+                        None
+                    } else {
+                        Some(count.as_str())
+                    });
+                    let _ = tray.set_tooltip(Some(format!("雁信 · {unread} 封未读 · 点击打开")));
+                }
+                std::thread::sleep(std::time::Duration::from_secs(5));
+            });
             let handle = app.handle().clone();
             let scheduled_store = store.clone();
             let scheduled_gate = send_gate.clone();
@@ -1517,6 +1607,8 @@ pub fn run() {
             read_body_images,
             send_mail,
             schedule_mail,
+            queue_send,
+            send_queued_now,
             cancel_schedule,
             reschedule_mail,
             export_mail,

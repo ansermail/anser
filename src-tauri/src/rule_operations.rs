@@ -148,8 +148,8 @@ impl Store {
     }
     pub fn retry_rule_execution(&self, id: &str) -> Result<()> {
         let (rule_id, mail_id, frozen): (String,String,String) = self.db()?.query_row("SELECT rule_id,mail_id,fingerprint FROM rule_executions WHERE id=?1 AND operation_id IS NULL AND status='blocked'",[id],|r|Ok((r.get(0)?,r.get(1)?,r.get(2)?))).map_err(|_| "此规则记录不能重试，请查看关联服务器任务")?;
-        let rule = self
-            .rules()?
+        let configured = self.rules()?;
+        let rule = rules::expand(&configured)
             .into_iter()
             .find(|r| r.id == rule_id && r.enabled)
             .ok_or("规则已删除或停用，不能重试")?;
@@ -213,6 +213,7 @@ mod tests {
                 operator: "contains".into(),
                 value: "invoice".into(),
             }],
+            actions: Vec::new(),
             action: kind.into(),
             destination: "Archive".into(),
             source_folder: "INBOX".into(),

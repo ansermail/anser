@@ -52,6 +52,26 @@ it("classifies already complete fictional mail without providing asynchronous do
     api.call("rule_run_action", { id: "test", action: "retry" }),
   ).rejects.toThrow("示例预览不执行异步规则任务");
 });
+it("applies ordered local actions in the fictional mailbox", async () => {
+  const api = await setup(makeDemo());
+  await api.call("save_rules", {
+    rules: [
+      {
+        ...rule,
+        actions: [
+          { action: "folder", destination: "项目", sourceFolder: "" },
+          { action: "read", destination: "", sourceFolder: "" },
+        ],
+      },
+    ],
+  });
+  const before = await api.snapshot(query);
+  expect(await api.call<number>("run_rules")).toBe(before.messages.length * 2);
+  const after = await api.snapshot(query);
+  expect(
+    after.messages.every((mail) => mail.localFolder === "项目" && mail.isRead),
+  ).toBe(true);
+});
 it("unknown preview does not claim a negative body match and failed download leaves all data unchanged", async () => {
   const data = makeDemo();
   data.messages[data.messages.length - 1].savedLocally = false;

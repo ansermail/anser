@@ -24,7 +24,8 @@ export function ruleMatchState(
   let unknown = false;
   for (const condition of rule.conditions) {
     if (
-      (condition.field === "body" && !bodyAvailable) ||
+      ((condition.field === "body" || condition.field === "sizeKb") &&
+        !bodyAvailable) ||
       (condition.field === "attachment" &&
         !bodyAvailable &&
         !mail.attachmentMetadataKnown &&
@@ -36,7 +37,18 @@ export function ruleMatchState(
     let matched: boolean;
     if (condition.field === "attachment")
       matched = mail.hasAttachments === (condition.value !== "false");
-    else {
+    else if (condition.field === "sizeKb") {
+      const kb = Number(condition.value);
+      const bytes = kb * 1024;
+      matched =
+        Number.isSafeInteger(bytes) &&
+        bytes >= 0 &&
+        (condition.operator === "greaterThan"
+          ? mail.size > bytes
+          : condition.operator === "lessThan"
+            ? mail.size < bytes
+            : condition.operator === "equals" && mail.size === bytes);
+    } else {
       const values: Record<string, string> = {
         sender: mail.sender,
         recipients: mail.recipients,
@@ -55,6 +67,12 @@ export function ruleMatchState(
           break;
         case "equals":
           matched = text === value;
+          break;
+        case "startsWith":
+          matched = text.startsWith(value);
+          break;
+        case "endsWith":
+          matched = text.endsWith(value);
           break;
         case "before":
           matched = text.slice(0, 10) < value;

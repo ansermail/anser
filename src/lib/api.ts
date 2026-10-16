@@ -195,6 +195,8 @@ export async function call<T = void>(
       "connect_account",
       "edit_account",
       "send_mail",
+      "queue_send",
+      "send_queued_now",
       "schedule_mail",
       "set_auto_start",
       "test_notification",
@@ -433,8 +435,11 @@ export async function call<T = void>(
           const state = ruleMatchState(rule, mail);
           if (
             state === "noMatch" ||
-            (["serverCopy", "serverMove"].includes(rule.action) &&
-              mail.sourceFolder !== rule.sourceFolder)
+            (rule.actions?.length ? rule.actions : [rule]).some(
+              (step) =>
+                ["serverCopy", "serverMove"].includes(step.action) &&
+                mail.sourceFolder !== step.sourceFolder,
+            )
           )
             return [];
           return [
@@ -448,7 +453,11 @@ export async function call<T = void>(
       case "run_rules": {
         if (
           demo.rules.some(
-            (r) => r.enabled && ["serverCopy", "serverMove"].includes(r.action),
+            (r) =>
+              r.enabled &&
+              (r.actions?.length ? r.actions : [r]).some((step) =>
+                ["serverCopy", "serverMove"].includes(step.action),
+              ),
           )
         )
           throw new Error("演示模式不执行服务器规则，请在真实桌面预览中测试");
@@ -462,32 +471,37 @@ export async function call<T = void>(
                 "示例预览不下载在线正文或附件，未知内容需在桌面客户端核对",
               );
             if (state !== "match") continue;
+            const steps = rule.actions?.length ? rule.actions : [rule];
             if (
-              ["save", "saveFolder"].includes(rule.action) &&
+              steps.some((step) =>
+                ["save", "saveFolder"].includes(step.action),
+              ) &&
               mail.savedLocally === false
             )
               throw new Error(
                 "示例仅对已有完整邮件演示保存与归类，不提供实际下载",
               );
-            switch (rule.action) {
-              case "folder":
-              case "saveFolder":
-                mail.localFolder = rule.destination;
-                break;
-              case "read":
-                mail.isRead = true;
-                break;
-              case "unread":
-                mail.isRead = false;
-                break;
-              case "star":
-                mail.starred = true;
-                break;
-              case "trash":
-                mail.trashed = true;
-                break;
+            for (const step of steps) {
+              switch (step.action) {
+                case "folder":
+                case "saveFolder":
+                  mail.localFolder = step.destination;
+                  break;
+                case "read":
+                  mail.isRead = true;
+                  break;
+                case "unread":
+                  mail.isRead = false;
+                  break;
+                case "star":
+                  mail.starred = true;
+                  break;
+                case "trash":
+                  mail.trashed = true;
+                  break;
+              }
+              count++;
             }
-            count++;
             if (rule.stop) break;
           }
         }
@@ -631,11 +645,16 @@ export async function call<T = void>(
       case "list_outbox":
         result = JSON.parse(demoStorage.getItem(key + "-outbox") || "[]");
         break;
+      case "queue_send":
       case "schedule_mail": {
         const draft = args.draft as Compose;
+        const scheduledAt =
+          command === "queue_send"
+            ? new Date(Date.now() + 8000).toISOString()
+            : (args.scheduledAt as string);
         if (
-          new Date(args.scheduledAt as string).getTime() <= Date.now() ||
-          !Number.isFinite(new Date(args.scheduledAt as string).getTime())
+          new Date(scheduledAt).getTime() <= Date.now() ||
+          !Number.isFinite(new Date(scheduledAt).getTime())
         )
           throw new Error("请选择未来的发送时间");
         const records = JSON.parse(
@@ -647,7 +666,8 @@ export async function call<T = void>(
           id: draft.id,
           draft,
           status: "scheduled",
-          scheduledAt: args.scheduledAt as string,
+          scheduledAt,
+          sendKind: command === "queue_send" ? "undo" : "scheduled",
           updatedAt: new Date().toISOString(),
           archived: false,
           error: "",
@@ -660,6 +680,22 @@ export async function call<T = void>(
           key + "-drafts",
           JSON.stringify(drafts.filter((d) => d.id !== draft.id)),
         );
+        break;
+      }
+      case "send_queued_now": {
+        const records = JSON.parse(
+          demoStorage.getItem(key + "-outbox") || "[]",
+        ) as OutboxRecord[];
+        const record = records.find(
+          (r) =>
+            r.id === args.id &&
+            r.status === "scheduled" &&
+            r.sendKind === "undo",
+        );
+        if (!record) throw new Error("撤回期限已结束或发送正在处理");
+        record.scheduledAt = new Date().toISOString();
+        record.updatedAt = record.scheduledAt;
+        demoStorage.setItem(key + "-outbox", JSON.stringify(records));
         break;
       }
       case "reschedule_mail":

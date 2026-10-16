@@ -167,6 +167,9 @@ function FolderBranch({
     : hasChildren
       ? unreadCount?.tree
       : unreadCount?.direct;
+  const showUnread = !node.folder?.roles?.some(
+    (role) => role === "sent" || role === "drafts",
+  );
   const active = flagged
     ? starredSelected
     : node.path === selected && hasChildren === selectedTree;
@@ -211,7 +214,9 @@ function FolderBranch({
           >
             <Icon data-icon="inline-start" />
             <span>{node.label}</span>
-            {!!count && <em aria-label={`未读 ${count} 封`}>{count}</em>}
+            {showUnread && !!count && (
+              <em aria-label={`未读 ${count} 封`}>{count}</em>
+            )}
             {syncError && (
               <AlertCircle
                 className="text-destructive"

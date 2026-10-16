@@ -1485,6 +1485,11 @@ pub fn schedule(store: &Store, c: &Compose, at: &str) -> Result<()> {
     let message = build_prepared_message(store, &a, c)?;
     store.schedule_mail(c, &message.formatted(), at, chrono::Utc::now())
 }
+pub fn queue_send(store: &Store, c: &Compose) -> Result<()> {
+    let a = store.account(&c.account_id)?;
+    let message = build_prepared_message(store, &a, c)?;
+    store.queue_send(c, &message.formatted(), chrono::Utc::now())
+}
 
 // MIME and attachments are frozen at scheduling time, independent of source files.
 pub(crate) fn deliver_scheduled(

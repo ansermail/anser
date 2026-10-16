@@ -62,7 +62,7 @@ afterEach(async () => {
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
 });
-async function render() {
+async function render(expand = true) {
   await act(async () =>
     root.render(
       <SidebarProvider>
@@ -70,6 +70,15 @@ async function render() {
       </SidebarProvider>,
     ),
   );
+  if (expand) {
+    for (const trigger of [
+      ...host.querySelectorAll<HTMLButtonElement>(
+        '[data-slot="collapsible-trigger"]',
+      ),
+    ]) {
+      await act(async () => trigger.click());
+    }
+  }
 }
 function card(id: string) {
   return [...host.querySelectorAll("article")].find(
@@ -113,7 +122,8 @@ it("queues legacy accepted records explicitly and retries only pre-submission fa
     id: "blocked",
     action: "retry",
   });
-  expect(card("preparing").querySelectorAll("button")).toHaveLength(0);
+  expect(card("preparing").textContent).not.toContain("重试保存副本");
+  expect(card("preparing").textContent).toContain("重新编辑此邮件");
 });
 it("offers read-only verification for a rejected bound copy and never resends SMTP", async () => {
   records.push({
@@ -148,4 +158,39 @@ it("offers read-only verification for a rejected bound copy and never resends SM
         ([cmd]) => cmd === "send_mail" || cmd === "retry_outbox",
       ),
   ).toBe(false);
+});
+it("shows a cancelable send countdown and submits immediate send through the queued record", async () => {
+  records = [
+    {
+      ...records[0],
+      id: "undo-send",
+      status: "scheduled",
+      sendKind: "undo",
+      scheduledAt: new Date(Date.now() + 8000).toISOString(),
+      draft: { ...records[0].draft, subject: "undo-send" },
+      serverCopy: undefined,
+    },
+  ];
+  await render(false);
+  expect(card("undo-send").textContent).toContain("等待发送");
+  expect(
+    card("undo-send").querySelector('[aria-label="发送等待进度"]'),
+  ).not.toBeNull();
+  expect(card("undo-send").textContent).not.toContain("修改时间");
+  await press("undo-send", "立即发送");
+  expect(api.call).toHaveBeenCalledWith("send_queued_now", { id: "undo-send" });
+  expect(
+    vi.mocked(api.call).mock.calls.some(([command]) => command === "send_mail"),
+  ).toBe(false);
+});
+it("keeps completed records compact until details are opened", async () => {
+  await render(false);
+  expect(card("completed").textContent).toContain("completed");
+  expect(card("completed").textContent).not.toContain("服务器已发送副本已核对");
+  await act(async () =>
+    card("completed")
+      .querySelector<HTMLButtonElement>('[data-slot="collapsible-trigger"]')!
+      .click(),
+  );
+  expect(card("completed").textContent).toContain("服务器已发送副本已核对");
 });

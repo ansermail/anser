@@ -84,10 +84,16 @@ export interface Rule {
   enabled: boolean;
   mode: "all" | "any";
   conditions: Condition[];
+  actions?: RuleAction[];
   action: string;
   destination: string;
   sourceFolder?: string;
   stop: boolean;
+}
+export interface RuleAction {
+  action: string;
+  destination: string;
+  sourceFolder: string;
 }
 export interface Query {
   view: string;
@@ -225,6 +231,7 @@ export interface OutboxRecord {
   updatedAt: string;
   archived: boolean;
   scheduledAt?: string;
+  sendKind?: "scheduled" | "undo";
   serverCopyAvailable?: boolean;
   serverCopy?: {
     targetLabel?: string;
@@ -240,6 +247,7 @@ export interface Preferences {
   syncIntervalMinutes: number;
   newMailNotifications?: boolean;
   sendResultNotifications?: boolean;
+  doNotDisturb?: boolean;
   proxy?: NetworkProxy | null;
 }
 export interface NetworkProxy {

@@ -89,6 +89,34 @@ it("does not treat an online or undecodable body as an empty matching body", () 
     ),
   ).toBe(true);
 });
+it("compares text boundaries and waits for a full size", () => {
+  const boundary = {
+    ...rule,
+    conditions: [{ field: "subject", operator: "startsWith", value: "项目" }],
+  };
+  expect(ruleMatches(boundary, mail)).toBe(true);
+  expect(
+    ruleMatches(
+      {
+        ...boundary,
+        conditions: [
+          { field: "subject", operator: "endsWith", value: "INVOICE" },
+        ],
+      },
+      mail,
+    ),
+  ).toBe(true);
+  const size = {
+    ...rule,
+    conditions: [{ field: "sizeKb", operator: "greaterThan", value: "1" }],
+  };
+  expect(
+    ruleMatchState(size, { ...mail, size: 2000, savedLocally: false }),
+  ).toBe("needsBody");
+  expect(
+    ruleMatchState(size, { ...mail, size: 2000, savedLocally: true }),
+  ).toBe("match");
+});
 
 it("keeps unknown attachment metadata distinct from a known empty attachment list", () => {
   const online = { ...mail, savedLocally: false, hasAttachments: false };

@@ -485,6 +485,7 @@ mod tests {
                     operator: "contains".into(),
                     value: "invoice".into(),
                 }],
+                actions: Vec::new(),
                 action: "serverCopy".into(),
                 source_folder: "INBOX".into(),
                 destination: "Archive".into(),

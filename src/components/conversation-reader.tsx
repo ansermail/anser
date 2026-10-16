@@ -63,6 +63,7 @@ function Turn({
   own,
   demo,
   onReply,
+  onReedit,
   onExport,
   onAttachment,
   onAction,
@@ -75,6 +76,7 @@ function Turn({
   own: boolean;
   demo: boolean;
   onReply: (detail: Detail, forward?: boolean, all?: boolean) => void;
+  onReedit: (detail: Detail) => void;
   onExport: (mail: Mail) => void;
   onAttachment: (mail: Mail, index: number, name: string) => Promise<void>;
   onAction: (mail: Mail, action: string, value: string) => void;
@@ -162,6 +164,15 @@ function Turn({
                 <Send size={14} />
                 转发
               </DropdownMenuItem>
+              {own && (
+                <DropdownMenuItem
+                  disabled={!detail}
+                  onClick={() => detail && onReedit(detail)}
+                >
+                  <SquarePen size={14} />
+                  重新编辑为新邮件
+                </DropdownMenuItem>
+              )}
               <DropdownMenuSeparator />
               {mail.savedLocally === false && (
                 <DropdownMenuItem onClick={() => onAction(mail, "save", "")}>
@@ -266,7 +277,6 @@ function QuickReply({
   const [saveError, setSaveError] = useState(false);
   const [ready, setReady] = useState(false);
   const [sending, setSending] = useState(false);
-  const [countdown, setCountdown] = useState<number | null>(null);
   const persisted = useRef(false);
   const latest = useRef(draft);
   latest.current = draft;
@@ -352,7 +362,7 @@ function QuickReply({
     setSending(true);
     try {
       await call("save_draft", { draft });
-      const result = await call<string>("send_mail", { draft });
+      await call("queue_send", { draft });
       // A new draft ID prevents a subsequent reply reusing a completed send.
       latest.current = null;
       persisted.current = false;
@@ -365,7 +375,7 @@ function QuickReply({
         cc: draft.cc,
         subject: draft.subject,
       });
-      toast.success(result);
+      toast.success("已加入待发队列，8 秒内可在待发页取消发送");
       onSent();
     } catch (e) {
       toast.error(String(e), { duration: 10000 });
@@ -373,19 +383,6 @@ function QuickReply({
       setSending(false);
     }
   }
-  useEffect(() => {
-    if (countdown === null) return;
-    if (countdown === 0) {
-      setCountdown(null);
-      void send();
-      return;
-    }
-    const timer = setTimeout(
-      () => setCountdown((n) => (n === null ? n : n - 1)),
-      1000,
-    );
-    return () => clearTimeout(timer);
-  }, [countdown]);
   const complex =
     !!draft &&
     (!!draft.html ||
@@ -424,7 +421,7 @@ function QuickReply({
             <Button
               variant="ghost"
               size="sm"
-              disabled={!ready || sending || countdown !== null}
+              disabled={!ready || sending}
               onClick={() => {
                 if (draft) {
                   latest.current = null;
@@ -440,7 +437,7 @@ function QuickReply({
             aria-label="对话回复正文"
             placeholder="写下回复…"
             value={draft?.body || ""}
-            disabled={!ready || sending || countdown !== null}
+            disabled={!ready || sending}
             onChange={(e) => {
               persisted.current = true;
               setDraft((d) =>
@@ -459,25 +456,23 @@ function QuickReply({
             <span>
               {sending
                 ? "正在发送…"
-                : countdown !== null
-                  ? `${countdown} 秒后发送`
-                  : saving
-                    ? "正在保存草稿…"
-                    : saveError
-                      ? "草稿保存失败"
-                      : draft?.body.trim()
-                        ? "草稿已保存"
-                        : "以邮件发送"}
+                : saving
+                  ? "正在保存草稿…"
+                  : saveError
+                    ? "草稿保存失败"
+                    : draft?.body.trim()
+                      ? "草稿已保存"
+                      : "以邮件发送"}
             </span>
             <Button
               size="sm"
               disabled={
                 !ready || !draft?.body.trim() || !draft.to.trim() || sending
               }
-              onClick={() => setCountdown(countdown === null ? 8 : null)}
+              onClick={() => void send()}
             >
               <Send size={14} />
-              {countdown === null ? "发送回复" : `取消发送（${countdown}秒）`}
+              发送回复
             </Button>
           </div>
         </>
@@ -498,6 +493,7 @@ export function ConversationReader({
   translationActions,
   editorOpen,
   onReply,
+  onReedit,
   onEdit,
   onSent,
   onExport,
@@ -514,6 +510,7 @@ export function ConversationReader({
   scrollRef: RefObject<HTMLDivElement | null>;
   translationActions: HTMLElement | null;
   onReply: (detail: Detail, forward?: boolean, all?: boolean) => void;
+  onReedit: (detail: Detail) => void;
   onEdit: (draft: Compose) => void;
   onSent: () => void;
   onExport: (mail: Mail) => void;
@@ -672,6 +669,7 @@ export function ConversationReader({
               own={own(mail)}
               demo={demo}
               onReply={onReply}
+              onReedit={onReedit}
               onExport={onExport}
               onAttachment={onAttachment}
               onAction={onAction}

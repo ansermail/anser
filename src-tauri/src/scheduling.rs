@@ -27,6 +27,76 @@ mod tests {
         )
     }
     #[test]
+    fn undo_send_is_durable_cancelable_and_can_be_sent_early_once() {
+        let (dir, store, now) = setup();
+        let draft = draft();
+        let raw = network::build_message(&account(), &draft)
+            .unwrap()
+            .formatted();
+        store.save_draft(&draft).unwrap();
+        store.queue_send(&draft, &raw, now).unwrap();
+        assert!(store.drafts().unwrap().is_empty());
+        let restarted = Store::new(dir.path().into()).unwrap();
+        let queued = &restarted.outbox().unwrap()[0];
+        assert_eq!(queued.status, "scheduled");
+        assert_eq!(queued.send_kind, "undo");
+        assert!(restarted.claim_scheduled(now).unwrap().is_none());
+        assert!(restarted
+            .reschedule_mail(
+                &draft.id,
+                &(now + chrono::Duration::hours(1)).to_rfc3339(),
+                now
+            )
+            .is_err());
+        let restored = restarted.cancel_schedule(&draft.id).unwrap();
+        assert_ne!(restored.id, draft.id);
+        assert!(restarted.send_queued_now(&draft.id, now).is_err());
+        assert!(restarted
+            .claim_scheduled(now + chrono::Duration::seconds(10))
+            .unwrap()
+            .is_none());
+
+        let mut second = draft.clone();
+        second.id = uuid::Uuid::new_v4().to_string();
+        restarted.queue_send(&second, &raw, now).unwrap();
+        restarted.send_queued_now(&second.id, now).unwrap();
+        let claimed = restarted.claim_scheduled(now).unwrap().unwrap();
+        assert_eq!(claimed.draft.id, second.id);
+        assert!(restarted.claim_scheduled(now).unwrap().is_none());
+        assert!(restarted.cancel_schedule(&second.id).is_err());
+        assert!(restarted.send_queued_now(&second.id, now).is_err());
+    }
+    #[test]
+    fn sent_record_reedit_creates_an_independent_draft_with_frozen_attachments() {
+        let (dir, store, now) = setup();
+        let mut original = draft();
+        let source = dir.path().join("old-report.txt");
+        std::fs::write(&source, b"original attachment").unwrap();
+        original.attachments.push(source.to_string_lossy().into());
+        let raw = network::build_message(&account(), &original)
+            .unwrap()
+            .formatted();
+        store.queue_send(&original, &raw, now).unwrap();
+        store
+            .db()
+            .unwrap()
+            .execute(
+                "UPDATE outbox SET status='sent' WHERE id=?1",
+                [&original.id],
+            )
+            .unwrap();
+        std::fs::remove_file(source).unwrap();
+        let edited = store.outbox_draft(&original.id, false).unwrap();
+        assert_ne!(edited.id, original.id);
+        assert_eq!(edited.subject, original.subject);
+        assert_eq!(
+            store.forward_payloads(&edited).unwrap()[0].bytes,
+            b"original attachment"
+        );
+        assert_eq!(store.outbox().unwrap()[0].status, "sent");
+        assert_eq!(store.drafts().unwrap()[0].id, edited.id);
+    }
+    #[test]
     fn scheduled_send_survives_restart_and_source_attachment_removal() {
         let (dir, s, now) = setup();
         let mut d = draft();
@@ -246,6 +316,20 @@ impl Store {
         at: &str,
         now: DateTime<Utc>,
     ) -> Result<()> {
+        self.schedule_mail_kind(draft, raw, at, now, "scheduled")
+    }
+    pub fn queue_send(&self, draft: &Compose, raw: &[u8], now: DateTime<Utc>) -> Result<()> {
+        let at = (now + chrono::Duration::seconds(8)).to_rfc3339();
+        self.schedule_mail_kind(draft, raw, &at, now, "undo")
+    }
+    fn schedule_mail_kind(
+        &self,
+        draft: &Compose,
+        raw: &[u8],
+        at: &str,
+        now: DateTime<Utc>,
+        kind: &str,
+    ) -> Result<()> {
         let at = timestamp(at, now)?;
         let account = self.account(&draft.account_id)?;
         if !account.enabled {
@@ -266,7 +350,7 @@ impl Store {
         if exists {
             return Err("这封邮件已有发送记录，请先检查发送记录".into());
         }
-        tx.execute("INSERT INTO outbox(id,status,data,raw,error,updated_at,scheduled_at,raw_hash) VALUES(?1,'scheduled',?2,?3,'',?4,?5,?6)", params![draft.id,serde_json::to_string(draft).map_err(err)?,raw,now.to_rfc3339(),at,archive::digest(raw)]).map_err(err)?;
+        tx.execute("INSERT INTO outbox(id,status,data,raw,error,updated_at,scheduled_at,raw_hash,send_kind) VALUES(?1,'scheduled',?2,?3,'',?4,?5,?6,?7)", params![draft.id,serde_json::to_string(draft).map_err(err)?,raw,now.to_rfc3339(),at,archive::digest(raw),kind]).map_err(err)?;
         tx.execute("DELETE FROM drafts WHERE id=?1", [&draft.id])
             .map_err(err)?;
         tx.commit().map_err(err)
@@ -330,9 +414,19 @@ impl Store {
         if !self.account(&draft.account_id)?.enabled {
             return Err("此账号已暂停，请先启用".into());
         }
-        let count = db.execute("UPDATE outbox SET status='scheduled',scheduled_at=?2,error='',updated_at=?3 WHERE id=?1 AND status IN ('scheduled','overdue','paused')",params![id,at,now.to_rfc3339()]).map_err(err)?;
+        let count = db.execute("UPDATE outbox SET status='scheduled',scheduled_at=?2,error='',updated_at=?3 WHERE id=?1 AND status IN ('scheduled','overdue','paused') AND send_kind='scheduled'",params![id,at,now.to_rfc3339()]).map_err(err)?;
         if count != 1 {
             return Err("邮件已进入发送阶段或此计划不可修改".into());
+        }
+        Ok(())
+    }
+    pub fn send_queued_now(&self, id: &str, now: DateTime<Utc>) -> Result<()> {
+        let count = self.db()?.execute(
+            "UPDATE outbox SET scheduled_at=?2,updated_at=?2 WHERE id=?1 AND status='scheduled' AND send_kind='undo'",
+            params![id, now.to_rfc3339_opts(SecondsFormat::Secs, true)],
+        ).map_err(err)?;
+        if count != 1 {
+            return Err("邮件已进入发送阶段，无法再次提交".into());
         }
         Ok(())
     }

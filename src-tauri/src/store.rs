@@ -55,6 +55,7 @@ impl Store {
             ("updated_at", "TEXT NOT NULL DEFAULT ''"),
             ("scheduled_at", "TEXT NOT NULL DEFAULT ''"),
             ("raw_hash", "TEXT NOT NULL DEFAULT ''"),
+            ("send_kind", "TEXT NOT NULL DEFAULT 'scheduled'"),
         ] {
             let exists = db
                 .prepare("PRAGMA table_info(outbox)")
@@ -483,7 +484,11 @@ impl Store {
     }
     fn apply_rules_inner(&self, id: &str, remote_only: bool) -> Result<u32> {
         let configured = self.rules()?;
-        if remote_only && !configured.iter().any(|r| r.enabled && rules::remote(r)) {
+        if remote_only
+            && !rules::expand(&configured)
+                .iter()
+                .any(|r| r.enabled && rules::remote(r))
+        {
             return Ok(0);
         }
         self.apply_configured_rules(self.mail(id)?, &configured, remote_only)
@@ -494,6 +499,8 @@ impl Store {
         configured: &[Rule],
         remote_only: bool,
     ) -> Result<u32> {
+        let expanded = rules::expand(configured);
+        let configured = expanded.as_slice();
         if Self::rule_blocks_move(&self.db()?, &m.id)? {
             return Ok(0);
         }
@@ -638,9 +645,13 @@ impl Store {
                 let full = self.mail(&m.id)?;
                 state = rules::match_state(&rule, &full, rules::body_available(&full));
             }
-            if state != rules::MatchState::NoMatch
-                && (!rules::remote(&rule) || self.rule_has_source(&rule, &m)?)
-            {
+            let available = rules::expand(std::slice::from_ref(&rule)).iter().try_fold(
+                false,
+                |found, step| -> Result<bool> {
+                    Ok(found || !rules::remote(step) || self.rule_has_source(step, &m)?)
+                },
+            )?;
+            if state != rules::MatchState::NoMatch && available {
                 matches.push(if state == rules::MatchState::NeedsBody {
                     format!("{}（等待正文核对）", m.subject)
                 } else {

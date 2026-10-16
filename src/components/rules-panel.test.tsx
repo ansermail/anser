@@ -235,3 +235,57 @@ it("offers complete save without a folder and save-and-classify with a local des
   });
   expect(api.call).not.toHaveBeenCalledWith("run_rules");
 });
+it("saves move and mark-read as ordered steps in one rule", async () => {
+  await render();
+  await click("新建规则");
+  await select("规则执行动作", "移动到服务器文件夹");
+  await select("规则适用账号", account.email);
+  await select("规则来源文件夹", "收件箱");
+  await select("规则目标文件夹", "归档");
+  await click("添加动作");
+  await select("规则执行动作 2", "标记为已读");
+  await act(async () =>
+    document
+      .querySelector("form")!
+      .dispatchEvent(new Event("submit", { bubbles: true, cancelable: true })),
+  );
+  expect(api.call).toHaveBeenCalledWith("save_rules", {
+    rules: [
+      expect.objectContaining({
+        actions: [
+          expect.objectContaining({
+            action: "serverMove",
+            sourceFolder: "INBOX",
+            destination: "Archive",
+          }),
+          expect.objectContaining({ action: "read" }),
+        ],
+      }),
+    ],
+  });
+});
+it("offers size and boundary text comparisons in rule preview", async () => {
+  await render();
+  await click("新建规则");
+  await select("条件比较", "以此结尾");
+  await click("预览匹配，不执行动作");
+  expect(api.call).toHaveBeenLastCalledWith("preview_rule", {
+    rule: expect.objectContaining({
+      conditions: [
+        expect.objectContaining({ field: "subject", operator: "endsWith" }),
+      ],
+    }),
+  });
+  await select("条件字段", "邮件大小（KB）");
+  expect(
+    (document.querySelector('[aria-label="条件值"]') as HTMLInputElement).type,
+  ).toBe("number");
+  await click("预览匹配，不执行动作");
+  expect(api.call).toHaveBeenLastCalledWith("preview_rule", {
+    rule: expect.objectContaining({
+      conditions: [
+        expect.objectContaining({ field: "sizeKb", operator: "greaterThan" }),
+      ],
+    }),
+  });
+});

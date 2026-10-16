@@ -51,7 +51,7 @@ pub fn initialize(db: &rusqlite::Connection) -> Result<()> {
     UPDATE rule_runs SET status='queued',revision=revision+1,error='应用退出后继续规则处理' WHERE status='running';").map_err(err)
 }
 pub(crate) fn configuration(rs: &[Rule]) -> Result<String> {
-    let mut rs = rs.to_vec();
+    let mut rs = rules::expand(rs);
     for rule in &mut rs {
         rule.name.clear();
     }
@@ -411,6 +411,7 @@ impl Store {
                 let mut evaluation = m.clone();
                 evaluation.body = parsed.body.clone();
                 evaluation.has_attachments = parsed.has_attachments;
+                evaluation.size = parsed.size;
                 if rules::body_decode_failed(&parsed)
                     && rules::match_state(rule, &m, false) == rules::MatchState::NeedsBody
                 {
@@ -451,6 +452,7 @@ impl Store {
             let mut evaluation = m.clone();
             evaluation.body = parsed.body.clone();
             evaluation.has_attachments = parsed.has_attachments;
+            evaluation.size = parsed.size;
             if r.conditions.iter().any(|c| c.field == "body")
                 && rules::match_state(&r, &m, false) == rules::MatchState::NeedsBody
                 && rules::body_decode_failed(&parsed)
@@ -641,6 +643,7 @@ mod tests {
                 operator: "contains".into(),
                 value: "invoice".into(),
             }],
+            actions: Vec::new(),
             action: action.into(),
             destination: if matches!(action, "saveFolder" | "folder") {
                 "Invoices".into()
@@ -654,6 +657,60 @@ mod tests {
     fn pending(store: &Store) -> RuleRun {
         let id = store.rule_runs().unwrap()[0].id.clone();
         store.rule_run(&id).unwrap()
+    }
+    #[test]
+    fn one_rule_applies_ordered_local_actions_and_stops_after_its_last_step() {
+        let (_root, store, account, id, _raw) = fixture();
+        let mut combined = rule(&account, "folder");
+        combined.actions = vec![
+            RuleAction {
+                action: "folder".into(),
+                destination: "Invoices".into(),
+                source_folder: String::new(),
+            },
+            RuleAction {
+                action: "read".into(),
+                destination: String::new(),
+                source_folder: String::new(),
+            },
+        ];
+        combined.stop = true;
+        store
+            .save_rules(&[combined.clone(), rule(&account, "star")])
+            .unwrap();
+        assert_eq!(store.run_rules().unwrap(), 2);
+        let mail = store.mail(&id).unwrap();
+        assert_eq!(mail.local_folder, "Invoices");
+        assert!(mail.is_read);
+        assert_eq!(mail.local_read_override, Some(true));
+        assert!(!mail.starred);
+        assert_eq!(store.rules().unwrap()[0].actions.len(), 2);
+        assert_eq!(rules::expand(&[combined])[1].action, "read");
+    }
+    #[test]
+    fn remote_move_and_read_in_one_rule_keep_one_remote_operation() {
+        let (_root, store, account, id, _raw) = fixture();
+        target(&store, &account);
+        let mut combined = remote_rule(&account, "serverMove");
+        combined.actions = vec![
+            RuleAction {
+                action: "serverMove".into(),
+                destination: "Archive".into(),
+                source_folder: "INBOX".into(),
+            },
+            RuleAction {
+                action: "read".into(),
+                destination: String::new(),
+                source_folder: String::new(),
+            },
+        ];
+        store.save_rules(&[combined]).unwrap();
+        assert_eq!(store.run_rules().unwrap(), 2);
+        assert!(store.mail(&id).unwrap().is_read);
+        assert_eq!(store.rule_executions().unwrap().len(), 1);
+        assert_eq!(store.directory_operations().unwrap().len(), 1);
+        store.run_rules().unwrap();
+        assert_eq!(store.directory_operations().unwrap().len(), 1);
     }
     #[test]
     fn online_body_negative_condition_is_unknown_not_a_match_and_known_headers_short_circuit() {
