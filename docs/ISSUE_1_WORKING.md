@@ -12,6 +12,7 @@
 - `scheduling.rs` / `store.rs` / `lib.rs`：完整写信和对话简短回复点击发送即持久入队，八秒内可在待发页取消并重新编辑或立即发送，调度领取后不能撤回。`send_kind` 区分撤回窗口与指定时间计划。待发页默认收起详情；已发送待发记录可复制为新草稿。已发件阅读页可从旧邮件创建新草稿，原邮件保留；旧 MIME 无法恢复密送地址，内嵌图片旧正文改以纯文本编辑。
 - `rules.rs` / `rule_runs.rs` / `rule_operations.rs` / RulesPanel：一条规则最多八个顺序动作，兼容旧单动作配置；文字以此开头/结尾，完整 MIME 大小条件（整数 KB）与未知大小的按需读取。前端演示匹配和执行同步。
 - 托盘增加打开、手动检查、暂停桌面通知、退出；本机未读数每 5 秒刷新。通知前核对持久免打扰偏好。
+- 2026-10-16 Dock 未读角标：macOS 主窗口用 Tauri `set_badge_count` 同步托盘所用的本机未读统计，零未读清除角标；不改动原件、账号或通知权限。
 - 已发送/草稿服务器目录不显示未读徽标；全局草稿箱卡片改紧凑布局。
 
 ## 实际验证
@@ -22,6 +23,7 @@
 - `npm run format:check`、`cargo fmt --manifest-path src-tauri/Cargo.toml -- --check`、`git diff --check`：通过。
 - 已经用户同意正常退出 `/Applications/雁信.app`，随后用 `npm run desktop` 的稳定签名启动原生开发预览；Tauri 输出 `Running` 后核对新 PID 的父进程为本次 Tauri CLI。原生窗口内发送记录显示紧凑行和默认收起的详情；规则弹窗中邮件大小（KB）可见，增加第二动作后顺序、上下移动控件正常绘制。草稿箱当前为空，卡片密度未能实际观察。系统托盘菜单未能通过当前 UI 自动化读取，未记作原生通过。
 - 真实邮件收发、托盘菜单与通知的实际系统行为：未验证。云端 Actions / Release：未运行。
+- Dock 角标改动：macOS 开发目标编译通过；现有未读统计专项 `filters_stack_with_category_and_field_search_and_legacy_query_defaults` 通过（1→0）。当前 UI 自动化无法访问 Dock/SystemUIServer，红色角标的实际绘制和动态刷新尚未目视验收。
 
 ## 接续步骤
 

@@ -1447,6 +1447,8 @@ pub fn run() {
                 })
                 .build(app)?;
             let tray_store = store.clone();
+            #[cfg(target_os = "macos")]
+            let badge_app = app.handle().clone();
             std::thread::spawn(move || loop {
                 if let Ok(unread) = tray_store.unread_total() {
                     let count = if unread == 0 {
@@ -1460,6 +1462,11 @@ pub fn run() {
                         Some(count.as_str())
                     });
                     let _ = tray.set_tooltip(Some(format!("雁信 · {unread} 封未读 · 点击打开")));
+                    #[cfg(target_os = "macos")]
+                    if let Some(window) = badge_app.get_webview_window("main") {
+                        let badge = (unread > 0).then(|| unread.min(i64::MAX as u64) as i64);
+                        let _ = window.set_badge_count(badge);
+                    }
                 }
                 std::thread::sleep(std::time::Duration::from_secs(5));
             });
