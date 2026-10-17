@@ -4,7 +4,7 @@
 
 ## 当前未完成事项总览（2026-10-17 核对）
 
-**当前开发检查点：规则已读/星标状态条件与首次匹配快照（草稿 PR / 未发布）**。分支 `codex/issue-1-improvements`。规则条件新增“已读状态”“星标状态”（`equals` + `true`/`false`，界面用 shadcn Select 显示已读/未读、有星标/无星标），规则条件的邮件日期改为 shadcn `Calendar` + `Popover`。`Store::apply_configured_rules` 在展开动作前记录 `ObservedStatus`，所有步骤按首次命中状态判断，正文/大小/附件仍取当前解析结果，因此“未读 → 标记已读 → 归类”完整执行；持久规则任务把同一快照写入 `RuleRun.observed`，旧任务缺少该字段时退回当前状态，用户手动改过的字段继续走既有意图保护。完整 Rust 382 通过/3 既有条件忽略，前端 378 通过（55 文件），UI/格式/Rust 格式/生产构建/diff 检查通过；原生开发预览确认两个状态条件、布尔值下拉、日历弹层（含年月下拉、选择后回填 2026/10/16、绘制在弹窗之上），并以“已读状态 = 未读”只读预览命中 738 项后取消，未保存规则、未修改真实邮件。系统托盘、Dock 数字、通知横幅与服务器规则动作仍未原生验收。接续见 [Issue #1 工作点](ISSUE_1_WORKING.md)。
+**当前开发检查点：规则已读/星标状态条件与首次匹配快照（草稿 PR / 未发布）**。分支 `codex/issue-1-improvements`。规则条件新增“已读状态”“星标状态”（`equals` + `true`/`false`，界面用 shadcn Select 显示已读/未读、有星标/无星标），规则条件的邮件日期改为 shadcn `Calendar` + `Popover`。`Store::apply_configured_rules` 在展开动作前记录 `ObservedStatus`，所有步骤按首次命中状态判断，正文/大小/附件仍取当前解析结果，因此“未读 → 标记已读 → 归类”完整执行；持久规则任务把同一快照写入 `RuleRun.observed`，旧任务缺少该字段时退回当前状态，用户手动改过的字段继续走既有意图保护。完整 Rust 382 通过/3 既有条件忽略，前端 378 通过（55 文件），UI/格式/Rust 格式/生产构建/diff 检查通过；原生开发预览确认两个状态条件、布尔值下拉、日历弹层（含年月下拉、选择后回填 2026/10/16、绘制在弹窗之上），并以“已读状态 = 未读”只读预览命中 738 项后取消，未保存规则、未修改真实邮件。代码提交 `5f34c0a` 已推送，[Checks 39000767593](https://github.com/ansermail/anser/actions/runs/39000767593) 全部成功；草稿 PR #2 仍未合并或发布。系统托盘、Dock 数字、通知横幅与服务器规则动作仍未原生验收。接续见 [Issue #1 工作点](ISSUE_1_WORKING.md)。
 
 **2026-10-17 远程审阅入口**：`codex/issue-1-improvements` 已推送，草稿 [PR #2](https://github.com/ansermail/anser/pull/2) 指向 `main`。提交 `1ae6d4f` 的 [Checks 38990157402](https://github.com/ansermail/anser/actions/runs/38990157402) 全部通过，涵盖格式、前端、桌面脚本、生产构建、Rust 与 IMAP vendor 测试；草稿 PR 不是合并或正式发布。系统托盘、Dock 角标与通知仍需实际目视验收，见 [Issue #1 工作点](ISSUE_1_WORKING.md)。
 
