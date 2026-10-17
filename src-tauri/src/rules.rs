@@ -61,11 +61,15 @@ fn validate_condition(c: &Condition) -> Result<()> {
     if ![
         "sender",
         "recipients",
+        "cc",
+        "recipientsOrCc",
+        "priority",
         "subject",
         "body",
         "attachment",
         "date",
         "sizeKb",
+        "ageDays",
         "read",
         "starred",
     ]
@@ -90,10 +94,21 @@ fn validate_condition(c: &Condition) -> Result<()> {
     }
     if c.field == "date" && !["before", "after"].contains(&c.operator.as_str())
         || c.field == "attachment" && c.operator != "equals"
-        || matches!(c.field.as_str(), "read" | "starred") && c.operator != "equals"
+        || matches!(c.field.as_str(), "read" | "starred" | "priority") && c.operator != "equals"
         || c.field == "sizeKb"
             && !["greaterThan", "lessThan", "equals"].contains(&c.operator.as_str())
-        || !["date", "attachment", "sizeKb", "read", "starred"].contains(&c.field.as_str())
+        || c.field == "ageDays"
+            && !["greaterThan", "lessThan", "equals"].contains(&c.operator.as_str())
+        || ![
+            "date",
+            "attachment",
+            "sizeKb",
+            "ageDays",
+            "read",
+            "starred",
+            "priority",
+        ]
+        .contains(&c.field.as_str())
             && ![
                 "contains",
                 "equals",
@@ -123,7 +138,15 @@ fn validate_condition(c: &Condition) -> Result<()> {
     {
         return Err("邮件大小需填写非负整数 KB".into());
     }
-    if !["attachment", "read", "starred"].contains(&c.field.as_str()) && c.value.trim().is_empty() {
+    if c.field == "priority" && !["high", "normal", "low"].contains(&c.value.as_str()) {
+        return Err("优先级条件请选择高、普通或低".into());
+    }
+    if c.field == "ageDays" && c.value.parse::<u64>().is_err() {
+        return Err("已接收天数需填写非负整数".into());
+    }
+    if !["attachment", "read", "starred", "priority"].contains(&c.field.as_str())
+        && c.value.trim().is_empty()
+    {
         return Err("请填写条件值，避免意外匹配全部邮件".into());
     }
     Ok(())
@@ -197,9 +220,56 @@ fn matches_with_observed(
                 _ => false,
             };
         }
+        let text_match = |text: &str, operator: &str| -> bool {
+            let a = text.to_lowercase();
+            let b = c.value.to_lowercase();
+            match operator {
+                "contains" => a.contains(&b),
+                "notContains" => !a.contains(&b),
+                "equals" => a == b,
+                "startsWith" => a.starts_with(&b),
+                "endsWith" => a.ends_with(&b),
+                "before" => a.get(..10).unwrap_or(&a) < b.as_str(),
+                "after" => a.get(..10).unwrap_or(&a) > b.as_str(),
+                _ => false,
+            }
+        };
+        if c.field == "recipientsOrCc" {
+            let to = text_match(&mail.recipients, &c.operator);
+            let cc = text_match(&mail.cc, &c.operator);
+            return if c.operator == "notContains" {
+                to && cc
+            } else {
+                to || cc
+            };
+        }
+        if c.field == "priority" {
+            let priority = match mail.priority.as_str() {
+                "high" => "high",
+                "low" => "low",
+                _ => "normal",
+            };
+            return priority == c.value;
+        }
+        if c.field == "ageDays" {
+            let Some(days) = c.value.parse::<i64>().ok() else {
+                return false;
+            };
+            let Ok(date) = chrono::DateTime::parse_from_rfc3339(&mail.date) else {
+                return false;
+            };
+            let age = (chrono::Utc::now() - date.with_timezone(&chrono::Utc)).num_days();
+            return match c.operator.as_str() {
+                "greaterThan" => age > days,
+                "lessThan" => age < days,
+                "equals" => age == days,
+                _ => false,
+            };
+        }
         let text = match c.field.as_str() {
             "sender" => &mail.sender,
             "recipients" => &mail.recipients,
+            "cc" => &mail.cc,
             "subject" => &mail.subject,
             "body" => &mail.body,
             "date" => &mail.date,
@@ -213,18 +283,7 @@ fn matches_with_observed(
             }
             _ => return false,
         };
-        let a = text.to_lowercase();
-        let b = c.value.to_lowercase();
-        match c.operator.as_str() {
-            "contains" => a.contains(&b),
-            "notContains" => !a.contains(&b),
-            "equals" => a == b,
-            "startsWith" => a.starts_with(&b),
-            "endsWith" => a.ends_with(&b),
-            "before" => a.get(..10).unwrap_or(&a) < b.as_str(),
-            "after" => a.get(..10).unwrap_or(&a) > b.as_str(),
-            _ => false,
-        }
+        text_match(text, &c.operator)
     };
     if rule.mode == "any" {
         rule.conditions.iter().any(test)
@@ -493,6 +552,10 @@ pub fn match_state_observed(
     let mut unknown = false;
     for condition in &rule.conditions {
         if ((condition.field == "body" || condition.field == "sizeKb") && !body_available)
+            || (matches!(
+                condition.field.as_str(),
+                "cc" | "recipientsOrCc" | "priority"
+            ) && !mail.header_metadata_known)
             || (condition.field == "attachment"
                 && !body_available
                 && !mail.attachment_metadata_known
@@ -518,5 +581,110 @@ pub fn match_state_observed(
         MatchState::Match
     } else {
         MatchState::NoMatch
+    }
+}
+
+#[cfg(test)]
+mod metadata_tests {
+    use super::*;
+    fn rule(field: &str, operator: &str, value: &str) -> Rule {
+        Rule {
+            id: "metadata".into(),
+            name: "metadata".into(),
+            account_id: String::new(),
+            enabled: true,
+            mode: "all".into(),
+            conditions: vec![Condition {
+                field: field.into(),
+                operator: operator.into(),
+                value: value.into(),
+            }],
+            actions: Vec::new(),
+            action: "read".into(),
+            destination: String::new(),
+            source_folder: String::new(),
+            stop: false,
+        }
+    }
+    fn mail() -> Mail {
+        let account = crate::tests::account();
+        let mut mail = crate::archive::parse(&crate::tests::raw(), &account, "INBOX")
+            .unwrap()
+            .0;
+        mail.cc = "Copy Team <copy@example.com>".into();
+        mail.priority = "high".into();
+        mail.date = (chrono::Utc::now() - chrono::Duration::days(9)).to_rfc3339();
+        mail
+    }
+    #[test]
+    fn cc_conditions_read_only_the_copied_receivers() {
+        let mail = mail();
+        let ok = rule("cc", "contains", "copy@example.com");
+        validate(&ok).unwrap();
+        assert!(matches(&ok, &mail));
+        assert!(!matches(
+            &rule("cc", "contains", "alice@example.com"),
+            &mail
+        ));
+        assert!(matches(&rule("cc", "notContains", "missing"), &mail));
+        assert!(matches(
+            &rule("cc", "equals", "Copy Team <copy@example.com>"),
+            &mail
+        ));
+        let mut without_cc = mail.clone();
+        without_cc.cc.clear();
+        assert!(matches(
+            &rule("cc", "notContains", "copy@example.com"),
+            &without_cc
+        ));
+    }
+    #[test]
+    fn recipients_or_cc_matches_either_list_and_requires_both_negatives() {
+        let mail = mail();
+        assert!(matches(
+            &rule("recipientsOrCc", "contains", "test@example.com"),
+            &mail
+        ));
+        assert!(matches(
+            &rule("recipientsOrCc", "contains", "copy@example.com"),
+            &mail
+        ));
+        assert!(!matches(
+            &rule("recipientsOrCc", "contains", "nobody@example.com"),
+            &mail
+        ));
+        assert!(matches(
+            &rule("recipientsOrCc", "notContains", "nobody@example.com"),
+            &mail
+        ));
+        assert!(!matches(
+            &rule("recipientsOrCc", "notContains", "copy@example.com"),
+            &mail
+        ));
+    }
+    #[test]
+    fn priority_compares_normalized_importance() {
+        let mut mail = mail();
+        assert!(matches(&rule("priority", "equals", "high"), &mail));
+        assert!(!matches(&rule("priority", "equals", "normal"), &mail));
+        mail.priority = "low".into();
+        assert!(matches(&rule("priority", "equals", "low"), &mail));
+        mail.priority.clear();
+        assert!(matches(&rule("priority", "equals", "normal"), &mail));
+        assert!(!matches(&rule("priority", "equals", "high"), &mail));
+        assert!(validate(&rule("priority", "contains", "high")).is_err());
+        assert!(validate(&rule("priority", "equals", "urgent")).is_err());
+    }
+    #[test]
+    fn age_condition_counts_whole_days_since_the_message_date() {
+        let mail = mail();
+        assert!(matches(&rule("ageDays", "greaterThan", "7"), &mail));
+        assert!(!matches(&rule("ageDays", "lessThan", "7"), &mail));
+        assert!(matches(&rule("ageDays", "equals", "9"), &mail));
+        let mut undated = mail.clone();
+        undated.date.clear();
+        assert!(!matches(&rule("ageDays", "greaterThan", "1"), &undated));
+        assert!(validate(&rule("ageDays", "greaterThan", "-1")).is_err());
+        assert!(validate(&rule("ageDays", "contains", "3")).is_err());
     }
 }

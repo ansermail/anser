@@ -437,7 +437,7 @@ mod tests {
         let mut db = store.db().unwrap();
         let tx = db.transaction().unwrap();
         {
-            let mut insert=tx.prepare("INSERT INTO messages(id,account_id,hash,data,parser_version) VALUES(?1,?2,?3,?4,3)").unwrap();
+            let mut insert=tx.prepare("INSERT INTO messages(id,account_id,hash,data,parser_version) VALUES(?1,?2,?3,?4,?5)").unwrap();
             let mut source=tx.prepare("INSERT INTO sources(account_id,folder,remote_id,mail_id) VALUES(?1,'INBOX',?2,?3)").unwrap();
             for i in 0..size {
                 let mut m = base.clone();
@@ -490,7 +490,8 @@ mod tests {
                         m.id,
                         a.id,
                         m.hash,
-                        serde_json::to_string(&m).unwrap()
+                        serde_json::to_string(&m).unwrap(),
+                        archive::PARSER_VERSION
                     ])
                     .unwrap();
                 source

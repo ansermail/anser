@@ -88,7 +88,7 @@ it("unknown preview does not claim a negative body match and failed download lea
     ],
   };
   const preview = await api.call<string[]>("preview_rule", { rule: bodyRule });
-  expect(preview.some((s) => s.includes("等待正文核对"))).toBe(true);
+  expect(preview.some((s) => s.includes("等待完整邮件核对"))).toBe(true);
   const { invoke } = await import("@tauri-apps/api/core");
   expect(invoke).not.toHaveBeenCalled();
 });

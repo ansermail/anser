@@ -208,6 +208,11 @@ function Turn({
             收件人：{mail.recipients}
           </div>
         )}
+        {mail.cc?.trim() && (
+          <div className="turn-recipients" title={mail.cc}>
+            抄送：{mail.cc}
+          </div>
+        )}
         {detail && <ParseWarnings mail={detail.mail} />}
         {!detail ? (
           error ? (

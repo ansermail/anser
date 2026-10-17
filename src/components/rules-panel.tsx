@@ -47,15 +47,19 @@ import { RuleRunsPanel } from "./rule-runs";
 const fields: { [key: string]: string } = {
   sender: "发件人",
   recipients: "收件人",
+  cc: "抄送",
+  recipientsOrCc: "收件人或抄送",
   subject: "主题",
   body: "正文",
   attachment: "有附件",
   read: "已读状态",
   starred: "星标状态",
+  priority: "优先级",
   date: "邮件日期",
+  ageDays: "已接收天数",
   sizeKb: "邮件大小（KB）",
 };
-const booleanConditions: Record<string, [string, string][]> = {
+const choiceConditions: Record<string, [string, string][]> = {
   attachment: [
     ["true", "有附件"],
     ["false", "无附件"],
@@ -68,9 +72,14 @@ const booleanConditions: Record<string, [string, string][]> = {
     ["true", "有星标"],
     ["false", "无星标"],
   ],
+  priority: [
+    ["high", "高"],
+    ["normal", "普通"],
+    ["low", "低"],
+  ],
 };
 const conditionValueLabel = (c: Condition) =>
-  booleanConditions[c.field]?.find(([value]) => value === c.value)?.[1] ??
+  choiceConditions[c.field]?.find(([value]) => value === c.value)?.[1] ??
   `「${c.value}」`;
 const conditionOperators: Record<string, string> = {
   contains: "包含",
@@ -187,6 +196,8 @@ export function RulesPanel({
   ]
     .sort()
     .join(",");
+  const waitingPreview =
+    preview?.filter((s) => s.endsWith("（等待完整邮件核对）")).length ?? 0;
   useEffect(() => {
     let live = true;
     for (const id of remoteAccounts.split(",").filter(Boolean))
@@ -494,12 +505,17 @@ export function RulesPanel({
                                   operator:
                                     value === "date"
                                       ? "after"
-                                      : value === "sizeKb"
+                                      : ["sizeKb", "ageDays"].includes(value)
                                         ? "greaterThan"
-                                        : booleanConditions[value]
+                                        : choiceConditions[value]
                                           ? "equals"
                                           : "contains",
-                                  value: booleanConditions[value] ? "true" : "",
+                                  value:
+                                    value === "priority"
+                                      ? "normal"
+                                      : choiceConditions[value]
+                                        ? "true"
+                                        : "",
                                 }
                               : x,
                           ),
@@ -533,21 +549,27 @@ export function RulesPanel({
                               ["before", "早于"],
                               ["after", "晚于"],
                             ]
-                          : booleanConditions[c.field]
+                          : choiceConditions[c.field]
                             ? [["equals", "等于"]]
-                            : c.field === "sizeKb"
+                            : c.field === "ageDays"
                               ? [
                                   ["greaterThan", "大于"],
                                   ["lessThan", "小于"],
                                   ["equals", "等于"],
                                 ]
-                              : [
-                                  ["contains", "包含"],
-                                  ["equals", "等于"],
-                                  ["notContains", "不包含"],
-                                  ["startsWith", "以此开头"],
-                                  ["endsWith", "以此结尾"],
-                                ]
+                              : c.field === "sizeKb"
+                                ? [
+                                    ["greaterThan", "大于"],
+                                    ["lessThan", "小于"],
+                                    ["equals", "等于"],
+                                  ]
+                                : [
+                                    ["contains", "包含"],
+                                    ["equals", "等于"],
+                                    ["notContains", "不包含"],
+                                    ["startsWith", "以此开头"],
+                                    ["endsWith", "以此结尾"],
+                                  ]
                         ).map(([k, v]) => (
                           <SelectOption key={k} value={k}>
                             {v}
@@ -555,7 +577,7 @@ export function RulesPanel({
                         ))}
                       </SelectGroup>
                     </SelectField>
-                    {booleanConditions[c.field] ? (
+                    {choiceConditions[c.field] ? (
                       <SelectField
                         className="condition-value"
                         aria-label="条件值"
@@ -570,7 +592,7 @@ export function RulesPanel({
                         }
                       >
                         <SelectGroup>
-                          {booleanConditions[c.field].map(([k, v]) => (
+                          {choiceConditions[c.field].map(([k, v]) => (
                             <SelectOption key={k} value={k}>
                               {v}
                             </SelectOption>
@@ -593,11 +615,31 @@ export function RulesPanel({
                       <Input
                         aria-label="条件值"
                         required
-                        type={c.field === "sizeKb" ? "number" : "text"}
-                        min={c.field === "sizeKb" ? 0 : undefined}
-                        step={c.field === "sizeKb" ? 1 : undefined}
+                        type={
+                          ["sizeKb", "ageDays"].includes(c.field)
+                            ? "number"
+                            : "text"
+                        }
+                        min={
+                          ["sizeKb", "ageDays"].includes(c.field)
+                            ? 0
+                            : undefined
+                        }
+                        step={
+                          ["sizeKb", "ageDays"].includes(c.field)
+                            ? 1
+                            : undefined
+                        }
                         placeholder={
-                          c.field === "sizeKb" ? "整数 KB" : "关键词"
+                          c.field === "sizeKb"
+                            ? "整数 KB"
+                            : c.field === "ageDays"
+                              ? "天数"
+                              : c.field === "cc"
+                                ? "例如：抄送地址或关键词"
+                                : c.field === "recipientsOrCc"
+                                  ? "收件人或抄送地址"
+                                  : "关键词"
                         }
                         value={c.value}
                         onChange={(e) =>
@@ -855,8 +897,11 @@ export function RulesPanel({
               </Button>
               {preview && (
                 <div className="rule-preview">
-                  本次预览 {preview.length}{" "}
-                  项；标注“等待正文核对”的条目尚未确认匹配。
+                  {`本次预览 ${preview.length - waitingPreview} 项匹配${
+                    waitingPreview > 0
+                      ? `，另有 ${waitingPreview} 项等待完整邮件核对后确认`
+                      : ""
+                  }。`}
                   {preview.slice(0, 3).map((s, i) => (
                     <p key={i}>{s}</p>
                   ))}

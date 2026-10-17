@@ -368,3 +368,63 @@ it("offers read and starred status values and a shadcn date picker", async () =>
   expect(document.querySelector('input[type="date"]')).toBeNull();
   expect(document.querySelector('[aria-label="条件日期"]')).not.toBeNull();
 });
+
+it("offers copied receivers, priority and received-day conditions", async () => {
+  await render();
+  await click("新建规则");
+  await select("条件字段", "抄送");
+  expect(
+    (document.querySelector('[aria-label="条件值"]') as HTMLInputElement).type,
+  ).toBe("text");
+  await click("预览匹配，不执行动作");
+  expect(api.call).toHaveBeenLastCalledWith("preview_rule", {
+    rule: expect.objectContaining({
+      conditions: [
+        expect.objectContaining({ field: "cc", operator: "contains" }),
+      ],
+    }),
+  });
+  await select("条件字段", "收件人或抄送");
+  await click("预览匹配，不执行动作");
+  expect(api.call).toHaveBeenLastCalledWith("preview_rule", {
+    rule: expect.objectContaining({
+      conditions: [
+        expect.objectContaining({
+          field: "recipientsOrCc",
+          operator: "contains",
+        }),
+      ],
+    }),
+  });
+  await select("条件字段", "优先级");
+  await select("条件值", "高");
+  await click("预览匹配，不执行动作");
+  expect(api.call).toHaveBeenLastCalledWith("preview_rule", {
+    rule: expect.objectContaining({
+      conditions: [
+        expect.objectContaining({
+          field: "priority",
+          operator: "equals",
+          value: "high",
+        }),
+      ],
+    }),
+  });
+  await select("条件字段", "已接收天数");
+  const days = document.querySelector(
+    '[aria-label="条件值"]',
+  ) as HTMLInputElement;
+  expect(days.type).toBe("number");
+  expect(days.placeholder).toBe("天数");
+  await click("预览匹配，不执行动作");
+  expect(api.call).toHaveBeenLastCalledWith("preview_rule", {
+    rule: expect.objectContaining({
+      conditions: [
+        expect.objectContaining({
+          field: "ageDays",
+          operator: "greaterThan",
+        }),
+      ],
+    }),
+  });
+});

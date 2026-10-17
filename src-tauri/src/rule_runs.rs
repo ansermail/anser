@@ -419,6 +419,9 @@ impl Store {
                 evaluation.body = parsed.body.clone();
                 evaluation.has_attachments = parsed.has_attachments;
                 evaluation.size = parsed.size;
+                evaluation.cc = parsed.cc.clone();
+                evaluation.priority = parsed.priority.clone();
+                evaluation.header_metadata_known = parsed.header_metadata_known;
                 if rules::body_decode_failed(&parsed)
                     && rules::match_state_observed(rule, &m, before.observed, false)
                         == rules::MatchState::NeedsBody
@@ -465,6 +468,9 @@ impl Store {
             evaluation.body = parsed.body.clone();
             evaluation.has_attachments = parsed.has_attachments;
             evaluation.size = parsed.size;
+            evaluation.cc = parsed.cc.clone();
+            evaluation.priority = parsed.priority.clone();
+            evaluation.header_metadata_known = parsed.header_metadata_known;
             if r.conditions.iter().any(|c| c.field == "body")
                 && rules::match_state_observed(&r, &m, job.observed, false)
                     == rules::MatchState::NeedsBody
@@ -836,7 +842,9 @@ mod tests {
             value: "keep this invoice".into(),
         };
         store.save_rules(&[r]).unwrap();
-        assert!(store.preview_rule(&store.rules().unwrap()[0]).unwrap()[0].contains("等待正文核对"));
+        assert!(
+            store.preview_rule(&store.rules().unwrap()[0]).unwrap()[0].contains("等待完整邮件核对")
+        );
         store.run_rules().unwrap();
         let job = pending(&store);
         store.claim_rule_run(&job).unwrap();

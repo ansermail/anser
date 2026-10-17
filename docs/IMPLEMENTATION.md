@@ -642,4 +642,6 @@ DeepSeek 官方域名/443/标准路径才附加 `thinking.disabled`、JSON 输�
 
 已读/星标条件描述“首次命中时的状态”。`Store::apply_configured_rules` 在展开动作前记录 `ObservedStatus`（仅两个布尔值，不含正文），每个步骤的 `match_state_observed` 用它判断状态条件，正文、大小与附件仍取自当前解析结果，动作照常修改真实的已读/星标/目录字段；因此“未读 → 标记已读 → 移动”会完整执行。持久规则任务把同一快照写入 `RuleRun.observed`，旧任务缺少该字段时 `serde(default)` 退回当前邮件状态。条件界面使用 shadcn Select 选择已读/未读、有星标/无星标，邮件日期改为 Calendar + Popover，不再使用原生日期选择器；演示匹配同步比较两个布尔条件。
 
+2026-10-17 新增抄送/优先级/已接收天数条件。`Mail` 增加 `cc`、`priority` 与 `header_metadata_known`：`Cc` 只保存原始头里的抄送地址（服务器从不返回密送，密送不猜测）；优先级读取 `X-Priority`、`Priority`、`Importance`，把 1/2、high、urgent 归为 `high`，4/5、low、non-urgent 归为 `low`，其余为 `normal`。规则条件 `cc` 与 `recipientsOrCc` 使用文字比较（“不包含”要求收件人和抄送都不含），`priority` 只比较归一后的等值，`ageDays` 按 RFC3339 日期计算整天数后比较大于/小于/等于。解析版本升到 `archive::PARSER_VERSION = 5`：启动迁移只读取已验证原件的邮件头块回填 `cc`/`priority`（不重新解码正文和附件），未保存过原件的在线记录直接升版并保留 `header_metadata_known=false`，不把缺失抄送当成空地址；这类邮件命中抄送/优先级条件时进入 `NeedsBody`，由既有规则任务先补存完整邮件再核对，延迟任务恢复时把重新解析出的抄送与优先级带入评估对象。`message_listing` 投影随 messages.data 触发器同步，阅读页在收件人后显示抄送地址（有值时）。
+
 托盘菜单复用现有手动收件入口，未读数从本机搜索投影读取；同一周期通过 Tauri macOS 主窗口的 `set_badge_count` 更新应用级 Dock 数字，计数为零时传入 `None` 清除。桌面免打扰标志持久保存在偏好配置中，通知发送前核对。此功能的 Dock/原生菜单绘制、系统通知权限和实际邮箱收取仍待开发预览验收。

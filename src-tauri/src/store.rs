@@ -434,8 +434,12 @@ impl Store {
                     mail.date = mail.server_date.clone();
                 }
                 tx.execute(
-                    "UPDATE messages SET data=?2,parser_version=3 WHERE id=?1",
-                    params![mail.id, serde_json::to_string(&mail).map_err(err)?],
+                    "UPDATE messages SET data=?2,parser_version=?3 WHERE id=?1",
+                    params![
+                        mail.id,
+                        serde_json::to_string(&mail).map_err(err)?,
+                        archive::PARSER_VERSION
+                    ],
                 )
                 .map_err(err)?;
                 upgraded = true;
@@ -467,7 +471,17 @@ impl Store {
             if mail.date.is_empty() {
                 mail.date = mail.server_date.clone();
             }
-            tx.execute("INSERT INTO messages(id,account_id,hash,data,parser_version) VALUES(?1,?2,?3,?4,3) ON CONFLICT(id) DO UPDATE SET hash=excluded.hash,data=excluded.data,parser_version=3", params![mail.id,a.id,hash,serde_json::to_string(&mail).map_err(err)?]).map_err(err)?;
+            tx.execute(
+                "INSERT INTO messages(id,account_id,hash,data,parser_version) VALUES(?1,?2,?3,?4,?5) ON CONFLICT(id) DO UPDATE SET hash=excluded.hash,data=excluded.data,parser_version=excluded.parser_version",
+                params![
+                    mail.id,
+                    a.id,
+                    hash,
+                    serde_json::to_string(&mail).map_err(err)?,
+                    archive::PARSER_VERSION
+                ],
+            )
+            .map_err(err)?;
         }
         tx.execute("INSERT INTO sources(account_id,folder,remote_id,mail_id) VALUES(?1,?2,?3,?4) ON CONFLICT(account_id,folder,remote_id) DO UPDATE SET mail_id=excluded.mail_id,active=1",params![a.id,folder,remote,mail.id]).map_err(err)?;
         tx.commit().map_err(err)?;
@@ -666,7 +680,7 @@ impl Store {
             )?;
             if state != rules::MatchState::NoMatch && available {
                 matches.push(if state == rules::MatchState::NeedsBody {
-                    format!("{}（等待正文核对）", m.subject)
+                    format!("{}（等待完整邮件核对）", m.subject)
                 } else {
                     m.subject
                 });
@@ -928,36 +942,73 @@ impl Store {
             .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
             .map_err(err)?;
         let rows = tx
-            .prepare("SELECT data FROM messages WHERE parser_version < 3")
+            .prepare("SELECT data, parser_version FROM messages WHERE parser_version < ?1")
             .map_err(err)?
-            .query_map([], |r| r.get::<_, String>(0))
+            .query_map([archive::PARSER_VERSION], |r| {
+                Ok((r.get::<_, String>(0)?, r.get::<_, i64>(1)?))
+            })
             .map_err(err)?
             .collect::<std::result::Result<Vec<_>, _>>()
             .map_err(err)?;
         let mut failed = 0;
-        for data in rows {
+        for (data, version) in rows {
             let mut mail: Mail = serde_json::from_str(&data).map_err(err)?;
-            let Ok((parsed, _, _)) = self.reparse(&mail) else {
-                // Missing/corrupt archives remain unchanged and retry next startup.
-                failed += 1;
-                continue;
-            };
-            mail.date = if parsed.date.is_empty() {
-                mail.server_date.clone()
+            if version >= 3 {
+                // The record already carries the full parsed shape; only the
+                // headers added later are missing, so skip decoding bodies and
+                // attachments for the whole archive.
+                let Ok(raw) = archive::read_raw(&self.root, &mail.hash) else {
+                    if !mail.saved_locally {
+                        // Online-only records never had an archived original.
+                        // Leave the headers unknown so Cc/priority rules wait
+                        // for a real download instead of retrying every launch.
+                        tx.execute(
+                            "UPDATE messages SET parser_version=?2 WHERE id=?1",
+                            params![mail.id, archive::PARSER_VERSION],
+                        )
+                        .map_err(err)?;
+                        continue;
+                    }
+                    failed += 1;
+                    continue;
+                };
+                let Ok((cc, priority)) = archive::header_metadata(&raw) else {
+                    failed += 1;
+                    continue;
+                };
+                mail.cc = cc;
+                mail.priority = priority;
+                mail.header_metadata_known = true;
             } else {
-                parsed.date
-            };
-            mail.sender = parsed.sender;
-            mail.recipients = parsed.recipients;
-            mail.subject = parsed.subject;
-            mail.body = parsed.body;
-            mail.preview = parsed.preview;
-            mail.message_id = parsed.message_id;
-            mail.in_reply_to = parsed.in_reply_to;
-            mail.references = parsed.references;
+                let Ok((parsed, _, _)) = self.reparse(&mail) else {
+                    // Missing/corrupt archives remain unchanged and retry next startup.
+                    failed += 1;
+                    continue;
+                };
+                mail.date = if parsed.date.is_empty() {
+                    mail.server_date.clone()
+                } else {
+                    parsed.date
+                };
+                mail.sender = parsed.sender;
+                mail.recipients = parsed.recipients;
+                mail.cc = parsed.cc;
+                mail.priority = parsed.priority;
+                mail.header_metadata_known = parsed.header_metadata_known;
+                mail.subject = parsed.subject;
+                mail.body = parsed.body;
+                mail.preview = parsed.preview;
+                mail.message_id = parsed.message_id;
+                mail.in_reply_to = parsed.in_reply_to;
+                mail.references = parsed.references;
+            }
             tx.execute(
-                "UPDATE messages SET data=?2,parser_version=3 WHERE id=?1",
-                params![mail.id, serde_json::to_string(&mail).map_err(err)?],
+                "UPDATE messages SET data=?2,parser_version=?3 WHERE id=?1",
+                params![
+                    mail.id,
+                    serde_json::to_string(&mail).map_err(err)?,
+                    archive::PARSER_VERSION
+                ],
             )
             .map_err(err)?;
         }

@@ -128,6 +128,10 @@ pub struct Mail {
     pub account_email: String,
     pub sender: String,
     pub recipients: String,
+    #[serde(default)]
+    pub cc: String,
+    #[serde(default)]
+    pub priority: String,
     pub subject: String,
     pub preview: String,
     pub body: String,
@@ -143,6 +147,11 @@ pub struct Mail {
     pub has_attachments: bool,
     #[serde(default)]
     pub attachment_metadata_known: bool,
+    /// False for records whose original headers were never archived. Cc and
+    /// priority rules wait for the full message instead of treating the
+    /// missing header as an empty value.
+    #[serde(default)]
+    pub header_metadata_known: bool,
     pub hash: String,
     pub size: u64,
     pub saved_at: String,

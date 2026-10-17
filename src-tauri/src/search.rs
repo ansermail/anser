@@ -267,12 +267,13 @@ mod tests {
         safe.hash = "fictional-search-hash".into();
         safe.body = safe.body.replace('\0', "");
         db.execute(
-            "INSERT INTO messages(id,account_id,hash,data,parser_version) VALUES(?1,?2,?3,?4,3)",
+            "INSERT INTO messages(id,account_id,hash,data,parser_version) VALUES(?1,?2,?3,?4,?5)",
             params![
                 safe.id,
                 safe.account_id,
                 safe.hash,
-                serde_json::to_string(&safe).unwrap()
+                serde_json::to_string(&safe).unwrap(),
+                archive::PARSER_VERSION
             ],
         )
         .unwrap();

@@ -2824,6 +2824,14 @@ export default function App() {
                             收件人：{detail.mail.recipients}
                           </span>
                         )}
+                        {detail.mail.cc?.trim() && (
+                          <span
+                            className="recipient-address"
+                            title={detail.mail.cc}
+                          >
+                            抄送：{detail.mail.cc}
+                          </span>
+                        )}
                         <div className="message-metadata">
                           <time dateTime={detail.mail.date}>
                             {time(detail.mail.date)}

@@ -443,7 +443,7 @@ export async function call<T = void>(
             return [];
           return [
             state === "needsBody"
-              ? `${mail.subject}（等待正文核对）`
+              ? `${mail.subject}（等待完整邮件核对）`
               : mail.subject,
           ];
         });
