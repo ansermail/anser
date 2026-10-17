@@ -144,7 +144,7 @@ export function RulesPanel({
     try {
       const n = await call<number>("run_rules");
       toast.success(
-        `已处理或安排 ${n} 项规则；异步结果见规则处理任务和执行记录`,
+        `已执行或安排 ${n} 项规则动作；异步结果见规则处理任务和执行记录`,
       );
       onChange();
     } catch (e) {
