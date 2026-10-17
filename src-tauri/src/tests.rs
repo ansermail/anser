@@ -463,6 +463,88 @@ fn rule_order_stop_and_idempotence() {
     assert!(!snap.messages[0].trashed);
 }
 #[test]
+fn status_conditions_keep_ordered_actions_after_the_flag_changes() {
+    let dir = tempfile::tempdir().unwrap();
+    let s = Store::new(dir.path().into()).unwrap();
+    let mut unread_chain = rule("unread-chain", "read", false);
+    unread_chain.conditions = vec![Condition {
+        field: "read".into(),
+        operator: "equals".into(),
+        value: "false".into(),
+    }];
+    unread_chain.actions = vec![
+        RuleAction {
+            action: "read".into(),
+            destination: String::new(),
+            source_folder: String::new(),
+        },
+        RuleAction {
+            action: "folder".into(),
+            destination: "财务/发票".into(),
+            source_folder: String::new(),
+        },
+    ];
+    s.save_rules(&[unread_chain]).unwrap();
+    s.ingest(&account(), "INBOX", "1", &raw(), false).unwrap();
+    let id = s.snapshot(&query()).unwrap().messages[0].id.clone();
+    let m = s.mail(&id).unwrap();
+    assert!(m.is_read);
+    assert_eq!(m.local_read_override, Some(true));
+    assert_eq!(m.local_folder, "财务/发票");
+    assert!(!m.starred);
+}
+#[test]
+fn unstarred_status_condition_keeps_later_actions_after_starring() {
+    let dir = tempfile::tempdir().unwrap();
+    let s = Store::new(dir.path().into()).unwrap();
+    let mut unstarred_chain = rule("unstarred-chain", "star", false);
+    unstarred_chain.conditions = vec![Condition {
+        field: "starred".into(),
+        operator: "equals".into(),
+        value: "false".into(),
+    }];
+    unstarred_chain.actions = vec![
+        RuleAction {
+            action: "star".into(),
+            destination: String::new(),
+            source_folder: String::new(),
+        },
+        RuleAction {
+            action: "folder".into(),
+            destination: "财务/待复核".into(),
+            source_folder: String::new(),
+        },
+    ];
+    s.save_rules(&[unstarred_chain]).unwrap();
+    s.ingest(&account(), "INBOX", "1", &raw(), false).unwrap();
+    let id = s.snapshot(&query()).unwrap().messages[0].id.clone();
+    let m = s.mail(&id).unwrap();
+    assert!(m.starred);
+    assert_eq!(m.local_star_override, Some(true));
+    assert_eq!(m.local_folder, "财务/待复核");
+    assert!(!m.is_read);
+}
+#[test]
+fn preview_uses_read_status_without_touching_mail() {
+    let dir = tempfile::tempdir().unwrap();
+    let s = Store::new(dir.path().into()).unwrap();
+    s.ingest(&account(), "INBOX", "1", &raw(), false).unwrap();
+    let mut unread = rule("preview-unread", "read", false);
+    unread.conditions = vec![Condition {
+        field: "read".into(),
+        operator: "equals".into(),
+        value: "false".into(),
+    }];
+    assert_eq!(s.preview_rule(&unread).unwrap().len(), 1);
+    unread.conditions[0].value = "true".into();
+    assert!(s.preview_rule(&unread).unwrap().is_empty());
+    assert!(
+        !s.mail(&s.snapshot(&query()).unwrap().messages[0].id)
+            .unwrap()
+            .is_read
+    );
+}
+#[test]
 fn failed_save_cannot_run_rules_or_publish_success() {
     let dir = tempfile::tempdir().unwrap();
     let s = Store::new(dir.path().into()).unwrap();

@@ -37,6 +37,10 @@ export function ruleMatchState(
     let matched: boolean;
     if (condition.field === "attachment")
       matched = mail.hasAttachments === (condition.value !== "false");
+    else if (condition.field === "read" || condition.field === "starred")
+      matched =
+        (condition.field === "read" ? mail.isRead : mail.starred) ===
+        (condition.value !== "false");
     else if (condition.field === "sizeKb") {
       const kb = Number(condition.value);
       const bytes = kb * 1024;

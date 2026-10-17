@@ -1,4 +1,5 @@
 use crate::models::*;
+use serde::{Deserialize, Serialize};
 pub fn validate(rule: &Rule) -> Result<()> {
     if rule.name.trim().is_empty() || rule.conditions.is_empty() {
         return Err("规则需要名称和至少一个条件".into());
@@ -65,6 +66,8 @@ fn validate_condition(c: &Condition) -> Result<()> {
         "attachment",
         "date",
         "sizeKb",
+        "read",
+        "starred",
     ]
     .contains(&c.field.as_str())
         || ![
@@ -87,9 +90,10 @@ fn validate_condition(c: &Condition) -> Result<()> {
     }
     if c.field == "date" && !["before", "after"].contains(&c.operator.as_str())
         || c.field == "attachment" && c.operator != "equals"
+        || matches!(c.field.as_str(), "read" | "starred") && c.operator != "equals"
         || c.field == "sizeKb"
             && !["greaterThan", "lessThan", "equals"].contains(&c.operator.as_str())
-        || !["date", "attachment", "sizeKb"].contains(&c.field.as_str())
+        || !["date", "attachment", "sizeKb", "read", "starred"].contains(&c.field.as_str())
             && ![
                 "contains",
                 "equals",
@@ -104,6 +108,11 @@ fn validate_condition(c: &Condition) -> Result<()> {
     if c.field == "attachment" && !["true", "false"].contains(&c.value.as_str()) {
         return Err("附件条件请选择有附件或无附件".into());
     }
+    if matches!(c.field.as_str(), "read" | "starred")
+        && !["true", "false"].contains(&c.value.as_str())
+    {
+        return Err("已读或星标条件请选择是或否".into());
+    }
     if c.field == "sizeKb"
         && (c.value.parse::<u64>().is_err()
             || c.value
@@ -114,7 +123,7 @@ fn validate_condition(c: &Condition) -> Result<()> {
     {
         return Err("邮件大小需填写非负整数 KB".into());
     }
-    if c.field != "attachment" && c.value.trim().is_empty() {
+    if !["attachment", "read", "starred"].contains(&c.field.as_str()) && c.value.trim().is_empty() {
         return Err("请填写条件值，避免意外匹配全部邮件".into());
     }
     Ok(())
@@ -153,7 +162,12 @@ pub fn expand(configured: &[Rule]) -> Vec<Rule> {
 pub fn matches(rule: &Rule, mail: &Mail) -> bool {
     match_state(rule, mail, body_available(mail)) == MatchState::Match
 }
-pub fn matches_with_body(rule: &Rule, mail: &Mail, body_available: bool) -> bool {
+fn matches_with_observed(
+    rule: &Rule,
+    mail: &Mail,
+    observed: Option<ObservedStatus>,
+    body_available: bool,
+) -> bool {
     if !rule.enabled
         || (!rule.account_id.is_empty() && rule.account_id != mail.account_id)
         || rule.conditions.is_empty()
@@ -190,6 +204,13 @@ pub fn matches_with_body(rule: &Rule, mail: &Mail, body_available: bool) -> bool
             "body" => &mail.body,
             "date" => &mail.date,
             "attachment" => return mail.has_attachments == (c.value != "false"),
+            // Status conditions describe the mail as first matched; later
+            // actions such as "mark read" or "star" must not invalidate the
+            // remaining ordered steps of the same rule.
+            "read" => return observed.map_or(mail.is_read, |s| s.is_read) == (c.value != "false"),
+            "starred" => {
+                return observed.map_or(mail.starred, |s| s.starred) == (c.value != "false")
+            }
             _ => return false,
         };
         let a = text.to_lowercase();
@@ -327,6 +348,89 @@ mod body_tests {
         });
         assert!(matches(&rule, &mail));
     }
+    #[test]
+    fn read_and_star_status_conditions_compare_booleans_only() {
+        let account = crate::tests::account();
+        let mut mail = crate::archive::parse(&crate::tests::raw(), &account, "INBOX")
+            .unwrap()
+            .0;
+        mail.is_read = false;
+        mail.starred = true;
+        let mut rule = Rule {
+            id: "status".into(),
+            name: "status".into(),
+            account_id: account.id,
+            enabled: true,
+            mode: "all".into(),
+            conditions: vec![Condition {
+                field: "read".into(),
+                operator: "equals".into(),
+                value: "false".into(),
+            }],
+            actions: Vec::new(),
+            action: "read".into(),
+            destination: String::new(),
+            source_folder: String::new(),
+            stop: false,
+        };
+        validate(&rule).unwrap();
+        assert!(matches(&rule, &mail));
+        rule.conditions[0].value = "true".into();
+        assert!(!matches(&rule, &mail));
+        mail.is_read = true;
+        assert!(matches(&rule, &mail));
+        rule.conditions[0] = Condition {
+            field: "starred".into(),
+            operator: "equals".into(),
+            value: "true".into(),
+        };
+        validate(&rule).unwrap();
+        assert!(matches(&rule, &mail));
+        rule.conditions[0].value = "false".into();
+        assert!(!matches(&rule, &mail));
+        mail.starred = false;
+        assert!(matches(&rule, &mail));
+        rule.conditions[0].operator = "contains".into();
+        assert!(validate(&rule).is_err());
+        rule.conditions[0] = Condition {
+            field: "starred".into(),
+            operator: "equals".into(),
+            value: "maybe".into(),
+        };
+        assert!(validate(&rule).is_err());
+    }
+    #[test]
+    fn observed_snapshot_keeps_status_conditions_after_actions_change_them() {
+        let account = crate::tests::account();
+        let mut mail = crate::archive::parse(&crate::tests::raw(), &account, "INBOX")
+            .unwrap()
+            .0;
+        mail.is_read = false;
+        let observed = mail.clone();
+        let rule = Rule {
+            id: "unread".into(),
+            name: "unread".into(),
+            account_id: account.id,
+            enabled: true,
+            mode: "all".into(),
+            conditions: vec![Condition {
+                field: "read".into(),
+                operator: "equals".into(),
+                value: "false".into(),
+            }],
+            actions: Vec::new(),
+            action: "read".into(),
+            destination: String::new(),
+            source_folder: String::new(),
+            stop: false,
+        };
+        mail.is_read = true;
+        assert_eq!(match_state(&rule, &mail, true), MatchState::NoMatch);
+        assert_eq!(
+            match_state_observed(&rule, &mail, Some(ObservedStatus::of(&observed)), true),
+            MatchState::Match
+        );
+    }
 }
 
 pub fn remote(rule: &Rule) -> bool {
@@ -350,7 +454,36 @@ pub enum MatchState {
     NoMatch,
     NeedsBody,
 }
+/// Read and star flags as observed when an ordered rule chain first matched.
+/// Later actions may flip these flags, so every step of the same rule keeps
+/// evaluating them against this small snapshot.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ObservedStatus {
+    pub is_read: bool,
+    pub starred: bool,
+}
+impl ObservedStatus {
+    pub fn of(mail: &Mail) -> Self {
+        Self {
+            is_read: mail.is_read,
+            starred: mail.starred,
+        }
+    }
+}
 pub fn match_state(rule: &Rule, mail: &Mail, body_available: bool) -> MatchState {
+    match_state_observed(rule, mail, None, body_available)
+}
+/// Evaluate a rule chain step against the mail as it was first matched.
+/// Text and size come from `mail` (the parsed original), while read, star and
+/// other status conditions keep the snapshot so earlier actions cannot make a
+/// later step of the same rule miss.
+pub fn match_state_observed(
+    rule: &Rule,
+    mail: &Mail,
+    observed: Option<ObservedStatus>,
+    body_available: bool,
+) -> MatchState {
     if !rule.enabled
         || rule.conditions.is_empty()
         || (!rule.account_id.is_empty() && rule.account_id != mail.account_id)
@@ -371,7 +504,7 @@ pub fn match_state(rule: &Rule, mail: &Mail, body_available: bool) -> MatchState
         let mut one = rule.clone();
         one.mode = "all".into();
         one.conditions = vec![condition.clone()];
-        let matched = matches_with_body(&one, mail, body_available);
+        let matched = matches_with_observed(&one, mail, observed, body_available);
         if rule.mode == "all" && !matched {
             return MatchState::NoMatch;
         }

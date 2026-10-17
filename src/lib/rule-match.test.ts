@@ -59,6 +59,48 @@ describe("rule preview semantics", () => {
       ),
     ).toBe(false);
   });
+  it("compares read and starred status as booleans", () => {
+    const unread = { ...mail, isRead: false, starred: true } as Mail;
+    const read = { ...unread, isRead: true, starred: false };
+    expect(
+      ruleMatches(
+        {
+          ...rule,
+          conditions: [{ field: "read", operator: "equals", value: "false" }],
+        },
+        unread,
+      ),
+    ).toBe(true);
+    expect(
+      ruleMatches(
+        {
+          ...rule,
+          conditions: [{ field: "read", operator: "equals", value: "false" }],
+        },
+        read,
+      ),
+    ).toBe(false);
+    expect(
+      ruleMatches(
+        {
+          ...rule,
+          conditions: [{ field: "starred", operator: "equals", value: "true" }],
+        },
+        unread,
+      ),
+    ).toBe(true);
+    expect(
+      ruleMatches(
+        {
+          ...rule,
+          conditions: [
+            { field: "starred", operator: "equals", value: "false" },
+          ],
+        },
+        read,
+      ),
+    ).toBe(true);
+  });
 });
 it("does not treat an online or undecodable body as an empty matching body", () => {
   const negative = {

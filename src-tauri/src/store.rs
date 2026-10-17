@@ -501,6 +501,10 @@ impl Store {
     ) -> Result<u32> {
         let expanded = rules::expand(configured);
         let configured = expanded.as_slice();
+        // Freeze the state that first matched this rule chain. Ordered actions
+        // legitimately change read/star/folder flags, so later steps must not
+        // re-read those flags or "未读 → 标已读 → 归类" would stop after step one.
+        let observed = rules::ObservedStatus::of(&m);
         if Self::rule_blocks_move(&self.db()?, &m.id)? {
             return Ok(0);
         }
@@ -515,7 +519,8 @@ impl Store {
             if non_unread && rule.action == "unread" {
                 continue;
             }
-            let state = rules::match_state(rule, &m, rules::body_available(&m));
+            let state =
+                rules::match_state_observed(rule, &m, Some(observed), rules::body_available(&m));
             if rules::remote(rule) && !self.rule_has_source(rule, &m)? {
                 continue;
             }
@@ -531,7 +536,7 @@ impl Store {
                                     &rule.source_folder,
                                 )?))))
             {
-                self.defer_rules(&m, configured, 0, remote_only)?;
+                self.defer_rules(&m, observed, configured, 0, remote_only)?;
                 return Ok(1);
             }
             if state == rules::MatchState::Match && rule.stop {
@@ -546,17 +551,18 @@ impl Store {
             if rules::remote(r) && !self.rule_has_source(r, &m)? {
                 continue;
             }
-            let state = rules::match_state(r, &m, rules::body_available(&m));
+            let state =
+                rules::match_state_observed(r, &m, Some(observed), rules::body_available(&m));
             if state == rules::MatchState::NeedsBody
                 && (!remote_only || rules::remote(r) || rules::saves(r) || r.stop)
             {
-                self.defer_rules(&m, configured, position, remote_only)?;
+                self.defer_rules(&m, observed, configured, position, remote_only)?;
                 count += 1;
                 break;
             }
             if remote_only && !rules::remote(&r) {
                 if state == rules::MatchState::Match && rules::saves(r) && !m.saved_locally {
-                    self.defer_rules(&m, configured, position, remote_only)?;
+                    self.defer_rules(&m, observed, configured, position, remote_only)?;
                     count += 1;
                     break;
                 }
@@ -572,7 +578,7 @@ impl Store {
                             .should_save_folder(&self.account(&m.account_id)?, &r.source_folder)?))
                     && !m.saved_locally
                 {
-                    self.defer_rules(&m, configured, position, remote_only)?;
+                    self.defer_rules(&m, observed, configured, position, remote_only)?;
                     count += 1;
                     break;
                 }

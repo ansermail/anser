@@ -332,3 +332,39 @@ it("offers size and boundary text comparisons in rule preview", async () => {
     }),
   });
 });
+it("offers read and starred status values and a shadcn date picker", async () => {
+  await render();
+  await click("新建规则");
+  await select("条件字段", "已读状态");
+  expect(document.querySelector('input[aria-label="条件值"]')).toBeNull();
+  await select("条件值", "未读");
+  await click("预览匹配，不执行动作");
+  expect(api.call).toHaveBeenLastCalledWith("preview_rule", {
+    rule: expect.objectContaining({
+      conditions: [
+        expect.objectContaining({
+          field: "read",
+          operator: "equals",
+          value: "false",
+        }),
+      ],
+    }),
+  });
+  await select("条件字段", "星标状态");
+  await select("条件值", "有星标");
+  await click("预览匹配，不执行动作");
+  expect(api.call).toHaveBeenLastCalledWith("preview_rule", {
+    rule: expect.objectContaining({
+      conditions: [
+        expect.objectContaining({
+          field: "starred",
+          operator: "equals",
+          value: "true",
+        }),
+      ],
+    }),
+  });
+  await select("条件字段", "邮件日期");
+  expect(document.querySelector('input[type="date"]')).toBeNull();
+  expect(document.querySelector('[aria-label="条件日期"]')).not.toBeNull();
+});

@@ -1,10 +1,13 @@
 import { SelectField, SelectOption } from "@/components/ui/select-field";
 import { useEffect, useState } from "react";
+import { format } from "date-fns";
+import { zhCN } from "date-fns/locale";
 import {
   Plus,
   ArrowDown,
   ArrowUp,
   ArrowRight,
+  CalendarDays,
   SlidersHorizontal,
   Trash2,
   Play,
@@ -17,6 +20,8 @@ import { SidebarTrigger } from "./ui/sidebar";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { Label } from "./ui/label";
+import { Calendar } from "./ui/calendar";
+import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
 import { Switch } from "./ui/switch";
 import {
   Dialog,
@@ -25,7 +30,13 @@ import {
   DialogTitle,
   DialogDescription,
 } from "./ui/dialog";
-import type { Rule, RuleAction, Snapshot, FolderSettings } from "@/lib/types";
+import type {
+  Condition,
+  Rule,
+  RuleAction,
+  Snapshot,
+  FolderSettings,
+} from "@/lib/types";
 import { call } from "@/lib/api";
 import { toast } from "sonner";
 import { SelectGroup } from "./ui/select";
@@ -39,9 +50,28 @@ const fields: { [key: string]: string } = {
   subject: "主题",
   body: "正文",
   attachment: "有附件",
+  read: "已读状态",
+  starred: "星标状态",
   date: "邮件日期",
   sizeKb: "邮件大小（KB）",
 };
+const booleanConditions: Record<string, [string, string][]> = {
+  attachment: [
+    ["true", "有附件"],
+    ["false", "无附件"],
+  ],
+  read: [
+    ["true", "已读"],
+    ["false", "未读"],
+  ],
+  starred: [
+    ["true", "有星标"],
+    ["false", "无星标"],
+  ],
+};
+const conditionValueLabel = (c: Condition) =>
+  booleanConditions[c.field]?.find(([value]) => value === c.value)?.[1] ??
+  `「${c.value}」`;
 const conditionOperators: Record<string, string> = {
   contains: "包含",
   notContains: "不包含",
@@ -83,6 +113,55 @@ function withActions(rule: Rule, next: RuleAction[]): Rule {
     destination: first.destination,
     sourceFolder: first.sourceFolder,
   };
+}
+function ConditionDatePicker({
+  value,
+  onChange,
+}: {
+  value: string;
+  onChange: (value: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const selected = value ? new Date(`${value}T00:00:00`) : undefined;
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="condition-value justify-start"
+          aria-label="条件日期"
+        >
+          <CalendarDays data-icon="inline-start" />
+          <span className="truncate">
+            {selected ? format(selected, "yyyy/MM/dd") : "选择日期"}
+          </span>
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent
+        align="start"
+        className="w-auto max-h-[var(--radix-popover-content-available-height)] overflow-y-auto p-0"
+        aria-label="选择条件日期"
+      >
+        <Calendar
+          mode="single"
+          selected={selected}
+          onSelect={(date) => {
+            if (!date) return;
+            onChange(format(date, "yyyy-MM-dd"));
+            setOpen(false);
+          }}
+          locale={zhCN}
+          captionLayout="dropdown"
+          startMonth={new Date(1900, 0)}
+          endMonth={new Date(2100, 11)}
+          defaultMonth={selected}
+          autoFocus
+        />
+      </PopoverContent>
+    </Popover>
+  );
 }
 export function RulesPanel({
   data,
@@ -225,7 +304,7 @@ export function RulesPanel({
                 {r.conditions
                   .map(
                     (c) =>
-                      `${fields[c.field]} ${conditionOperators[c.operator] || c.operator}「${c.value}」`,
+                      `${fields[c.field]} ${conditionOperators[c.operator] || c.operator}${conditionValueLabel(c)}`,
                   )
                   .join(r.mode === "all" ? " 且 " : " 或 ")}
               </p>
@@ -417,10 +496,10 @@ export function RulesPanel({
                                       ? "after"
                                       : value === "sizeKb"
                                         ? "greaterThan"
-                                        : value === "attachment"
+                                        : booleanConditions[value]
                                           ? "equals"
                                           : "contains",
-                                  value: value === "attachment" ? "true" : "",
+                                  value: booleanConditions[value] ? "true" : "",
                                 }
                               : x,
                           ),
@@ -454,7 +533,7 @@ export function RulesPanel({
                               ["before", "早于"],
                               ["after", "晚于"],
                             ]
-                          : c.field === "attachment"
+                          : booleanConditions[c.field]
                             ? [["equals", "等于"]]
                             : c.field === "sizeKb"
                               ? [
@@ -476,35 +555,61 @@ export function RulesPanel({
                         ))}
                       </SelectGroup>
                     </SelectField>
-                    <Input
-                      aria-label="条件值"
-                      required
-                      type={
-                        c.field === "date"
-                          ? "date"
-                          : c.field === "sizeKb"
-                            ? "number"
-                            : "text"
-                      }
-                      min={c.field === "sizeKb" ? 0 : undefined}
-                      step={c.field === "sizeKb" ? 1 : undefined}
-                      placeholder={
-                        c.field === "attachment"
-                          ? "true / false"
-                          : c.field === "sizeKb"
-                            ? "整数 KB"
-                            : "关键词"
-                      }
-                      value={c.value}
-                      onChange={(e) =>
-                        setEditing({
-                          ...editing,
-                          conditions: editing.conditions.map((x, j) =>
-                            j === i ? { ...x, value: e.target.value } : x,
-                          ),
-                        })
-                      }
-                    />
+                    {booleanConditions[c.field] ? (
+                      <SelectField
+                        className="condition-value"
+                        aria-label="条件值"
+                        value={c.value}
+                        onValueChange={(value) =>
+                          setEditing({
+                            ...editing,
+                            conditions: editing.conditions.map((x, j) =>
+                              j === i ? { ...x, value } : x,
+                            ),
+                          })
+                        }
+                      >
+                        <SelectGroup>
+                          {booleanConditions[c.field].map(([k, v]) => (
+                            <SelectOption key={k} value={k}>
+                              {v}
+                            </SelectOption>
+                          ))}
+                        </SelectGroup>
+                      </SelectField>
+                    ) : c.field === "date" ? (
+                      <ConditionDatePicker
+                        value={c.value}
+                        onChange={(value) =>
+                          setEditing({
+                            ...editing,
+                            conditions: editing.conditions.map((x, j) =>
+                              j === i ? { ...x, value } : x,
+                            ),
+                          })
+                        }
+                      />
+                    ) : (
+                      <Input
+                        aria-label="条件值"
+                        required
+                        type={c.field === "sizeKb" ? "number" : "text"}
+                        min={c.field === "sizeKb" ? 0 : undefined}
+                        step={c.field === "sizeKb" ? 1 : undefined}
+                        placeholder={
+                          c.field === "sizeKb" ? "整数 KB" : "关键词"
+                        }
+                        value={c.value}
+                        onChange={(e) =>
+                          setEditing({
+                            ...editing,
+                            conditions: editing.conditions.map((x, j) =>
+                              j === i ? { ...x, value: e.target.value } : x,
+                            ),
+                          })
+                        }
+                      />
+                    )}
                     <Button
                       type="button"
                       variant="ghost"

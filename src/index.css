@@ -2963,6 +2963,12 @@ kbd {
   width: 110px;
   flex-shrink: 0;
 }
+.condition > .select-field.condition-value,
+.condition > button.condition-value {
+  flex: 1;
+  width: auto;
+  min-width: 0;
+}
 .compose-row > .select-field {
   flex: 1;
   border: 0;
