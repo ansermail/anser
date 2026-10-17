@@ -1,6 +1,14 @@
 # 发布与应用内更新
 
-## 当前正式版本：0.1.19（2026-10-16）
+## 当前正式版本：0.1.20（2026-10-17）
+
+0.1.20 Alpha 于 2026-10-17 13:57:05（Asia/Shanghai）正式发布为 latest，固定源码 `eb80fa4a26909ec5f86427f86a4e66af7c71fb54`。[Release macOS 39007442860](https://github.com/ansermail/anser/actions/runs/39007442860)、[Checks 39007442979](https://github.com/ansermail/anser/actions/runs/39007442979) 与 [Preview Pages 39007442854](https://github.com/ansermail/anser/actions/runs/39007442854) 全部成功，[0.1.20 正式版本](https://github.com/ansermail/anser/releases/tag/v0.1.20) 已公开。本版包含已发送邮件新建可编辑草稿、8 秒发送撤回、紧凑发送记录与草稿、顺序多动作规则、抄送/优先级/已接收天数等条件，以及统一的“全部邮件”未读、菜单栏和 Dock 角标。
+
+七资源大小/SHA-256、说明与清单完整原文（含末尾换行）、两架构更新签名及既有公钥、App 版本/架构/标识/中文配置/EML/许可/原生 OAuth 配置、固定证书与精确 DR、DMG 与更新归档逐文件一致性全部通过。发布前后资源身份与标签不变，七份按版本公开下载及不带查询参数的标准 latest 更新端点逐字节匹配。 [Tap 4db8165](https://github.com/ansermail/homebrew-tap/commit/4db8165d2a553080365b4f8cacb80c8912137c25) 已公开，配方、公开两架构 DMG 摘要及 brew style/audit/Apple Silicon fetch 通过；未覆盖安装本机应用。
+
+本次本地完整门槛：前端 381 通过（55 文件）、Rust 389 通过/3 项既有条件忽略、桌面脚本 28、IMAP 39，格式/UI/生产/版本/发布资源/diff 检查通过。 本版正式包实际安装、应用内原位升级、Intel 实机、系统通知横幅与服务器规则动作端到端执行未验证，不沿用此前版本结果。自签名不等于 Apple Developer ID、公证或 Gatekeeper 认可；不修改用户系统信任或 quarantine。 完整说明见 [0.1.20](releases/v0.1.20.md)，证据见 [发布工作点](RELEASE_0_1_20_WORKING.md)。
+
+## 前一正式版本：0.1.19（2026-10-16）
 
 0.1.19 Alpha 于 2026-10-16 15:55:41（Asia/Shanghai）正式发布为 latest，固定源码 `037d7aaaa8a2104236af3bd1675e8dd830afb5ee`。[Release macOS 38869273847](https://github.com/ansermail/anser/actions/runs/38869273847)、[Checks 38869273770](https://github.com/ansermail/anser/actions/runs/38869273770)、[Pages 38869273892](https://github.com/ansermail/anser/actions/runs/38869273892) 全部成功，[0.1.19 正式版本](https://github.com/ansermail/anser/releases/tag/v0.1.19) 已公开。包含正文图片通用状态修复、跨版本完整更新说明、统一钥匙串与本地/云端一致的固定免费项目签名。
 
