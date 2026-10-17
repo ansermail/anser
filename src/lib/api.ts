@@ -85,7 +85,7 @@ const empty = (): Snapshot => ({
   messages: [],
   rules: [],
   folders: [],
-  stats: { total: 0, unread: 0, saved: 0, bytes: 0 },
+  stats: { total: 0, unread: 0, inboxUnread: 0, saved: 0, bytes: 0 },
   logs: [],
   dataDir: "请在桌面客户端中管理本地存档",
   matched: 0,
@@ -143,6 +143,10 @@ export async function snapshot(query: Query): Promise<Snapshot> {
         total: all.length,
         saved: all.filter((m) => m.savedLocally !== false).length,
         unread: all.filter((m) => !m.isRead && !m.trashed).length,
+        inboxUnread: all.filter(
+          (m) =>
+            !m.isRead && !m.trashed && m.sourceFolder.toUpperCase() === "INBOX",
+        ).length,
         bytes: all
           .filter((m) => m.savedLocally !== false)
           .reduce((n, m) => n + m.size, 0),

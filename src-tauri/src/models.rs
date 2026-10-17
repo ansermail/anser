@@ -234,6 +234,8 @@ pub enum ListMode {
 pub struct Stats {
     pub total: u64,
     pub unread: u64,
+    #[serde(default)]
+    pub inbox_unread: u64,
     pub saved: u64,
     pub bytes: u64,
 }

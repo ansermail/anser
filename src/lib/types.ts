@@ -117,7 +117,13 @@ export interface Snapshot {
   messages: Mail[];
   rules: Rule[];
   folders: string[];
-  stats: { total: number; unread: number; saved: number; bytes: number };
+  stats: {
+    total: number;
+    unread: number;
+    inboxUnread: number;
+    saved: number;
+    bytes: number;
+  };
   logs: string[];
   dataDir: string;
   matched: number;

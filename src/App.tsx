@@ -1553,7 +1553,7 @@ export default function App() {
             </SidebarHeader>
             <SidebarContent className="sidebar">
               <nav className="primary-nav">
-                {nav("all", Inbox, data.stats.unread)}
+                {nav("all", Inbox, data.stats.inboxUnread)}
                 {nav("starred", Star)}
                 {nav("sent", Send)}
                 <Button

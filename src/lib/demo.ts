@@ -134,6 +134,12 @@ export function makeDemo(): Snapshot {
       total: messages.length,
       saved: messages.length,
       unread: 3,
+      inboxUnread: messages.filter(
+        (mail) =>
+          !mail.isRead &&
+          !mail.trashed &&
+          mail.sourceFolder.toUpperCase() === "INBOX",
+      ).length,
       bytes: messages.reduce((a, m) => a + m.size, 0),
     },
     logs: ["示例数据仅用于体验界面，不会连接邮箱或发送邮件。"],

@@ -198,6 +198,12 @@ export class DemoPager {
         saved: saved.length,
         unread: base.messages.filter((mail) => !mail.isRead && !mail.trashed)
           .length,
+        inboxUnread: base.messages.filter(
+          (mail) =>
+            !mail.isRead &&
+            !mail.trashed &&
+            mail.sourceFolder.toUpperCase() === "INBOX",
+        ).length,
         bytes: saved.reduce((n, mail) => n + mail.size, 0),
       },
       remoteFolderUnread,

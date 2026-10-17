@@ -60,6 +60,26 @@ async function render(rules: Rule[] = []) {
     ),
   );
 }
+function legacyServerRule(action: "serverCopy" | "serverMove"): Rule {
+  return {
+    id: "existing-server-rule",
+    name: "已有服务器规则",
+    accountId: "",
+    enabled: true,
+    mode: "all",
+    conditions: [{ field: "subject", operator: "contains", value: "" }],
+    action,
+    destination: "",
+    sourceFolder: "",
+    actions: [{ action, destination: "", sourceFolder: "" }],
+    stop: true,
+  };
+}
+async function openExistingRule() {
+  await act(async () =>
+    document.querySelector<HTMLButtonElement>('[title="编辑规则"]')!.click(),
+  );
+}
 beforeEach(() => {
   Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
   HTMLElement.prototype.scrollIntoView = vi.fn();
@@ -100,9 +120,8 @@ afterEach(async () => {
 });
 
 it("requires account/source/target, excludes isolated and same folders, and only previews before saving", async () => {
-  await render();
-  await click("新建规则");
-  await select("规则执行动作", "移动到服务器文件夹");
+  await render([legacyServerRule("serverMove")]);
+  await openExistingRule();
   expect(
     (document.querySelector("#rule-source") as HTMLButtonElement).disabled,
   ).toBe(true);
@@ -152,9 +171,8 @@ it("requires account/source/target, excludes isolated and same folders, and only
   });
 });
 it("clears destinations when switching back to local actions", async () => {
-  await render();
-  await click("新建规则");
-  await select("规则执行动作", "复制到服务器文件夹");
+  await render([legacyServerRule("serverCopy")]);
+  await openExistingRule();
   await select("规则适用账号", account.email);
   await select("规则来源文件夹", "收件箱");
   await select("规则目标文件夹", "归档");
@@ -198,9 +216,8 @@ it("shows task uncertainty without offering replay and retries only a failed enq
   );
 });
 it("does not expose a full-address Gmail account as a supported remote rule account", async () => {
-  await render();
-  await click("新建规则");
-  await select("规则执行动作", "复制到服务器文件夹");
+  await render([legacyServerRule("serverCopy")]);
+  await openExistingRule();
   await act(async () =>
     document
       .querySelector('[aria-label="规则适用账号"]')!
@@ -212,6 +229,33 @@ it("does not expose a full-address Gmail account as a supported remote rule acco
     (e) => e.textContent === data.accounts[0].email,
   )!;
   expect(gmail.getAttribute("data-disabled")).not.toBeNull();
+});
+
+it("offers local actions in a fixed-width row with controls at the right", async () => {
+  await render();
+  await click("新建规则");
+  expect(
+    document.querySelector('[data-slot="dialog-content"]')?.className,
+  ).toContain("w-[900px]");
+  const row = document.querySelector(
+    '[aria-label="规则执行动作"]',
+  )?.parentElement;
+  expect(
+    row?.querySelector('input[placeholder="例如：项目 / 设计"]'),
+  ).not.toBeNull();
+  expect(row?.lastElementChild?.className).toContain("ml-auto");
+  await act(async () =>
+    document
+      .querySelector('[aria-label="规则执行动作"]')!
+      .dispatchEvent(
+        new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true }),
+      ),
+  );
+  const options = [...document.querySelectorAll('[role="option"]')].map(
+    (item) => item.textContent,
+  );
+  expect(options).not.toContain("复制到服务器文件夹");
+  expect(options).not.toContain("移动到服务器文件夹");
 });
 
 it("offers complete save without a folder and save-and-classify with a local destination", async () => {
@@ -236,9 +280,8 @@ it("offers complete save without a folder and save-and-classify with a local des
   expect(api.call).not.toHaveBeenCalledWith("run_rules");
 });
 it("saves move and mark-read as ordered steps in one rule", async () => {
-  await render();
-  await click("新建规则");
-  await select("规则执行动作", "移动到服务器文件夹");
+  await render([legacyServerRule("serverMove")]);
+  await openExistingRule();
   await select("规则适用账号", account.email);
   await select("规则来源文件夹", "收件箱");
   await select("规则目标文件夹", "归档");

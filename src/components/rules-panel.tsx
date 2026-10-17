@@ -197,7 +197,7 @@ export function RulesPanel({
       <div className="info-strip">
         <SlidersHorizontal size={17} />
         <span>
-          规则按顺序执行。本地归类保留原件；服务器复制和移动会创建独立任务。
+          规则按顺序执行。本地归类保留原件；已有服务器动作仍按原规则运行。
         </span>
         <Button
           variant="ghost"
@@ -309,11 +309,11 @@ export function RulesPanel({
           if (!v) setEditing(null);
         }}
       >
-        <DialogContent className="sm:max-w-[620px]">
+        <DialogContent className="w-[900px] max-w-[calc(100%-2rem)] sm:max-w-[900px] max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>编辑过滤规则</DialogTitle>
             <DialogDescription>
-              按账号和条件设置本地整理或服务器文件夹动作，预览后保存。
+              按账号和条件设置处理动作，预览后保存。
             </DialogDescription>
           </DialogHeader>
           {editing && (
@@ -546,11 +546,12 @@ export function RulesPanel({
                 <Label>依次执行动作</Label>
                 {ruleActions(editing).map((step, index) => (
                   <div className="rounded-md border p-3 space-y-3" key={index}>
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-3">
                       <span className="text-sm text-muted-foreground shrink-0">
                         {index + 1}.
                       </span>
                       <SelectField
+                        className="w-[230px] shrink-0"
                         aria-label={
                           index === 0
                             ? "规则执行动作"
@@ -575,66 +576,106 @@ export function RulesPanel({
                         }
                       >
                         <SelectGroup>
-                          {Object.entries(actions).map(([key, label]) => (
-                            <SelectOption key={key} value={key}>
-                              {label}
-                            </SelectOption>
-                          ))}
+                          {Object.entries(actions)
+                            .filter(
+                              ([key]) =>
+                                !["serverCopy", "serverMove"].includes(key) ||
+                                key === step.action,
+                            )
+                            .map(([key, label]) => (
+                              <SelectOption key={key} value={key}>
+                                {label}
+                              </SelectOption>
+                            ))}
                         </SelectGroup>
                       </SelectField>
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="icon-sm"
-                        title="上移动作"
-                        disabled={index === 0}
-                        onClick={() => {
-                          const next = [...ruleActions(editing)];
-                          [next[index - 1], next[index]] = [
-                            next[index],
-                            next[index - 1],
-                          ];
-                          setEditing(withActions(editing, next));
-                        }}
-                      >
-                        <ArrowUp size={14} />
-                      </Button>
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="icon-sm"
-                        title="下移动作"
-                        disabled={index === ruleActions(editing).length - 1}
-                        onClick={() => {
-                          const next = [...ruleActions(editing)];
-                          [next[index + 1], next[index]] = [
-                            next[index],
-                            next[index + 1],
-                          ];
-                          setEditing(withActions(editing, next));
-                        }}
-                      >
-                        <ArrowDown size={14} />
-                      </Button>
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="icon-sm"
-                        title="移除动作"
-                        disabled={ruleActions(editing).length === 1}
-                        onClick={() =>
-                          setEditing(
-                            withActions(
-                              editing,
-                              ruleActions(editing).filter(
-                                (_, position) => position !== index,
+                      {["folder", "saveFolder"].includes(step.action) && (
+                        <div className="flex min-w-0 flex-1 items-center gap-2">
+                          <Label
+                            className="shrink-0"
+                            htmlFor={`rule-local-folder-${index}`}
+                          >
+                            本地文件夹
+                          </Label>
+                          <Input
+                            id={`rule-local-folder-${index}`}
+                            className="min-w-0 flex-1"
+                            required
+                            placeholder="例如：项目 / 设计"
+                            value={step.destination}
+                            onChange={(event) =>
+                              setEditing(
+                                withActions(
+                                  editing,
+                                  ruleActions(editing).map((item, position) =>
+                                    position === index
+                                      ? {
+                                          ...item,
+                                          destination: event.target.value,
+                                        }
+                                      : item,
+                                  ),
+                                ),
+                              )
+                            }
+                          />
+                        </div>
+                      )}
+                      <div className="ml-auto flex shrink-0 items-center gap-1">
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon-sm"
+                          title="上移动作"
+                          disabled={index === 0}
+                          onClick={() => {
+                            const next = [...ruleActions(editing)];
+                            [next[index - 1], next[index]] = [
+                              next[index],
+                              next[index - 1],
+                            ];
+                            setEditing(withActions(editing, next));
+                          }}
+                        >
+                          <ArrowUp size={14} />
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon-sm"
+                          title="下移动作"
+                          disabled={index === ruleActions(editing).length - 1}
+                          onClick={() => {
+                            const next = [...ruleActions(editing)];
+                            [next[index + 1], next[index]] = [
+                              next[index],
+                              next[index + 1],
+                            ];
+                            setEditing(withActions(editing, next));
+                          }}
+                        >
+                          <ArrowDown size={14} />
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon-sm"
+                          title="移除动作"
+                          disabled={ruleActions(editing).length === 1}
+                          onClick={() =>
+                            setEditing(
+                              withActions(
+                                editing,
+                                ruleActions(editing).filter(
+                                  (_, position) => position !== index,
+                                ),
                               ),
-                            ),
-                          )
-                        }
-                      >
-                        <Trash2 size={14} />
-                      </Button>
+                            )
+                          }
+                        >
+                          <Trash2 size={14} />
+                        </Button>
+                      </div>
                     </div>
                     {["serverCopy", "serverMove"].includes(step.action) && (
                       <RuleServerFolders
@@ -664,31 +705,6 @@ export function RulesPanel({
                           )
                         }
                       />
-                    )}
-                    {["folder", "saveFolder"].includes(step.action) && (
-                      <div className="field">
-                        <Label>本地文件夹</Label>
-                        <Input
-                          required
-                          placeholder="例如：项目 / 设计"
-                          value={step.destination}
-                          onChange={(event) =>
-                            setEditing(
-                              withActions(
-                                editing,
-                                ruleActions(editing).map((item, position) =>
-                                  position === index
-                                    ? {
-                                        ...item,
-                                        destination: event.target.value,
-                                      }
-                                    : item,
-                                ),
-                              ),
-                            )
-                          }
-                        />
-                      </div>
                     )}
                   </div>
                 ))}

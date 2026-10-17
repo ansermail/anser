@@ -51,6 +51,18 @@ function filter(title: string) {
     ) ?? null
   );
 }
+it("shows the unread inbox count beside All Inboxes", async () => {
+  const seed = await snapshot(localQuery);
+  seed.messages[0].sourceFolder = "Archive";
+  localStorage.setItem("mail-desktop-demo-v1", JSON.stringify(seed));
+  api.restoreDemo();
+  await click(nav("全部收件箱"));
+  expect(nav("全部收件箱")?.querySelector("em")?.textContent).toBe("2");
+  await click(filter("未读"));
+  expect(
+    host.querySelector(".list-heading > div > span")?.textContent,
+  ).toContain("2");
+});
 async function seedReplyThread() {
   const seed = await snapshot(localQuery);
   const mail = seed.messages[0];

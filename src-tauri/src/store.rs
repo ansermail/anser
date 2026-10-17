@@ -762,7 +762,16 @@ impl Store {
         messages: Vec<Mail>,
         matched: u64,
     ) -> Result<Snapshot> {
-        let stats=db.query_row("SELECT COUNT(*),COALESCE(SUM(is_read=0 AND trashed=0),0),COALESCE(SUM(CASE WHEN saved_locally=1 THEN size ELSE 0 END),0),COALESCE(SUM(saved_locally),0) FROM search_documents",[],|r|Ok(Stats{total:r.get(0)?,saved:r.get(3)?,unread:r.get(1)?,bytes:r.get(2)?})).map_err(err)?;
+        let mut stats=db.query_row("SELECT COUNT(*),COALESCE(SUM(is_read=0 AND trashed=0),0),COALESCE(SUM(CASE WHEN saved_locally=1 THEN size ELSE 0 END),0),COALESCE(SUM(saved_locally),0) FROM search_documents",[],|r|Ok(Stats{total:r.get(0)?,saved:r.get(3)?,unread:r.get(1)?,inbox_unread:0,bytes:r.get(2)?})).map_err(err)?;
+        stats.inbox_unread = db.query_row(
+            "SELECT COUNT(*) FROM readable_listing listing JOIN search_documents d ON d.mail_id=listing.id
+             WHERE d.is_read=0 AND d.trashed=0 AND EXISTS (
+               SELECT 1 FROM trusted_sources s JOIN accounts a ON a.id=s.account_id
+               WHERE s.mail_id=listing.id AND s.folder='INBOX' COLLATE NOCASE AND s.active=1
+             )",
+            [],
+            |row| row.get(0),
+        ).map_err(err)?;
         let mut fs=db.prepare("SELECT DISTINCT local_folder FROM search_documents WHERE local_folder!='全部存档' ORDER BY 1").map_err(err)?;
         let folders = fs
             .query_map([], |r| r.get(0))

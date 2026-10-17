@@ -784,6 +784,9 @@ fn unread_filter_preserves_mailbox_category_account_and_search_scope() {
         ],
     )
     .unwrap();
+    let stats = s.snapshot(&query()).unwrap().stats;
+    assert_eq!(stats.unread, 5);
+    assert_eq!(stats.inbox_unread, 2);
     for (view, folder, account_id, search, expected) in [
         ("all", "", "", "", vec!["inbox-unread", "other-unread"]),
         ("all", "", a.id.as_str(), "", vec!["inbox-unread"]),
