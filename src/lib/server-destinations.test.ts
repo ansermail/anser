@@ -26,8 +26,9 @@ describe("source and special-use destination decisions", () => {
     expect(() => directorySource(mail, ["A", "B"], [], "local")).toThrow(
       "多个服务器来源",
     );
-    expect(() => directorySource(mail, ["A"], [], "all")).toThrow(
-      "收件箱来源已失效",
+    expect(directorySource(mail, ["A"], [], "all")).toBe("A");
+    expect(() => directorySource(mail, ["A", "B"], [], "all")).toThrow(
+      "多个服务器来源",
     );
     expect(() =>
       directorySource(

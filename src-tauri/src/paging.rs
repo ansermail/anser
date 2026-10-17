@@ -845,6 +845,7 @@ mod tests {
         store.update_mail(&m).unwrap();
         let mut r = request(ListMode::Messages, 2);
         r.query.view = "all".into();
+        r.query.remote_folder = "INBOX".into();
         let page = store.mail_page(&r).unwrap();
         assert_eq!(
             (page.body_coverage.known, page.body_coverage.unknown),

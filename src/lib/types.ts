@@ -120,7 +120,6 @@ export interface Snapshot {
   stats: {
     total: number;
     unread: number;
-    inboxUnread: number;
     saved: number;
     bytes: number;
   };

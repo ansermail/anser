@@ -192,7 +192,7 @@ import { mailLink } from "./lib/mail-html";
 import { invoke } from "@tauri-apps/api/core";
 restoreDemo();
 const viewNames: Record<string, string> = {
-  all: "全部收件箱",
+  all: "全部邮件",
   unread: "未读邮件",
   starred: "星标邮件",
   sent: "已发送",
@@ -1553,7 +1553,7 @@ export default function App() {
             </SidebarHeader>
             <SidebarContent className="sidebar">
               <nav className="primary-nav">
-                {nav("all", Inbox, data.stats.inboxUnread)}
+                {nav("all", Inbox, data.stats.unread)}
                 {nav("starred", Star)}
                 {nav("sent", Send)}
                 <Button

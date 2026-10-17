@@ -3491,6 +3491,7 @@ mod tests {
         assert_eq!(local.matched, 2);
         let mut inbox = crate::tests::query();
         inbox.view = "all".into();
+        inbox.remote_folder = "INBOX".into();
         let current = store.snapshot(&inbox).unwrap();
         assert_eq!(current.matched, 1);
         assert_eq!(current.messages[0].subject, "New invoice");

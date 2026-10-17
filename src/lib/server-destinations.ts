@@ -18,10 +18,7 @@ export function directorySource(
     throw new Error("邮件已不在当前服务器文件夹，请刷新后重新打开。");
   }
   const inbox = available.find((s) => s.toUpperCase() === "INBOX");
-  if (view === "all") {
-    if (inbox) return inbox;
-    throw new Error("收件箱来源已失效，请刷新后重新打开。");
-  }
+  if (view === "all" && inbox) return inbox;
   if (view === "sent") {
     const sent = available.filter((s) =>
       folders.some((f) => f.name === s && f.roles?.includes("sent")),

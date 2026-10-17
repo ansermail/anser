@@ -575,8 +575,12 @@ fn server_cleanup_removes_inbox_location_but_keeps_archive() {
     let mut inbox = query();
     inbox.view = "all".into();
     assert_eq!(s.snapshot(&inbox).unwrap().matched, 1);
+    inbox.remote_folder = "INBOX".into();
+    assert_eq!(s.snapshot(&inbox).unwrap().matched, 1);
     s.reconcile_folder(&account().id, "INBOX", &[]).unwrap();
     assert_eq!(s.snapshot(&inbox).unwrap().matched, 0);
+    inbox.remote_folder.clear();
+    assert_eq!(s.snapshot(&inbox).unwrap().matched, 1);
     assert_eq!(s.snapshot(&query()).unwrap().matched, 1);
 }
 #[test]
@@ -786,11 +790,34 @@ fn unread_filter_preserves_mailbox_category_account_and_search_scope() {
     .unwrap();
     let stats = s.snapshot(&query()).unwrap().stats;
     assert_eq!(stats.unread, 5);
-    assert_eq!(stats.inbox_unread, 2);
+    assert_eq!(s.unread_total().unwrap(), stats.unread);
     for (view, folder, account_id, search, expected) in [
-        ("all", "", "", "", vec!["inbox-unread", "other-unread"]),
-        ("all", "", a.id.as_str(), "", vec!["inbox-unread"]),
-        ("all", "", "", "archive", vec![]),
+        (
+            "all",
+            "",
+            "",
+            "",
+            vec![
+                "archive-unread",
+                "inactive-unread",
+                "inbox-unread",
+                "other-unread",
+                "sent-unread",
+            ],
+        ),
+        (
+            "all",
+            "",
+            a.id.as_str(),
+            "",
+            vec![
+                "archive-unread",
+                "inactive-unread",
+                "inbox-unread",
+                "sent-unread",
+            ],
+        ),
+        ("all", "", "", "archive", vec!["archive-unread"]),
         ("local", "", "", "archive", vec!["archive-unread"]),
         (
             "local",
@@ -827,6 +854,14 @@ fn unread_filter_preserves_mailbox_category_account_and_search_scope() {
         q.unread_only = false;
         assert!(s.snapshot(&q).unwrap().matched >= snap.matched);
     }
+    let duplicate = b"From: test@example.com\r\nSubject: inbox-unread\r\n\r\nScope test";
+    s.ingest(&a, "Archive", "same-mail-other-folder", duplicate, false)
+        .unwrap();
+    let mut all = query();
+    all.view = "all".into();
+    all.unread_only = true;
+    assert_eq!(s.snapshot(&all).unwrap().matched, 5);
+    assert_eq!(s.unread_total().unwrap(), 5);
 }
 
 #[test]
@@ -1404,6 +1439,8 @@ fn conversation_combines_inbox_and_sent_with_scope_pagination_and_old_archive_up
     assert!(single.messages[0].body.is_empty());
     q.limit = 10;
     q.view = "all".into();
+    assert_eq!(store.snapshot(&q).unwrap().matched, 3);
+    q.remote_folder = "INBOX".into();
     let inbox = store.snapshot(&q).unwrap();
     assert_eq!(inbox.matched, 2);
     assert_eq!(inbox.messages[1].id, turns[0].id);

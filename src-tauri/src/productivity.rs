@@ -30,7 +30,7 @@ impl Store {
     pub fn unread_total(&self) -> Result<u64> {
         self.db()?
             .query_row(
-                "SELECT COALESCE(SUM(is_read=0 AND trashed=0),0) FROM search_documents",
+                "SELECT COUNT(*) FROM readable_listing listing JOIN search_documents d ON d.mail_id=listing.id WHERE d.is_read=0 AND d.trashed=0",
                 [],
                 |row| row.get(0),
             )

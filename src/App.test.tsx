@@ -51,17 +51,17 @@ function filter(title: string) {
     ) ?? null
   );
 }
-it("shows the unread inbox count beside All Inboxes", async () => {
+it("shows the all-folder unread count beside All Mail", async () => {
   const seed = await snapshot(localQuery);
   seed.messages[0].sourceFolder = "Archive";
   localStorage.setItem("mail-desktop-demo-v1", JSON.stringify(seed));
   api.restoreDemo();
-  await click(nav("全部收件箱"));
-  expect(nav("全部收件箱")?.querySelector("em")?.textContent).toBe("2");
+  await click(nav("全部邮件"));
+  expect(nav("全部邮件")?.querySelector("em")?.textContent).toBe("3");
   await click(filter("未读"));
   expect(
     host.querySelector(".list-heading > div > span")?.textContent,
-  ).toContain("2");
+  ).toContain("3");
 });
 async function seedReplyThread() {
   const seed = await snapshot(localQuery);
@@ -830,7 +830,7 @@ describe("message and conversation display modes", () => {
     seed.messages = [{ ...seed.messages[0], savedLocally: false }];
     localStorage.setItem("mail-desktop-demo-v1", JSON.stringify(seed));
     api.restoreDemo();
-    await click(nav("全部收件箱"));
+    await click(nav("全部邮件"));
     await chooseListMode("逐封邮件");
     let archived = false;
     const original = api.call;
@@ -883,7 +883,7 @@ describe("message and conversation display modes", () => {
     seed.messages = [mail];
     localStorage.setItem("mail-desktop-demo-v1", JSON.stringify(seed));
     api.restoreDemo();
-    await click(nav("全部收件箱"));
+    await click(nav("全部邮件"));
     await chooseListMode("逐封邮件");
     const original = api.call;
     const calls = vi
@@ -1402,7 +1402,7 @@ describe("reading unread mail within its current category", () => {
     seed.messages.push(own, incoming);
     localStorage.setItem("mail-desktop-demo-v1", JSON.stringify(seed));
     api.restoreDemo();
-    await click(nav("全部收件箱"));
+    await click(nav("全部邮件"));
     await click(host.querySelector("button.mail-row-main"));
     await vi.waitFor(async () => {
       await act(async () => {});
@@ -1441,7 +1441,7 @@ describe("reading unread mail within its current category", () => {
       to: expect.stringContaining("lin@example.com"),
       replyAnchorId: incoming.id,
     });
-    await click(nav("全部收件箱"));
+    await click(nav("全部邮件"));
     await click(host.querySelector("button.mail-row-main"));
     expect(
       (
@@ -1469,7 +1469,7 @@ describe("reading unread mail within its current category", () => {
   it("queues a quick reply durably and leaves the reader usable", async () => {
     await seedReplyThread();
     const calls = vi.spyOn(api, "call");
-    await click(nav("全部收件箱"));
+    await click(nav("全部邮件"));
     await click(host.querySelector("button.mail-row-main"));
     const input = host.querySelector(
       'textarea[aria-label="对话回复正文"]',
@@ -2124,7 +2124,7 @@ describe("reading unread mail within its current category", () => {
     );
     expect(filter("未读")?.getAttribute("aria-selected") === "true").toBe(true);
   });
-  it.each(["全部收件箱", "本地存档", "项目协作", "星标邮件", "工作邮箱"])(
+  it.each(["全部邮件", "本地存档", "项目协作", "星标邮件", "工作邮箱"])(
     "keeps an opened message readable in %s after marking it read",
     async (scope) => {
       await click(nav(scope));
@@ -2189,7 +2189,7 @@ describe("reading unread mail within its current category", () => {
     seed.messages[0].sourceFolder = "Archive";
     localStorage.setItem("mail-desktop-demo-v1", JSON.stringify(seed));
     api.restoreDemo();
-    await click(nav("全部收件箱"));
+    await click(nav("全部邮件"));
     await click(filter("未读"));
     let release!: () => void;
     const gate = new Promise<void>((resolve) => {
