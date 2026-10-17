@@ -211,6 +211,12 @@ impl Store {
             .collect::<std::result::Result<Vec<_>,_>>().map_err(err)?;
         for data in rows {
             let mut mail: Mail = serde_json::from_str(&data).map_err(err)?;
+            if action == "read"
+                && value == "false"
+                && crate::search::is_non_unread_mail(&tx, &mail.id)?
+            {
+                return Err("已发送和草稿邮件不能标记为未读".into());
+            }
             match action {
                 "read" => {
                     mail.is_read = value == "true";

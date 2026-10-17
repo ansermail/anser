@@ -28,9 +28,10 @@ impl SyncSchedule {
 
 impl Store {
     pub fn unread_total(&self) -> Result<u64> {
+        let non_unread = crate::search::non_unread_mail_predicate("listing");
         self.db()?
             .query_row(
-                "SELECT COUNT(*) FROM readable_listing listing JOIN search_documents d ON d.mail_id=listing.id WHERE d.is_read=0 AND d.trashed=0",
+                &format!("SELECT COUNT(*) FROM readable_listing listing JOIN search_documents d ON d.mail_id=listing.id WHERE d.is_read=0 AND d.trashed=0 AND NOT ({non_unread})"),
                 [],
                 |row| row.get(0),
             )

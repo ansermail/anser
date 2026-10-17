@@ -170,6 +170,9 @@ function FolderBranch({
   const showUnread = !node.folder?.roles?.some(
     (role) => role === "sent" || role === "drafts",
   );
+  const showMarkRead = !node.folder?.roles?.some(
+    (role) => role === "inbox" || role === "drafts" || role === "sent",
+  );
   const active = flagged
     ? starredSelected
     : node.path === selected && hasChildren === selectedTree;
@@ -225,20 +228,22 @@ function FolderBranch({
             )}
           </Button>
         </ContextMenuTrigger>
-        <ContextMenuContent>
-          <ContextMenuItem
-            onSelect={() =>
-              onMarkRead?.(
-                flagged ? "" : node.path,
-                !flagged && hasChildren,
-                flagged ? "" : node.delimiter || "",
-                flagged,
-              )
-            }
-          >
-            标记为已读
-          </ContextMenuItem>
-        </ContextMenuContent>
+        {showMarkRead && (
+          <ContextMenuContent>
+            <ContextMenuItem
+              onSelect={() =>
+                onMarkRead?.(
+                  flagged ? "" : node.path,
+                  !flagged && hasChildren,
+                  flagged ? "" : node.delimiter || "",
+                  flagged,
+                )
+              }
+            >
+              标记为已读
+            </ContextMenuItem>
+          </ContextMenuContent>
+        )}
       </ContextMenu>
     </div>
   );

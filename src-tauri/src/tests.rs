@@ -764,6 +764,15 @@ fn unread_filter_preserves_mailbox_category_account_and_search_scope() {
         ("inbox-read", "INBOX", true, true, false, "项目", &a),
         ("archive-unread", "Archive", false, false, false, "项目", &a),
         ("sent-unread", "Sent", false, false, false, "全部存档", &a),
+        (
+            "draft-unread",
+            "Drafts",
+            false,
+            false,
+            false,
+            "全部存档",
+            &a,
+        ),
         ("trash-unread", "INBOX", false, true, true, "项目", &a),
         ("other-unread", "INBOX", false, false, false, "项目", &b),
         ("inactive-unread", "INBOX", false, true, false, "项目", &a),
@@ -789,7 +798,7 @@ fn unread_filter_preserves_mailbox_category_account_and_search_scope() {
     )
     .unwrap();
     let stats = s.snapshot(&query()).unwrap().stats;
-    assert_eq!(stats.unread, 5);
+    assert_eq!(stats.unread, 4);
     assert_eq!(s.unread_total().unwrap(), stats.unread);
     for (view, folder, account_id, search, expected) in [
         (
@@ -802,7 +811,6 @@ fn unread_filter_preserves_mailbox_category_account_and_search_scope() {
                 "inactive-unread",
                 "inbox-unread",
                 "other-unread",
-                "sent-unread",
             ],
         ),
         (
@@ -810,12 +818,7 @@ fn unread_filter_preserves_mailbox_category_account_and_search_scope() {
             "",
             a.id.as_str(),
             "",
-            vec![
-                "archive-unread",
-                "inactive-unread",
-                "inbox-unread",
-                "sent-unread",
-            ],
+            vec!["archive-unread", "inactive-unread", "inbox-unread"],
         ),
         ("all", "", "", "archive", vec!["archive-unread"]),
         ("local", "", "", "archive", vec!["archive-unread"]),
@@ -833,7 +836,7 @@ fn unread_filter_preserves_mailbox_category_account_and_search_scope() {
             "",
             vec!["inactive-unread", "inbox-unread"],
         ),
-        ("sent", "", "", "", vec!["sent-unread"]),
+        ("sent", "", "", "", vec![]),
         ("trash", "项目", "", "", vec!["trash-unread"]),
     ] {
         let mut q = query();
@@ -860,8 +863,20 @@ fn unread_filter_preserves_mailbox_category_account_and_search_scope() {
     let mut all = query();
     all.view = "all".into();
     all.unread_only = true;
-    assert_eq!(s.snapshot(&all).unwrap().matched, 5);
-    assert_eq!(s.unread_total().unwrap(), 5);
+    assert_eq!(s.snapshot(&all).unwrap().matched, 4);
+    assert_eq!(s.unread_total().unwrap(), 4);
+    let mut drafts = query();
+    drafts.view = "remote".into();
+    drafts.remote_folder = "Drafts".into();
+    assert_eq!(s.snapshot(&drafts).unwrap().matched, 1);
+    drafts.unread_only = true;
+    assert_eq!(s.snapshot(&drafts).unwrap().matched, 0);
+    for subject in ["sent-unread", "draft-unread"] {
+        let mut q = query();
+        q.search = subject.into();
+        let id = s.snapshot(&q).unwrap().messages.remove(0).id;
+        assert!(s.change_mail(&id, "read", "false").is_err());
+    }
 }
 
 #[test]

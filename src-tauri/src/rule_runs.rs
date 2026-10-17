@@ -459,7 +459,7 @@ impl Store {
             {
                 return Err("原件含解码异常，未按不完整正文执行规则，请核对邮件内容".into());
             }
-            let matched=rules::match_state(&r,&evaluation,!rules::body_decode_failed(&parsed)) == rules::MatchState::Match && (!rules::remote(&r)||tx.query_row("SELECT EXISTS(SELECT 1 FROM sources WHERE mail_id=?1 AND account_id=?2 AND folder=?3 AND active=1)",params![m.id,m.account_id,r.source_folder],|row|row.get::<_,bool>(0)).map_err(err)?);
+            let matched=rules::match_state(&r,&evaluation,!rules::body_decode_failed(&parsed)) == rules::MatchState::Match && !(r.action == "unread" && crate::search::is_non_unread_mail(&tx, &m.id)?) && (!rules::remote(&r)||tx.query_row("SELECT EXISTS(SELECT 1 FROM sources WHERE mail_id=?1 AND account_id=?2 AND folder=?3 AND active=1)",params![m.id,m.account_id,r.source_folder],|row|row.get::<_,bool>(0)).map_err(err)?);
             let applicable = !job.remote_only || rules::remote(&r) || rules::saves(&r);
             if matched && applicable {
                 let needs_save = rules::saves(&r)

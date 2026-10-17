@@ -176,3 +176,62 @@ it("does not show unread badges for sent or drafts folders", async () => {
   await act(async () => root.unmount());
   host.remove();
 });
+
+it("does not offer mark-as-read for inbox, sent, or drafts folders", async () => {
+  Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
+  const host = document.createElement("div");
+  document.body.append(host);
+  const root = createRoot(host);
+  const folders: RemoteFolder[] = [
+    {
+      accountId: "a",
+      name: "INBOX",
+      displayName: "收件箱",
+      delimiter: "/",
+      selectable: true,
+      roles: ["inbox"],
+    },
+    {
+      accountId: "a",
+      name: "Sent",
+      displayName: "已发送",
+      delimiter: "/",
+      selectable: true,
+      roles: ["sent"],
+    },
+    {
+      accountId: "a",
+      name: "Drafts",
+      displayName: "草稿箱",
+      delimiter: "/",
+      selectable: true,
+      roles: ["drafts"],
+    },
+  ];
+  await act(async () =>
+    root.render(
+      <RemoteFolderList
+        folders={folders}
+        selected=""
+        onSelect={vi.fn()}
+        onMarkRead={vi.fn()}
+      />,
+    ),
+  );
+  for (const button of [...host.querySelectorAll(".folder-item")]) {
+    await act(async () => {
+      button.dispatchEvent(
+        new MouseEvent("contextmenu", {
+          bubbles: true,
+          cancelable: true,
+          button: 2,
+        }),
+      );
+    });
+    expect(
+      document.querySelector('[data-slot="context-menu-item"]'),
+    ).toBeNull();
+  }
+  await act(async () => root.unmount());
+  host.remove();
+});

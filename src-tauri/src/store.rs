@@ -507,10 +507,14 @@ impl Store {
         if m.saved_locally && !remote_only {
             archive::read_raw(&self.root, &m.hash)?;
         }
+        let non_unread = crate::search::is_non_unread_mail(&self.db()?, &m.id)?;
         // Determine all required reads/saves before scheduling any earlier MOVE.
         // The continuation owns the full chain and keeps directory tasks held
         // until every ordered step has finished successfully.
         for rule in configured {
+            if non_unread && rule.action == "unread" {
+                continue;
+            }
             let state = rules::match_state(rule, &m, rules::body_available(&m));
             if rules::remote(rule) && !self.rule_has_source(rule, &m)? {
                 continue;
@@ -536,6 +540,9 @@ impl Store {
         }
         let mut count = 0;
         for (position, r) in configured.iter().enumerate() {
+            if non_unread && r.action == "unread" {
+                continue;
+            }
             if rules::remote(r) && !self.rule_has_source(r, &m)? {
                 continue;
             }
@@ -763,9 +770,10 @@ impl Store {
         matched: u64,
     ) -> Result<Snapshot> {
         let mut stats=db.query_row("SELECT COUNT(*),COALESCE(SUM(CASE WHEN saved_locally=1 THEN size ELSE 0 END),0),COALESCE(SUM(saved_locally),0) FROM search_documents",[],|r|Ok(Stats{total:r.get(0)?,saved:r.get(2)?,unread:0,bytes:r.get(1)?})).map_err(err)?;
+        let non_unread = crate::search::non_unread_mail_predicate("listing");
         stats.unread = db.query_row(
-            "SELECT COUNT(*) FROM readable_listing listing JOIN search_documents d ON d.mail_id=listing.id
-             WHERE d.is_read=0 AND d.trashed=0",
+            &format!("SELECT COUNT(*) FROM readable_listing listing JOIN search_documents d ON d.mail_id=listing.id
+             WHERE d.is_read=0 AND d.trashed=0 AND NOT ({non_unread})"),
             [],
             |row| row.get(0),
         ).map_err(err)?;
@@ -775,10 +783,11 @@ impl Store {
             .map_err(err)?
             .collect::<std::result::Result<Vec<String>, _>>()
             .map_err(err)?;
-        let mut counts = db.prepare("WITH unread_sources AS (
+        let mut counts = db.prepare(&format!("WITH unread_sources AS (
             SELECT s.account_id,s.folder,s.mail_id FROM trusted_sources s
             JOIN search_documents d ON d.mail_id=s.mail_id AND d.account_id=s.account_id
-            WHERE s.active=1 AND d.is_read=0 AND d.trashed=0
+            JOIN message_listing listing ON listing.id=s.mail_id
+            WHERE s.active=1 AND d.is_read=0 AND d.trashed=0 AND NOT ({non_unread})
         ) SELECT f.account_id,f.name,
             COUNT(DISTINCT CASE WHEN u.folder=f.name THEN u.mail_id END),
             COUNT(DISTINCT u.mail_id)
@@ -786,7 +795,7 @@ impl Store {
             AND (u.folder=f.name OR (
                 COALESCE(json_extract(f.data,'$.delimiter'),'')!='' AND
                 substr(u.folder,1,length(f.name||json_extract(f.data,'$.delimiter')))=f.name||json_extract(f.data,'$.delimiter')
-            )) GROUP BY f.account_id,f.name").map_err(err)?;
+            )) GROUP BY f.account_id,f.name")).map_err(err)?;
         let remote_folder_unread = counts
             .query_map([], |r| {
                 Ok(RemoteFolderUnread {
@@ -800,11 +809,11 @@ impl Store {
             .collect::<std::result::Result<Vec<_>, _>>()
             .map_err(err)?;
         let mut starred = db
-            .prepare(
+            .prepare(&format!(
                 "SELECT d.account_id,COUNT(*) FROM search_documents d
             JOIN readable_listing listing ON listing.id=d.mail_id
-            WHERE d.is_read=0 AND d.starred=1 AND d.trashed=0 GROUP BY d.account_id",
-            )
+            WHERE d.is_read=0 AND d.starred=1 AND d.trashed=0 AND NOT ({non_unread}) GROUP BY d.account_id",
+            ))
             .map_err(err)?;
         let account_starred_unread = starred
             .query_map([], |r| {
