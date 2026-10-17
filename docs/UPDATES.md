@@ -1,5 +1,9 @@
 # 发布与应用内更新
 
+## Homebrew 配方随主仓库维护（2026-10-17）
+
+配方位于 `Casks/anser.rb`，正式 Release 公开为 latest 后由 `homebrew.yml` 下载并核验双架构 DMG，运行 Homebrew 校验后仅更新主仓库配方。继续使用 `ansermail/tap/anser` 名称，首次添加需指定主仓库 URL，旧 Tap 切换步骤见 [Homebrew 维护](HOMEBREW.md)。不需要跨仓库凭据；工作流手动补同步不重建或改写已发布桌面资源。`GITHUB_TOKEN` 发布不会触发后续 release 事件，须显式 dispatch。迁移与实际验证进展见 [工作点](HOMEBREW_WORKING.md)。
+
 ## 当前正式版本：0.1.20（2026-10-17）
 
 0.1.20 Alpha 于 2026-10-17 13:57:05（Asia/Shanghai）正式发布为 latest，固定源码 `eb80fa4a26909ec5f86427f86a4e66af7c71fb54`。[Release macOS 39007442860](https://github.com/ansermail/anser/actions/runs/39007442860)、[Checks 39007442979](https://github.com/ansermail/anser/actions/runs/39007442979) 与 [Preview Pages 39007442854](https://github.com/ansermail/anser/actions/runs/39007442854) 全部成功，[0.1.20 正式版本](https://github.com/ansermail/anser/releases/tag/v0.1.20) 已公开。本版包含已发送邮件新建可编辑草稿、8 秒发送撤回、紧凑发送记录与草稿、顺序多动作规则、抄送/优先级/已接收天数等条件，以及统一的“全部邮件”未读、菜单栏和 Dock 角标。

@@ -1,5 +1,11 @@
 # 实施与验收状态
 
+## Homebrew 同仓库分发（2026-10-17）
+
+`Casks/anser.rb` 与源码共用 `ansermail/anser`。`homebrew.yml` 在正式版本发布或 main 手动 dispatch 后执行；`scripts/homebrew.mjs` 只读组织 latest，按固定文件名和 URL 选择两架构 DMG，有界下载核对长度与 SHA-256，重新核对 release/asset 身份后生成配方。Homebrew 校验后再次执行公开资源核验，读取 main 上配方 blob SHA，通过 Contents API 单文件条件更新；并发修改失败不重试覆盖，语义版本不倒退，同版本摘要不可变化，相同内容无提交。默认仓库 token 仅在本仓库获得 contents:write，不维护跨仓库密钥；生成与提交都不接触邮箱、原件、客户端版本或发布资产。
+
+用户 Tap 名称仍为 `ansermail/tap`，显式 remote 指向主仓库；迁移时只重置该 Tap 的 Git 检出，保留已安装 cask 身份。工作流从 main 检出，release tag 仅用作待核对输入，不执行该 tag 提供的脚本。正式草稿审计/公开仍由既有发布流程控制，自动同步不提前分发草稿。token 产生的 Release 需显式 dispatch，避免依赖被 GitHub 抑制的事件链。
+
 ## 跨版本更新历史（0.1.19 起）
 
 原生 `update_history.rs` 按固定组织 Releases API 分页读取公开记录，共用全局代理与 TLS，限制期限/页数/容量，不使用邮箱或 GitHub 凭据。按 SemVer 范围筛选、去重、倒序并确认目标存在，成功结果有界缓存；分页/容量/缺失目标失败不冒充完整。前端 `useAppUpdate` 将历史与包下载状态分开，按目标范围/请求代际废弃迟到结果；每版复用安全 Markdown 与 shadcn Card/对话框，外链仍走系统浏览器。失败保留明确标注的目标说明和独立重试，Pages 不发原生历史请求。

@@ -64,13 +64,14 @@ _所有展示截图均来自浏览器演示模式，使用项目内置的虚构�
 
 ### Homebrew 安装
 
-已提供项目维护的 [Homebrew Tap](https://github.com/ansermail/homebrew-tap)。在 macOS 上运行：
+Homebrew 配方与应用源码在[同一仓库](https://github.com/ansermail/anser/blob/main/Casks/anser.rb)维护。首次安装先指定仓库来源：
 
 ```sh
+brew tap --custom-remote ansermail/tap https://github.com/ansermail/anser
 brew install --cask ansermail/tap/anser
 ```
 
-Homebrew 会按 Mac 架构选择已发布的 DMG 并核对 SHA-256。已由 Homebrew 安装的用户可运行 `brew upgrade --cask ansermail/tap/anser`，也可使用应用内更新。若「应用程序」中已有手动安装的「雁信」，先退出并备份或移走旧应用，再用 Homebrew 安装；邮箱账号和本地存档不会因移走应用包而自动删除。维护方式与验证范围见 [Homebrew 分发说明](docs/HOMEBREW.md)。
+曾添加旧 Tap 的用户先按[迁移说明](docs/HOMEBREW.md#已有旧-tap-的迁移)切换来源，无需重装应用。Homebrew 会按 Mac 架构选择已发布的 DMG 并核对 SHA-256。已由 Homebrew 安装的用户可运行 `brew upgrade --cask ansermail/tap/anser`，也可使用应用内更新。若「应用程序」中已有手动安装的「雁信」，先退出并备份或移走旧应用，再用 Homebrew 安装；邮箱账号和本地存档不会因移走应用包而自动删除。维护方式与验证范围见 [Homebrew 分发说明](docs/HOMEBREW.md)。
 
 ### 手动安装
 

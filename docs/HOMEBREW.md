@@ -1,11 +1,18 @@
 # Homebrew 分发与维护
 
-雁信使用组织自有的 [ansermail/homebrew-tap](https://github.com/ansermail/homebrew-tap) 分发。配方位于 `Casks/anser.rb`，引用 [ansermail/anser 的正式 Release](https://github.com/ansermail/anser/releases)，支持 Apple Silicon 与 Intel，最低 macOS 12。
+配方直接位于主仓库 [ansermail/anser](https://github.com/ansermail/anser) 的 `Casks/anser.rb`，与源码、测试和流水线一起维护。安装名称继续使用 `ansermail/tap/anser`；显式 URL 让 Homebrew 读取主仓库，无需额外的 `homebrew-*` 仓库。支持 Apple Silicon 与 Intel，最低 macOS 12。
 
 ## 安装与更新
 
 ```sh
+brew tap --custom-remote ansermail/tap https://github.com/ansermail/anser
 brew install --cask ansermail/tap/anser
+```
+
+后续更新：
+
+```sh
+brew update
 brew upgrade --cask ansermail/tap/anser
 ```
 
@@ -15,17 +22,39 @@ brew upgrade --cask ansermail/tap/anser
 
 普通 `brew uninstall --cask ansermail/tap/anser` 只移除该配方安装的应用；配方没有 `zap` 或用户数据清理动作。邮件数据仍由应用的本地数据与存档设置管理。
 
-## 后续版本维护
+## 已有旧 Tap 的迁移
 
-当前采用人工同步配方，没有接入跨仓库自动发布：
+原 `ansermail/homebrew-tap` 的历史记录保留，后续配方在主仓库更新。已添加旧 Tap 的用户执行一次：
 
-1. 先按 [发布流程](UPDATES.md) 完成新的桌面正式版本、两架构 DMG、签名与公开资源核验。Tap 更新不能把草稿或未核验版本提前分发。
-2. 在 Tap 仓库修改 `Casks/anser.rb` 的 `version` 及 `sha256 arm:` / `intel:`。使用固定版本的 Release 下载地址，按实际文件计算 SHA-256，不使用 `sha256 :no_check`。
-3. 执行 `brew style --cask ansermail/tap/anser`、`brew audit --cask ansermail/tap/anser` 和 `brew fetch --cask ansermail/tap/anser`；分别核对两架构下载链接、文件校验值及 DMG 内的 `雁信.app`。
-4. 将配方提交推送到 Tap 的 `main`，重新核对公开配方。需要安装回归时使用独立 `--appdir`，不要覆盖正在测试的正式应用；记录执行架构、安装、卸载及首次打开的各自结果。
-5. 在本仓库开发记录中记下 Tap 提交和验证结果。只有新增分发渠道时不提升桌面版本，也不改写已发布标签、资源、原发布说明或 `latest.json`。
+```sh
+brew tap --custom-remote ansermail/tap https://github.com/ansermail/anser
+brew update-reset "$(brew --repository ansermail/tap)"
+```
 
-## 当前配方：0.1.20（2026-10-17）
+第二条命令仅将这个 Tap 的 Git 检出切到新仓库的默认分支；若手工修改过 Tap 配方或提交过本地改动，先备份这些改动。保留 Tap 名称和 cask token，因此无需卸载或重装已有应用；此步骤不启动应用、不修改账号与存档。随后照常更新。
+
+## 正式发布后的自动更新
+
+1. `release.yml` 继续完成测试、双架构构建、签名和七资源草稿；按既有流程独立审计后公开为 latest。
+2. `homebrew.yml` 响应 `release.published`，从 `main` 读取脚本，只接受组织仓库当前 latest 的正式稳定版本；下载两架构公开 DMG，核对大小和 GitHub SHA-256，再生成配方。
+3. 运行脚本回归、`brew style`、`brew audit` 和当前 runner 架构的 `brew fetch`。再次核对公开资源与 latest 后，以配方 blob SHA 为条件，仅向 `main` 提交 `Casks/anser.rb`。旧版本、同版本摘要变化、资源不完整和并发冲突均停止；内容相同不会提交。
+4. 使用本仓库 `GITHUB_TOKEN` 的 `contents: write`，无需 PAT 或跨仓库 Secret。自动提交不触发新的桌面发版，不改版本号、标签、Release 资源或更新清单。默认 token 创建的提交不会再次触发普通 push 流水线，Homebrew 专项校验已在提交前完成。
+
+对已经发布但尚未同步的版本，可以手动运行（不重建桌面包）：
+
+```sh
+gh workflow run homebrew.yml --repo ansermail/anser --ref main -f tag=v0.1.20
+```
+
+省略 `tag` 则选择当前 latest。通过 `GITHUB_TOKEN` 发布 Release 不会再触发 `release.published`，此时应显式 dispatch；本地 `gh release edit` 或人工发布可触发事件。发布自动化若改变，须保留这条衔接。
+
+本地只生成和核对配方：`node scripts/homebrew.mjs generate`，不会写远端。测试入口为 `npm run test:desktop`。实际安装、原位升级与 Intel 实机运行仍单独验收，不能用配方和下载校验代替。
+
+## 迁移前发布记录
+
+以下 Tap 提交均为当时的发布证据；迁移后的验证另见 [工作点](HOMEBREW_WORKING.md)。
+
+## 0.1.20 配方初次发布（2026-10-17）
 
 [Tap 4db8165](https://github.com/ansermail/homebrew-tap/commit/4db8165d2a553080365b4f8cacb80c8912137c25) 已公开，配方、公开两架构 DMG 摘要及 brew style/audit/Apple Silicon fetch 通过；未覆盖安装本机应用。 本版 Homebrew 安装/升级与 Intel 实机未验证；不沿用旧版首次安装验收。
 

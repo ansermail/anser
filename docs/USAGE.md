@@ -12,7 +12,7 @@
 
 ## 安装与升级
 
-可使用项目维护的 Homebrew Tap 安装：`brew install --cask ansermail/tap/anser`。Homebrew 自动选择 Apple Silicon 或 Intel 安装包；已由 Homebrew 管理的安装可运行 `brew upgrade --cask ansermail/tap/anser`，或使用应用内更新。手动安装转用 Homebrew 前先退出并备份或移走旧应用包。首次打开的 macOS 安全确认仍可能出现，详细步骤见 [README 的下载安装](../README.md#下载与安装)。
+Homebrew 配方与源码共用 `ansermail/anser` 仓库。首次运行 `brew tap --custom-remote ansermail/tap https://github.com/ansermail/anser`，再运行 `brew install --cask ansermail/tap/anser`。已有旧 Tap 需先按 [Homebrew 迁移说明](HOMEBREW.md#已有旧-tap-的迁移)切换来源，无需重装应用。Homebrew 自动选择 Apple Silicon 或 Intel 安装包；已由 Homebrew 管理的安装可运行 `brew upgrade --cask ansermail/tap/anser`，或使用应用内更新。手动安装转用 Homebrew 前先退出并备份或移走旧应用包。首次打开的 macOS 安全确认仍可能出现，详细步骤见 [README 的下载安装](../README.md#下载与安装)。
 
 ## 正文图片网络（0.1.17 起）
 

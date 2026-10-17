@@ -146,7 +146,7 @@ Rust 重编译期间不要绑定或读取原生应用 UI；CUA 会在旧实例�
 
 ## 验证与发布
 
-- Homebrew 分发使用组织自有 `ansermail/homebrew-tap` 的 `Casks/anser.rb`；正式版本公开且双架构 DMG 已核验后，再同步版本及两份 SHA-256。配方只引用固定版本的官方 Release，不删除 quarantine、不清理用户数据；不能将 Tap 发布称为 Apple 公证或 Homebrew 官方收录。维护步骤见 `docs/HOMEBREW.md`。
+- Homebrew 配方统一在主仓库 `ansermail/anser` 的 `Casks/anser.rb` 维护；用户通过显式仓库 URL 添加 `ansermail/tap`，不再单独维护 Tap 仓库。正式 Release 审计后发布，`homebrew.yml` 下载并校验公开双架构 DMG 后仅更新主仓库配方；草稿/预发布/非 latest 不分发，防止旧任务降级、同版本摘要变化与并发覆盖。复用本仓库 GITHUB_TOKEN，不添加跨仓库密钥；重复执行无变化不提交。配方只引用固定版本的官方 Release，不删除 quarantine、不清理用户数据；不能将 Tap 发布称为 Apple 公证或 Homebrew 官方收录。旧来源切换及维护步骤见 `docs/HOMEBREW.md`。
 
 - 按本轮影响运行检查：UI 改动执行 `npm run check:ui`、相关交互测试、`npm run build` 并检查开发预览；Rust 改动执行 `cargo fmt --manifest-path src-tauri/Cargo.toml -- --check` 及相关 Rust/协议回归；脚本改动执行 `npm run test:desktop`；Pages 改动执行 `npm run build:preview` 并核对虚构数据及禁用收发边界。提交前检查 `git diff --check`，代码格式执行 `npm run format:check`。
 - 发布前遵循 `.github/workflows/ci.yml` 和 `docs/UPDATES.md` 的全量门槛：前端、Rust、桌面脚本、vendored IMAP 解析器、格式/UI/生产构建。不以单项通过代替完整发布检查；只修改文档无需反复构建桌面应用。
