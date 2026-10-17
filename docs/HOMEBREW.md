@@ -16,7 +16,7 @@ brew update
 brew upgrade --cask ansermail/tap/anser
 ```
 
-安装命令会自动添加 Tap，选择当前 Mac 架构的 DMG 并核对 SHA-256。应用内更新仍可使用。若已有手动安装的「雁信」，先退出并备份或移走旧应用包，再交给 Homebrew 安装；不需要删除邮箱账号或存档。
+上述命令先添加主仓库为 Tap，再选择当前 Mac 架构的 DMG 并核对 SHA-256。应用内更新仍可使用。若已有手动安装的「雁信」，先退出并备份或移走旧应用包，再交给 Homebrew 安装；不需要删除邮箱账号或存档。
 
 当前公开应用未使用 Apple Developer ID 签名或 Apple 公证，首次打开仍可能需要在 macOS「系统设置 → 隐私与安全性」中确认。配方保留 Homebrew 的 quarantine 行为，不自动更改系统安全设置。
 

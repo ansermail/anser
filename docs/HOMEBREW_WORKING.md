@@ -1,5 +1,13 @@
 # Homebrew 同仓库维护工作点（2026-10-17）
 
+## 当前状态：已部署并完成专项云端验证
+
+- 功能提交 `c6f3426247ad76a965123832fbadc04f3b8b71e0` 已推送组织 main，主仓库公开配方 blob 为 `16178275f2ac2172291a01d217bdd85832804a71`。
+- [Update Homebrew Cask 39009167177](https://github.com/ansermail/anser/actions/runs/39009167177) 对现有 0.1.20 执行成功（50 秒）：脚本回归、两架构公开 DMG 校验、style/audit/Apple Silicon fetch 和提交前复核均通过。配方已一致，日志确认 `Cask is already current; no commit needed.`，没有制造自动提交。
+- 本机既有 `ansermail/tap` 从旧仓库成功切到 `https://github.com/ansermail/anser`；按文档执行限定该 Tap 路径的 update-reset 后，`brew info` 确认完整 token 仍为 `ansermail/tap/anser`，版本 0.1.20、架构 URL 和 SHA-256 正确。操作前 Tap 工作区干净，未安装或覆盖应用。
+- 迁移后本机原 Tap 的 `brew style`、`brew audit` 与 Apple Silicon `brew fetch` 再次全部通过，临时验证 Tap 已清理。
+- 自动化首次真实写入未来新版本的路径本轮未发生；单文件写入、blob SHA 条件、幂等、旧版本与同版本摘要保护已由回归覆盖。未重建/改写 0.1.20 Release、标签或七资源，未操作旧远端仓库。
+
 ## 目标与入口
 
 - 用户要求配方在主仓库维护，更新流水线，避免单独维护 `ansermail/homebrew-tap`。
@@ -17,5 +25,5 @@
 - 新增脚本回归 7 项已通过，覆盖不合格版本、缺失/重复/异常资源、下载长度/散列、latest 变化、语义版本倒退、幂等提交及并发冲突。
 - `npm run test:desktop` 35 项通过；`npm run format:check`、`npm run release:check`、`git diff --check` 与 workflow YAML 解析通过。`node scripts/homebrew.mjs generate` 已真实下载两架构公开 0.1.20 DMG，大小/摘要/最新版本复核通过，生成内容与初始配方一致。
 - 临时本机 Tap `ansermail/cask-check` 从本工作区 Git 克隆并复制候选配方后，`brew style`、`brew audit`、Apple Silicon `brew fetch` 通过；未安装/覆盖应用。Node 直接 fetch 在本机网络超时，下载入口已统一改为有期限/容量限制、仅 HTTPS 的 curl，兼容主机代理环境；真实双架构下载已复核通过。
-- 下一步提交主仓库，手动触发当前 0.1.20 的 Homebrew 专项流水线，再验证本机 Tap 切换。
-- 云端运行、主仓库公开配方、本机 Tap 切换尚未验证。真实安装/原位升级与 Intel 实机仍保持独立边界。
+- 功能源码完整 [Checks 39009166252](https://github.com/ansermail/anser/actions/runs/39009166252) 已全部成功（4 分 39 秒），覆盖格式、前端、脚本、生产构建、Rust 与 IMAP vendor；专项与迁移结果见顶部。下一正式版本审计/公开后核对自动更新配方；如使用 GITHUB_TOKEN 发布须显式 dispatch。
+- 真实安装/原位升级与 Intel 实机仍保持独立边界。
