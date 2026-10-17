@@ -157,6 +157,7 @@ import {
   parseAddresses,
   formatAddress,
 } from "./lib/addresses";
+import { sanitizeComposeHtml } from "./lib/compose-format";
 import {
   mailPage,
   mailNeighbor,
@@ -191,7 +192,7 @@ import { mailLink } from "./lib/mail-html";
 import { invoke } from "@tauri-apps/api/core";
 restoreDemo();
 const viewNames: Record<string, string> = {
-  all: "全部收件箱",
+  all: "全部邮件",
   unread: "未读邮件",
   starred: "星标邮件",
   sent: "已发送",
@@ -662,6 +663,43 @@ export default function App() {
     },
     [data.accounts, detail],
   );
+  const reeditSent = useCallback(
+    (source: Detail) => {
+      const account = data.accounts.find(
+        (a) => a.id === source.mail.accountId && a.enabled,
+      );
+      if (!account) {
+        toast.error("原发件账号已停用或移除，请先启用账号");
+        return;
+      }
+      const draft = newDraft(account.id);
+      draft.to = (source.to || []).map(formatAddress).join(", ");
+      draft.cc = (source.cc || []).map(formatAddress).join(", ");
+      draft.subject = source.mail.subject;
+      draft.body = source.mail.body;
+      draft.signature = {
+        accountId: account.id,
+        included: false,
+        body: "",
+        html: "",
+      };
+      if (source.html && !/<img\b/i.test(source.html)) {
+        draft.format = "rich";
+        draft.html = sanitizeComposeHtml(source.html);
+      } else {
+        draft.format = "plain";
+      }
+      if (native && !isDemo() && source.attachments.length) {
+        if (!source.originalHash) {
+          toast.error("原邮件快照缺失，请重新打开邮件后再试");
+          return;
+        }
+        draft.forwardSource = { id: source.mail.id, hash: source.originalHash };
+      }
+      setDraft(draft);
+    },
+    [data.accounts],
+  );
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       const target = e.target instanceof Element ? e.target : null;
@@ -707,6 +745,7 @@ export default function App() {
           return;
         e.preventDefault();
         const mail = detail.mail;
+        if (action === "read" && isNonUnreadMail(mail)) return;
         if (
           action === "reply" ||
           action === "replyAll" ||
@@ -1371,6 +1410,21 @@ export default function App() {
   function remoteFolder(accountId: string, name: string) {
     return (loadedFolders[accountId] || serverFolders).find(
       (folder) => folder.accountId === accountId && folder.name === name,
+    );
+  }
+  function isNonUnreadMail(mail: Mail) {
+    if (query.view === "sent") return true;
+    const selectedFolder = query.remoteFolder
+      ? remoteFolder(mail.accountId, query.remoteFolder)
+      : undefined;
+    const folder = remoteFolder(mail.accountId, mail.sourceFolder);
+    return (
+      !!selectedFolder?.roles?.some(
+        (role) => role === "sent" || role === "drafts",
+      ) ||
+      !!folder?.roles?.some((role) => role === "sent" || role === "drafts") ||
+      ((mail.sourceFolder === "Sent" || mail.sourceFolder === "Drafts") &&
+        !folder)
     );
   }
   async function openRemoteFolder(
@@ -2343,7 +2397,7 @@ export default function App() {
                           <ContextMenuTrigger asChild>
                             <div
                               key={m.id}
-                              className={`mail-row ${selected === m.id || (grouped && !!m.conversationId && m.conversationId === detail?.mail.conversationId) ? "selected" : ""} ${!m.isRead ? "unread" : ""}`}
+                              className={`mail-row ${selected === m.id || (grouped && !!m.conversationId && m.conversationId === detail?.mail.conversationId) ? "selected" : ""} ${!m.isRead && !isNonUnreadMail(m) ? "unread" : ""}`}
                             >
                               <div className="row-check">
                                 <Checkbox
@@ -2370,7 +2424,7 @@ export default function App() {
                                   <time dateTime={m.date}>{time(m.date)}</time>
                                 </div>
                                 <div className="row-subject">
-                                  {!m.isRead && (
+                                  {!m.isRead && !isNonUnreadMail(m) && (
                                     <i aria-label="未读" title="未读" />
                                   )}
                                   <span className="row-subject-text">
@@ -2415,16 +2469,18 @@ export default function App() {
                               </Button>
                             </div>
                           </ContextMenuTrigger>
-                          <ContextMenuContent>
-                            <ContextMenuItem
-                              onSelect={() =>
-                                void mutate([m.id], "read", String(!m.isRead))
-                              }
-                            >
-                              <MailOpen />
-                              {m.isRead ? "标记为未读" : "标记为已读"}
-                            </ContextMenuItem>
-                          </ContextMenuContent>
+                          {!isNonUnreadMail(m) && (
+                            <ContextMenuContent>
+                              <ContextMenuItem
+                                onSelect={() =>
+                                  void mutate([m.id], "read", String(!m.isRead))
+                                }
+                              >
+                                <MailOpen />
+                                {m.isRead ? "标记为未读" : "标记为已读"}
+                              </ContextMenuItem>
+                            </ContextMenuContent>
+                          )}
                         </ContextMenu>
                       ))
                     ) : (
@@ -2551,30 +2607,32 @@ export default function App() {
                               <ArrowDownToLine size={17} />
                             </Button>
                             <span className="toolbar-divider" />
-                            <MailActionTooltip
-                              action="read"
-                              label={
-                                detail.mail.isRead ? "标记未读" : "标记已读"
-                              }
-                            >
-                              <Button
-                                variant="ghost"
-                                size="icon-sm"
-                                title={
+                            {!isNonUnreadMail(detail.mail) && (
+                              <MailActionTooltip
+                                action="read"
+                                label={
                                   detail.mail.isRead ? "标记未读" : "标记已读"
                                 }
-                                aria-keyshortcuts="Meta+Shift+U Control+Shift+U"
-                                onClick={() =>
-                                  void mutate(
-                                    [detail.mail.id],
-                                    "read",
-                                    String(!detail.mail.isRead),
-                                  )
-                                }
                               >
-                                <MailOpen size={17} />
-                              </Button>
-                            </MailActionTooltip>
+                                <Button
+                                  variant="ghost"
+                                  size="icon-sm"
+                                  title={
+                                    detail.mail.isRead ? "标记未读" : "标记已读"
+                                  }
+                                  aria-keyshortcuts="Meta+Shift+U Control+Shift+U"
+                                  onClick={() =>
+                                    void mutate(
+                                      [detail.mail.id],
+                                      "read",
+                                      String(!detail.mail.isRead),
+                                    )
+                                  }
+                                >
+                                  <MailOpen size={17} />
+                                </Button>
+                              </MailActionTooltip>
+                            )}
                             <MailActionTooltip action="star" label={"星标"}>
                               <Button
                                 variant="ghost"
@@ -2704,6 +2762,16 @@ export default function App() {
                                 <span className="action-label">转发</span>
                               </Button>
                             </MailActionTooltip>
+                            {query.view === "sent" && (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => reeditSent(detail)}
+                              >
+                                <SquarePen size={15} />
+                                重新编辑
+                              </Button>
+                            )}
                             {(["copy", "move"] as const).map((kind) => (
                               <ServerDirectoryMenu
                                 key={kind}
@@ -2756,6 +2824,14 @@ export default function App() {
                             收件人：{detail.mail.recipients}
                           </span>
                         )}
+                        {detail.mail.cc?.trim() && (
+                          <span
+                            className="recipient-address"
+                            title={detail.mail.cc}
+                          >
+                            抄送：{detail.mail.cc}
+                          </span>
+                        )}
                         <div className="message-metadata">
                           <time dateTime={detail.mail.date}>
                             {time(detail.mail.date)}
@@ -2804,6 +2880,7 @@ export default function App() {
                         compose(source.mail, forward, all, source)
                       }
                       onEdit={setDraft}
+                      onReedit={reeditSent}
                       onSent={() => void refresh()}
                       onExport={(mail) => void exportMail(mail)}
                       onAttachment={(mail, index, name) =>
@@ -2947,6 +3024,7 @@ export default function App() {
         }}
         accounts={data.accounts}
         onSent={() => void refresh()}
+        onQueued={() => setPage("outbox")}
       />
       <Dialog
         open={moveIds.length > 0}

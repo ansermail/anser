@@ -22,6 +22,11 @@ pub(crate) struct RuleRun {
     pub remote_only: bool,
     #[serde(default)]
     pub retry_queues: bool,
+    /// Read and star flags observed when the chain first matched. Ordered
+    /// actions change them, so later steps evaluate conditions against this
+    /// snapshot instead of the partially applied mail.
+    #[serde(default)]
+    pub observed: Option<rules::ObservedStatus>,
     pub cursor: usize,
     pub applied: u32,
     pub local_state: String,
@@ -51,7 +56,7 @@ pub fn initialize(db: &rusqlite::Connection) -> Result<()> {
     UPDATE rule_runs SET status='queued',revision=revision+1,error='应用退出后继续规则处理' WHERE status='running';").map_err(err)
 }
 pub(crate) fn configuration(rs: &[Rule]) -> Result<String> {
-    let mut rs = rs.to_vec();
+    let mut rs = rules::expand(rs);
     for rule in &mut rs {
         rule.name.clear();
     }
@@ -219,6 +224,7 @@ impl Store {
     pub(crate) fn defer_rules(
         &self,
         mail: &Mail,
+        observed: rules::ObservedStatus,
         configured: &[Rule],
         offset: usize,
         remote_only: bool,
@@ -272,6 +278,7 @@ impl Store {
             rules: configured[offset..].to_vec(),
             remote_only,
             retry_queues: false,
+            observed: Some(observed),
             cursor: 0,
             applied: 0,
             local_state: local_state(&m)?,
@@ -411,8 +418,13 @@ impl Store {
                 let mut evaluation = m.clone();
                 evaluation.body = parsed.body.clone();
                 evaluation.has_attachments = parsed.has_attachments;
+                evaluation.size = parsed.size;
+                evaluation.cc = parsed.cc.clone();
+                evaluation.priority = parsed.priority.clone();
+                evaluation.header_metadata_known = parsed.header_metadata_known;
                 if rules::body_decode_failed(&parsed)
-                    && rules::match_state(rule, &m, false) == rules::MatchState::NeedsBody
+                    && rules::match_state_observed(rule, &m, before.observed, false)
+                        == rules::MatchState::NeedsBody
                 {
                     return Err("原件含解码异常，未按不完整正文执行规则，请核对邮件内容".into());
                 }
@@ -426,8 +438,12 @@ impl Store {
                 if applicable
                     && needs_save
                     && !m.saved_locally
-                    && rules::match_state(rule, &evaluation, !rules::body_decode_failed(&parsed))
-                        == rules::MatchState::Match
+                    && rules::match_state_observed(
+                        rule,
+                        &evaluation,
+                        before.observed,
+                        !rules::body_decode_failed(&parsed),
+                    ) == rules::MatchState::Match
                 {
                     Some(self.prepare_archive(&before.source, raw)?)
                 } else {
@@ -451,13 +467,18 @@ impl Store {
             let mut evaluation = m.clone();
             evaluation.body = parsed.body.clone();
             evaluation.has_attachments = parsed.has_attachments;
+            evaluation.size = parsed.size;
+            evaluation.cc = parsed.cc.clone();
+            evaluation.priority = parsed.priority.clone();
+            evaluation.header_metadata_known = parsed.header_metadata_known;
             if r.conditions.iter().any(|c| c.field == "body")
-                && rules::match_state(&r, &m, false) == rules::MatchState::NeedsBody
+                && rules::match_state_observed(&r, &m, job.observed, false)
+                    == rules::MatchState::NeedsBody
                 && rules::body_decode_failed(&parsed)
             {
                 return Err("原件含解码异常，未按不完整正文执行规则，请核对邮件内容".into());
             }
-            let matched=rules::match_state(&r,&evaluation,!rules::body_decode_failed(&parsed)) == rules::MatchState::Match && (!rules::remote(&r)||tx.query_row("SELECT EXISTS(SELECT 1 FROM sources WHERE mail_id=?1 AND account_id=?2 AND folder=?3 AND active=1)",params![m.id,m.account_id,r.source_folder],|row|row.get::<_,bool>(0)).map_err(err)?);
+            let matched=rules::match_state_observed(&r,&evaluation,job.observed,!rules::body_decode_failed(&parsed)) == rules::MatchState::Match && !(r.action == "unread" && crate::search::is_non_unread_mail(&tx, &m.id)?) && (!rules::remote(&r)||tx.query_row("SELECT EXISTS(SELECT 1 FROM sources WHERE mail_id=?1 AND account_id=?2 AND folder=?3 AND active=1)",params![m.id,m.account_id,r.source_folder],|row|row.get::<_,bool>(0)).map_err(err)?);
             let applicable = !job.remote_only || rules::remote(&r) || rules::saves(&r);
             if matched && applicable {
                 let needs_save = rules::saves(&r)
@@ -641,6 +662,7 @@ mod tests {
                 operator: "contains".into(),
                 value: "invoice".into(),
             }],
+            actions: Vec::new(),
             action: action.into(),
             destination: if matches!(action, "saveFolder" | "folder") {
                 "Invoices".into()
@@ -654,6 +676,108 @@ mod tests {
     fn pending(store: &Store) -> RuleRun {
         let id = store.rule_runs().unwrap()[0].id.clone();
         store.rule_run(&id).unwrap()
+    }
+    #[test]
+    fn one_rule_applies_ordered_local_actions_and_stops_after_its_last_step() {
+        let (_root, store, account, id, _raw) = fixture();
+        let mut combined = rule(&account, "folder");
+        combined.actions = vec![
+            RuleAction {
+                action: "folder".into(),
+                destination: "Invoices".into(),
+                source_folder: String::new(),
+            },
+            RuleAction {
+                action: "read".into(),
+                destination: String::new(),
+                source_folder: String::new(),
+            },
+        ];
+        combined.stop = true;
+        store
+            .save_rules(&[combined.clone(), rule(&account, "star")])
+            .unwrap();
+        assert_eq!(store.run_rules().unwrap(), 2);
+        let mail = store.mail(&id).unwrap();
+        assert_eq!(mail.local_folder, "Invoices");
+        assert!(mail.is_read);
+        assert_eq!(mail.local_read_override, Some(true));
+        assert!(!mail.starred);
+        assert_eq!(store.rules().unwrap()[0].actions.len(), 2);
+        assert_eq!(rules::expand(&[combined])[1].action, "read");
+    }
+    #[test]
+    fn remote_move_and_read_in_one_rule_keep_one_remote_operation() {
+        let (_root, store, account, id, _raw) = fixture();
+        target(&store, &account);
+        let mut combined = remote_rule(&account, "serverMove");
+        combined.actions = vec![
+            RuleAction {
+                action: "serverMove".into(),
+                destination: "Archive".into(),
+                source_folder: "INBOX".into(),
+            },
+            RuleAction {
+                action: "read".into(),
+                destination: String::new(),
+                source_folder: String::new(),
+            },
+        ];
+        store.save_rules(&[combined]).unwrap();
+        assert_eq!(store.run_rules().unwrap(), 2);
+        assert!(store.mail(&id).unwrap().is_read);
+        assert_eq!(store.rule_executions().unwrap().len(), 1);
+        assert_eq!(store.directory_operations().unwrap().len(), 1);
+        store.run_rules().unwrap();
+        assert_eq!(store.directory_operations().unwrap().len(), 1);
+    }
+    #[test]
+    fn deferred_chain_keeps_status_conditions_from_the_first_match_snapshot() {
+        let (_root, store, a, id, raw) = fixture();
+        let mut chain = rule(&a, "read");
+        chain.conditions = vec![Condition {
+            field: "read".into(),
+            operator: "equals".into(),
+            value: "false".into(),
+        }];
+        chain.actions = vec![
+            RuleAction {
+                action: "read".into(),
+                destination: String::new(),
+                source_folder: String::new(),
+            },
+            RuleAction {
+                action: "save".into(),
+                destination: String::new(),
+                source_folder: String::new(),
+            },
+        ];
+        store.save_rules(&[chain]).unwrap();
+        assert_eq!(store.run_rules().unwrap(), 1);
+        let job = pending(&store);
+        assert_eq!(job.cursor, 0);
+        assert!(job.observed.is_some_and(|s| !s.is_read));
+        assert!(store.claim_rule_run(&job).unwrap());
+        store.process_rule_run(&job, &raw).unwrap();
+        let m = store.mail(&id).unwrap();
+        assert!(m.is_read);
+        assert_eq!(m.local_read_override, Some(true));
+        assert!(m.saved_locally);
+        assert_eq!(store.rule_run(&job.id).unwrap().status, "completed");
+    }
+    #[test]
+    fn legacy_rule_run_without_observed_status_decodes_and_applies_the_chain() {
+        let (_root, store, a, id, raw) = fixture();
+        store.save_rules(&[rule(&a, "save")]).unwrap();
+        assert_eq!(store.run_rules().unwrap(), 1);
+        let job = pending(&store);
+        let mut value = serde_json::to_value(&job).unwrap();
+        value.as_object_mut().unwrap().remove("observed");
+        let legacy: RuleRun = serde_json::from_value(value).unwrap();
+        assert!(legacy.observed.is_none());
+        assert!(store.claim_rule_run(&legacy).unwrap());
+        store.process_rule_run(&legacy, &raw).unwrap();
+        assert!(store.mail(&id).unwrap().saved_locally);
     }
     #[test]
     fn online_body_negative_condition_is_unknown_not_a_match_and_known_headers_short_circuit() {
@@ -718,7 +842,9 @@ mod tests {
             value: "keep this invoice".into(),
         };
         store.save_rules(&[r]).unwrap();
-        assert!(store.preview_rule(&store.rules().unwrap()[0]).unwrap()[0].contains("等待正文核对"));
+        assert!(
+            store.preview_rule(&store.rules().unwrap()[0]).unwrap()[0].contains("等待完整邮件核对")
+        );
         store.run_rules().unwrap();
         let job = pending(&store);
         store.claim_rule_run(&job).unwrap();
@@ -962,8 +1088,15 @@ mod tests {
     fn cancelling_only_owned_unsubmitted_operations_preserves_manual_and_submitted_results() {
         let (_root, store, a, id) = crate::directory_operations::tests::fixture();
         store.save_rules(&[rule(&a, "save")]).unwrap();
+        let mail = store.mail(&id).unwrap();
         store
-            .defer_rules(&store.mail(&id).unwrap(), &store.rules().unwrap(), 0, false)
+            .defer_rules(
+                &mail,
+                rules::ObservedStatus::of(&mail),
+                &store.rules().unwrap(),
+                0,
+                false,
+            )
             .unwrap();
         let mut job = pending(&store);
         let owned = store.queue_copy(&id, "INBOX", "Archive").unwrap();
@@ -1138,8 +1271,15 @@ mod tests {
     fn pause_invalidates_preparing_copy_submission_until_resume_finishes_chain() {
         let (_root, store, a, id) = crate::directory_operations::tests::fixture();
         store.save_rules(&[rule(&a, "save")]).unwrap();
+        let mail = store.mail(&id).unwrap();
         store
-            .defer_rules(&store.mail(&id).unwrap(), &store.rules().unwrap(), 0, false)
+            .defer_rules(
+                &mail,
+                rules::ObservedStatus::of(&mail),
+                &store.rules().unwrap(),
+                0,
+                false,
+            )
             .unwrap();
         let mut job = pending(&store);
         let copy = store.queue_copy(&id, "INBOX", "Archive").unwrap();

@@ -45,7 +45,6 @@ export function filteredMail(all: Mail[], query: Query, searching = true) {
         (!query.unreadOnly || !mail.isRead) &&
         (!query.starredOnly || mail.starred) &&
         (!query.attachmentsOnly || mail.hasAttachments) &&
-        (query.view !== "all" || mail.sourceFolder.toUpperCase() === "INBOX") &&
         (query.view !== "unread" || !mail.isRead) &&
         (query.view !== "starred" || mail.starred) &&
         (query.view !== "sent" || mail.sourceFolder === "Sent") &&

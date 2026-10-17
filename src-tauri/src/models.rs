@@ -128,6 +128,10 @@ pub struct Mail {
     pub account_email: String,
     pub sender: String,
     pub recipients: String,
+    #[serde(default)]
+    pub cc: String,
+    #[serde(default)]
+    pub priority: String,
     pub subject: String,
     pub preview: String,
     pub body: String,
@@ -143,6 +147,11 @@ pub struct Mail {
     pub has_attachments: bool,
     #[serde(default)]
     pub attachment_metadata_known: bool,
+    /// False for records whose original headers were never archived. Cc and
+    /// priority rules wait for the full message instead of treating the
+    /// missing header as an empty value.
+    #[serde(default)]
+    pub header_metadata_known: bool,
     pub hash: String,
     pub size: u64,
     pub saved_at: String,
@@ -180,11 +189,22 @@ pub struct Rule {
     pub enabled: bool,
     pub mode: String,
     pub conditions: Vec<Condition>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub actions: Vec<RuleAction>,
     pub action: String,
     pub destination: String,
     #[serde(default)]
     pub source_folder: String,
     pub stop: bool,
+}
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RuleAction {
+    pub action: String,
+    #[serde(default)]
+    pub destination: String,
+    #[serde(default)]
+    pub source_folder: String,
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -364,6 +384,7 @@ pub struct OutboxRecord {
     pub updated_at: String,
     pub archived: bool,
     pub scheduled_at: String,
+    pub send_kind: String,
     pub server_copy: Option<crate::sent_uploads::SentUpload>,
     #[serde(default)]
     pub server_copy_available: bool,
@@ -375,6 +396,8 @@ pub struct Preferences {
     pub new_mail_notifications: bool,
     #[serde(default = "default_true")]
     pub send_result_notifications: bool,
+    #[serde(default)]
+    pub do_not_disturb: bool,
     pub sync_interval_minutes: u32,
     #[serde(default)]
     pub proxy: Option<ProxyConfig>,
@@ -385,6 +408,7 @@ impl Default for Preferences {
             sync_interval_minutes: 5,
             new_mail_notifications: true,
             send_result_notifications: true,
+            do_not_disturb: false,
             proxy: None,
         }
     }

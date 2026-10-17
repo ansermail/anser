@@ -49,6 +49,8 @@ export interface Mail {
   accountEmail: string;
   sender: string;
   recipients: string;
+  cc?: string;
+  priority?: string;
   subject: string;
   preview: string;
   body: string;
@@ -59,6 +61,7 @@ export interface Mail {
   trashed: boolean;
   hasAttachments: boolean;
   attachmentMetadataKnown?: boolean;
+  headerMetadataKnown?: boolean;
   hash: string;
   size: number;
   savedAt: string;
@@ -84,10 +87,16 @@ export interface Rule {
   enabled: boolean;
   mode: "all" | "any";
   conditions: Condition[];
+  actions?: RuleAction[];
   action: string;
   destination: string;
   sourceFolder?: string;
   stop: boolean;
+}
+export interface RuleAction {
+  action: string;
+  destination: string;
+  sourceFolder: string;
 }
 export interface Query {
   view: string;
@@ -111,7 +120,12 @@ export interface Snapshot {
   messages: Mail[];
   rules: Rule[];
   folders: string[];
-  stats: { total: number; unread: number; saved: number; bytes: number };
+  stats: {
+    total: number;
+    unread: number;
+    saved: number;
+    bytes: number;
+  };
   logs: string[];
   dataDir: string;
   matched: number;
@@ -225,6 +239,7 @@ export interface OutboxRecord {
   updatedAt: string;
   archived: boolean;
   scheduledAt?: string;
+  sendKind?: "scheduled" | "undo";
   serverCopyAvailable?: boolean;
   serverCopy?: {
     targetLabel?: string;
@@ -240,6 +255,7 @@ export interface Preferences {
   syncIntervalMinutes: number;
   newMailNotifications?: boolean;
   sendResultNotifications?: boolean;
+  doNotDisturb?: boolean;
   proxy?: NetworkProxy | null;
 }
 export interface NetworkProxy {

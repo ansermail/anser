@@ -25,7 +25,6 @@ import {
   Paperclip,
   Send,
   Check,
-  Undo2,
   X,
   LoaderCircle,
   Maximize2,
@@ -73,6 +72,7 @@ export function ComposeDialog({
   onClose,
   accounts,
   onSent,
+  onQueued,
   dark = false,
   onToggleTheme,
 }: {
@@ -80,6 +80,7 @@ export function ComposeDialog({
   onClose: () => void;
   accounts: Account[];
   onSent: () => void;
+  onQueued?: () => void;
   dark?: boolean;
   onToggleTheme?: () => void;
 }) {
@@ -87,7 +88,6 @@ export function ComposeDialog({
     useConfirmation();
   const [value, setValue] = useState<Compose | null>(null),
     [saved, setSaved] = useState(false),
-    [countdown, setCountdown] = useState<number | null>(null),
     [sending, setSending] = useState(false),
     [closing, setClosing] = useState(false),
     [extra, setExtra] = useState(false);
@@ -103,7 +103,7 @@ export function ComposeDialog({
   const session = useRef<{ id: string; promise: Promise<string> } | null>(null);
   const dialogElement = useRef<HTMLDivElement>(null);
   const interactionLocked = useRef(false);
-  interactionLocked.current = sending || closing || countdown !== null;
+  interactionLocked.current = sending || closing;
   const [signatureReload, setSignatureReload] = useState(0);
   const [suggestions, setSuggestions] = useState<Address[]>([]);
   const [deliveryPreview, setDeliveryPreview] = useState(false);
@@ -256,7 +256,6 @@ export function ComposeDialog({
       unlisten?.();
     };
   }, [draft?.id]);
-  const timer = useRef<ReturnType<typeof setInterval> | null>(null);
   const sourceFile = useRef<HTMLInputElement>(null);
   const previewFrame = useRef<HTMLIFrameElement>(null);
   useEffect(() => {
@@ -265,12 +264,9 @@ export function ComposeDialog({
   }, [preview, value?.html, value?.format]);
   useEffect(() => {
     cancelConfirmation();
-    if (timer.current) clearInterval(timer.current);
-    timer.current = null;
     closingNow.current = false;
     setClosing(false);
     setValue(draft);
-    setCountdown(null);
     setSaved(false);
     setSignatureError("");
     setForwardError("");
@@ -329,7 +325,7 @@ export function ComposeDialog({
     return next;
   }
   useEffect(() => {
-    if (!value || sending || closing || countdown !== null) return;
+    if (!value || sending || closing) return;
     setSaved(false);
     if (!hasDraftContent(value)) return;
     const snapshot = value;
@@ -345,13 +341,7 @@ export function ComposeDialog({
       clearTimeout(t);
       if (autosaveTimer.current === t) autosaveTimer.current = null;
     };
-  }, [value, sending, closing, countdown]);
-  useEffect(
-    () => () => {
-      if (timer.current) clearInterval(timer.current);
-    },
-    [],
-  );
+  }, [value, sending, closing]);
   function update(p: Partial<Compose>) {
     setValue((v) => (v ? { ...v, ...p } : null));
   }
@@ -365,9 +355,6 @@ export function ComposeDialog({
     closingNow.current = true;
     setClosing(true);
     if (autosaveTimer.current) clearTimeout(autosaveTimer.current);
-    if (timer.current) clearInterval(timer.current);
-    timer.current = null;
-    setCountdown(null);
     try {
       if (current)
         await persist(async () => {
@@ -388,25 +375,6 @@ export function ComposeDialog({
     } finally {
       closingNow.current = false;
       setClosing(false);
-    }
-  }
-  async function send() {
-    const current = latest.current;
-    if (!current || closingNow.current) return;
-    setSending(true);
-    setCountdown(null);
-    try {
-      await persistence.current;
-      const result = await call<string>("send_mail", {
-        draft: prepareCompose(current),
-      });
-      toast.success(result);
-      onSent();
-      onClose();
-    } catch (e) {
-      toast.error(String(e), { duration: 10000 });
-    } finally {
-      setSending(false);
     }
   }
   async function valid() {
@@ -457,16 +425,19 @@ export function ComposeDialog({
   async function queue() {
     const draftId = value?.id;
     if (!(await valid()) || !draftId || latest.current?.id !== draftId) return;
-    setCountdown(8);
-    let remaining = 8;
-    timer.current = setInterval(() => {
-      remaining--;
-      if (remaining === 0) {
-        clearInterval(timer.current!);
-        timer.current = null;
-        void send();
-      } else setCountdown(remaining);
-    }, 1000);
+    setSending(true);
+    try {
+      await persistence.current;
+      await call("queue_send", { draft: prepareCompose(latest.current) });
+      toast.success("已加入发送记录，8 秒内可取消或立即发送");
+      onSent();
+      onQueued?.();
+      onClose();
+    } catch (e) {
+      toast.error(String(e), { duration: 10000 });
+    } finally {
+      setSending(false);
+    }
   }
   async function schedule(selectedTime = planTime) {
     const draftId = value?.id;
@@ -622,10 +593,7 @@ export function ComposeDialog({
         </DialogHeader>
         {value && (
           <>
-            <fieldset
-              className="compose-fields"
-              disabled={sending || closing || countdown !== null}
-            >
+            <fieldset className="compose-fields" disabled={sending || closing}>
               <div className="compose-row">
                 <Label>发件人</Label>
                 <SelectField
@@ -715,7 +683,7 @@ export function ComposeDialog({
                     <Switch
                       id={`include-original-${value.id}`}
                       checked={value.quote.included}
-                      disabled={sending || closing || countdown !== null}
+                      disabled={sending || closing}
                       onCheckedChange={(included) =>
                         update({ quote: { ...value.quote!, included } })
                       }
@@ -785,7 +753,7 @@ export function ComposeDialog({
                         key={`${value.id}-${format}`}
                         body={value.body}
                         html={value.html || textToHtml(value.body)}
-                        disabled={sending || closing || countdown !== null}
+                        disabled={sending || closing}
                         onChange={(body, html) => update({ body, html })}
                         onBusy={(busy) => {
                           imageBusy.current = busy;
@@ -960,7 +928,7 @@ export function ComposeDialog({
                       <Button
                         variant="ghost"
                         size="sm"
-                        disabled={sending || closing || countdown !== null}
+                        disabled={sending || closing}
                         onClick={() => {
                           update({ forwardSource: undefined });
                           setForwardError("");
@@ -982,7 +950,7 @@ export function ComposeDialog({
                         <Checkbox
                           id={`forward-file-${file.id}`}
                           checked={file.included}
-                          disabled={sending || closing || countdown !== null}
+                          disabled={sending || closing}
                           onCheckedChange={(included) =>
                             update({
                               forwardFiles: value.forwardFiles!.map((item) =>
@@ -1050,28 +1018,14 @@ export function ComposeDialog({
                   isDemo() ||
                   !native
                 }
-                onClick={
-                  countdown !== null
-                    ? () => {
-                        clearInterval(timer.current!);
-                        timer.current = null;
-                        setCountdown(null);
-                      }
-                    : queue
-                }
+                onClick={queue}
               >
                 {sending ? (
                   <LoaderCircle className="animate-spin" size={16} />
-                ) : countdown !== null ? (
-                  <Undo2 size={16} />
                 ) : (
                   <Send size={16} />
                 )}{" "}
-                {sending
-                  ? "发送中…"
-                  : countdown !== null
-                    ? `撤销发送 · ${countdown}s`
-                    : "发送邮件"}
+                {sending ? "准备发送…" : "发送邮件"}
               </Button>
               <Button
                 variant="outline"
@@ -1081,7 +1035,6 @@ export function ComposeDialog({
                   forwardLoading ||
                   imageLoading ||
                   !!value.forwardSource ||
-                  countdown !== null ||
                   (!native && !isDemo())
                 }
                 onClick={() => setPlanning(!planning)}
@@ -1099,7 +1052,7 @@ export function ComposeDialog({
                     <Switch
                       id={`include-signature-${value.id}`}
                       checked={value.signature.included}
-                      disabled={sending || closing || countdown !== null}
+                      disabled={sending || closing}
                       onCheckedChange={(included) =>
                         update({
                           signature: { ...value.signature!, included },
@@ -1113,7 +1066,7 @@ export function ComposeDialog({
                 variant="ghost"
                 size="icon"
                 onClick={() => void attach()}
-                disabled={sending || closing || countdown !== null}
+                disabled={sending || closing}
                 title="添加附件"
               >
                 <Paperclip size={18} />

@@ -60,6 +60,26 @@ async function render(rules: Rule[] = []) {
     ),
   );
 }
+function legacyServerRule(action: "serverCopy" | "serverMove"): Rule {
+  return {
+    id: "existing-server-rule",
+    name: "已有服务器规则",
+    accountId: "",
+    enabled: true,
+    mode: "all",
+    conditions: [{ field: "subject", operator: "contains", value: "" }],
+    action,
+    destination: "",
+    sourceFolder: "",
+    actions: [{ action, destination: "", sourceFolder: "" }],
+    stop: true,
+  };
+}
+async function openExistingRule() {
+  await act(async () =>
+    document.querySelector<HTMLButtonElement>('[title="编辑规则"]')!.click(),
+  );
+}
 beforeEach(() => {
   Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
   HTMLElement.prototype.scrollIntoView = vi.fn();
@@ -100,9 +120,8 @@ afterEach(async () => {
 });
 
 it("requires account/source/target, excludes isolated and same folders, and only previews before saving", async () => {
-  await render();
-  await click("新建规则");
-  await select("规则执行动作", "移动到服务器文件夹");
+  await render([legacyServerRule("serverMove")]);
+  await openExistingRule();
   expect(
     (document.querySelector("#rule-source") as HTMLButtonElement).disabled,
   ).toBe(true);
@@ -152,9 +171,8 @@ it("requires account/source/target, excludes isolated and same folders, and only
   });
 });
 it("clears destinations when switching back to local actions", async () => {
-  await render();
-  await click("新建规则");
-  await select("规则执行动作", "复制到服务器文件夹");
+  await render([legacyServerRule("serverCopy")]);
+  await openExistingRule();
   await select("规则适用账号", account.email);
   await select("规则来源文件夹", "收件箱");
   await select("规则目标文件夹", "归档");
@@ -198,9 +216,8 @@ it("shows task uncertainty without offering replay and retries only a failed enq
   );
 });
 it("does not expose a full-address Gmail account as a supported remote rule account", async () => {
-  await render();
-  await click("新建规则");
-  await select("规则执行动作", "复制到服务器文件夹");
+  await render([legacyServerRule("serverCopy")]);
+  await openExistingRule();
   await act(async () =>
     document
       .querySelector('[aria-label="规则适用账号"]')!
@@ -212,6 +229,33 @@ it("does not expose a full-address Gmail account as a supported remote rule acco
     (e) => e.textContent === data.accounts[0].email,
   )!;
   expect(gmail.getAttribute("data-disabled")).not.toBeNull();
+});
+
+it("offers local actions in a fixed-width row with controls at the right", async () => {
+  await render();
+  await click("新建规则");
+  expect(
+    document.querySelector('[data-slot="dialog-content"]')?.className,
+  ).toContain("w-[900px]");
+  const row = document.querySelector(
+    '[aria-label="规则执行动作"]',
+  )?.parentElement;
+  expect(
+    row?.querySelector('input[placeholder="例如：项目 / 设计"]'),
+  ).not.toBeNull();
+  expect(row?.lastElementChild?.className).toContain("ml-auto");
+  await act(async () =>
+    document
+      .querySelector('[aria-label="规则执行动作"]')!
+      .dispatchEvent(
+        new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true }),
+      ),
+  );
+  const options = [...document.querySelectorAll('[role="option"]')].map(
+    (item) => item.textContent,
+  );
+  expect(options).not.toContain("复制到服务器文件夹");
+  expect(options).not.toContain("移动到服务器文件夹");
 });
 
 it("offers complete save without a folder and save-and-classify with a local destination", async () => {
@@ -234,4 +278,153 @@ it("offers complete save without a folder and save-and-classify with a local des
     }),
   });
   expect(api.call).not.toHaveBeenCalledWith("run_rules");
+});
+it("saves move and mark-read as ordered steps in one rule", async () => {
+  await render([legacyServerRule("serverMove")]);
+  await openExistingRule();
+  await select("规则适用账号", account.email);
+  await select("规则来源文件夹", "收件箱");
+  await select("规则目标文件夹", "归档");
+  await click("添加动作");
+  await select("规则执行动作 2", "标记为已读");
+  await act(async () =>
+    document
+      .querySelector("form")!
+      .dispatchEvent(new Event("submit", { bubbles: true, cancelable: true })),
+  );
+  expect(api.call).toHaveBeenCalledWith("save_rules", {
+    rules: [
+      expect.objectContaining({
+        actions: [
+          expect.objectContaining({
+            action: "serverMove",
+            sourceFolder: "INBOX",
+            destination: "Archive",
+          }),
+          expect.objectContaining({ action: "read" }),
+        ],
+      }),
+    ],
+  });
+});
+it("offers size and boundary text comparisons in rule preview", async () => {
+  await render();
+  await click("新建规则");
+  await select("条件比较", "以此结尾");
+  await click("预览匹配，不执行动作");
+  expect(api.call).toHaveBeenLastCalledWith("preview_rule", {
+    rule: expect.objectContaining({
+      conditions: [
+        expect.objectContaining({ field: "subject", operator: "endsWith" }),
+      ],
+    }),
+  });
+  await select("条件字段", "邮件大小（KB）");
+  expect(
+    (document.querySelector('[aria-label="条件值"]') as HTMLInputElement).type,
+  ).toBe("number");
+  await click("预览匹配，不执行动作");
+  expect(api.call).toHaveBeenLastCalledWith("preview_rule", {
+    rule: expect.objectContaining({
+      conditions: [
+        expect.objectContaining({ field: "sizeKb", operator: "greaterThan" }),
+      ],
+    }),
+  });
+});
+it("offers read and starred status values and a shadcn date picker", async () => {
+  await render();
+  await click("新建规则");
+  await select("条件字段", "已读状态");
+  expect(document.querySelector('input[aria-label="条件值"]')).toBeNull();
+  await select("条件值", "未读");
+  await click("预览匹配，不执行动作");
+  expect(api.call).toHaveBeenLastCalledWith("preview_rule", {
+    rule: expect.objectContaining({
+      conditions: [
+        expect.objectContaining({
+          field: "read",
+          operator: "equals",
+          value: "false",
+        }),
+      ],
+    }),
+  });
+  await select("条件字段", "星标状态");
+  await select("条件值", "有星标");
+  await click("预览匹配，不执行动作");
+  expect(api.call).toHaveBeenLastCalledWith("preview_rule", {
+    rule: expect.objectContaining({
+      conditions: [
+        expect.objectContaining({
+          field: "starred",
+          operator: "equals",
+          value: "true",
+        }),
+      ],
+    }),
+  });
+  await select("条件字段", "邮件日期");
+  expect(document.querySelector('input[type="date"]')).toBeNull();
+  expect(document.querySelector('[aria-label="条件日期"]')).not.toBeNull();
+});
+
+it("offers copied receivers, priority and received-day conditions", async () => {
+  await render();
+  await click("新建规则");
+  await select("条件字段", "抄送");
+  expect(
+    (document.querySelector('[aria-label="条件值"]') as HTMLInputElement).type,
+  ).toBe("text");
+  await click("预览匹配，不执行动作");
+  expect(api.call).toHaveBeenLastCalledWith("preview_rule", {
+    rule: expect.objectContaining({
+      conditions: [
+        expect.objectContaining({ field: "cc", operator: "contains" }),
+      ],
+    }),
+  });
+  await select("条件字段", "收件人或抄送");
+  await click("预览匹配，不执行动作");
+  expect(api.call).toHaveBeenLastCalledWith("preview_rule", {
+    rule: expect.objectContaining({
+      conditions: [
+        expect.objectContaining({
+          field: "recipientsOrCc",
+          operator: "contains",
+        }),
+      ],
+    }),
+  });
+  await select("条件字段", "优先级");
+  await select("条件值", "高");
+  await click("预览匹配，不执行动作");
+  expect(api.call).toHaveBeenLastCalledWith("preview_rule", {
+    rule: expect.objectContaining({
+      conditions: [
+        expect.objectContaining({
+          field: "priority",
+          operator: "equals",
+          value: "high",
+        }),
+      ],
+    }),
+  });
+  await select("条件字段", "已接收天数");
+  const days = document.querySelector(
+    '[aria-label="条件值"]',
+  ) as HTMLInputElement;
+  expect(days.type).toBe("number");
+  expect(days.placeholder).toBe("天数");
+  await click("预览匹配，不执行动作");
+  expect(api.call).toHaveBeenLastCalledWith("preview_rule", {
+    rule: expect.objectContaining({
+      conditions: [
+        expect.objectContaining({
+          field: "ageDays",
+          operator: "greaterThan",
+        }),
+      ],
+    }),
+  });
 });

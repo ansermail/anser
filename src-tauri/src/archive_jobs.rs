@@ -374,11 +374,12 @@ impl Store {
                 mail.date = mail.server_date.clone();
             }
             tx.execute(
-                "UPDATE messages SET hash=?2,data=?3,parser_version=3 WHERE id=?1",
+                "UPDATE messages SET hash=?2,data=?3,parser_version=?4 WHERE id=?1",
                 params![
                     old.id,
                     mail.hash,
-                    serde_json::to_string(&mail).map_err(err)?
+                    serde_json::to_string(&mail).map_err(err)?,
+                    crate::archive::PARSER_VERSION
                 ],
             )
             .map_err(err)?;
@@ -485,6 +486,7 @@ mod tests {
                     operator: "contains".into(),
                     value: "invoice".into(),
                 }],
+                actions: Vec::new(),
                 action: "serverCopy".into(),
                 source_folder: "INBOX".into(),
                 destination: "Archive".into(),

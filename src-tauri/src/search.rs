@@ -106,7 +106,27 @@ pub fn predicate(indexed: bool) -> String {
 
 pub(crate) fn listing_predicate(indexed: bool) -> String {
     let search = predicate(indexed);
-    format!("(?1='' OR listing.account_id=?1) AND {search} AND (?3='' OR json_extract(data,'$.localFolder')=?3) AND CASE ?4 WHEN 'trash' THEN json_extract(data,'$.trashed')=1 ELSE json_extract(data,'$.trashed')=0 END AND CASE ?4 WHEN 'all' THEN EXISTS(SELECT 1 FROM trusted_sources s JOIN accounts a ON a.id=s.account_id WHERE s.mail_id=listing.id AND s.folder='INBOX' COLLATE NOCASE AND s.active=1) WHEN 'unread' THEN json_extract(data,'$.isRead')=0 WHEN 'starred' THEN json_extract(data,'$.starred')=1 WHEN 'sent' THEN (EXISTS(SELECT 1 FROM trusted_sources s JOIN remote_folders f ON f.account_id=s.account_id AND f.name=s.folder WHERE s.mail_id=listing.id AND s.active=1 AND EXISTS(SELECT 1 FROM json_each(f.data,'$.roles') WHERE value='sent')) OR (json_extract(data,'$.sourceFolder')='Sent' AND (NOT EXISTS(SELECT 1 FROM remote_folders f WHERE f.account_id=listing.account_id AND f.name='Sent') OR EXISTS(SELECT 1 FROM trusted_sources s JOIN outbox o ON o.id=s.remote_id WHERE s.mail_id=listing.id AND s.folder='Sent' AND o.status='sent')))) ELSE 1 END AND (?5=0 OR json_extract(data,'$.isRead')=0) AND (?6=0 OR json_extract(data,'$.starred')=1) AND (?7=0 OR json_extract(data,'$.hasAttachments')=1) AND (?9='' OR EXISTS(SELECT 1 FROM trusted_sources s WHERE s.mail_id=listing.id AND s.account_id=listing.account_id AND s.active=1 AND (s.folder=?9 OR (?13=1 AND ?14!='' AND substr(s.folder,1,length(?9||?14))=?9||?14)))) AND (?4!='local' OR COALESCE(json_extract(data,'$.savedLocally'),1)=1)")
+    let sent = sent_mail_predicate("listing");
+    let non_unread = non_unread_mail_predicate("listing");
+    format!("(?1='' OR listing.account_id=?1) AND {search} AND (?3='' OR json_extract(data,'$.localFolder')=?3) AND CASE ?4 WHEN 'trash' THEN json_extract(data,'$.trashed')=1 ELSE json_extract(data,'$.trashed')=0 END AND CASE ?4 WHEN 'unread' THEN json_extract(data,'$.isRead')=0 AND NOT ({non_unread}) WHEN 'starred' THEN json_extract(data,'$.starred')=1 WHEN 'sent' THEN ({sent}) ELSE 1 END AND (?5=0 OR (json_extract(data,'$.isRead')=0 AND NOT ({non_unread}))) AND (?6=0 OR json_extract(data,'$.starred')=1) AND (?7=0 OR json_extract(data,'$.hasAttachments')=1) AND (?9='' OR EXISTS(SELECT 1 FROM trusted_sources s WHERE s.mail_id=listing.id AND s.account_id=listing.account_id AND s.active=1 AND (s.folder=?9 OR (?13=1 AND ?14!='' AND substr(s.folder,1,length(?9||?14))=?9||?14)))) AND (?4!='local' OR COALESCE(json_extract(data,'$.savedLocally'),1)=1)")
+}
+
+pub(crate) fn sent_mail_predicate(alias: &str) -> String {
+    format!("EXISTS(SELECT 1 FROM trusted_sources s JOIN remote_folders f ON f.account_id=s.account_id AND f.name=s.folder WHERE s.mail_id={alias}.id AND s.active=1 AND EXISTS(SELECT 1 FROM json_each(f.data,'$.roles') WHERE value='sent')) OR (json_extract({alias}.data,'$.sourceFolder')='Sent' AND (NOT EXISTS(SELECT 1 FROM remote_folders f WHERE f.account_id={alias}.account_id AND f.name='Sent') OR EXISTS(SELECT 1 FROM trusted_sources s JOIN outbox o ON o.id=s.remote_id WHERE s.mail_id={alias}.id AND s.folder='Sent' AND o.status='sent')))" )
+}
+
+pub(crate) fn non_unread_mail_predicate(alias: &str) -> String {
+    let sent = sent_mail_predicate(alias);
+    format!("({sent}) OR EXISTS(SELECT 1 FROM trusted_sources s JOIN remote_folders f ON f.account_id=s.account_id AND f.name=s.folder WHERE s.mail_id={alias}.id AND s.active=1 AND EXISTS(SELECT 1 FROM json_each(f.data,'$.roles') WHERE value='drafts')) OR (json_extract({alias}.data,'$.sourceFolder')='Drafts' AND NOT EXISTS(SELECT 1 FROM remote_folders f WHERE f.account_id={alias}.account_id AND f.name='Drafts'))")
+}
+
+pub(crate) fn is_non_unread_mail(db: &Connection, id: &str) -> crate::models::Result<bool> {
+    let predicate = non_unread_mail_predicate("listing");
+    db.query_row(
+        &format!("SELECT EXISTS(SELECT 1 FROM message_listing listing WHERE listing.id=?1 AND ({predicate}))"),
+        [id],
+        |row| row.get(0),
+    ).map_err(err)
 }
 
 #[cfg(test)]
@@ -247,12 +267,13 @@ mod tests {
         safe.hash = "fictional-search-hash".into();
         safe.body = safe.body.replace('\0', "");
         db.execute(
-            "INSERT INTO messages(id,account_id,hash,data,parser_version) VALUES(?1,?2,?3,?4,3)",
+            "INSERT INTO messages(id,account_id,hash,data,parser_version) VALUES(?1,?2,?3,?4,?5)",
             params![
                 safe.id,
                 safe.account_id,
                 safe.hash,
-                serde_json::to_string(&safe).unwrap()
+                serde_json::to_string(&safe).unwrap(),
+                archive::PARSER_VERSION
             ],
         )
         .unwrap();

@@ -361,6 +361,8 @@ pub fn parse(
         account_email: account.email.clone(),
         sender: header(&parsed, &parts, "From").unwrap_or_default(),
         recipients: header(&parsed, &parts, "To").unwrap_or_default(),
+        cc: header(&parsed, &parts, "Cc").unwrap_or_default(),
+        priority: priority_of(&parsed.headers),
         subject: header(&parsed, &parts, "Subject").unwrap_or_else(|| "（无主题）".into()),
         preview: text
             .split_whitespace()
@@ -383,6 +385,7 @@ pub fn parse(
                 .windows(4)
                 .position(|p| p == b"\r\n\r\n")
                 .is_some_and(|p| p + 4 < raw.len()),
+        header_metadata_known: true,
         hash: digest(raw),
         size: raw.len() as u64,
         saved_at: now,
@@ -470,4 +473,43 @@ fn message_date(mail: &ParsedMail<'_>) -> Option<String> {
                 })
                 .next()
         })
+}
+/// Version of the derived mail record written by [`parse`]. Bump it when the
+/// parser starts filling a new field so stored archives are updated once on
+/// the next launch instead of silently keeping the old shape.
+pub const PARSER_VERSION: i64 = 5;
+/// Normalized importance of a message: `high`, `normal` or `low`. Mail clients
+/// disagree on the header and values, so `X-Priority`, `Priority` and
+/// `Importance` are all accepted and reduced to these three buckets.
+pub fn priority_of(headers: &[mailparse::MailHeader<'_>]) -> String {
+    for name in ["X-Priority", "Priority", "Importance"] {
+        for value in headers.get_all_values(name) {
+            if let Some(priority) = priority_value(&value) {
+                return priority.into();
+            }
+        }
+    }
+    "normal".into()
+}
+fn priority_value(value: &str) -> Option<&'static str> {
+    let lower = value.trim().to_ascii_lowercase();
+    let token = lower
+        .split(|c: char| c.is_whitespace() || matches!(c, '(' | ')' | ';' | ','))
+        .find(|part| !part.is_empty())?;
+    match token {
+        "1" | "2" | "high" | "highest" | "urgent" => Some("high"),
+        "4" | "5" | "low" | "lowest" | "non-urgent" => Some("low"),
+        "3" | "normal" | "medium" => Some("normal"),
+        _ => None,
+    }
+}
+/// Read only the header block of an archived original. Used to backfill
+/// fields for records written by an older parser without decoding bodies or
+/// attachments again.
+pub fn header_metadata(raw: &[u8]) -> Result<(String, String)> {
+    let (headers, _) = mailparse::parse_headers(raw).map_err(err)?;
+    Ok((
+        headers.get_first_value("Cc").unwrap_or_default(),
+        priority_of(&headers),
+    ))
 }

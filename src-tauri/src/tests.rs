@@ -107,6 +107,37 @@ fn local_account_preferences_save_during_sync_and_are_not_overwritten_by_sync_st
 }
 
 #[test]
+fn outbox_lists_newest_activity_first_across_statuses_and_timezones() {
+    let temp = tempfile::tempdir().unwrap();
+    let store = Store::new(temp.path().to_path_buf()).unwrap();
+    store.save_account(&account()).unwrap();
+    let draft = draft();
+    let data = serde_json::to_string(&draft).unwrap();
+    for (id, status, updated_at, scheduled_at) in [
+        (
+            "older-plan",
+            "scheduled",
+            "2026-10-15T23:00:00+08:00",
+            "2027-01-01T00:00:00Z",
+        ),
+        ("newest", "sent", "2026-10-16T08:30:00Z", ""),
+        ("middle", "failed", "2026-10-16T12:00:00+08:00", ""),
+    ] {
+        store.db().unwrap().execute(
+            "INSERT INTO outbox(id,status,data,raw,updated_at,scheduled_at) VALUES(?1,?2,?3,X'',?4,?5)",
+            rusqlite::params![id, status, data, updated_at, scheduled_at],
+        ).unwrap();
+    }
+    let ids: Vec<_> = store
+        .outbox()
+        .unwrap()
+        .into_iter()
+        .map(|row| row.id)
+        .collect();
+    assert_eq!(ids, ["newest", "middle", "older-plan"]);
+}
+
+#[test]
 fn smtp_submission_is_independent_of_receiving_and_cannot_repeat_a_confirmed_send() {
     let temp = tempfile::tempdir().unwrap();
     let store = Store::new(temp.path().to_path_buf()).unwrap();
@@ -370,6 +401,7 @@ fn rule(id: &str, action: &str, stop: bool) -> Rule {
             operator: "contains".into(),
             value: "invoice".into(),
         }],
+        actions: Vec::new(),
         action: action.into(),
         destination: "财务/发票".into(),
         source_folder: String::new(),
@@ -429,6 +461,88 @@ fn rule_order_stop_and_idempotence() {
     assert_eq!(snap.stats.saved, 1);
     assert_eq!(snap.messages[0].local_folder, "财务/发票");
     assert!(!snap.messages[0].trashed);
+}
+#[test]
+fn status_conditions_keep_ordered_actions_after_the_flag_changes() {
+    let dir = tempfile::tempdir().unwrap();
+    let s = Store::new(dir.path().into()).unwrap();
+    let mut unread_chain = rule("unread-chain", "read", false);
+    unread_chain.conditions = vec![Condition {
+        field: "read".into(),
+        operator: "equals".into(),
+        value: "false".into(),
+    }];
+    unread_chain.actions = vec![
+        RuleAction {
+            action: "read".into(),
+            destination: String::new(),
+            source_folder: String::new(),
+        },
+        RuleAction {
+            action: "folder".into(),
+            destination: "财务/发票".into(),
+            source_folder: String::new(),
+        },
+    ];
+    s.save_rules(&[unread_chain]).unwrap();
+    s.ingest(&account(), "INBOX", "1", &raw(), false).unwrap();
+    let id = s.snapshot(&query()).unwrap().messages[0].id.clone();
+    let m = s.mail(&id).unwrap();
+    assert!(m.is_read);
+    assert_eq!(m.local_read_override, Some(true));
+    assert_eq!(m.local_folder, "财务/发票");
+    assert!(!m.starred);
+}
+#[test]
+fn unstarred_status_condition_keeps_later_actions_after_starring() {
+    let dir = tempfile::tempdir().unwrap();
+    let s = Store::new(dir.path().into()).unwrap();
+    let mut unstarred_chain = rule("unstarred-chain", "star", false);
+    unstarred_chain.conditions = vec![Condition {
+        field: "starred".into(),
+        operator: "equals".into(),
+        value: "false".into(),
+    }];
+    unstarred_chain.actions = vec![
+        RuleAction {
+            action: "star".into(),
+            destination: String::new(),
+            source_folder: String::new(),
+        },
+        RuleAction {
+            action: "folder".into(),
+            destination: "财务/待复核".into(),
+            source_folder: String::new(),
+        },
+    ];
+    s.save_rules(&[unstarred_chain]).unwrap();
+    s.ingest(&account(), "INBOX", "1", &raw(), false).unwrap();
+    let id = s.snapshot(&query()).unwrap().messages[0].id.clone();
+    let m = s.mail(&id).unwrap();
+    assert!(m.starred);
+    assert_eq!(m.local_star_override, Some(true));
+    assert_eq!(m.local_folder, "财务/待复核");
+    assert!(!m.is_read);
+}
+#[test]
+fn preview_uses_read_status_without_touching_mail() {
+    let dir = tempfile::tempdir().unwrap();
+    let s = Store::new(dir.path().into()).unwrap();
+    s.ingest(&account(), "INBOX", "1", &raw(), false).unwrap();
+    let mut unread = rule("preview-unread", "read", false);
+    unread.conditions = vec![Condition {
+        field: "read".into(),
+        operator: "equals".into(),
+        value: "false".into(),
+    }];
+    assert_eq!(s.preview_rule(&unread).unwrap().len(), 1);
+    unread.conditions[0].value = "true".into();
+    assert!(s.preview_rule(&unread).unwrap().is_empty());
+    assert!(
+        !s.mail(&s.snapshot(&query()).unwrap().messages[0].id)
+            .unwrap()
+            .is_read
+    );
 }
 #[test]
 fn failed_save_cannot_run_rules_or_publish_success() {
@@ -543,8 +657,12 @@ fn server_cleanup_removes_inbox_location_but_keeps_archive() {
     let mut inbox = query();
     inbox.view = "all".into();
     assert_eq!(s.snapshot(&inbox).unwrap().matched, 1);
+    inbox.remote_folder = "INBOX".into();
+    assert_eq!(s.snapshot(&inbox).unwrap().matched, 1);
     s.reconcile_folder(&account().id, "INBOX", &[]).unwrap();
     assert_eq!(s.snapshot(&inbox).unwrap().matched, 0);
+    inbox.remote_folder.clear();
+    assert_eq!(s.snapshot(&inbox).unwrap().matched, 1);
     assert_eq!(s.snapshot(&query()).unwrap().matched, 1);
 }
 #[test]
@@ -728,6 +846,15 @@ fn unread_filter_preserves_mailbox_category_account_and_search_scope() {
         ("inbox-read", "INBOX", true, true, false, "项目", &a),
         ("archive-unread", "Archive", false, false, false, "项目", &a),
         ("sent-unread", "Sent", false, false, false, "全部存档", &a),
+        (
+            "draft-unread",
+            "Drafts",
+            false,
+            false,
+            false,
+            "全部存档",
+            &a,
+        ),
         ("trash-unread", "INBOX", false, true, true, "项目", &a),
         ("other-unread", "INBOX", false, false, false, "项目", &b),
         ("inactive-unread", "INBOX", false, true, false, "项目", &a),
@@ -752,10 +879,30 @@ fn unread_filter_preserves_mailbox_category_account_and_search_scope() {
         ],
     )
     .unwrap();
+    let stats = s.snapshot(&query()).unwrap().stats;
+    assert_eq!(stats.unread, 4);
+    assert_eq!(s.unread_total().unwrap(), stats.unread);
     for (view, folder, account_id, search, expected) in [
-        ("all", "", "", "", vec!["inbox-unread", "other-unread"]),
-        ("all", "", a.id.as_str(), "", vec!["inbox-unread"]),
-        ("all", "", "", "archive", vec![]),
+        (
+            "all",
+            "",
+            "",
+            "",
+            vec![
+                "archive-unread",
+                "inactive-unread",
+                "inbox-unread",
+                "other-unread",
+            ],
+        ),
+        (
+            "all",
+            "",
+            a.id.as_str(),
+            "",
+            vec!["archive-unread", "inactive-unread", "inbox-unread"],
+        ),
+        ("all", "", "", "archive", vec!["archive-unread"]),
         ("local", "", "", "archive", vec!["archive-unread"]),
         (
             "local",
@@ -771,7 +918,7 @@ fn unread_filter_preserves_mailbox_category_account_and_search_scope() {
             "",
             vec!["inactive-unread", "inbox-unread"],
         ),
-        ("sent", "", "", "", vec!["sent-unread"]),
+        ("sent", "", "", "", vec![]),
         ("trash", "项目", "", "", vec!["trash-unread"]),
     ] {
         let mut q = query();
@@ -791,6 +938,26 @@ fn unread_filter_preserves_mailbox_category_account_and_search_scope() {
         );
         q.unread_only = false;
         assert!(s.snapshot(&q).unwrap().matched >= snap.matched);
+    }
+    let duplicate = b"From: test@example.com\r\nSubject: inbox-unread\r\n\r\nScope test";
+    s.ingest(&a, "Archive", "same-mail-other-folder", duplicate, false)
+        .unwrap();
+    let mut all = query();
+    all.view = "all".into();
+    all.unread_only = true;
+    assert_eq!(s.snapshot(&all).unwrap().matched, 4);
+    assert_eq!(s.unread_total().unwrap(), 4);
+    let mut drafts = query();
+    drafts.view = "remote".into();
+    drafts.remote_folder = "Drafts".into();
+    assert_eq!(s.snapshot(&drafts).unwrap().matched, 1);
+    drafts.unread_only = true;
+    assert_eq!(s.snapshot(&drafts).unwrap().matched, 0);
+    for subject in ["sent-unread", "draft-unread"] {
+        let mut q = query();
+        q.search = subject.into();
+        let id = s.snapshot(&q).unwrap().messages.remove(0).id;
+        assert!(s.change_mail(&id, "read", "false").is_err());
     }
 }
 
@@ -1034,6 +1201,7 @@ fn filters_stack_with_category_and_field_search_and_legacy_query_defaults() {
     let s = Store::new(dir.path().into()).unwrap();
     s.save_account(&account()).unwrap();
     s.ingest(&account(), "INBOX", "1:1", &raw(), false).unwrap();
+    assert_eq!(s.unread_total().unwrap(), 1);
     let mut m = s.snapshot(&query()).unwrap().messages.remove(0);
     m.starred = true;
     s.update_mail(&m).unwrap();
@@ -1051,6 +1219,7 @@ fn filters_stack_with_category_and_field_search_and_legacy_query_defaults() {
     assert_eq!(s.snapshot(&q).unwrap().matched, 1);
     m.is_read = true;
     s.update_mail(&m).unwrap();
+    assert_eq!(s.unread_total().unwrap(), 0);
     assert_eq!(s.snapshot(&q).unwrap().matched, 0);
     let legacy: Query = serde_json::from_str(
         r#"{"view":"local","accountId":"","search":"","folder":"","limit":200}"#,
@@ -1178,6 +1347,7 @@ fn configurable_sync_interval_and_wakeup_are_persistent_and_keep_busy_catchup_pe
     assert_eq!(s.preferences().unwrap().sync_interval_minutes, 5);
     s.save_preferences(&Preferences {
         sync_interval_minutes: 15,
+        do_not_disturb: true,
         ..Default::default()
     })
     .unwrap();
@@ -1188,6 +1358,13 @@ fn configurable_sync_interval_and_wakeup_are_persistent_and_keep_busy_catchup_pe
             .unwrap()
             .sync_interval_minutes,
         15
+    );
+    assert!(
+        Store::new(dir.path().into())
+            .unwrap()
+            .preferences()
+            .unwrap()
+            .do_not_disturb
     );
     assert!(s
         .save_preferences(&Preferences {
@@ -1359,6 +1536,8 @@ fn conversation_combines_inbox_and_sent_with_scope_pagination_and_old_archive_up
     assert!(single.messages[0].body.is_empty());
     q.limit = 10;
     q.view = "all".into();
+    assert_eq!(store.snapshot(&q).unwrap().matched, 3);
+    q.remote_folder = "INBOX".into();
     let inbox = store.snapshot(&q).unwrap();
     assert_eq!(inbox.matched, 2);
     assert_eq!(inbox.messages[1].id, turns[0].id);
@@ -2413,4 +2592,111 @@ fn local_rule_flags_survive_refresh_upgrade_and_restart_until_explicit_user_chan
         .unwrap();
     let m = s.mail(&id).unwrap();
     assert!(m.is_read && m.starred);
+}
+
+#[test]
+fn parser_reads_cc_and_normalizes_priority_headers() {
+    let account = account();
+    let raw = b"From: Alice <alice@example.com>\r\nTo: team@example.com\r\nCc: Copy <copy@example.com>\r\nX-Priority: 1 (Highest)\r\nSubject: urgent\r\nDate: Tue, 29 Sep 2026 10:00:00 +0800\r\nContent-Type: text/plain; charset=utf-8\r\n\r\nbody\r\n";
+    let (mail, _, _) = archive::parse(raw, &account, "INBOX").unwrap();
+    assert_eq!(mail.cc, "Copy <copy@example.com>");
+    assert_eq!(mail.priority, "high");
+    assert_eq!(
+        archive::header_metadata(raw).unwrap(),
+        (mail.cc.clone(), mail.priority.clone())
+    );
+    let legacy = b"From: a@example.com\r\nTo: b@example.com\r\nImportance: Low\r\nSubject: plain\r\nDate: Tue, 29 Sep 2026 10:00:00 +0800\r\nContent-Type: text/plain; charset=utf-8\r\n\r\nbody\r\n";
+    let (mail, _, _) = archive::parse(legacy, &account, "INBOX").unwrap();
+    assert!(mail.cc.is_empty());
+    assert_eq!(mail.priority, "low");
+    let plain = b"From: a@example.com\r\nTo: b@example.com\r\nSubject: none\r\nDate: Tue, 29 Sep 2026 10:00:00 +0800\r\nContent-Type: text/plain; charset=utf-8\r\n\r\nbody\r\n";
+    let (mail, _, _) = archive::parse(plain, &account, "INBOX").unwrap();
+    assert_eq!(mail.priority, "normal");
+    assert_eq!(
+        archive::header_metadata(plain).unwrap(),
+        (String::new(), "normal".into())
+    );
+}
+
+#[test]
+fn parser_upgrade_backfills_cc_and_priority_without_reparsing_bodies() {
+    let dir = tempfile::tempdir().unwrap();
+    let store = Store::new(dir.path().into()).unwrap();
+    let a = account();
+    store.save_account(&a).unwrap();
+    let raw = b"From: Alice <alice@example.com>\r\nTo: test@example.com\r\nCc: Team <team@example.com>\r\nX-Priority: 2\r\nSubject: Priority fixture\r\nDate: Tue, 29 Sep 2026 10:00:00 +0800\r\nContent-Type: text/plain; charset=utf-8\r\n\r\nBody stays untouched.\r\n";
+    store.ingest(&a, "INBOX", "1", raw, false).unwrap();
+    store
+        .db()
+        .unwrap()
+        .execute(
+            "UPDATE messages SET parser_version=3,data=json_remove(data,'$.cc','$.priority')",
+            [],
+        )
+        .unwrap();
+    drop(store);
+    let store = Store::new(dir.path().into()).unwrap();
+    let snapshot = store.snapshot(&query()).unwrap();
+    let mail = &snapshot.messages[0];
+    assert_eq!(mail.cc, "Team <team@example.com>");
+    assert_eq!(mail.priority, "high");
+    assert_eq!(store.mail(&mail.id).unwrap().body, "Body stays untouched.");
+    let version: i64 = store
+        .db()
+        .unwrap()
+        .query_row("SELECT parser_version FROM messages", [], |r| r.get(0))
+        .unwrap();
+    assert_eq!(version, archive::PARSER_VERSION);
+}
+
+#[test]
+fn parser_upgrade_keeps_online_only_headers_unknown_until_downloaded() {
+    let dir = tempfile::tempdir().unwrap();
+    let store = Store::new(dir.path().into()).unwrap();
+    let mut a = account();
+    a.save_locally = false;
+    store.save_account(&a).unwrap();
+    let raw = b"From: Alice <alice@example.com>\r\nTo: test@example.com\r\nCc: Team <team@example.com>\r\nSubject: Online fixture\r\nDate: Tue, 29 Sep 2026 10:00:00 +0800\r\nContent-Type: text/plain; charset=utf-8\r\n\r\nbody\r\n";
+    store.ingest(&a, "INBOX", "1", raw, false).unwrap();
+    store
+        .db()
+        .unwrap()
+        .execute(
+            "UPDATE messages SET parser_version=3,data=json_remove(data,'$.cc','$.priority','$.headerMetadataKnown')",
+            [],
+        )
+        .unwrap();
+    drop(store);
+    let store = Store::new(dir.path().into()).unwrap();
+    let (data, version): (String, i64) = store
+        .db()
+        .unwrap()
+        .query_row("SELECT data,parser_version FROM messages", [], |r| {
+            Ok((r.get(0)?, r.get(1)?))
+        })
+        .unwrap();
+    let mail: Mail = serde_json::from_str(&data).unwrap();
+    assert_eq!(mail.cc, "");
+    assert!(!mail.header_metadata_known);
+    assert_eq!(version, archive::PARSER_VERSION);
+    let rule = Rule {
+        id: "cc-online".into(),
+        name: "cc-online".into(),
+        account_id: a.id.clone(),
+        enabled: true,
+        mode: "all".into(),
+        conditions: vec![Condition {
+            field: "cc".into(),
+            operator: "contains".into(),
+            value: "team@example.com".into(),
+        }],
+        actions: Vec::new(),
+        action: "read".into(),
+        destination: String::new(),
+        source_folder: String::new(),
+        stop: false,
+    };
+    let preview = store.preview_rule(&rule).unwrap();
+    assert_eq!(preview.len(), 1);
+    assert!(preview[0].contains("等待完整邮件核对"));
 }

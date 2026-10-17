@@ -55,6 +55,7 @@ impl Store {
             ("updated_at", "TEXT NOT NULL DEFAULT ''"),
             ("scheduled_at", "TEXT NOT NULL DEFAULT ''"),
             ("raw_hash", "TEXT NOT NULL DEFAULT ''"),
+            ("send_kind", "TEXT NOT NULL DEFAULT 'scheduled'"),
         ] {
             let exists = db
                 .prepare("PRAGMA table_info(outbox)")
@@ -433,8 +434,12 @@ impl Store {
                     mail.date = mail.server_date.clone();
                 }
                 tx.execute(
-                    "UPDATE messages SET data=?2,parser_version=3 WHERE id=?1",
-                    params![mail.id, serde_json::to_string(&mail).map_err(err)?],
+                    "UPDATE messages SET data=?2,parser_version=?3 WHERE id=?1",
+                    params![
+                        mail.id,
+                        serde_json::to_string(&mail).map_err(err)?,
+                        archive::PARSER_VERSION
+                    ],
                 )
                 .map_err(err)?;
                 upgraded = true;
@@ -466,7 +471,17 @@ impl Store {
             if mail.date.is_empty() {
                 mail.date = mail.server_date.clone();
             }
-            tx.execute("INSERT INTO messages(id,account_id,hash,data,parser_version) VALUES(?1,?2,?3,?4,3) ON CONFLICT(id) DO UPDATE SET hash=excluded.hash,data=excluded.data,parser_version=3", params![mail.id,a.id,hash,serde_json::to_string(&mail).map_err(err)?]).map_err(err)?;
+            tx.execute(
+                "INSERT INTO messages(id,account_id,hash,data,parser_version) VALUES(?1,?2,?3,?4,?5) ON CONFLICT(id) DO UPDATE SET hash=excluded.hash,data=excluded.data,parser_version=excluded.parser_version",
+                params![
+                    mail.id,
+                    a.id,
+                    hash,
+                    serde_json::to_string(&mail).map_err(err)?,
+                    archive::PARSER_VERSION
+                ],
+            )
+            .map_err(err)?;
         }
         tx.execute("INSERT INTO sources(account_id,folder,remote_id,mail_id) VALUES(?1,?2,?3,?4) ON CONFLICT(account_id,folder,remote_id) DO UPDATE SET mail_id=excluded.mail_id,active=1",params![a.id,folder,remote,mail.id]).map_err(err)?;
         tx.commit().map_err(err)?;
@@ -483,7 +498,11 @@ impl Store {
     }
     fn apply_rules_inner(&self, id: &str, remote_only: bool) -> Result<u32> {
         let configured = self.rules()?;
-        if remote_only && !configured.iter().any(|r| r.enabled && rules::remote(r)) {
+        if remote_only
+            && !rules::expand(&configured)
+                .iter()
+                .any(|r| r.enabled && rules::remote(r))
+        {
             return Ok(0);
         }
         self.apply_configured_rules(self.mail(id)?, &configured, remote_only)
@@ -494,17 +513,28 @@ impl Store {
         configured: &[Rule],
         remote_only: bool,
     ) -> Result<u32> {
+        let expanded = rules::expand(configured);
+        let configured = expanded.as_slice();
+        // Freeze the state that first matched this rule chain. Ordered actions
+        // legitimately change read/star/folder flags, so later steps must not
+        // re-read those flags or "未读 → 标已读 → 归类" would stop after step one.
+        let observed = rules::ObservedStatus::of(&m);
         if Self::rule_blocks_move(&self.db()?, &m.id)? {
             return Ok(0);
         }
         if m.saved_locally && !remote_only {
             archive::read_raw(&self.root, &m.hash)?;
         }
+        let non_unread = crate::search::is_non_unread_mail(&self.db()?, &m.id)?;
         // Determine all required reads/saves before scheduling any earlier MOVE.
         // The continuation owns the full chain and keeps directory tasks held
         // until every ordered step has finished successfully.
         for rule in configured {
-            let state = rules::match_state(rule, &m, rules::body_available(&m));
+            if non_unread && rule.action == "unread" {
+                continue;
+            }
+            let state =
+                rules::match_state_observed(rule, &m, Some(observed), rules::body_available(&m));
             if rules::remote(rule) && !self.rule_has_source(rule, &m)? {
                 continue;
             }
@@ -520,7 +550,7 @@ impl Store {
                                     &rule.source_folder,
                                 )?))))
             {
-                self.defer_rules(&m, configured, 0, remote_only)?;
+                self.defer_rules(&m, observed, configured, 0, remote_only)?;
                 return Ok(1);
             }
             if state == rules::MatchState::Match && rule.stop {
@@ -529,20 +559,24 @@ impl Store {
         }
         let mut count = 0;
         for (position, r) in configured.iter().enumerate() {
+            if non_unread && r.action == "unread" {
+                continue;
+            }
             if rules::remote(r) && !self.rule_has_source(r, &m)? {
                 continue;
             }
-            let state = rules::match_state(r, &m, rules::body_available(&m));
+            let state =
+                rules::match_state_observed(r, &m, Some(observed), rules::body_available(&m));
             if state == rules::MatchState::NeedsBody
                 && (!remote_only || rules::remote(r) || rules::saves(r) || r.stop)
             {
-                self.defer_rules(&m, configured, position, remote_only)?;
+                self.defer_rules(&m, observed, configured, position, remote_only)?;
                 count += 1;
                 break;
             }
             if remote_only && !rules::remote(&r) {
                 if state == rules::MatchState::Match && rules::saves(r) && !m.saved_locally {
-                    self.defer_rules(&m, configured, position, remote_only)?;
+                    self.defer_rules(&m, observed, configured, position, remote_only)?;
                     count += 1;
                     break;
                 }
@@ -558,7 +592,7 @@ impl Store {
                             .should_save_folder(&self.account(&m.account_id)?, &r.source_folder)?))
                     && !m.saved_locally
                 {
-                    self.defer_rules(&m, configured, position, remote_only)?;
+                    self.defer_rules(&m, observed, configured, position, remote_only)?;
                     count += 1;
                     break;
                 }
@@ -638,11 +672,15 @@ impl Store {
                 let full = self.mail(&m.id)?;
                 state = rules::match_state(&rule, &full, rules::body_available(&full));
             }
-            if state != rules::MatchState::NoMatch
-                && (!rules::remote(&rule) || self.rule_has_source(&rule, &m)?)
-            {
+            let available = rules::expand(std::slice::from_ref(&rule)).iter().try_fold(
+                false,
+                |found, step| -> Result<bool> {
+                    Ok(found || !rules::remote(step) || self.rule_has_source(step, &m)?)
+                },
+            )?;
+            if state != rules::MatchState::NoMatch && available {
                 matches.push(if state == rules::MatchState::NeedsBody {
-                    format!("{}（等待正文核对）", m.subject)
+                    format!("{}（等待完整邮件核对）", m.subject)
                 } else {
                     m.subject
                 });
@@ -751,17 +789,25 @@ impl Store {
         messages: Vec<Mail>,
         matched: u64,
     ) -> Result<Snapshot> {
-        let stats=db.query_row("SELECT COUNT(*),COALESCE(SUM(is_read=0 AND trashed=0),0),COALESCE(SUM(CASE WHEN saved_locally=1 THEN size ELSE 0 END),0),COALESCE(SUM(saved_locally),0) FROM search_documents",[],|r|Ok(Stats{total:r.get(0)?,saved:r.get(3)?,unread:r.get(1)?,bytes:r.get(2)?})).map_err(err)?;
+        let mut stats=db.query_row("SELECT COUNT(*),COALESCE(SUM(CASE WHEN saved_locally=1 THEN size ELSE 0 END),0),COALESCE(SUM(saved_locally),0) FROM search_documents",[],|r|Ok(Stats{total:r.get(0)?,saved:r.get(2)?,unread:0,bytes:r.get(1)?})).map_err(err)?;
+        let non_unread = crate::search::non_unread_mail_predicate("listing");
+        stats.unread = db.query_row(
+            &format!("SELECT COUNT(*) FROM readable_listing listing JOIN search_documents d ON d.mail_id=listing.id
+             WHERE d.is_read=0 AND d.trashed=0 AND NOT ({non_unread})"),
+            [],
+            |row| row.get(0),
+        ).map_err(err)?;
         let mut fs=db.prepare("SELECT DISTINCT local_folder FROM search_documents WHERE local_folder!='全部存档' ORDER BY 1").map_err(err)?;
         let folders = fs
             .query_map([], |r| r.get(0))
             .map_err(err)?
             .collect::<std::result::Result<Vec<String>, _>>()
             .map_err(err)?;
-        let mut counts = db.prepare("WITH unread_sources AS (
+        let mut counts = db.prepare(&format!("WITH unread_sources AS (
             SELECT s.account_id,s.folder,s.mail_id FROM trusted_sources s
             JOIN search_documents d ON d.mail_id=s.mail_id AND d.account_id=s.account_id
-            WHERE s.active=1 AND d.is_read=0 AND d.trashed=0
+            JOIN message_listing listing ON listing.id=s.mail_id
+            WHERE s.active=1 AND d.is_read=0 AND d.trashed=0 AND NOT ({non_unread})
         ) SELECT f.account_id,f.name,
             COUNT(DISTINCT CASE WHEN u.folder=f.name THEN u.mail_id END),
             COUNT(DISTINCT u.mail_id)
@@ -769,7 +815,7 @@ impl Store {
             AND (u.folder=f.name OR (
                 COALESCE(json_extract(f.data,'$.delimiter'),'')!='' AND
                 substr(u.folder,1,length(f.name||json_extract(f.data,'$.delimiter')))=f.name||json_extract(f.data,'$.delimiter')
-            )) GROUP BY f.account_id,f.name").map_err(err)?;
+            )) GROUP BY f.account_id,f.name")).map_err(err)?;
         let remote_folder_unread = counts
             .query_map([], |r| {
                 Ok(RemoteFolderUnread {
@@ -783,11 +829,11 @@ impl Store {
             .collect::<std::result::Result<Vec<_>, _>>()
             .map_err(err)?;
         let mut starred = db
-            .prepare(
+            .prepare(&format!(
                 "SELECT d.account_id,COUNT(*) FROM search_documents d
             JOIN readable_listing listing ON listing.id=d.mail_id
-            WHERE d.is_read=0 AND d.starred=1 AND d.trashed=0 GROUP BY d.account_id",
-            )
+            WHERE d.is_read=0 AND d.starred=1 AND d.trashed=0 AND NOT ({non_unread}) GROUP BY d.account_id",
+            ))
             .map_err(err)?;
         let account_starred_unread = starred
             .query_map([], |r| {
@@ -896,36 +942,73 @@ impl Store {
             .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
             .map_err(err)?;
         let rows = tx
-            .prepare("SELECT data FROM messages WHERE parser_version < 3")
+            .prepare("SELECT data, parser_version FROM messages WHERE parser_version < ?1")
             .map_err(err)?
-            .query_map([], |r| r.get::<_, String>(0))
+            .query_map([archive::PARSER_VERSION], |r| {
+                Ok((r.get::<_, String>(0)?, r.get::<_, i64>(1)?))
+            })
             .map_err(err)?
             .collect::<std::result::Result<Vec<_>, _>>()
             .map_err(err)?;
         let mut failed = 0;
-        for data in rows {
+        for (data, version) in rows {
             let mut mail: Mail = serde_json::from_str(&data).map_err(err)?;
-            let Ok((parsed, _, _)) = self.reparse(&mail) else {
-                // Missing/corrupt archives remain unchanged and retry next startup.
-                failed += 1;
-                continue;
-            };
-            mail.date = if parsed.date.is_empty() {
-                mail.server_date.clone()
+            if version >= 3 {
+                // The record already carries the full parsed shape; only the
+                // headers added later are missing, so skip decoding bodies and
+                // attachments for the whole archive.
+                let Ok(raw) = archive::read_raw(&self.root, &mail.hash) else {
+                    if !mail.saved_locally {
+                        // Online-only records never had an archived original.
+                        // Leave the headers unknown so Cc/priority rules wait
+                        // for a real download instead of retrying every launch.
+                        tx.execute(
+                            "UPDATE messages SET parser_version=?2 WHERE id=?1",
+                            params![mail.id, archive::PARSER_VERSION],
+                        )
+                        .map_err(err)?;
+                        continue;
+                    }
+                    failed += 1;
+                    continue;
+                };
+                let Ok((cc, priority)) = archive::header_metadata(&raw) else {
+                    failed += 1;
+                    continue;
+                };
+                mail.cc = cc;
+                mail.priority = priority;
+                mail.header_metadata_known = true;
             } else {
-                parsed.date
-            };
-            mail.sender = parsed.sender;
-            mail.recipients = parsed.recipients;
-            mail.subject = parsed.subject;
-            mail.body = parsed.body;
-            mail.preview = parsed.preview;
-            mail.message_id = parsed.message_id;
-            mail.in_reply_to = parsed.in_reply_to;
-            mail.references = parsed.references;
+                let Ok((parsed, _, _)) = self.reparse(&mail) else {
+                    // Missing/corrupt archives remain unchanged and retry next startup.
+                    failed += 1;
+                    continue;
+                };
+                mail.date = if parsed.date.is_empty() {
+                    mail.server_date.clone()
+                } else {
+                    parsed.date
+                };
+                mail.sender = parsed.sender;
+                mail.recipients = parsed.recipients;
+                mail.cc = parsed.cc;
+                mail.priority = parsed.priority;
+                mail.header_metadata_known = parsed.header_metadata_known;
+                mail.subject = parsed.subject;
+                mail.body = parsed.body;
+                mail.preview = parsed.preview;
+                mail.message_id = parsed.message_id;
+                mail.in_reply_to = parsed.in_reply_to;
+                mail.references = parsed.references;
+            }
             tx.execute(
-                "UPDATE messages SET data=?2,parser_version=3 WHERE id=?1",
-                params![mail.id, serde_json::to_string(&mail).map_err(err)?],
+                "UPDATE messages SET data=?2,parser_version=?3 WHERE id=?1",
+                params![
+                    mail.id,
+                    serde_json::to_string(&mail).map_err(err)?,
+                    archive::PARSER_VERSION
+                ],
             )
             .map_err(err)?;
         }

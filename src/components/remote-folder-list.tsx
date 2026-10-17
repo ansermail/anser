@@ -167,6 +167,12 @@ function FolderBranch({
     : hasChildren
       ? unreadCount?.tree
       : unreadCount?.direct;
+  const showUnread = !node.folder?.roles?.some(
+    (role) => role === "sent" || role === "drafts",
+  );
+  const showMarkRead = !node.folder?.roles?.some(
+    (role) => role === "inbox" || role === "drafts" || role === "sent",
+  );
   const active = flagged
     ? starredSelected
     : node.path === selected && hasChildren === selectedTree;
@@ -211,7 +217,9 @@ function FolderBranch({
           >
             <Icon data-icon="inline-start" />
             <span>{node.label}</span>
-            {!!count && <em aria-label={`未读 ${count} 封`}>{count}</em>}
+            {showUnread && !!count && (
+              <em aria-label={`未读 ${count} 封`}>{count}</em>
+            )}
             {syncError && (
               <AlertCircle
                 className="text-destructive"
@@ -220,20 +228,22 @@ function FolderBranch({
             )}
           </Button>
         </ContextMenuTrigger>
-        <ContextMenuContent>
-          <ContextMenuItem
-            onSelect={() =>
-              onMarkRead?.(
-                flagged ? "" : node.path,
-                !flagged && hasChildren,
-                flagged ? "" : node.delimiter || "",
-                flagged,
-              )
-            }
-          >
-            标记为已读
-          </ContextMenuItem>
-        </ContextMenuContent>
+        {showMarkRead && (
+          <ContextMenuContent>
+            <ContextMenuItem
+              onSelect={() =>
+                onMarkRead?.(
+                  flagged ? "" : node.path,
+                  !flagged && hasChildren,
+                  flagged ? "" : node.delimiter || "",
+                  flagged,
+                )
+              }
+            >
+              标记为已读
+            </ContextMenuItem>
+          </ContextMenuContent>
+        )}
       </ContextMenu>
     </div>
   );

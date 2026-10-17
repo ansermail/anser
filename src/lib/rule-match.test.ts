@@ -59,6 +59,48 @@ describe("rule preview semantics", () => {
       ),
     ).toBe(false);
   });
+  it("compares read and starred status as booleans", () => {
+    const unread = { ...mail, isRead: false, starred: true } as Mail;
+    const read = { ...unread, isRead: true, starred: false };
+    expect(
+      ruleMatches(
+        {
+          ...rule,
+          conditions: [{ field: "read", operator: "equals", value: "false" }],
+        },
+        unread,
+      ),
+    ).toBe(true);
+    expect(
+      ruleMatches(
+        {
+          ...rule,
+          conditions: [{ field: "read", operator: "equals", value: "false" }],
+        },
+        read,
+      ),
+    ).toBe(false);
+    expect(
+      ruleMatches(
+        {
+          ...rule,
+          conditions: [{ field: "starred", operator: "equals", value: "true" }],
+        },
+        unread,
+      ),
+    ).toBe(true);
+    expect(
+      ruleMatches(
+        {
+          ...rule,
+          conditions: [
+            { field: "starred", operator: "equals", value: "false" },
+          ],
+        },
+        read,
+      ),
+    ).toBe(true);
+  });
 });
 it("does not treat an online or undecodable body as an empty matching body", () => {
   const negative = {
@@ -88,6 +130,34 @@ it("does not treat an online or undecodable body as an empty matching body", () 
       online,
     ),
   ).toBe(true);
+});
+it("compares text boundaries and waits for a full size", () => {
+  const boundary = {
+    ...rule,
+    conditions: [{ field: "subject", operator: "startsWith", value: "项目" }],
+  };
+  expect(ruleMatches(boundary, mail)).toBe(true);
+  expect(
+    ruleMatches(
+      {
+        ...boundary,
+        conditions: [
+          { field: "subject", operator: "endsWith", value: "INVOICE" },
+        ],
+      },
+      mail,
+    ),
+  ).toBe(true);
+  const size = {
+    ...rule,
+    conditions: [{ field: "sizeKb", operator: "greaterThan", value: "1" }],
+  };
+  expect(
+    ruleMatchState(size, { ...mail, size: 2000, savedLocally: false }),
+  ).toBe("needsBody");
+  expect(
+    ruleMatchState(size, { ...mail, size: 2000, savedLocally: true }),
+  ).toBe("match");
 });
 
 it("keeps unknown attachment metadata distinct from a known empty attachment list", () => {
@@ -153,4 +223,75 @@ it("a damaged attachment does not discard a successfully decoded body", () => {
       },
     ),
   ).toBe(true);
+});
+
+it("matches copied recipients, priority and received age", () => {
+  const withMeta = {
+    ...mail,
+    cc: "Copy <copy@example.com>",
+    priority: "high",
+    date: new Date(Date.now() - 9 * 86_400_000).toISOString(),
+  } as Mail;
+  const condition = (field: string, operator: string, value: string) => ({
+    ...rule,
+    conditions: [{ field, operator, value }],
+  });
+  expect(ruleMatches(condition("cc", "contains", "copy@"), withMeta)).toBe(
+    true,
+  );
+  expect(
+    ruleMatches(condition("cc", "contains", "alice@example.com"), withMeta),
+  ).toBe(false);
+  expect(
+    ruleMatches(condition("recipientsOrCc", "contains", "copy@"), withMeta),
+  ).toBe(true);
+  expect(
+    ruleMatches(condition("recipientsOrCc", "notContains", "copy@"), withMeta),
+  ).toBe(false);
+  expect(
+    ruleMatches(condition("recipientsOrCc", "equals", "test@example.com"), {
+      ...withMeta,
+      recipients: "test@example.com",
+      cc: "",
+    }),
+  ).toBe(true);
+  expect(ruleMatches(condition("priority", "equals", "high"), withMeta)).toBe(
+    true,
+  );
+  expect(ruleMatches(condition("priority", "equals", "normal"), withMeta)).toBe(
+    false,
+  );
+  expect(
+    ruleMatches(condition("priority", "equals", "normal"), {
+      ...withMeta,
+      priority: undefined,
+    }),
+  ).toBe(true);
+  expect(ruleMatches(condition("ageDays", "greaterThan", "7"), withMeta)).toBe(
+    true,
+  );
+  expect(ruleMatches(condition("ageDays", "lessThan", "7"), withMeta)).toBe(
+    false,
+  );
+  expect(ruleMatches(condition("ageDays", "equals", "9"), withMeta)).toBe(true);
+});
+
+it("waits for the original before judging copied receivers or priority", () => {
+  const cc = {
+    ...rule,
+    conditions: [{ field: "cc", operator: "notContains", value: "x" }],
+  };
+  expect(ruleMatchState(cc, { ...mail, headerMetadataKnown: false })).toBe(
+    "needsBody",
+  );
+  expect(
+    ruleMatchState(cc, { ...mail, headerMetadataKnown: true, cc: "" }),
+  ).toBe("match");
+  const priority = {
+    ...rule,
+    conditions: [{ field: "priority", operator: "equals", value: "normal" }],
+  };
+  expect(
+    ruleMatchState(priority, { ...mail, headerMetadataKnown: false }),
+  ).toBe("needsBody");
 });

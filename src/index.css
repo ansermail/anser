@@ -2082,7 +2082,65 @@ kbd {
 .outbox-card {
   border: 1px solid var(--border);
   border-radius: 10px;
-  padding: 18px;
+  padding: 10px 14px;
+}
+.outbox-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
+}
+.outbox-summary-primary {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 3px 12px;
+  min-width: 0;
+}
+.outbox-summary-primary h3 {
+  margin: 0;
+  min-width: 8ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.outbox-summary-primary .outbox-recipient {
+  margin: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.outbox-summary-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+.outbox-details {
+  border-top: 1px solid var(--border);
+  margin-top: 10px;
+  padding-top: 10px;
+}
+.outbox-pending-send {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 8px;
+}
+.outbox-pending-send [data-slot="progress"] {
+  flex: 1;
+  min-width: 5rem;
+}
+@media (max-width: 760px) {
+  .outbox-summary,
+  .outbox-pending-send {
+    flex-wrap: wrap;
+  }
+  .outbox-summary-meta {
+    width: 100%;
+    justify-content: space-between;
+  }
 }
 .outbox-card h3 {
   font-size: 15px;
@@ -2225,9 +2283,9 @@ kbd {
   align-items: center;
   border: 1px solid var(--border);
   border-radius: 9px;
-  padding: 20px;
-  margin: 12px 0;
-  gap: 15px;
+  padding: 8px 12px;
+  margin: 6px 0;
+  gap: 8px;
 }
 .draft-card > button:first-child {
   flex: 1;
@@ -2238,16 +2296,15 @@ kbd {
 }
 .draft-card h3 {
   font-size: 13px;
-  margin-bottom: 8px;
+  margin-bottom: 2px;
 }
 .draft-card p {
-  font-size: 13px;
-  color: var(--muted);
-  margin-bottom: 6px;
-}
-.draft-card small {
   font-size: 12px;
   color: var(--muted);
+  margin-bottom: 0;
+}
+.draft-card small {
+  display: none;
 }
 .mail-html {
   display: block;
@@ -2905,6 +2962,12 @@ kbd {
 .condition > .select-field {
   width: 110px;
   flex-shrink: 0;
+}
+.condition > .select-field.condition-value,
+.condition > button.condition-value {
+  flex: 1;
+  width: auto;
+  min-width: 0;
 }
 .compose-row > .select-field {
   flex: 1;
