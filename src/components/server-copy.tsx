@@ -1,12 +1,8 @@
-import {
-  Collapsible,
-  CollapsibleTrigger,
-  CollapsibleContent,
-} from "./ui/collapsible";
-import { ChevronDown } from "lucide-react";
+import { TaskPanelHeader } from "./task-panel-header";
+import { Collapsible, CollapsibleContent } from "./ui/collapsible";
 import { useEffect, useRef, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
-import { AlertCircle, RefreshCw } from "lucide-react";
+import { AlertCircle } from "lucide-react";
 import { toast } from "sonner";
 import { call, native, isDemo } from "@/lib/api";
 import { coalesceRefresh } from "@/lib/refresh-queue";
@@ -14,14 +10,7 @@ import { Button } from "./ui/button";
 import { Badge } from "./ui/badge";
 import { Alert, AlertTitle, AlertDescription } from "./ui/alert";
 import { Skeleton } from "./ui/skeleton";
-import {
-  Card,
-  CardHeader,
-  CardTitle,
-  CardDescription,
-  CardAction,
-  CardContent,
-} from "./ui/card";
+import { Card, CardContent } from "./ui/card";
 export type DirectoryOperation = {
   receiptOrigin?: "observed" | null;
   strategy?: "copy-delete" | null;
@@ -127,33 +116,16 @@ export function DirectoryOperationsPanel({
   return (
     <Collapsible defaultOpen={!defaultCollapsed} asChild>
       <Card>
-        <CardHeader>
-          <CardTitle>服务器文件夹操作</CardTitle>
-          <CardDescription>
-            复制保留原邮件；移动确认后更新两个目录。结果未确认的任务不会自动重发。回执丢失的移动可先刷新目标目录，再只读核对。
-            兼容移动先复制并核验，再移除原目录；中断后需主动继续，继续前会重新核对两个副本。
-          </CardDescription>
-          <CardAction className="flex items-center gap-2">
-            <CollapsibleTrigger asChild>
-              <Button
-                variant="ghost"
-                size="icon-sm"
-                aria-label="展开或收起服务器文件夹操作"
-                className="group"
-              >
-                <ChevronDown className="transition-transform group-data-[state=open]:rotate-180" />
-              </Button>
-            </CollapsibleTrigger>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => void reload.current()}
-            >
-              <RefreshCw data-icon="inline-start" />
-              刷新
-            </Button>
-          </CardAction>
-        </CardHeader>
+        <TaskPanelHeader
+          title="服务器文件夹操作"
+          description={
+            <>
+              复制保留原邮件；移动确认后更新两个目录。结果未确认的任务不会自动重发。回执丢失的移动可先刷新目标目录，再只读核对。
+              兼容移动先复制并核验，再移除原目录；中断后需主动继续，继续前会重新核对两个副本。
+            </>
+          }
+          onRefresh={() => reload.current()}
+        />
         <CollapsibleContent asChild>
           <CardContent>
             {(loadError || error) && (

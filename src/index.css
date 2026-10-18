@@ -3650,3 +3650,126 @@ kbd {
     height: 1px;
   }
 }
+
+/* Settings keep category navigation in view while each panel scrolls. */
+.settings-workspace {
+  max-width: 1440px;
+  overflow: hidden;
+}
+.settings-layout-container {
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+}
+.settings-layout {
+  height: 100%;
+  min-height: 0;
+  gap: 32px;
+}
+.settings-navigation {
+  flex-shrink: 0;
+  width: 176px;
+  align-self: flex-start;
+  gap: 6px;
+}
+.settings-navigation [data-slot="tabs-trigger"] {
+  min-height: 42px;
+  gap: 10px;
+  padding-inline: 12px;
+}
+.settings-panels {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+  scrollbar-gutter: stable;
+  padding: 2px 8px 24px 2px;
+}
+.settings-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--settings-card-gap);
+  max-width: 1040px;
+  margin-inline: auto;
+}
+.settings-section[hidden] {
+  display: none;
+}
+.settings-section-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 16px;
+  min-height: 64px;
+}
+.settings-section-heading h2 {
+  font-size: 18px;
+  font-weight: 600;
+  letter-spacing: -0.3px;
+}
+.settings-section-heading p {
+  margin-top: 6px;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.7;
+}
+.settings-account-card {
+  flex-direction: row;
+  align-items: center;
+  gap: 16px;
+  padding: 20px 24px;
+}
+.settings-account-card .account-avatar {
+  flex-shrink: 0;
+}
+.settings-account-details {
+  flex: 1;
+  min-width: 0;
+}
+.settings-account-details h3,
+.settings-account-details p {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  overflow-wrap: anywhere;
+}
+.settings-account-details h3 {
+  font-size: 14px;
+  font-weight: 600;
+}
+.settings-account-details p {
+  margin-top: 8px;
+  font-size: 13px;
+}
+.settings-account-details small {
+  display: block;
+  margin-top: 8px;
+  font-size: 12px;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+.settings-section .storage-tools {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: start;
+}
+.settings-layout[data-orientation="horizontal"] {
+  gap: 24px;
+}
+.settings-layout[data-orientation="horizontal"] .settings-navigation {
+  width: 100%;
+  height: auto;
+  justify-content: flex-start;
+  overflow-x: auto;
+  flex-shrink: 0;
+}
+.settings-layout[data-orientation="horizontal"]
+  .settings-navigation
+  [data-slot="tabs-trigger"] {
+  flex: 0 0 auto;
+  min-height: 38px;
+}
+.settings-layout[data-orientation="horizontal"] .storage-tools {
+  grid-template-columns: minmax(0, 1fr);
+}

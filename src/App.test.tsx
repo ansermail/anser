@@ -150,8 +150,54 @@ afterEach(async () => {
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
 });
+it("keeps unsaved translation input when switching settings categories", async () => {
+  await click(nav("设置与账号"));
+  const tab = (name: string) =>
+    [...host.querySelectorAll('[role="tab"]')].find((element) =>
+      element.textContent?.includes(name),
+    ) || null;
+  const visiblePanel = () =>
+    host.querySelector(".settings-section:not([hidden])");
+  expect(visiblePanel()?.textContent).toContain("管理已连接的邮箱");
+  await click(tab("应用偏好"));
+  const input = host.querySelector(
+    'input[placeholder="输入模型 ID，或从列表选择"]',
+  ) as HTMLInputElement;
+  await act(async () => {
+    Object.getOwnPropertyDescriptor(
+      HTMLInputElement.prototype,
+      "value",
+    )!.set!.call(input, "unsaved-model-fixture");
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+  const backend = vi.spyOn(api, "call");
+  await click(tab("后台任务"));
+  expect(visiblePanel()?.textContent).toContain("最近活动");
+  expect(
+    visiblePanel()
+      ?.querySelector('[aria-label="展开或收起最近活动"]')
+      ?.getAttribute("aria-expanded"),
+  ).toBe("false");
+  await click(tab("应用偏好"));
+  expect(visiblePanel()?.contains(input)).toBe(true);
+  expect(input.value).toBe("unsaved-model-fixture");
+  expect(
+    backend.mock.calls.some(
+      ([command]) => command === "save_translation_settings",
+    ),
+  ).toBe(false);
+  await click(tab("本地存档"));
+  expect(visiblePanel()?.textContent).toContain("备份存档");
+  expect(visiblePanel()?.textContent).not.toContain("系统通知与启动");
+});
+
 it("refreshes recent activity immediately after a translation connection test without navigation", async () => {
   await click(nav("设置与账号"));
+  await click(
+    host.querySelector(
+      '[role="tab"][data-state="inactive"][id$="-trigger-tasks"]',
+    ),
+  );
   await click(host.querySelector('[aria-label="展开或收起最近活动"]'));
   const before = host.querySelector(".activity-list")!.textContent;
   expect(before).not.toContain("大模型翻译连接测试完成");
@@ -167,6 +213,33 @@ it("refreshes recent activity immediately after a translation connection test wi
   expect(host.querySelector(".activity-list")!.textContent).toContain(
     "【演示记录】",
   );
+});
+
+it("manually refreshes recent activity without collapsing it", async () => {
+  await click(nav("设置与账号"));
+  await click(host.querySelector('[role="tab"][id$="-trigger-tasks"]'));
+  const trigger = host.querySelector(
+    '[aria-label="展开或收起最近活动"]',
+  ) as HTMLButtonElement;
+  await click(trigger.querySelector("span span:first-child"));
+  const realPage = api.mailPage;
+  const read = vi
+    .spyOn(api, "mailPage")
+    .mockImplementationOnce(async (query) => ({
+      ...(await realPage(query)),
+      logs: ["Fresh manual activity fixture"],
+    }));
+  const refresh = host.querySelector(
+    '[aria-label="刷新最近活动"]',
+  ) as HTMLButtonElement;
+  await click(refresh);
+  expect(read).toHaveBeenCalledTimes(1);
+  expect(host.querySelector(".activity-list")?.textContent).toContain(
+    "Fresh manual activity fixture",
+  );
+  expect(trigger.getAttribute("aria-expanded")).toBe("true");
+  expect(refresh.getAttribute("aria-busy")).toBe("true");
+  expect(refresh.disabled).toBe(true);
 });
 
 describe("title translation action", () => {
@@ -1673,6 +1746,11 @@ describe("reading unread mail within its current category", () => {
     ).not.toContain("连接超时");
     expect(host.querySelector(".remote-folder-list .folder-item")).toBeNull();
     await click(nav("设置与账号"));
+    await click(
+      host.querySelector(
+        '[role="tab"][data-state="inactive"][id$="-trigger-tasks"]',
+      ),
+    );
     await click(host.querySelector('[aria-label="展开或收起最近活动"]'));
     expect(host.querySelector(".activity-list")?.textContent).toContain(
       diagnostic,

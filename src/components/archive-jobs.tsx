@@ -1,25 +1,13 @@
+import { TaskPanelHeader } from "./task-panel-header";
 import { useEffect, useState } from "react";
-import { RefreshCw, ChevronDown } from "lucide-react";
 import { call } from "@/lib/api";
 import { coalesceRefresh } from "@/lib/refresh-queue";
 import { Button } from "./ui/button";
-import {
-  Collapsible,
-  CollapsibleTrigger,
-  CollapsibleContent,
-} from "./ui/collapsible";
+import { Collapsible, CollapsibleContent } from "./ui/collapsible";
 import { Badge } from "./ui/badge";
 import { Alert, AlertDescription } from "./ui/alert";
 import { Skeleton } from "./ui/skeleton";
-import {
-  Card,
-  CardHeader,
-  CardTitle,
-  CardDescription,
-  CardAction,
-  CardContent,
-  CardFooter,
-} from "./ui/card";
+import { Card, CardContent, CardFooter } from "./ui/card";
 export type ArchiveJob = {
   id: string;
   mailId: string;
@@ -83,29 +71,16 @@ export function ArchiveJobsPanel({
   return (
     <Collapsible defaultOpen={!defaultCollapsed} asChild>
       <Card>
-        <CardHeader>
-          <CardTitle>完整保存任务</CardTitle>
-          <CardDescription>
-            最近 100
-            项手动补存。账号在线阅读时也可主动完整保存；关闭窗口后继续，退出应用后下次恢复。已保存的原件不会因取消任务而删除。
-          </CardDescription>
-          <CardAction className="flex items-center gap-2">
-            <CollapsibleTrigger asChild>
-              <Button
-                variant="ghost"
-                size="icon-sm"
-                aria-label="展开或收起完整保存任务"
-                className="group"
-              >
-                <ChevronDown className="transition-transform group-data-[state=open]:rotate-180" />
-              </Button>
-            </CollapsibleTrigger>
-            <Button variant="ghost" size="sm" onClick={() => void reload()}>
-              <RefreshCw />
-              刷新
-            </Button>
-          </CardAction>
-        </CardHeader>
+        <TaskPanelHeader
+          title="完整保存任务"
+          description={
+            <>
+              最近 100
+              项手动补存。账号在线阅读时也可主动完整保存；关闭窗口后继续，退出应用后下次恢复。已保存的原件不会因取消任务而删除。
+            </>
+          }
+          onRefresh={() => reload()}
+        />
         <CollapsibleContent className="flex flex-col gap-6">
           <CardContent className="flex flex-col gap-4">
             {error && (

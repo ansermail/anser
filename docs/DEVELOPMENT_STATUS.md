@@ -1,10 +1,16 @@
-# 开发计划与继续检查点（更新：2026-10-17）
+# 开发计划与继续检查点（更新：2026-10-18）
 
 依据 PRD 第 5、8、9 节、实施记录和当前代码核查。当前仍为 Alpha；功能代码已存在与真实场景验收通过分别记录。早期回归使用临时存储/演示数据；2026-10-05 用户授权后增加当前腾讯企业邮箱与 QQ 邮箱互发测试，未向其他地址发送，未删除真实邮件。
 
-## 当前未完成事项总览（2026-10-17 核对）
+## 当前未完成事项总览（2026-10-18 核对）
 
-**当前开发检查点：Homebrew 同仓库配方与发布自动化已部署（2026-10-17）**。提交 `c6f3426` 已进入组织 main，配方为 `Casks/anser.rb`，正式 Release 发布后由 `homebrew.yml` 校验双架构 DMG 并仅更新主仓库配方。[专项运行 39009167177](https://github.com/ansermail/anser/actions/runs/39009167177) 与源码完整 [Checks 39009166252](https://github.com/ansermail/anser/actions/runs/39009166252) 全部成功，当前 0.1.20 内容一致而无重复提交。完整本地脚本 35 项、格式/版本/diff/YAML、两架构公开下载、Homebrew style/audit/Apple Silicon fetch 通过；本机旧 `ansermail/tap` 已按说明切到主仓库，token 与配方正确，未安装或覆盖应用。下一正式版本公开后核对自动提交，token 发布需显式 dispatch；未提升桌面版本，详见 [Homebrew 工作点](HOMEBREW_WORKING.md)。
+**当前发布任务：0.1.21（2026-10-18，本地门槛通过）**。用户授权提交设置布局和后台任务交互并触发流水线发版。五处版本同步 0.1.21，完整前端 388 项（56 文件）、Rust 389 通过/3 既有条件忽略、脚本 35、IMAP 39 及格式/UI/生产/Pages 隔离/版本/diff 检查通过。下一合 main/固定标签、双架构云端构建、资源核验、正式公开及主仓库 Homebrew 同步按 [发布工作点](RELEASE_0_1_21_WORKING.md) 执行。当前公开仍为 0.1.20；下方设置“未提交/发布”是本轮发布前状态。
+
+**设置后续交互修正（2026-10-18，开发预览已验证）**。用户要求后台任务可直接点击展开，并指出刷新缺少反馈。五张折叠卡片统一组合 shadcn Button/CollapsibleTrigger：标题、说明和箭头都可展开/收起，刷新按钮独立。核对原实现已分别读取 `archive_jobs`、`server_operations`、`folder_health`、`directory_operations`，最近活动由主快照刷新；现加实际 Promise 期间旋转/忙碌文字和防重复点击，快速读取保留至少 600ms 反馈但不延迟数据发布，卸载清理计时器。新增回归覆盖四类真实读取入口、新数据渲染、标题/说明展开、刷新不折叠、慢请求/失败恢复；五文件 24 项与 App 设置/活动专项 3 项通过，UI/生产构建/格式/diff 检查通过。原生开发预览实际展开完整保存任务并点击只读刷新，后台任务页保留供查看；没有操作暂停、取消或重试任务。仍为 `codex/settings-layout` 未提交改动，未推送/打包/发布，完整说明见 [设置布局工作点](SETTINGS_LAYOUT_WORKING.md)。
+
+**当前开发检查点：设置分类布局重设计（2026-10-18，开发预览已验证）**。分支 `codex/settings-layout`，从干净的组织 main 开始。设置页由单条长页面改为五类 shadcn Tabs，按容器宽度切换左右/顶部布局；卡片间距、账号信息和通知卡片统一。分类切换保留表单，规则/保存任务入口直接定位后台任务。现有相关 124 项回归及新增输入保留专项、活动/目录失败补跑 3 项通过；最终 UI/生产构建/全项目前端格式/diff 检查通过。稳定签名原生开发实例的账号、应用偏好和存档页已目视核对；虚构浏览器预览 1440px 左右布局、1000px 五分类顶部布局与无横向溢出通过。原生小窗口/深色完整矩阵未验证；未主动操作真实邮箱设置、备份或删除。未提交、未推送、未打包或发布；正式版本仍为下方 0.1.20。开发预览保留供用户查看，设计细调从 [设置布局工作点](SETTINGS_LAYOUT_WORKING.md) 接续；其他产品待办保持下方清单。
+
+**上一开发检查点：Homebrew 同仓库配方与发布自动化已部署（2026-10-17）**。提交 `c6f3426` 已进入组织 main，配方为 `Casks/anser.rb`，正式 Release 发布后由 `homebrew.yml` 校验双架构 DMG 并仅更新主仓库配方。[专项运行 39009167177](https://github.com/ansermail/anser/actions/runs/39009167177) 与源码完整 [Checks 39009166252](https://github.com/ansermail/anser/actions/runs/39009166252) 全部成功，当前 0.1.20 内容一致而无重复提交。完整本地脚本 35 项、格式/版本/diff/YAML、两架构公开下载、Homebrew style/audit/Apple Silicon fetch 通过；本机旧 `ansermail/tap` 已按说明切到主仓库，token 与配方正确，未安装或覆盖应用。下一正式版本公开后核对自动提交，token 发布需显式 dispatch；未提升桌面版本，详见 [Homebrew 工作点](HOMEBREW_WORKING.md)。
 
 **当前发布：0.1.20 正式发布与 Homebrew 同步完成（2026-10-17）**。0.1.20 Alpha 于 2026-10-17 13:57:05（Asia/Shanghai）正式发布为 latest，固定源码 `eb80fa4a26909ec5f86427f86a4e66af7c71fb54`。[Release macOS 39007442860](https://github.com/ansermail/anser/actions/runs/39007442860)、[Checks 39007442979](https://github.com/ansermail/anser/actions/runs/39007442979) 与 [Preview Pages 39007442854](https://github.com/ansermail/anser/actions/runs/39007442854) 全部成功，[0.1.20 正式版本](https://github.com/ansermail/anser/releases/tag/v0.1.20) 已公开。本版包含已发送邮件新建可编辑草稿、8 秒发送撤回、紧凑发送记录与草稿、顺序多动作规则、抄送/优先级/已接收天数等条件，以及统一的“全部邮件”未读、菜单栏和 Dock 角标。 七资源大小/SHA-256、说明与清单完整原文（含末尾换行）、两架构更新签名及既有公钥、App 版本/架构/标识/中文配置/EML/许可/原生 OAuth 配置、固定证书与精确 DR、DMG 与更新归档逐文件一致性全部通过。发布前后资源身份与标签不变，七份按版本公开下载及不带查询参数的标准 latest 更新端点逐字节匹配。 [Tap 4db8165](https://github.com/ansermail/homebrew-tap/commit/4db8165d2a553080365b4f8cacb80c8912137c25) 已公开，配方、公开两架构 DMG 摘要及 brew style/audit/Apple Silicon fetch 通过；未覆盖安装本机应用。 本次本地完整门槛：前端 381 通过（55 文件）、Rust 389 通过/3 项既有条件忽略、桌面脚本 28、IMAP 39，格式/UI/生产/版本/发布资源/diff 检查通过。 本版正式包实际安装、应用内原位升级、Intel 实机、系统通知横幅与服务器规则动作端到端执行未验证，不沿用此前版本结果。自签名不等于 Apple Developer ID、公证或 Gatekeeper 认可；不修改用户系统信任或 quarantine。 下一步由用户验证正式包，其他待办按下表继续；入口见 [发布工作点](RELEASE_0_1_20_WORKING.md)。下方为发布前及历史阶段。
 

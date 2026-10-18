@@ -1,5 +1,9 @@
 # 发布与应用内更新
 
+## 0.1.21 发布准备（2026-10-18）
+
+用户已授权提交设置布局与后台任务交互修改并远程发版。五处版本同步 0.1.21，设置五类导航、点击标题展开及刷新反馈见 [版本说明](releases/v0.1.21.md)；完整检查、固定源码、双架构构建、资源审计、正式发布和主仓库 Homebrew 更新从 [发布工作点](RELEASE_0_1_21_WORKING.md) 接续。当前公开 latest 仍为 0.1.20。
+
 ## Homebrew 配方随主仓库维护（2026-10-17）
 
 配方位于 `Casks/anser.rb`，正式 Release 公开为 latest 后由 `homebrew.yml` 下载并核验双架构 DMG，运行 Homebrew 校验后仅更新主仓库配方。继续使用 `ansermail/tap/anser` 名称，首次添加需指定主仓库 URL，旧 Tap 切换步骤见 [Homebrew 维护](HOMEBREW.md)。不需要跨仓库凭据；工作流手动补同步不重建或改写已发布桌面资源。`GITHUB_TOKEN` 发布不会触发后续 release 事件，须显式 dispatch。迁移与实际验证进展见 [工作点](HOMEBREW_WORKING.md)。

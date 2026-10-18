@@ -1,24 +1,13 @@
-import {
-  Collapsible,
-  CollapsibleTrigger,
-  CollapsibleContent,
-} from "./ui/collapsible";
-import { ChevronDown } from "lucide-react";
+import { TaskPanelHeader } from "./task-panel-header";
+import { Collapsible, CollapsibleContent } from "./ui/collapsible";
 import { useEffect, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
-import { AlertCircle, RefreshCw } from "lucide-react";
+import { AlertCircle } from "lucide-react";
 import { call, native, isDemo } from "@/lib/api";
 import { coalesceRefresh } from "@/lib/refresh-queue";
 import { Button } from "./ui/button";
 import { Badge } from "./ui/badge";
-import {
-  Card,
-  CardHeader,
-  CardTitle,
-  CardDescription,
-  CardAction,
-  CardContent,
-} from "./ui/card";
+import { Card, CardContent } from "./ui/card";
 import { Alert, AlertTitle, AlertDescription } from "./ui/alert";
 import { Skeleton } from "./ui/skeleton";
 
@@ -107,29 +96,16 @@ export function ServerOperations({
   return (
     <Collapsible defaultOpen={!defaultCollapsed} asChild>
       <Card>
-        <CardHeader>
-          <CardTitle>服务器状态同步</CardTitle>
-          <CardDescription>
-            已读和星标自动同步到 IMAP 邮箱，断网后自动重试。POP3
-            与仅本地邮件保留本地状态。
-          </CardDescription>
-          <CardAction className="flex items-center gap-2">
-            <CollapsibleTrigger asChild>
-              <Button
-                variant="ghost"
-                size="icon-sm"
-                aria-label="展开或收起服务器状态同步"
-                className="group"
-              >
-                <ChevronDown className="transition-transform group-data-[state=open]:rotate-180" />
-              </Button>
-            </CollapsibleTrigger>
-            <Button variant="ghost" size="sm" onClick={() => void reload()}>
-              <RefreshCw />
-              刷新
-            </Button>
-          </CardAction>
-        </CardHeader>
+        <TaskPanelHeader
+          title="服务器状态同步"
+          description={
+            <>
+              已读和星标自动同步到 IMAP 邮箱，断网后自动重试。POP3
+              与仅本地邮件保留本地状态。
+            </>
+          }
+          onRefresh={() => reload()}
+        />
         <CollapsibleContent asChild>
           <CardContent className="flex flex-col gap-4">
             {error && (

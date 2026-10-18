@@ -1,23 +1,13 @@
+import { TaskPanelHeader } from "./task-panel-header";
 import { useEffect, useRef, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
-import { AlertCircle, RefreshCw, ChevronDown } from "lucide-react";
+import { AlertCircle, RefreshCw } from "lucide-react";
 import { call, native, isDemo } from "@/lib/api";
 import { coalesceRefresh } from "@/lib/refresh-queue";
 import { Button } from "./ui/button";
-import {
-  Collapsible,
-  CollapsibleTrigger,
-  CollapsibleContent,
-} from "./ui/collapsible";
+import { Collapsible, CollapsibleContent } from "./ui/collapsible";
 import { Badge } from "./ui/badge";
-import {
-  Card,
-  CardHeader,
-  CardTitle,
-  CardDescription,
-  CardAction,
-  CardContent,
-} from "./ui/card";
+import { Card, CardContent } from "./ui/card";
 import { Alert, AlertTitle, AlertDescription } from "./ui/alert";
 import { Skeleton } from "./ui/skeleton";
 export type SelectionEvidence = {
@@ -111,30 +101,11 @@ export function FolderHealthPanel({
   return (
     <Collapsible defaultOpen={!defaultCollapsed} asChild>
       <Card>
-        <CardHeader>
-          <CardTitle>目录来源检查</CardTitle>
-          <CardDescription>异常目录暂停同步，本地存档保留。</CardDescription>
-          <CardAction className="flex items-center gap-2">
-            <CollapsibleTrigger asChild>
-              <Button
-                variant="ghost"
-                size="icon-sm"
-                aria-label="展开或收起目录来源检查"
-                className="group"
-              >
-                <ChevronDown className="transition-transform group-data-[state=open]:rotate-180" />
-              </Button>
-            </CollapsibleTrigger>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => void reload.current()}
-            >
-              <RefreshCw />
-              刷新
-            </Button>
-          </CardAction>
-        </CardHeader>
+        <TaskPanelHeader
+          title="目录来源检查"
+          description={<>异常目录暂停同步，本地存档保留。</>}
+          onRefresh={() => reload.current()}
+        />
         <CollapsibleContent asChild>
           <CardContent className="flex flex-col gap-4">
             {(error || loadError) && (
