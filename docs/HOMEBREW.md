@@ -43,7 +43,7 @@ brew update-reset "$(brew --repository ansermail/tap)"
 对已经发布但尚未同步的版本，可以手动运行（不重建桌面包）：
 
 ```sh
-gh workflow run homebrew.yml --repo ansermail/anser --ref main -f tag=v0.1.20
+gh workflow run homebrew.yml --repo ansermail/anser --ref main -f tag=v0.1.21
 ```
 
 省略 `tag` 则选择当前 latest。通过 `GITHUB_TOKEN` 发布 Release 不会再触发 `release.published`，此时应显式 dispatch；本地 `gh release edit` 或人工发布可触发事件。发布自动化若改变，须保留这条衔接。
@@ -53,6 +53,15 @@ gh workflow run homebrew.yml --repo ansermail/anser --ref main -f tag=v0.1.20
 ## 迁移前发布记录
 
 以下 Tap 提交均为当时的发布证据；迁移后的验证另见 [工作点](HOMEBREW_WORKING.md)。
+
+## 0.1.21 主仓库配方同步（2026-10-18）
+
+正式发布后由 `release.published` 触发 [Homebrew 流水线 39092910712](https://github.com/ansermail/anser/actions/runs/39092910712)，主仓库提交 [1c85297](https://github.com/ansermail/anser/commit/1c852970a9c1686a72b0daca8caf1fb30f4c5f6a) 仅更新配方。手动复核 [39092992802](https://github.com/ansermail/anser/actions/runs/39092992802) 返回 `Cask is already current; no commit needed.`；本机 `brew style`、`brew audit`、Apple Silicon `brew fetch` 通过，未覆盖安装或升级本机应用。Intel 实机与 Homebrew 原位升级仍未验证。
+
+| 架构 | DMG | SHA-256 |
+| --- | --- | --- |
+| Apple Silicon | `Anser_0.1.21_aarch64.dmg` | `2f00c8c0fe241e316404ac210a525700d5a18f5b823b800802c9d155bbfc0c32` |
+| Intel | `Anser_0.1.21_x86_64.dmg` | `fff13d868e465d10b11f06a8234c871e571553416f344827934cc77c4dbac471` |
 
 ## 0.1.20 配方初次发布（2026-10-17）
 

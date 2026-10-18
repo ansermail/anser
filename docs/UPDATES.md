@@ -1,14 +1,18 @@
 # 发布与应用内更新
 
-## 0.1.21 发布准备（2026-10-18）
+## 当前正式版本：0.1.21（2026-10-18）
 
-用户已授权提交设置布局与后台任务交互修改并远程发版。五处版本同步 0.1.21，设置五类导航、点击标题展开及刷新反馈见 [版本说明](releases/v0.1.21.md)；完整检查、固定源码、双架构构建、资源审计、正式发布和主仓库 Homebrew 更新从 [发布工作点](RELEASE_0_1_21_WORKING.md) 接续。当前公开 latest 仍为 0.1.20。
+0.1.21 Alpha 于 2026-10-18 11:14:23（Asia/Shanghai）正式发布为 latest，固定源码 `1229985020909b8eccbd4d5343c4cbd0a2913a8b`。[Release macOS 39090575840](https://github.com/ansermail/anser/actions/runs/39090575840)、[Checks 39090571461](https://github.com/ansermail/anser/actions/runs/39090571461) 与 [Preview Pages 39090571453](https://github.com/ansermail/anser/actions/runs/39090571453) 全部成功，[0.1.21 正式版本](https://github.com/ansermail/anser/releases/tag/v0.1.21) 已公开。本版将设置整理为五类导航并适配窗口宽度，分类切换保留未保存输入；后台任务支持点击标题或说明展开，手动刷新提供旋转、忙碌文字、防重复点击和失败恢复。
+
+七资源大小/SHA-256、说明与清单完整原文（含末尾换行）、两架构更新签名及既有公钥、App 版本/架构/标识/中文配置/EML/许可/原生 OAuth 配置、固定证书与精确 DR、DMG 与更新归档逐文件一致性全部通过。发布前后资源身份与标签不变，七份按版本公开下载及不带查询参数的标准 latest 更新端点逐字节匹配。主仓库 [配方提交 1c85297](https://github.com/ansermail/anser/commit/1c852970a9c1686a72b0daca8caf1fb30f4c5f6a) 由 Homebrew 流水线生成，公开两架构 DMG 摘要、brew style/audit/fetch 与重复运行幂等均通过；未覆盖安装本机应用。
+
+本次本地完整门槛：前端 388 通过（56 文件）、Rust 389 通过/3 项既有条件忽略、桌面脚本 35、IMAP 39，格式/UI/生产/Pages 隔离/版本/发布资源/diff 检查通过。本版正式包实际安装、应用内原位升级、Intel 实机、原生窄窗口/深色完整矩阵、系统通知横幅与真实服务器规则执行未验证，不沿用此前版本结果。自签名不等于 Apple Developer ID、公证或 Gatekeeper 认可。完整说明见 [0.1.21](releases/v0.1.21.md)，证据见 [发布工作点](RELEASE_0_1_21_WORKING.md)。
 
 ## Homebrew 配方随主仓库维护（2026-10-17）
 
 配方位于 `Casks/anser.rb`，正式 Release 公开为 latest 后由 `homebrew.yml` 下载并核验双架构 DMG，运行 Homebrew 校验后仅更新主仓库配方。继续使用 `ansermail/tap/anser` 名称，首次添加需指定主仓库 URL，旧 Tap 切换步骤见 [Homebrew 维护](HOMEBREW.md)。不需要跨仓库凭据；工作流手动补同步不重建或改写已发布桌面资源。`GITHUB_TOKEN` 发布不会触发后续 release 事件，须显式 dispatch。迁移与实际验证进展见 [工作点](HOMEBREW_WORKING.md)。
 
-## 当前正式版本：0.1.20（2026-10-17）
+## 前一正式版本：0.1.20（2026-10-17）
 
 0.1.20 Alpha 于 2026-10-17 13:57:05（Asia/Shanghai）正式发布为 latest，固定源码 `eb80fa4a26909ec5f86427f86a4e66af7c71fb54`。[Release macOS 39007442860](https://github.com/ansermail/anser/actions/runs/39007442860)、[Checks 39007442979](https://github.com/ansermail/anser/actions/runs/39007442979) 与 [Preview Pages 39007442854](https://github.com/ansermail/anser/actions/runs/39007442854) 全部成功，[0.1.20 正式版本](https://github.com/ansermail/anser/releases/tag/v0.1.20) 已公开。本版包含已发送邮件新建可编辑草稿、8 秒发送撤回、紧凑发送记录与草稿、顺序多动作规则、抄送/优先级/已接收天数等条件，以及统一的“全部邮件”未读、菜单栏和 Dock 角标。
 

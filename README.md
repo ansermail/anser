@@ -8,9 +8,9 @@
 
 [下载最新版本](https://github.com/ansermail/anser/releases/latest) · [界面预览](https://ansermail.github.io/anser/) · [使用说明](docs/USAGE.md) · [开发进度](docs/DEVELOPMENT_STATUS.md) · [反馈问题](https://github.com/ansermail/anser/issues)
 
-> 当前公开版本为 **0.1.20 Alpha**，支持 Apple Silicon 与 Intel Mac。长期稳定性、部分服务商兼容性及真实场景验收仍在持续完善。
+> 当前公开版本为 **0.1.21 Alpha**，支持 Apple Silicon 与 Intel Mac。长期稳定性、部分服务商兼容性及真实场景验收仍在持续完善。
 
-[0.1.20 已发布](https://github.com/ansermail/anser/releases/tag/v0.1.20)：已发送邮件可新建草稿，支持 8 秒发送撤回、顺序多动作规则与统一未读角标。双架构资源、签名、公开更新端点与 Homebrew 已核验，见 [发布记录](docs/RELEASE_0_1_20_WORKING.md)。本版实际安装/原位升级仍待用户验证。
+[0.1.21 已发布](https://github.com/ansermail/anser/releases/tag/v0.1.21)：设置改为五类导航并适配窗口宽度，后台任务支持点击标题/说明展开，手动刷新提供旋转、忙碌文字与防重复反馈。双架构资源、签名、公开更新端点与 Homebrew 已核验，见 [发布记录](docs/RELEASE_0_1_21_WORKING.md)。本版实际安装/原位升级仍待用户验证。
 
 ![雁信的多账号收件箱与邮件阅读界面](docs/screenshots/inbox-demo.png)
 
