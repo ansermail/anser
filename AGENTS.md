@@ -156,6 +156,7 @@ Rust 重编译期间不要绑定或读取原生应用 UI；CUA 会在旧实例�
 
 - 按本轮影响运行检查：UI 改动执行 `npm run check:ui`、相关交互测试、`npm run build` 并检查开发预览；Rust 改动执行 `cargo fmt --manifest-path src-tauri/Cargo.toml -- --check` 及相关 Rust/协议回归；脚本改动执行 `npm run test:desktop`；Pages 改动执行 `npm run build:preview` 并核对虚构数据及禁用收发边界。提交前检查 `git diff --check`，代码格式执行 `npm run format:check`。
 - 发布前遵循 `.github/workflows/ci.yml` 和 `docs/UPDATES.md` 的全量门槛：前端、Rust、桌面脚本、vendored IMAP 解析器、格式/UI/生产构建。不以单项通过代替完整发布检查；只修改文档无需反复构建桌面应用。
+- 发布提交前通过 Git 暂存对象核对五处版本，创建标签前再次从固定提交读取核对；工作树的 `release:check` 不能代替提交内容核对。
 - 发版同步 `package.json`、`package-lock.json`、`src-tauri/Cargo.toml`、`src-tauri/Cargo.lock` 和 `src-tauri/tauri.conf.json` 的版本，补充对应发布说明；使用新标签，不改写已发布版本的标签或产物。
 - 正式发布使用组织仓库的双架构流水线，核对 Apple Silicon / Intel 的安装包、更新归档、签名与 `latest.json`；沿用现有更新公钥及匹配私钥，不能无迁移方案随意换密钥。
 - 重建未发布草稿时，同步固定源码提交与发布说明，再上传完整七资源；同版本已有标签必须解析到本次源码，否则换新版本，不自动移动标签。发布任务统一串行，上传前后重新核对草稿身份；网络/权限/查询失败不能当作版本不存在，正式发布前仍需独立核验全部产物。
