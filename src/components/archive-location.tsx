@@ -1,3 +1,4 @@
+import { t } from "@/lib/i18n";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { FolderOpen, HardDrive, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
@@ -60,9 +61,16 @@ export function ArchiveLocation({
     if (request.current || !native || isDemo()) return;
     if (
       !(await askConfirmation({
-        title: "迁移本地存档？",
-        description: `邮件原件与附件将迁移至${parent ? `${parent}/Anser-Archive/archive` : status?.defaultPath}。完成校验后切换位置并清理原位置的已迁移文件。账号、列表和设置仍保存在本机；使用外置磁盘时请保持连接。`,
-        action: "开始迁移",
+        title: t("迁移本地存档？"),
+        description: t(
+          "邮件原件与附件将迁移至{value0}。完成校验后切换位置并清理原位置的已迁移文件。账号、列表和设置仍保存在本机；使用外置磁盘时请保持连接。",
+          {
+            value0: parent
+              ? `${parent}/Anser-Archive/archive`
+              : status?.defaultPath,
+          },
+        ),
+        action: t("开始迁移"),
       }))
     )
       return;
@@ -77,7 +85,7 @@ export function ArchiveLocation({
       if (live.current) {
         setStatus(result);
         onChanged();
-        toast.success("存档路径已更新，原件与附件迁移完成");
+        toast.success(t("存档路径已更新，原件与附件迁移完成"));
       }
     } catch (e) {
       if (live.current) {
@@ -96,7 +104,7 @@ export function ArchiveLocation({
     const selected = await open({
       directory: true,
       multiple: false,
-      title: "选择存档磁盘或文件夹",
+      title: t("选择存档磁盘或文件夹"),
     });
     if (typeof selected === "string") await move(selected);
   }
@@ -119,7 +127,11 @@ export function ArchiveLocation({
   }
   return (
     <>
-      <div className="flex flex-col gap-4" role="group" aria-label="存档管理">
+      <div
+        className="flex flex-col gap-4"
+        role="group"
+        aria-label={t("存档管理")}
+      >
         <div className="storage-actions flex-wrap">
           {children}
           <Button
@@ -134,7 +146,7 @@ export function ArchiveLocation({
             onClick={() => void select()}
           >
             <HardDrive data-icon="inline-start" />
-            修改存档位置
+            {t("修改存档位置")}
           </Button>
           {status?.external && (
             <Button
@@ -142,7 +154,7 @@ export function ArchiveLocation({
               disabled={busy || status.migrating || !status.available}
               onClick={() => void move("")}
             >
-              恢复默认位置
+              {t("恢复默认位置")}
             </Button>
           )}
           <Button
@@ -153,19 +165,19 @@ export function ArchiveLocation({
             }
           >
             <FolderOpen data-icon="inline-start" />
-            打开存储位置
+            {t("打开存储位置")}
           </Button>
           <Button
             variant="ghost"
             size="icon-sm"
-            aria-label="刷新存档位置"
+            aria-label={t("刷新存档位置")}
             onClick={() => void reload()}
           >
             <RefreshCw />
           </Button>
         </div>
         <p className="break-all text-xs text-muted-foreground">
-          {status?.path || initialPath || "正在读取存档位置…"}
+          {status?.path || initialPath || t("正在读取存档位置…")}
         </p>
         {(error || status?.error) && (
           <Alert variant="destructive">
@@ -174,7 +186,9 @@ export function ArchiveLocation({
         )}
         {status?.external && (
           <p className="text-sm text-muted-foreground">
-            请保持存档磁盘连接。未连接时可以查看邮件列表，完整原件读取、备份和保存会暂停，不会自动改存到本机。
+            {t(
+              "请保持存档磁盘连接。未连接时可以查看邮件列表，完整原件读取、备份和保存会暂停，不会自动改存到本机。",
+            )}
           </p>
         )}
         {(busy || status?.migrating) && (
@@ -185,29 +199,32 @@ export function ArchiveLocation({
               }
             />
             <p className="text-sm text-muted-foreground">
-              正在迁移与校验：{status?.completed || 0} / {status?.total || 0}{" "}
-              个原件。完成后自动切换位置。
+              {t("正在迁移与校验：")}
+              {status?.completed || 0} / {status?.total || 0}{" "}
+              {t("个原件。完成后自动切换位置。")}
             </p>
           </div>
         )}
         {status?.cleanupPending && (
           <Alert>
             <AlertDescription>
-              新位置已保留完整原件，原位置还有待清理文件。连接相关磁盘后可继续清理。
+              {t(
+                "新位置已保留完整原件，原位置还有待清理文件。连接相关磁盘后可继续清理。",
+              )}
               <Button
                 variant="outline"
                 size="sm"
                 disabled={busy || status.migrating}
                 onClick={() => void cleanup()}
               >
-                继续清理原位置
+                {t("继续清理原位置")}
               </Button>
             </AlertDescription>
           </Alert>
         )}
         {(!native || isDemo()) && (
           <p className="text-sm text-muted-foreground">
-            网页预览与示例邮箱不迁移本机文件，请在桌面应用中选择位置。
+            {t("网页预览与示例邮箱不迁移本机文件，请在桌面应用中选择位置。")}
           </p>
         )}
       </div>

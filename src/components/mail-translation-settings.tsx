@@ -1,3 +1,4 @@
+import { t } from "@/lib/i18n";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { Check, ChevronDown, LoaderCircle, RefreshCw } from "lucide-react";
@@ -105,7 +106,7 @@ export function MailTranslationSettings() {
       setKey("");
       setClearKey(false);
       window.dispatchEvent(new Event("anser-translation-config-changed"));
-      toast.success("翻译配置已保存");
+      toast.success(t("翻译配置已保存"));
     } catch (e) {
       toast.error(String(e));
     } finally {
@@ -120,8 +121,9 @@ export function MailTranslationSettings() {
     setCancelling(false);
     setTestResult({
       status: "running",
-      message:
+      message: t(
         "正在发送固定测试文本，等待模型返回（最多 180 秒）；可随时取消，不发送真实邮件。",
+      ),
     });
     try {
       const parts = await call<TranslationPart[]>("test_translation_settings", {
@@ -129,7 +131,9 @@ export function MailTranslationSettings() {
         revision: saved.revision,
       });
       if (mounted.current && activeTest.current === requestId) {
-        const message = `连接成功：${parts[0].text.slice(0, 100)}`;
+        const message = t("连接成功：{value0}", {
+          value0: parts[0].text.slice(0, 100),
+        });
         setTestResult({ status: "success", message });
         toast.success(message);
       }
@@ -159,13 +163,15 @@ export function MailTranslationSettings() {
       if (mounted.current)
         setTestResult({
           status: "success",
-          message: "测试已取消，未自动重复请求。",
+          message: t("测试已取消，未自动重复请求。"),
         });
     } catch (e) {
       if (mounted.current) {
         setTestResult({
           status: "error",
-          message: `取消测试失败：${String(e)}；请等待原请求超时后再试。`,
+          message: t("取消测试失败：{value0}；请等待原请求超时后再试。", {
+            value0: String(e),
+          }),
         });
       }
     } finally {
@@ -240,9 +246,11 @@ export function MailTranslationSettings() {
   return (
     <Card className="translation-settings-card">
       <CardHeader>
-        <CardTitle>大模型翻译</CardTitle>
+        <CardTitle>{t("大模型翻译")}</CardTitle>
         <CardDescription>
-          保留邮件原文，在对应段落下方显示译文。支持 OpenAI 兼容服务和本机模型。
+          {t(
+            "保留邮件原文，在对应段落下方显示译文。支持 OpenAI 兼容服务和本机模型。",
+          )}
         </CardDescription>
       </CardHeader>
       <CardContent>
@@ -257,7 +265,9 @@ export function MailTranslationSettings() {
           >
             <FieldGroup className="gap-4">
               <Field>
-                <FieldLabel htmlFor="translation-provider">模型服务</FieldLabel>
+                <FieldLabel htmlFor="translation-provider">
+                  {t("模型服务")}
+                </FieldLabel>
                 <SelectField
                   id="translation-provider"
                   value={provider}
@@ -290,7 +300,9 @@ export function MailTranslationSettings() {
                 </SelectField>
               </Field>
               <Field>
-                <FieldLabel htmlFor="translation-url">服务地址</FieldLabel>
+                <FieldLabel htmlFor="translation-url">
+                  {t("服务地址")}
+                </FieldLabel>
                 <Input
                   id="translation-url"
                   value={config.baseUrl}
@@ -300,12 +312,14 @@ export function MailTranslationSettings() {
                   onChange={(event) => changeAddress(event.target.value)}
                 />
                 <FieldDescription>
-                  填写基础地址或完整 /chat/completions 地址；本机模型支持 HTTP。
+                  {t(
+                    "填写基础地址或完整 /chat/completions 地址；本机模型支持 HTTP。",
+                  )}
                 </FieldDescription>
               </Field>
               <Field>
                 <FieldLabel htmlFor="translation-key">
-                  API Key（可选）
+                  {t("API Key（可选）")}
                 </FieldLabel>
                 <Input
                   id="translation-key"
@@ -315,10 +329,10 @@ export function MailTranslationSettings() {
                   disabled={!ready || busy}
                   placeholder={
                     clearKey
-                      ? "保存后清除密钥"
+                      ? t("保存后清除密钥")
                       : sameAddress && saved?.hasApiKey
-                        ? "已保存，留空保留原密钥"
-                        : "填写当前服务的密钥，本机服务可留空"
+                        ? t("已保存，留空保留原密钥")
+                        : t("填写当前服务的密钥，本机服务可留空")
                   }
                   onChange={(event) => {
                     setKey(event.target.value);
@@ -327,7 +341,7 @@ export function MailTranslationSettings() {
                 />
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <FieldDescription>
-                    密钥仅存本机钥匙串，更换地址需重新填写。
+                    {t("密钥仅存本机钥匙串，更换地址需重新填写。")}
                   </FieldDescription>
                   {sameAddress && saved?.hasApiKey && (
                     <Button
@@ -340,14 +354,16 @@ export function MailTranslationSettings() {
                         setKey("");
                       }}
                     >
-                      {clearKey ? "保留已保存密钥" : "保存时清除密钥"}
+                      {clearKey ? t("保留已保存密钥") : t("保存时清除密钥")}
                     </Button>
                   )}
                 </div>
               </Field>
               <Field>
                 <div className="flex flex-wrap items-center justify-between gap-2">
-                  <FieldLabel htmlFor="translation-model">模型名称</FieldLabel>
+                  <FieldLabel htmlFor="translation-model">
+                    {t("模型名称")}
+                  </FieldLabel>
                   <Button
                     type="button"
                     variant="ghost"
@@ -369,14 +385,14 @@ export function MailTranslationSettings() {
                     ) : (
                       <RefreshCw data-icon="inline-start" />
                     )}
-                    {loadingModels ? "取消获取" : "获取模型列表"}
+                    {loadingModels ? t("取消获取") : t("获取模型列表")}
                   </Button>
                 </div>
                 <div className="flex min-w-0 items-center gap-2">
                   <Input
                     id="translation-model"
                     value={config.model}
-                    placeholder="输入模型 ID，或从列表选择"
+                    placeholder={t("输入模型 ID，或从列表选择")}
                     required
                     disabled={!ready || busy}
                     onChange={(event) =>
@@ -390,7 +406,7 @@ export function MailTranslationSettings() {
                         variant="outline"
                         size="icon"
                         disabled={!ready || busy}
-                        aria-label="选择模型"
+                        aria-label={t("选择模型")}
                         aria-expanded={modelsOpen}
                       >
                         <ChevronDown />
@@ -401,12 +417,12 @@ export function MailTranslationSettings() {
                       className="w-80 max-w-[calc(100vw-2rem)] p-0"
                     >
                       <Command>
-                        <CommandInput placeholder="搜索模型" />
+                        <CommandInput placeholder={t("搜索模型")} />
                         <CommandList>
                           <CommandEmpty>
                             {models.length
-                              ? "没有匹配的模型，可直接输入模型 ID"
-                              : "先获取模型列表，也可直接输入模型 ID"}
+                              ? t("没有匹配的模型，可直接输入模型 ID")
+                              : t("先获取模型列表，也可直接输入模型 ID")}
                           </CommandEmpty>
                           <CommandGroup>
                             {models.map((model) => (
@@ -443,8 +459,10 @@ export function MailTranslationSettings() {
                 </div>
                 <FieldDescription>
                   {models.length
-                    ? `已获取 ${models.length} 个模型，可选择或手动填写其他模型。`
-                    : "获取当前服务可用模型；不提供列表的服务可手动填写。"}
+                    ? t("已获取 {value0} 个模型，可选择或手动填写其他模型。", {
+                        value0: models.length,
+                      })
+                    : t("获取当前服务可用模型；不提供列表的服务可手动填写。")}
                 </FieldDescription>
               </Field>
             </FieldGroup>
@@ -456,10 +474,12 @@ export function MailTranslationSettings() {
             <div className="flex flex-wrap items-center gap-3">
               <Button type="submit" disabled={!ready || busy}>
                 {busy && !testing && !loadingModels
-                  ? "处理中…"
-                  : "保存翻译配置"}
+                  ? t("处理中…")
+                  : t("保存翻译配置")}
               </Button>
-              <Badge variant="outline">{dirty ? "尚未保存" : "已保存"}</Badge>
+              <Badge variant="outline">
+                {dirty ? t("尚未保存") : t("已保存")}
+              </Badge>
             </div>
           </form>
           <Separator
@@ -468,11 +488,13 @@ export function MailTranslationSettings() {
           />
           <section
             className="translation-settings-test flex min-w-0 flex-col gap-5"
-            aria-label="翻译偏好与连接测试"
+            aria-label={t("翻译偏好与连接测试")}
           >
             <FieldGroup className="gap-4">
               <Field>
-                <FieldLabel htmlFor="translation-language">目标语言</FieldLabel>
+                <FieldLabel htmlFor="translation-language">
+                  {t("目标语言")}
+                </FieldLabel>
                 <SelectField
                   id="translation-language"
                   value={config.targetLanguage}
@@ -490,14 +512,14 @@ export function MailTranslationSettings() {
                   )}
                 </SelectField>
                 <FieldDescription>
-                  点击邮件标题右侧的翻译图标后生效。
+                  {t("点击邮件标题右侧的翻译图标后生效。")}
                 </FieldDescription>
               </Field>
             </FieldGroup>
             <Separator />
             <div className="flex flex-col gap-3">
               <div className="flex flex-wrap items-center justify-between gap-2">
-                <h4>连接测试</h4>
+                <h4>{t("连接测试")}</h4>
                 <Badge
                   variant={
                     testResult?.status === "error"
@@ -508,16 +530,16 @@ export function MailTranslationSettings() {
                   }
                 >
                   {testing
-                    ? "测试中"
+                    ? t("测试中")
                     : isConnected
-                      ? "连接正常"
+                      ? t("连接正常")
                       : testResult?.status === "error"
-                        ? "连接失败"
-                        : "尚未测试"}
+                        ? t("连接失败")
+                        : t("尚未测试")}
                 </Badge>
               </div>
               <p className="text-sm text-muted-foreground">
-                仅发送固定的“Hello, world.”，不发送邮件内容。
+                {t("仅发送固定的“Hello, world.”，不发送邮件内容。")}
               </p>
               {testResult ? (
                 <Alert
@@ -533,8 +555,8 @@ export function MailTranslationSettings() {
               ) : (
                 <p className="text-sm text-muted-foreground">
                   {dirty
-                    ? "保存当前配置后即可测试连接。"
-                    : "配置已保存，可以测试当前模型。"}
+                    ? t("保存当前配置后即可测试连接。")
+                    : t("配置已保存，可以测试当前模型。")}
                 </p>
               )}
               <div className="flex flex-wrap gap-2">
@@ -550,7 +572,7 @@ export function MailTranslationSettings() {
                       className="animate-spin"
                     />
                   )}
-                  {testing ? "测试中…" : "测试已保存配置"}
+                  {testing ? t("测试中…") : t("测试已保存配置")}
                 </Button>
                 {testing && (
                   <Button
@@ -558,7 +580,7 @@ export function MailTranslationSettings() {
                     disabled={cancelling}
                     onClick={() => void cancelTest()}
                   >
-                    {cancelling ? "正在取消…" : "取消测试"}
+                    {cancelling ? t("正在取消…") : t("取消测试")}
                   </Button>
                 )}
               </div>
@@ -566,7 +588,9 @@ export function MailTranslationSettings() {
             <Separator />
             <div className="flex flex-col items-start gap-3">
               <p className="text-sm text-muted-foreground">
-                远程请求使用全局代理，本机模型直连。已完成译文会缓存在本机，再次阅读可复用。
+                {t(
+                  "远程请求使用全局代理，本机模型直连。已完成译文会缓存在本机，再次阅读可复用。",
+                )}
               </p>
               <Button
                 variant="ghost"
@@ -589,13 +613,13 @@ export function MailTranslationSettings() {
                       window.dispatchEvent(
                         new Event("anser-translation-config-changed"),
                       );
-                      toast.success("翻译缓存已清除");
+                      toast.success(t("翻译缓存已清除"));
                     })
                     .catch((error) => toast.error(String(error)))
                     .finally(() => setBusy(false));
                 }}
               >
-                清除翻译缓存
+                {t("清除翻译缓存")}
               </Button>
             </div>
           </section>

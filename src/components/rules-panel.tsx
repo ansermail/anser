@@ -1,7 +1,7 @@
+import { calendarLocale, t } from "@/lib/i18n";
 import { SelectField, SelectOption } from "@/components/ui/select-field";
 import { useEffect, useState } from "react";
 import { format } from "date-fns";
-import { zhCN } from "date-fns/locale";
 import {
   Plus,
   ArrowDown,
@@ -45,19 +45,45 @@ import { RuleExecutions } from "./rule-executions";
 import { RuleRunsPanel } from "./rule-runs";
 
 const fields: { [key: string]: string } = {
-  sender: "发件人",
-  recipients: "收件人",
-  cc: "抄送",
-  recipientsOrCc: "收件人或抄送",
-  subject: "主题",
-  body: "正文",
-  attachment: "有附件",
-  read: "已读状态",
-  starred: "星标状态",
-  priority: "优先级",
-  date: "邮件日期",
-  ageDays: "已接收天数",
-  sizeKb: "邮件大小（KB）",
+  get sender() {
+    return t("发件人");
+  },
+  get recipients() {
+    return t("收件人");
+  },
+  get cc() {
+    return t("抄送");
+  },
+  get recipientsOrCc() {
+    return t("收件人或抄送");
+  },
+  get subject() {
+    return t("主题");
+  },
+  get body() {
+    return t("正文");
+  },
+  get attachment() {
+    return t("有附件");
+  },
+  get read() {
+    return t("已读状态");
+  },
+  get starred() {
+    return t("星标状态");
+  },
+  get priority() {
+    return t("优先级");
+  },
+  get date() {
+    return t("邮件日期");
+  },
+  get ageDays() {
+    return t("已接收天数");
+  },
+  get sizeKb() {
+    return t("邮件大小（KB）");
+  },
 };
 const choiceConditions: Record<string, [string, string][]> = {
   attachment: [
@@ -79,29 +105,66 @@ const choiceConditions: Record<string, [string, string][]> = {
   ],
 };
 const conditionValueLabel = (c: Condition) =>
-  choiceConditions[c.field]?.find(([value]) => value === c.value)?.[1] ??
-  `「${c.value}」`;
+  t(
+    choiceConditions[c.field]?.find(([value]) => value === c.value)?.[1] ?? "",
+  ) || `「${c.value}」`;
 const conditionOperators: Record<string, string> = {
-  contains: "包含",
-  notContains: "不包含",
-  equals: "等于",
-  startsWith: "以此开头",
-  endsWith: "以此结尾",
-  before: "早于",
-  after: "晚于",
-  greaterThan: "大于",
-  lessThan: "小于",
+  get contains() {
+    return t("包含");
+  },
+  get notContains() {
+    return t("不包含");
+  },
+  get equals() {
+    return t("等于");
+  },
+  get startsWith() {
+    return t("以此开头");
+  },
+  get endsWith() {
+    return t("以此结尾");
+  },
+  get before() {
+    return t("早于");
+  },
+  get after() {
+    return t("晚于");
+  },
+  get greaterThan() {
+    return t("大于");
+  },
+  get lessThan() {
+    return t("小于");
+  },
 };
 const actions: { [key: string]: string } = {
-  folder: "归入本地文件夹",
-  save: "完整保存到本地",
-  saveFolder: "完整保存并归入本地文件夹",
-  read: "标记为已读",
-  unread: "标记为未读",
-  star: "添加星标",
-  trash: "移到本地废纸篓",
-  serverCopy: "复制到服务器文件夹",
-  serverMove: "移动到服务器文件夹",
+  get folder() {
+    return t("归入本地文件夹");
+  },
+  get save() {
+    return t("完整保存到本地");
+  },
+  get saveFolder() {
+    return t("完整保存并归入本地文件夹");
+  },
+  get read() {
+    return t("标记为已读");
+  },
+  get unread() {
+    return t("标记为未读");
+  },
+  get star() {
+    return t("添加星标");
+  },
+  get trash() {
+    return t("移到本地废纸篓");
+  },
+  get serverCopy() {
+    return t("复制到服务器文件夹");
+  },
+  get serverMove() {
+    return t("移动到服务器文件夹");
+  },
 };
 const ruleActions = (rule: Rule): RuleAction[] =>
   rule.actions?.length
@@ -140,18 +203,26 @@ function ConditionDatePicker({
           variant="outline"
           size="sm"
           className="condition-value justify-start"
-          aria-label="条件日期"
+          aria-label={t("条件日期")}
         >
           <CalendarDays data-icon="inline-start" />
           <span className="truncate">
-            {selected ? format(selected, "yyyy/MM/dd") : "选择日期"}
+            {selected
+              ? format(
+                  selected,
+                  calendarLocale().code === "en-US"
+                    ? "MMM d, yyyy"
+                    : "yyyy/MM/dd",
+                  { locale: calendarLocale() },
+                )
+              : t("选择日期")}
           </span>
         </Button>
       </PopoverTrigger>
       <PopoverContent
         align="start"
         className="w-auto max-h-[var(--radix-popover-content-available-height)] overflow-y-auto p-0"
-        aria-label="选择条件日期"
+        aria-label={t("选择条件日期")}
       >
         <Calendar
           mode="single"
@@ -161,7 +232,7 @@ function ConditionDatePicker({
             onChange(format(date, "yyyy-MM-dd"));
             setOpen(false);
           }}
-          locale={zhCN}
+          locale={calendarLocale()}
           captionLayout="dropdown"
           startMonth={new Date(1900, 0)}
           endMonth={new Date(2100, 11)}
@@ -218,7 +289,7 @@ export function RulesPanel({
   }, [remoteAccounts]);
   const folderLabel = (r: Rule, path: string, fallback: string) =>
     folderNames[r.accountId]?.[path] ||
-    (path === "INBOX" ? "收件箱" : fallback);
+    (path === "INBOX" ? t("收件箱") : fallback);
   async function save(rs: Rule[]) {
     try {
       await call("save_rules", { rules: rs });
@@ -234,7 +305,10 @@ export function RulesPanel({
     try {
       const n = await call<number>("run_rules");
       toast.success(
-        `已执行或安排 ${n} 项规则动作；异步结果见规则处理任务和执行记录`,
+        t(
+          "已执行或安排 {value0} 项规则动作；异步结果见规则处理任务和执行记录",
+          { value0: n },
+        ),
       );
       onChange();
     } catch (e) {
@@ -254,10 +328,13 @@ export function RulesPanel({
         <div>
           <span className="eyebrow">A LITTLE ORDER</span>
           <div className="page-title-row">
-            <SidebarTrigger title="切换侧边栏" aria-label="切换侧边栏" />
-            <h1>让邮件，自动归位</h1>
+            <SidebarTrigger
+              title={t("切换侧边栏")}
+              aria-label={t("切换侧边栏")}
+            />
+            <h1>{t("让邮件，自动归位")}</h1>
           </div>
-          <p>设置一次规则，把更多时间留给重要的事。</p>
+          <p>{t("设置一次规则，把更多时间留给重要的事。")}</p>
         </div>
         <Button
           onClick={() => {
@@ -281,13 +358,15 @@ export function RulesPanel({
           }}
         >
           <Plus size={16} />
-          新建规则
+          {t("新建规则")}
         </Button>
       </div>
       <div className="info-strip">
         <SlidersHorizontal size={17} />
         <span>
-          规则按顺序执行。本地归类保留原件；已有服务器动作仍按原规则运行。
+          {t(
+            "规则按顺序执行。本地归类保留原件；已有服务器动作仍按原规则运行。",
+          )}
         </span>
         <Button
           variant="ghost"
@@ -296,7 +375,7 @@ export function RulesPanel({
           disabled={busy || !data.rules.length}
         >
           <Play size={14} />
-          {busy ? "执行中…" : "对已有邮件执行"}
+          {busy ? t("执行中…") : t("对已有邮件执行")}
         </Button>
       </div>
       <div className="rule-list">
@@ -309,7 +388,7 @@ export function RulesPanel({
             <div className="rule-body">
               <div className="rule-title">
                 <h3>{r.name}</h3>
-                {r.stop && <span>命中后停止</span>}
+                {r.stop && <span>{t("命中后停止")}</span>}
               </div>
               <p>
                 {r.conditions
@@ -317,7 +396,7 @@ export function RulesPanel({
                     (c) =>
                       `${fields[c.field]} ${conditionOperators[c.operator] || c.operator}${conditionValueLabel(c)}`,
                   )
-                  .join(r.mode === "all" ? " 且 " : " 或 ")}
+                  .join(r.mode === "all" ? t(" 且 ") : t(" 或 "))}
               </p>
               <div className="rule-action">
                 <ArrowRight size={13} />
@@ -339,7 +418,7 @@ export function RulesPanel({
             <div className="rule-controls">
               <Switch
                 checked={r.enabled}
-                aria-label={`启用 ${r.name}`}
+                aria-label={t("启用 {value0}", { value0: r.name })}
                 onCheckedChange={(v) =>
                   void save(
                     data.rules.map((x) =>
@@ -351,7 +430,7 @@ export function RulesPanel({
               <Button
                 variant="ghost"
                 size="icon-sm"
-                title="上移"
+                title={t("上移")}
                 disabled={i === 0}
                 onClick={() => move(i, -1)}
               >
@@ -360,7 +439,7 @@ export function RulesPanel({
               <Button
                 variant="ghost"
                 size="icon-sm"
-                title="下移"
+                title={t("下移")}
                 disabled={i === data.rules.length - 1}
                 onClick={() => move(i, 1)}
               >
@@ -369,7 +448,7 @@ export function RulesPanel({
               <Button
                 variant="ghost"
                 size="icon-sm"
-                title="编辑规则"
+                title={t("编辑规则")}
                 onClick={() => {
                   setPreview(null);
                   setEditing(withActions(structuredClone(r), ruleActions(r)));
@@ -383,13 +462,15 @@ export function RulesPanel({
         {!data.rules.length && (
           <div className="panel-empty">
             <SlidersHorizontal size={34} />
-            <h3>收件箱有自己的秩序</h3>
-            <p>试着把项目往来或账单自动归入一个本地文件夹。</p>
+            <h3>{t("收件箱有自己的秩序")}</h3>
+            <p>{t("试着把项目往来或账单自动归入一个本地文件夹。")}</p>
           </div>
         )}
       </div>
       <div className="quiet-note">
-        无需保持邮箱网页打开。雁信在这台 Mac 上运行时，会自动处理新收到的邮件。
+        {t(
+          "无需保持邮箱网页打开。雁信在这台 Mac 上运行时，会自动处理新收到的邮件。",
+        )}
       </div>
       <RuleExecutions onShowTasks={onShowTasks} />
       <RuleRunsPanel onShowTasks={onShowTasks} />
@@ -401,9 +482,9 @@ export function RulesPanel({
       >
         <DialogContent className="w-[900px] max-w-[calc(100%-2rem)] sm:max-w-[900px] max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>编辑过滤规则</DialogTitle>
+            <DialogTitle>{t("编辑过滤规则")}</DialogTitle>
             <DialogDescription>
-              按账号和条件设置处理动作，预览后保存。
+              {t("按账号和条件设置处理动作，预览后保存。")}
             </DialogDescription>
           </DialogHeader>
           {editing && (
@@ -416,27 +497,27 @@ export function RulesPanel({
                   : [...data.rules, editing];
                 if (await save(rs)) {
                   setEditing(null);
-                  toast.success("规则已保存");
+                  toast.success(t("规则已保存"));
                 }
               }}
             >
               <div className="field">
-                <Label>规则名称</Label>
+                <Label>{t("规则名称")}</Label>
                 <Input
                   required
                   value={editing.name}
                   onChange={(e) =>
                     setEditing({ ...editing, name: e.target.value })
                   }
-                  placeholder="例如：项目邮件自动归类"
+                  placeholder={t("例如：项目邮件自动归类")}
                 />
               </div>
               <div className="field-row">
                 <div className="field">
-                  <Label>适用账号</Label>
+                  <Label>{t("适用账号")}</Label>
                   <SelectField
                     value={editing.accountId}
-                    aria-label="规则适用账号"
+                    aria-label={t("规则适用账号")}
                     onValueChange={(value) =>
                       setEditing(
                         withActions(
@@ -452,7 +533,7 @@ export function RulesPanel({
                   >
                     <SelectGroup>
                       <SelectOption value="" disabled={remote(editing)}>
-                        全部账号
+                        {t("全部账号")}
                       </SelectOption>
                       {data.accounts.map((a) => (
                         <SelectOption
@@ -472,7 +553,7 @@ export function RulesPanel({
                   </SelectField>
                 </div>
                 <div className="field">
-                  <Label>匹配方式</Label>
+                  <Label>{t("匹配方式")}</Label>
                   <SelectField
                     value={editing.mode}
                     onValueChange={(value) =>
@@ -483,8 +564,12 @@ export function RulesPanel({
                     }
                   >
                     <SelectGroup>
-                      <SelectOption value="all">满足全部条件</SelectOption>
-                      <SelectOption value="any">满足任一条件</SelectOption>
+                      <SelectOption value="all">
+                        {t("满足全部条件")}
+                      </SelectOption>
+                      <SelectOption value="any">
+                        {t("满足任一条件")}
+                      </SelectOption>
                     </SelectGroup>
                   </SelectField>
                 </div>
@@ -493,7 +578,7 @@ export function RulesPanel({
                 {editing.conditions.map((c, i) => (
                   <div className="condition" key={i}>
                     <SelectField
-                      aria-label="条件字段"
+                      aria-label={t("条件字段")}
                       value={c.field}
                       onValueChange={(value) =>
                         setEditing({
@@ -525,13 +610,13 @@ export function RulesPanel({
                       <SelectGroup>
                         {Object.entries(fields).map(([k, v]) => (
                           <SelectOption key={k} value={k}>
-                            {v}
+                            {t(v)}
                           </SelectOption>
                         ))}
                       </SelectGroup>
                     </SelectField>
                     <SelectField
-                      aria-label="条件比较"
+                      aria-label={t("条件比较")}
                       key={`${i}-${c.field}`}
                       value={c.operator}
                       onValueChange={(value) =>
@@ -546,29 +631,29 @@ export function RulesPanel({
                       <SelectGroup>
                         {(c.field === "date"
                           ? [
-                              ["before", "早于"],
-                              ["after", "晚于"],
+                              ["before", t("早于")],
+                              ["after", t("晚于")],
                             ]
                           : choiceConditions[c.field]
-                            ? [["equals", "等于"]]
+                            ? [["equals", t("等于")]]
                             : c.field === "ageDays"
                               ? [
-                                  ["greaterThan", "大于"],
-                                  ["lessThan", "小于"],
-                                  ["equals", "等于"],
+                                  ["greaterThan", t("大于")],
+                                  ["lessThan", t("小于")],
+                                  ["equals", t("等于")],
                                 ]
                               : c.field === "sizeKb"
                                 ? [
-                                    ["greaterThan", "大于"],
-                                    ["lessThan", "小于"],
-                                    ["equals", "等于"],
+                                    ["greaterThan", t("大于")],
+                                    ["lessThan", t("小于")],
+                                    ["equals", t("等于")],
                                   ]
                                 : [
-                                    ["contains", "包含"],
-                                    ["equals", "等于"],
-                                    ["notContains", "不包含"],
-                                    ["startsWith", "以此开头"],
-                                    ["endsWith", "以此结尾"],
+                                    ["contains", t("包含")],
+                                    ["equals", t("等于")],
+                                    ["notContains", t("不包含")],
+                                    ["startsWith", t("以此开头")],
+                                    ["endsWith", t("以此结尾")],
                                   ]
                         ).map(([k, v]) => (
                           <SelectOption key={k} value={k}>
@@ -580,7 +665,7 @@ export function RulesPanel({
                     {choiceConditions[c.field] ? (
                       <SelectField
                         className="condition-value"
-                        aria-label="条件值"
+                        aria-label={t("条件值")}
                         value={c.value}
                         onValueChange={(value) =>
                           setEditing({
@@ -613,7 +698,7 @@ export function RulesPanel({
                       />
                     ) : (
                       <Input
-                        aria-label="条件值"
+                        aria-label={t("条件值")}
                         required
                         type={
                           ["sizeKb", "ageDays"].includes(c.field)
@@ -632,14 +717,14 @@ export function RulesPanel({
                         }
                         placeholder={
                           c.field === "sizeKb"
-                            ? "整数 KB"
+                            ? t("整数 KB")
                             : c.field === "ageDays"
-                              ? "天数"
+                              ? t("天数")
                               : c.field === "cc"
-                                ? "例如：抄送地址或关键词"
+                                ? t("例如：抄送地址或关键词")
                                 : c.field === "recipientsOrCc"
-                                  ? "收件人或抄送地址"
-                                  : "关键词"
+                                  ? t("收件人或抄送地址")
+                                  : t("关键词")
                         }
                         value={c.value}
                         onChange={(e) =>
@@ -657,7 +742,7 @@ export function RulesPanel({
                       variant="ghost"
                       size="icon-sm"
                       disabled={editing.conditions.length === 1}
-                      title="移除条件"
+                      title={t("移除条件")}
                       onClick={() =>
                         setEditing({
                           ...editing,
@@ -687,10 +772,10 @@ export function RulesPanel({
                 }
               >
                 <Plus size={14} />
-                添加条件
+                {t("添加条件")}
               </Button>
               <div className="field">
-                <Label>依次执行动作</Label>
+                <Label>{t("依次执行动作")}</Label>
                 {ruleActions(editing).map((step, index) => (
                   <div className="rounded-md border p-3 space-y-3" key={index}>
                     <div className="flex items-center gap-3">
@@ -701,8 +786,8 @@ export function RulesPanel({
                         className="w-[230px] shrink-0"
                         aria-label={
                           index === 0
-                            ? "规则执行动作"
-                            : `规则执行动作 ${index + 1}`
+                            ? t("规则执行动作")
+                            : t("规则执行动作 {value0}", { value0: index + 1 })
                         }
                         value={step.action}
                         onValueChange={(value) =>
@@ -742,13 +827,13 @@ export function RulesPanel({
                             className="shrink-0"
                             htmlFor={`rule-local-folder-${index}`}
                           >
-                            本地文件夹
+                            {t("本地文件夹")}
                           </Label>
                           <Input
                             id={`rule-local-folder-${index}`}
                             className="min-w-0 flex-1"
                             required
-                            placeholder="例如：项目 / 设计"
+                            placeholder={t("例如：项目 / 设计")}
                             value={step.destination}
                             onChange={(event) =>
                               setEditing(
@@ -773,7 +858,7 @@ export function RulesPanel({
                           type="button"
                           variant="ghost"
                           size="icon-sm"
-                          title="上移动作"
+                          title={t("上移动作")}
                           disabled={index === 0}
                           onClick={() => {
                             const next = [...ruleActions(editing)];
@@ -790,7 +875,7 @@ export function RulesPanel({
                           type="button"
                           variant="ghost"
                           size="icon-sm"
-                          title="下移动作"
+                          title={t("下移动作")}
                           disabled={index === ruleActions(editing).length - 1}
                           onClick={() => {
                             const next = [...ruleActions(editing)];
@@ -807,7 +892,7 @@ export function RulesPanel({
                           type="button"
                           variant="ghost"
                           size="icon-sm"
-                          title="移除动作"
+                          title={t("移除动作")}
                           disabled={ruleActions(editing).length === 1}
                           onClick={() =>
                             setEditing(
@@ -870,7 +955,7 @@ export function RulesPanel({
                   }
                 >
                   <Plus size={14} />
-                  添加动作
+                  {t("添加动作")}
                 </Button>
               </div>
               <Label className="switch-label">
@@ -878,7 +963,7 @@ export function RulesPanel({
                   checked={editing.stop}
                   onCheckedChange={(v) => setEditing({ ...editing, stop: v })}
                 />
-                命中后停止执行后续规则
+                {t("命中后停止执行后续规则")}
               </Label>
               <Button
                 type="button"
@@ -893,15 +978,17 @@ export function RulesPanel({
                   }
                 }}
               >
-                预览匹配，不执行动作
+                {t("预览匹配，不执行动作")}
               </Button>
               {preview && (
                 <div className="rule-preview">
-                  {`本次预览 ${preview.length - waitingPreview} 项匹配${
-                    waitingPreview > 0
-                      ? `，另有 ${waitingPreview} 项等待完整邮件核对后确认`
-                      : ""
-                  }。`}
+                  {t("本次预览 {value0} 项匹配{value1}。", {
+                    value0: preview.length - waitingPreview,
+                    value1:
+                      waitingPreview > 0
+                        ? `，另有 ${waitingPreview} 项等待完整邮件核对后确认`
+                        : "",
+                  })}
                   {preview.slice(0, 3).map((s, i) => (
                     <p key={i}>{s}</p>
                   ))}
@@ -922,7 +1009,7 @@ export function RulesPanel({
                         setEditing(null);
                     }}
                   >
-                    删除规则
+                    {t("删除规则")}
                   </Button>
                 )}
                 <Button
@@ -930,7 +1017,7 @@ export function RulesPanel({
                   variant="outline"
                   onClick={() => setEditing(null)}
                 >
-                  取消
+                  {t("取消")}
                 </Button>
                 <Button
                   type="submit"
@@ -948,7 +1035,7 @@ export function RulesPanel({
                       ))
                   }
                 >
-                  保存规则
+                  {t("保存规则")}
                 </Button>
               </div>
             </form>

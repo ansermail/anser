@@ -1,12 +1,12 @@
 {
   "name": "anser",
   "private": true,
-  "version": "0.1.21",
+  "version": "0.1.22",
   "type": "module",
   "scripts": {
     "dev": "vite --host 127.0.0.1",
-    "build": "npm run check:ui && tsc -b && vite build",
-    "build:preview": "npm run check:ui && tsc -b && vite build --mode preview && node scripts/check-preview.mjs",
+    "build": "npm run check:ui && npm run check:i18n && tsc -b && vite build",
+    "build:preview": "npm run check:ui && npm run check:i18n && tsc -b && vite build --mode preview && node scripts/check-preview.mjs",
     "preview": "vite preview --host 127.0.0.1",
     "tauri": "tauri",
     "desktop": "node scripts/desktop.mjs",
@@ -18,7 +18,8 @@
     "check:ui": "node scripts/check-ui.mjs",
     "release:check": "node scripts/release-assets.mjs verify",
     "release:secrets": "node scripts/release-secrets.mjs",
-    "format:check": "prettier --check \"src/**/*.{ts,tsx,css}\" \"scripts/*.mjs\" \".github/workflows/*.yml\" \"package*.json\" \"src-tauri/*.json\" \"src-tauri/capabilities/*.json\""
+    "format:check": "prettier --check \"src/**/*.{ts,tsx,css,json}\" \"scripts/*.mjs\" \".github/workflows/*.yml\" \"package*.json\" \"src-tauri/*.json\" \"src-tauri/capabilities/*.json\"",
+    "check:i18n": "node scripts/check-i18n.mjs"
   },
   "dependencies": {
     "@tauri-apps/api": "^2",

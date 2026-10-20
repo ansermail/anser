@@ -1,3 +1,4 @@
+import { t } from "./i18n";
 export const BODY_FONTS = [
   { group: "中文字体", label: "宋体", value: "SimSun, 'Songti SC', serif" },
   { group: "中文字体", label: "楷体", value: "KaiTi, 'Kaiti SC', serif" },
@@ -55,14 +56,14 @@ export function rasterMime(bytes: Uint8Array): string {
     return "image/gif";
   if (prefix.startsWith("RIFF") && prefix.slice(8) === "WEBP")
     return "image/webp";
-  throw new Error("请选择 PNG、JPEG、GIF 或 WebP 图片");
+  throw new Error(t("请选择 PNG、JPEG、GIF 或 WebP 图片"));
 }
 export function readBodyImage(file: File): Promise<BodyImage> {
   if (!file.size || file.size > MAX_INLINE_IMAGE)
-    return Promise.reject(new Error("单张正文图片须为 1 字节至 10 MB"));
+    return Promise.reject(new Error(t("单张正文图片须为 1 字节至 10 MB")));
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
-    reader.onerror = () => reject(new Error("无法读取正文图片，请重新选择"));
+    reader.onerror = () => reject(new Error(t("无法读取正文图片，请重新选择")));
     reader.onload = () => {
       try {
         const bytes = new Uint8Array(reader.result as ArrayBuffer);
@@ -98,6 +99,6 @@ export function inlineImageBytes(
     if (encoded) total += atob(encoded).length;
   }
   if (total > 50 * 1024 * 1024)
-    throw new Error("正文图片总大小超过 50 MB，请减少图片");
+    throw new Error(t("正文图片总大小超过 50 MB，请减少图片"));
   return total;
 }

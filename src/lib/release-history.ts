@@ -1,3 +1,4 @@
+import { t } from "./i18n";
 export type ReleaseRecord = {
   version: string;
   name: string;
@@ -39,6 +40,6 @@ export function checkedHistory(
     new Set(data.releases.map((item) => item.version)).size !==
       data.releases.length
   )
-    throw new Error("版本历史返回不完整或格式无效，请重试");
+    throw new Error(t("版本历史返回不完整或格式无效，请重试"));
   return data;
 }

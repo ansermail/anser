@@ -1,3 +1,4 @@
+import { t } from "@/lib/i18n";
 import { useEffect, useState } from "react";
 import { call } from "@/lib/api";
 import { coalesceRefresh } from "@/lib/refresh-queue";
@@ -29,20 +30,48 @@ export type RuleExecution = {
   updatedAt: string;
 };
 const states: Record<string, string> = {
-  queued: "待执行",
-  preparing: "准备中",
-  submitted: "等待回执",
-  confirmed: "待核对",
-  verifying: "核对中",
-  completed: "已完成",
-  uncertain: "结果未确认",
-  blocked: "需要处理",
-  cancelled: "已取消",
-  cleanup_pending: "待移除来源",
-  cleanup_running: "核对来源中",
-  cleanup_submitted: "来源移除待确认",
-  cleanup_uncertain: "来源移除未确认",
-  cleanup_blocked: "来源移除需处理",
+  get queued() {
+    return t("待执行");
+  },
+  get preparing() {
+    return t("准备中");
+  },
+  get submitted() {
+    return t("等待回执");
+  },
+  get confirmed() {
+    return t("待核对");
+  },
+  get verifying() {
+    return t("核对中");
+  },
+  get completed() {
+    return t("已完成");
+  },
+  get uncertain() {
+    return t("结果未确认");
+  },
+  get blocked() {
+    return t("需要处理");
+  },
+  get cancelled() {
+    return t("已取消");
+  },
+  get cleanup_pending() {
+    return t("待移除来源");
+  },
+  get cleanup_running() {
+    return t("核对来源中");
+  },
+  get cleanup_submitted() {
+    return t("来源移除待确认");
+  },
+  get cleanup_uncertain() {
+    return t("来源移除未确认");
+  },
+  get cleanup_blocked() {
+    return t("来源移除需处理");
+  },
 };
 export function RuleExecutions({ onShowTasks }: { onShowTasks: () => void }) {
   const [items, setItems] = useState<RuleExecution[] | null>(null);
@@ -87,14 +116,16 @@ export function RuleExecutions({ onShowTasks }: { onShowTasks: () => void }) {
   return (
     <Card className="mt-6">
       <CardHeader>
-        <CardTitle>服务器规则执行记录</CardTitle>
+        <CardTitle>{t("服务器规则执行记录")}</CardTitle>
         <CardDescription>
-          最近 50 次命中。任务完成后才显示成功；结果未确认时不会自动重发。
+          {t(
+            "最近 50 次命中。任务完成后才显示成功；结果未确认时不会自动重发。",
+          )}
         </CardDescription>
         <CardAction>
           <Button variant="ghost" size="sm" onClick={() => void reload()}>
             <RefreshCw />
-            刷新
+            {t("刷新")}
           </Button>
         </CardAction>
       </CardHeader>
@@ -105,14 +136,17 @@ export function RuleExecutions({ onShowTasks }: { onShowTasks: () => void }) {
           </Alert>
         )}
         {!items && !error && (
-          <Skeleton className="h-16" aria-label="正在加载规则记录" />
+          <Skeleton className="h-16" aria-label={t("正在加载规则记录")} />
         )}
         {items?.length === 0 && (
           <p className="text-sm text-muted-foreground">
-            暂无服务器规则命中。预览匹配不会创建任务。
+            {t("暂无服务器规则命中。预览匹配不会创建任务。")}
           </p>
         )}
-        <ul className="flex flex-col gap-4" aria-label="服务器规则命中记录">
+        <ul
+          className="flex flex-col gap-4"
+          aria-label={t("服务器规则命中记录")}
+        >
           {items?.map((item) => (
             <li
               key={item.id}
@@ -120,11 +154,11 @@ export function RuleExecutions({ onShowTasks }: { onShowTasks: () => void }) {
             >
               <div className="flex min-w-0 flex-col gap-1">
                 <p className="break-words">
-                  {item.ruleName} · {item.subject || "（无主题）"}
+                  {item.ruleName} · {item.subject || t("（无主题）")}
                 </p>
                 <p className="text-sm text-muted-foreground">
                   {item.accountEmail} ·{" "}
-                  {item.action === "serverMove" ? "移动" : "复制"} ·{" "}
+                  {item.action === "serverMove" ? t("移动") : t("复制")} ·{" "}
                   {item.source} → {item.target}
                 </p>
                 {item.error && (
@@ -142,14 +176,14 @@ export function RuleExecutions({ onShowTasks }: { onShowTasks: () => void }) {
                     disabled={busy}
                     onClick={() => void retry(item.id)}
                   >
-                    重新检查并入队
+                    {t("重新检查并入队")}
                   </Button>
                 )}
                 {item.operationId &&
                   item.status !== "completed" &&
                   item.status !== "cancelled" && (
                     <Button variant="outline" size="sm" onClick={onShowTasks}>
-                      查看服务器任务
+                      {t("查看服务器任务")}
                     </Button>
                   )}
               </div>

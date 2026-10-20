@@ -1,3 +1,4 @@
+import { t } from "./i18n";
 import type { Mail, RemoteFolder } from "./types";
 
 // A folder view is authoritative. Never silently move a different physical
@@ -15,7 +16,7 @@ export function directorySource(
   );
   if (remoteFolder) {
     if (available.includes(remoteFolder)) return remoteFolder;
-    throw new Error("邮件已不在当前服务器文件夹，请刷新后重新打开。");
+    throw new Error(t("邮件已不在当前服务器文件夹，请刷新后重新打开。"));
   }
   const inbox = available.find((s) => s.toUpperCase() === "INBOX");
   if (view === "all" && inbox) return inbox;
@@ -24,7 +25,7 @@ export function directorySource(
       folders.some((f) => f.name === s && f.roles?.includes("sent")),
     );
     if (sent.length === 1) return sent[0];
-    throw new Error("无法确定已发送来源，请从具体服务器文件夹打开邮件。");
+    throw new Error(t("无法确定已发送来源，请从具体服务器文件夹打开邮件。"));
   }
   // Match the canonical active source used by the aggregated reader.
   if (inbox) return inbox;

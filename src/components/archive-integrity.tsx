@@ -1,3 +1,4 @@
+import { dateLocale, t } from "@/lib/i18n";
 import { useRef, useState } from "react";
 import { ShieldCheck, LoaderCircle, AlertCircle } from "lucide-react";
 import { call, isDemo } from "@/lib/api";
@@ -37,19 +38,22 @@ export function ArchiveIntegrity() {
         ) : (
           <ShieldCheck data-icon="inline-start" />
         )}
-        {checking ? "正在校验…" : "校验存档"}
+        {checking ? t("正在校验…") : t("校验存档")}
       </Button>
       <p className="text-xs text-muted-foreground" role="status">
         {checking
-          ? "正在校验原始邮件与附件…"
+          ? t("正在校验原始邮件与附件…")
           : health
-            ? `${health.healthy} / ${health.checked} 封校验通过`
-            : "检查本地原件与附件的完整性"}
+            ? t("{value0} / {value1} 封校验通过", {
+                value0: health.healthy,
+                value1: health.checked,
+              })
+            : t("检查本地原件与附件的完整性")}
       </p>
       {health && (
         <p className="text-xs text-muted-foreground">
-          最近校验：
-          {new Date(health.checkedAt).toLocaleString("zh-CN", {
+          {t("最近校验：")}
+          {new Date(health.checkedAt).toLocaleString(dateLocale(), {
             hour12: false,
           })}
         </p>
@@ -58,14 +62,16 @@ export function ArchiveIntegrity() {
         <Alert variant="destructive">
           <AlertCircle />
           <AlertTitle>
-            {error ? "校验未完成" : `${health!.problems.length} 封需要检查`}
+            {error
+              ? t("校验未完成")
+              : t("{value0} 封需要检查", { value0: health!.problems.length })}
           </AlertTitle>
           <AlertDescription className="max-h-48 overflow-auto">
             {error || (
               <ul className="flex flex-col gap-2">
                 {health!.problems.map((p) => (
                   <li key={p.mailId}>
-                    <p>{p.subject || "（无主题）"}</p>
+                    <p>{p.subject || t("（无主题）")}</p>
                     <p>{p.error}</p>
                   </li>
                 ))}
@@ -76,7 +82,7 @@ export function ArchiveIntegrity() {
       )}
       {isDemo() && (
         <p className="text-xs text-muted-foreground">
-          演示模式仅展示示例校验结果。
+          {t("演示模式仅展示示例校验结果。")}
         </p>
       )}
     </div>

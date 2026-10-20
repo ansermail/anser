@@ -1,3 +1,4 @@
+import { t } from "@/lib/i18n";
 import { useState } from "react";
 import { providers } from "@/lib/providers";
 import { Field, FieldLabel } from "./ui/field";
@@ -59,7 +60,7 @@ export function AccountEmailField({
   if (disabled || !preset) {
     return (
       <Field className="field">
-        <FieldLabel htmlFor="email">邮箱地址</FieldLabel>
+        <FieldLabel htmlFor="email">{t("邮箱地址")}</FieldLabel>
         <Input
           id="email"
           type="email"
@@ -74,7 +75,7 @@ export function AccountEmailField({
   }
   return (
     <Field className="field">
-      <FieldLabel htmlFor="email">邮箱地址</FieldLabel>
+      <FieldLabel htmlFor="email">{t("邮箱地址")}</FieldLabel>
       <InputGroup>
         <InputGroupInput
           id="email"
@@ -83,10 +84,10 @@ export function AccountEmailField({
           autoCapitalize="none"
           autoComplete="username"
           spellCheck={false}
-          placeholder={domain ? "填写邮箱账号" : "you@example.com"}
+          placeholder={domain ? t("填写邮箱账号") : "you@example.com"}
           pattern={domain ? "[^\\s@]+" : undefined}
           title={
-            domain ? "填写 @ 前面的邮箱账号，或粘贴完整邮箱地址" : undefined
+            domain ? t("填写 @ 前面的邮箱账号，或粘贴完整邮箱地址") : undefined
           }
           aria-describedby={domain ? "email-domain" : undefined}
           value={local}
@@ -97,7 +98,7 @@ export function AccountEmailField({
           <Select value={domain || "custom"} onValueChange={changeDomain}>
             <SelectTrigger
               id="email-domain"
-              aria-label="邮箱后缀"
+              aria-label={t("邮箱后缀")}
               className="w-auto border-0 shadow-none"
             >
               <SelectValue />
@@ -109,7 +110,7 @@ export function AccountEmailField({
                     @{name}
                   </SelectItem>
                 ))}
-                <SelectItem value="custom">完整地址</SelectItem>
+                <SelectItem value="custom">{t("完整地址")}</SelectItem>
               </SelectGroup>
             </SelectContent>
           </Select>

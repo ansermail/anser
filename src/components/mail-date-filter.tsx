@@ -1,7 +1,7 @@
+import { calendarLocale, t } from "@/lib/i18n";
 import { useState } from "react";
 import type { DateRange } from "react-day-picker";
 import { format } from "date-fns";
-import { zhCN } from "date-fns/locale";
 import { CalendarDays } from "lucide-react";
 import { Button } from "./ui/button";
 import { Calendar } from "./ui/calendar";
@@ -25,7 +25,7 @@ function selectedRange(from?: string, before?: string): DateRange | undefined {
 }
 export function MailDateFilter({
   id,
-  placeholder = "时间范围",
+  placeholder = t("时间范围"),
   dateFrom,
   dateBefore,
   onChange,
@@ -41,9 +41,15 @@ export function MailDateFilter({
     selectedRange(dateFrom, dateBefore),
   );
   const current = selectedRange(dateFrom, dateBefore);
-  const fromLabel = current?.from ? format(current.from, "yyyy/MM/dd") : "";
+  const dateFormat =
+    calendarLocale().code === "en-US" ? "MMM d, yyyy" : "yyyy/MM/dd";
+  const fromLabel = current?.from
+    ? format(current.from, dateFormat, { locale: calendarLocale() })
+    : "";
   const toLabel = current?.from
-    ? format(current.to || current.from, "yyyy/MM/dd")
+    ? format(current.to || current.from, dateFormat, {
+        locale: calendarLocale(),
+      })
     : "";
   const label = fromLabel
     ? fromLabel === toLabel
@@ -63,7 +69,7 @@ export function MailDateFilter({
           id={id}
           variant={dateFrom ? "secondary" : "outline"}
           size="sm"
-          aria-label="按时间筛选邮件"
+          aria-label={t("按时间筛选邮件")}
           title={label}
         >
           <CalendarDays data-icon="inline-start" />
@@ -73,13 +79,13 @@ export function MailDateFilter({
       <PopoverContent
         align="start"
         className="w-80 max-h-[var(--radix-popover-content-available-height)] overflow-y-auto"
-        aria-label="邮件时间范围"
+        aria-label={t("邮件时间范围")}
       >
         <FieldGroup>
           <Field>
-            <FieldLabel>邮件时间范围</FieldLabel>
+            <FieldLabel>{t("邮件时间范围")}</FieldLabel>
             <FieldDescription>
-              包含起止日期，使用本机时区；时间未知的邮件不参与时间筛选。
+              {t("包含起止日期，使用本机时区；时间未知的邮件不参与时间筛选。")}
             </FieldDescription>
             <Button
               variant="ghost"
@@ -87,13 +93,13 @@ export function MailDateFilter({
               className="self-start"
               onClick={() => setRange(undefined)}
             >
-              重新选择
+              {t("重新选择")}
             </Button>
             <Calendar
               mode="range"
               selected={range}
               onSelect={setRange}
-              locale={zhCN}
+              locale={calendarLocale()}
               captionLayout="dropdown"
               startMonth={new Date(1900, 0)}
               endMonth={new Date(2100, 11)}
@@ -109,7 +115,7 @@ export function MailDateFilter({
                 setOpen(false);
               }}
             >
-              不限时间
+              {t("不限时间")}
             </Button>
             <Button
               disabled={!range?.from}
@@ -118,7 +124,7 @@ export function MailDateFilter({
                 setOpen(false);
               }}
             >
-              应用筛选
+              {t("应用筛选")}
             </Button>
           </div>
         </FieldGroup>

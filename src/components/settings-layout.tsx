@@ -1,14 +1,45 @@
+import { t } from "@/lib/i18n";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Archive, History, Info, Mail, SlidersHorizontal } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "./ui/tabs";
 import { Badge } from "./ui/badge";
 
 const sections = [
-  { value: "accounts", label: "邮箱账号", icon: Mail },
-  { value: "archive", label: "本地存档", icon: Archive },
-  { value: "preferences", label: "应用偏好", icon: SlidersHorizontal },
-  { value: "tasks", label: "后台任务", icon: History },
-  { value: "about", label: "关于雁信", icon: Info },
+  {
+    value: "accounts",
+    get label() {
+      return t("邮箱账号");
+    },
+    icon: Mail,
+  },
+  {
+    value: "archive",
+    get label() {
+      return t("本地存档");
+    },
+    icon: Archive,
+  },
+  {
+    value: "preferences",
+    get label() {
+      return t("应用偏好");
+    },
+    icon: SlidersHorizontal,
+  },
+  {
+    value: "tasks",
+    get label() {
+      return t("后台任务");
+    },
+    icon: History,
+  },
+  {
+    value: "about",
+    get label() {
+      return t("关于雁信");
+    },
+    icon: Info,
+  },
 ] as const;
 
 type Section = (typeof sections)[number]["value"];
@@ -47,7 +78,7 @@ export function SettingsLayout({
         orientation={compact ? "horizontal" : "vertical"}
         className="settings-layout"
       >
-        <TabsList aria-label="设置分类" className="settings-navigation">
+        <TabsList aria-label={t("设置分类")} className="settings-navigation">
           {sections.map((section) => (
             <TabsTrigger key={section.value} value={section.value}>
               <section.icon />

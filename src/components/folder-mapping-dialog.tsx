@@ -1,3 +1,4 @@
+import { t } from "@/lib/i18n";
 import { useEffect, useRef, useState } from "react";
 import { RefreshCw } from "lucide-react";
 import { toast } from "sonner";
@@ -147,7 +148,7 @@ export function FolderMappingDialog({
     try {
       await call("save_folder_mappings", { id: account.id, mappings });
       if (epoch.current !== current) return;
-      toast.success("特殊文件夹设置已保存");
+      toast.success(t("特殊文件夹设置已保存"));
       onSaved();
       onClose();
     } catch (e) {
@@ -174,13 +175,15 @@ export function FolderMappingDialog({
         }}
       >
         <DialogHeader>
-          <DialogTitle>特殊文件夹</DialogTitle>
+          <DialogTitle>{t("特殊文件夹")}</DialogTitle>
           <DialogDescription>
             {account.name} · {account.email}
           </DialogDescription>
         </DialogHeader>
         <p className="text-sm text-muted-foreground">
-          指定服务器目录的用途。垃圾邮件和废纸篓不自动收取，仍可从侧栏手动查看。
+          {t(
+            "指定服务器目录的用途。垃圾邮件和废纸篓不自动收取，仍可从侧栏手动查看。",
+          )}
         </p>
         {loading && !settings && <Skeleton className="h-64 w-full" />}
         {settings && (
@@ -199,7 +202,7 @@ export function FolderMappingDialog({
                   data-disabled={loading || saving}
                 >
                   <FieldLabel htmlFor={`folder-role-${role}`}>
-                    {label}
+                    {t(label)}
                   </FieldLabel>
                   <div className="flex min-w-0 flex-1 flex-col gap-1">
                     <Select
@@ -211,7 +214,7 @@ export function FolderMappingDialog({
                     >
                       <SelectTrigger
                         id={`folder-role-${role}`}
-                        aria-label={label}
+                        aria-label={t(label)}
                         aria-invalid={invalid}
                         className="w-full"
                       >
@@ -219,11 +222,11 @@ export function FolderMappingDialog({
                       </SelectTrigger>
                       <SelectContent>
                         <SelectGroup>
-                          <SelectItem value={AUTO}>自动识别</SelectItem>
-                          <SelectItem value={NONE}>不指定</SelectItem>
+                          <SelectItem value={AUTO}>{t("自动识别")}</SelectItem>
+                          <SelectItem value={NONE}>{t("不指定")}</SelectItem>
                           {invalid && (
                             <SelectItem value={value} disabled>
-                              已设置的目录不可用
+                              {t("已设置的目录不可用")}
                             </SelectItem>
                           )}
                           {selectable.map((f) => (
@@ -236,14 +239,18 @@ export function FolderMappingDialog({
                     </Select>
                     {invalid ? (
                       <FieldError>
-                        目录已移除或不能存放邮件，请重新选择。
+                        {t("目录已移除或不能存放邮件，请重新选择。")}
                       </FieldError>
                     ) : (
                       value === AUTO && (
                         <FieldDescription>
                           {detected.length
-                            ? `已识别：${detected.map((f) => f.displayName).join("、")}`
-                            : "未识别到此用途的目录"}
+                            ? t("已识别：{value0}", {
+                                value0: detected
+                                  .map((f) => f.displayName)
+                                  .join("、"),
+                              })
+                            : t("未识别到此用途的目录")}
                         </FieldDescription>
                       )
                     )}
@@ -267,7 +274,7 @@ export function FolderMappingDialog({
             }
           >
             <RefreshCw data-icon="inline-start" />
-            {loading ? "刷新中…" : "刷新目录"}
+            {loading ? t("刷新中…") : t("刷新目录")}
           </Button>
           <div className="flex gap-2">
             <Button
@@ -275,13 +282,13 @@ export function FolderMappingDialog({
               disabled={loading || saving || !settings}
               onClick={() => setValues({})}
             >
-              恢复自动识别
+              {t("恢复自动识别")}
             </Button>
             <Button
               disabled={loading || saving || !settings || missing.length > 0}
               onClick={() => void save()}
             >
-              {saving ? "保存中…" : "保存"}
+              {saving ? t("保存中…") : t("保存")}
             </Button>
           </div>
         </DialogFooter>

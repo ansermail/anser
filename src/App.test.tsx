@@ -3,6 +3,7 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { beforeEach, afterEach, describe, it, expect, vi } from "vitest";
 import App from "./App";
+import { setInterfaceLanguage } from "./lib/i18n";
 import { enterDemo, leaveDemo, snapshot } from "./lib/api";
 import * as api from "./lib/api";
 import type { Detail, Query, RemoteFolder } from "./lib/types";
@@ -2515,4 +2516,41 @@ describe("notification mail opening", () => {
       "无法打开通知邮件：Error: 通知邮件已移除",
     );
   });
+});
+
+it("switches interface language without remounting settings or altering unsaved model input", async () => {
+  await click(nav("设置与账号"));
+  const tab = (name: string) =>
+    [...host.querySelectorAll('[role="tab"]')].find((element) =>
+      element.textContent?.includes(name),
+    ) || null;
+  await click(tab("应用偏好"));
+  const input = host.querySelector(
+    'input[placeholder="输入模型 ID，或从列表选择"]',
+  ) as HTMLInputElement;
+  await act(async () => {
+    Object.getOwnPropertyDescriptor(
+      HTMLInputElement.prototype,
+      "value",
+    )!.set!.call(input, "unsaved-i18n-fixture");
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+  try {
+    await act(async () => setInterfaceLanguage("en"));
+    expect(nav("All mail")).not.toBeNull();
+    expect(
+      host.querySelector(
+        'input[placeholder="Enter a model ID or choose from the list"]',
+      ),
+    ).toBe(input);
+    expect(input.value).toBe("unsaved-i18n-fixture");
+    expect(
+      host.querySelector(".settings-section:not([hidden])")?.textContent,
+    ).toContain("Interface language");
+    await click(tab("About Anser"));
+    await click(tab("Preferences"));
+    expect(input.value).toBe("unsaved-i18n-fixture");
+  } finally {
+    await act(async () => setInterfaceLanguage("zh-CN"));
+  }
 });

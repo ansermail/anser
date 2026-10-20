@@ -1,3 +1,4 @@
+import { t } from "@/lib/i18n";
 import { Switch } from "./ui/switch";
 import { Checkbox } from "./ui/checkbox";
 import { SelectField, SelectOption } from "@/components/ui/select-field";
@@ -115,7 +116,7 @@ export function AccountDialog({
       setAccount(null);
       toast.success(
         result ||
-          (editing ? "账号设置已保存" : "邮箱已连接，收发服务器验证通过"),
+          (editing ? t("账号设置已保存") : t("邮箱已连接，收发服务器验证通过")),
       );
     } catch (e) {
       setError(String(e));
@@ -164,15 +165,15 @@ export function AccountDialog({
           </div>
           <DialogTitle>
             {editing
-              ? "编辑邮箱配置"
+              ? t("编辑邮箱配置")
               : account
-                ? "连接你的邮箱"
-                : "把邮箱，放在一起"}
+                ? t("连接你的邮箱")
+                : t("把邮箱，放在一起")}
           </DialogTitle>
           <DialogDescription>
             {account
-              ? "配置邮箱服务器与本地留存方式。"
-              : "无论工作还是生活，在一个安静的空间里处理邮件。"}
+              ? t("配置邮箱服务器与本地留存方式。")
+              : t("无论工作还是生活，在一个安静的空间里处理邮件。")}
           </DialogDescription>
         </DialogHeader>
         {!account ? (
@@ -191,14 +192,14 @@ export function AccountDialog({
                   <span style={{ color: p.color, background: p.color + "12" }}>
                     {p.letter}
                   </span>
-                  <strong>{p.name}</strong>
+                  <strong>{t(p.name)}</strong>
                   <ArrowRight size={15} />
                 </Button>
               ))}
             </div>
             <div className="privacy-note">
               <LockKeyhole size={15} />
-              密码和令牌安全保存在 macOS 钥匙串中
+              {t("密码和令牌安全保存在 macOS 钥匙串中")}
             </div>
           </>
         ) : (
@@ -218,7 +219,7 @@ export function AccountDialog({
                 disabled={busy}
               >
                 <ArrowLeft size={14} />
-                返回其他邮箱
+                {t("返回其他邮箱")}
               </Button>
             )}
             <fieldset disabled={busy}>
@@ -243,10 +244,10 @@ export function AccountDialog({
                 }}
               />
               <div className="field">
-                <Label htmlFor="name">账号名称</Label>
+                <Label htmlFor="name">{t("账号名称")}</Label>
                 <Input
                   id="name"
-                  placeholder="例如：工作邮箱"
+                  placeholder={t("例如：工作邮箱")}
                   value={account.name}
                   onChange={(e) => update({ name: e.target.value })}
                 />
@@ -255,8 +256,8 @@ export function AccountDialog({
                 <div className="field">
                   <Label htmlFor="password">
                     {editing
-                      ? "更换密码 / 授权码（留空保留）"
-                      : "密码 / 客户端授权码"}
+                      ? t("更换密码 / 授权码（留空保留）")
+                      : t("密码 / 客户端授权码")}
                   </Label>
                   <Input
                     id="password"
@@ -267,8 +268,8 @@ export function AccountDialog({
                     onChange={(e) => setPassword(e.target.value)}
                     placeholder={
                       editing
-                        ? "保留钥匙串中已保存的凭据"
-                        : "部分邮箱需先开启 IMAP/POP3 并生成授权码"
+                        ? t("保留钥匙串中已保存的凭据")
+                        : t("部分邮箱需先开启 IMAP/POP3 并生成授权码")
                     }
                   />
                 </div>
@@ -276,10 +277,13 @@ export function AccountDialog({
                 <div className="oauth-note">
                   <ShieldCheck size={19} />
                   <div>
-                    通过 {account.provider === "gmail" ? "Google" : "Microsoft"}{" "}
-                    安全登录
+                    {t("通过 ")}
+                    {account.provider === "gmail" ? "Google" : "Microsoft"}{" "}
+                    {t("安全登录")}
                     <small>
-                      将打开系统浏览器完成授权。开发版需配置桌面应用 Client ID。
+                      {t(
+                        "将打开系统浏览器完成授权。开发版需配置桌面应用 Client ID。",
+                      )}
                     </small>
                   </div>
                 </div>
@@ -290,7 +294,7 @@ export function AccountDialog({
                     checked={reauthorize}
                     onCheckedChange={(value) => setReauthorize(value === true)}
                   />
-                  重新进行浏览器授权
+                  {t("重新进行浏览器授权")}
                 </Label>
               )}
               <Button
@@ -299,7 +303,7 @@ export function AccountDialog({
                 type="button"
                 onClick={() => setAdvanced(!advanced)}
               >
-                服务器与高级配置
+                {t("服务器与高级配置")}
                 <ChevronDown
                   size={15}
                   className={advanced ? "rotate-180" : ""}
@@ -309,7 +313,7 @@ export function AccountDialog({
                 <div className="advanced-fields">
                   <div className="field-row">
                     <div className="field">
-                      <Label>收件协议</Label>
+                      <Label>{t("收件协议")}</Label>
                       <SelectField
                         value={account.protocol}
                         onValueChange={(value) => {
@@ -336,15 +340,15 @@ export function AccountDialog({
                         }}
                       >
                         <SelectOption value="imap">
-                          IMAP（同步邮箱）
+                          {t("IMAP（同步邮箱）")}
                         </SelectOption>
                         <SelectOption value="pop3">
-                          POP3（下载邮件）
+                          {t("POP3（下载邮件）")}
                         </SelectOption>
                       </SelectField>
                     </div>
                     <div className="field">
-                      <Label>认证方式</Label>
+                      <Label>{t("认证方式")}</Label>
                       <SelectField
                         value={account.auth}
                         onValueChange={(value) =>
@@ -352,7 +356,7 @@ export function AccountDialog({
                         }
                       >
                         <SelectOption value="password">
-                          密码 / 授权码
+                          {t("密码 / 授权码")}
                         </SelectOption>
                         {["gmail", "outlook", "microsoft365"].includes(
                           account.provider,
@@ -369,14 +373,14 @@ export function AccountDialog({
                   />
                   <ServerFields kind="smtp" account={account} update={update} />
                   <div className="field">
-                    <Label>收件用户名</Label>
+                    <Label>{t("收件用户名")}</Label>
                     <Input
                       value={account.username}
                       onChange={(e) => update({ username: e.target.value })}
                     />
                   </div>
                   <div className="field">
-                    <Label>SMTP 用户名（留空使用收件用户名）</Label>
+                    <Label>{t("SMTP 用户名（留空使用收件用户名）")}</Label>
                     <Input
                       value={account.smtpUsername}
                       onChange={(e) => update({ smtpUsername: e.target.value })}
@@ -386,8 +390,8 @@ export function AccountDialog({
                     <div className="field">
                       <Label>
                         {editing
-                          ? "更换 SMTP 密码（留空保留）"
-                          : "SMTP 密码（留空使用收件密码）"}
+                          ? t("更换 SMTP 密码（留空保留）")
+                          : t("SMTP 密码（留空使用收件密码）")}
                       </Label>
                       <Input
                         type="password"
@@ -403,7 +407,7 @@ export function AccountDialog({
                               setSmtpUseIncoming(value === true)
                             }
                           />
-                          SMTP 使用收件密码 / 授权码
+                          {t("SMTP 使用收件密码 / 授权码")}
                         </Label>
                       )}
                     </div>
@@ -412,7 +416,7 @@ export function AccountDialog({
                       <Label>OAuth Client ID</Label>
                       <Input
                         value={account.oauthClientId}
-                        placeholder="桌面 / 公共客户端应用的 Client ID"
+                        placeholder={t("桌面 / 公共客户端应用的 Client ID")}
                         onChange={(e) =>
                           update({ oauthClientId: e.target.value })
                         }
@@ -430,13 +434,17 @@ export function AccountDialog({
                 onCheckedChange={(value) => update({ saveLocally: value })}
               />
               <div>
-                <Label htmlFor="save-locally">收到的邮件保存在本地</Label>
+                <Label htmlFor="save-locally">
+                  {t("收到的邮件保存在本地")}
+                </Label>
                 <small>
                   {account.saveLocally !== false
-                    ? "保存完整正文与附件，服务器删除后仍可阅读。"
-                    : "仅保存列表信息，打开正文时从服务器加载。已有存档保留。"}
+                    ? t("保存完整正文与附件，服务器删除后仍可阅读。")
+                    : t(
+                        "仅保存列表信息，打开正文时从服务器加载。已有存档保留。",
+                      )}
                   {account.protocol === "imap" &&
-                    " 此项为账号默认，文件夹可在设置中单独选择保存范围。"}
+                    t(" 此项为账号默认，文件夹可在设置中单独选择保存范围。")}
                 </small>
               </div>
             </div>
@@ -449,33 +457,34 @@ export function AccountDialog({
               {busy ? <LoaderCircle className="animate-spin" /> : <KeyRound />}
               {busy
                 ? cancelling
-                  ? "正在取消授权…"
+                  ? t("正在取消授权…")
                   : stage === "browser"
-                    ? "等待浏览器授权…"
+                    ? t("等待浏览器授权…")
                     : stage === "token"
-                      ? "正在交换授权令牌…"
+                      ? t("正在交换授权令牌…")
                       : stage === "incoming"
-                        ? "正在验证收件服务器…"
+                        ? t("正在验证收件服务器…")
                         : stage === "smtp"
-                          ? "正在验证发件服务器…"
+                          ? t("正在验证发件服务器…")
                           : stage === "saving"
-                            ? "正在保存账号…"
+                            ? t("正在保存账号…")
                             : needsValidation
-                              ? "正在验证连接…"
-                              : "正在保存设置…"
+                              ? t("正在验证连接…")
+                              : t("正在保存设置…")
                 : editing
                   ? needsValidation
-                    ? "验证并保存配置"
-                    : "保存设置"
+                    ? t("验证并保存配置")
+                    : t("保存设置")
                   : account.auth === "oauth"
-                    ? "授权并连接"
-                    : "验证并连接邮箱"}
+                    ? t("授权并连接")
+                    : t("验证并连接邮箱")}
             </Button>
             {busy && stage === "browser" && (
               <div className="flex flex-col gap-2" role="status">
                 <p className="text-sm text-muted-foreground">
-                  请在新打开的系统浏览器页面完成授权，再返回雁信。等待超过 3
-                  分钟会自动结束。
+                  {t(
+                    "请在新打开的系统浏览器页面完成授权，再返回雁信。等待超过 3 分钟会自动结束。",
+                  )}
                 </p>
                 <Button
                   type="button"
@@ -491,7 +500,7 @@ export function AccountDialog({
                     }
                   }}
                 >
-                  取消授权
+                  {t("取消授权")}
                 </Button>
               </div>
             )}
@@ -516,7 +525,9 @@ function ServerFields({
   return (
     <div className="server-row">
       <div className="field">
-        <Label>{kind === "incoming" ? "收件服务器" : "SMTP 服务器"}</Label>
+        <Label>
+          {kind === "incoming" ? t("收件服务器") : t("SMTP 服务器")}
+        </Label>
         <Input
           required
           value={account[host]}
@@ -525,7 +536,7 @@ function ServerFields({
         />
       </div>
       <div className="field">
-        <Label>端口</Label>
+        <Label>{t("端口")}</Label>
         <Input
           type="number"
           min={1}
@@ -536,7 +547,7 @@ function ServerFields({
         />
       </div>
       <div className="field">
-        <Label>加密</Label>
+        <Label>{t("加密")}</Label>
         <SelectField
           value={account[tls]}
           onValueChange={(value) => update({ [tls]: value })}

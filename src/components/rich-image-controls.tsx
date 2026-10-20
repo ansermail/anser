@@ -1,3 +1,4 @@
+import { t } from "@/lib/i18n";
 import { useEffect, useRef, useState } from "react";
 import { EditorContent, type Editor } from "@tiptap/react";
 import type { Transaction } from "@tiptap/pm/state";
@@ -66,7 +67,7 @@ export function RichImageControls({
   };
   const apply = (w: number | null, h: number | null) => {
     if (disabled || !resizeImage(editor, target.current, w, h)) {
-      setError("图片已变化或当前不能编辑，请关闭后重新选择图片。");
+      setError(t("图片已变化或当前不能编辑，请关闭后重新选择图片。"));
       return false;
     }
     changeOpen(false);
@@ -167,17 +168,17 @@ export function RichImageControls({
               onSelect={() => changeOpen(true)}
             >
               <Scaling />
-              调整图片尺寸
+              {t("调整图片尺寸")}
             </ContextMenuItem>
             <ContextMenuItem
               disabled={disabled}
               onSelect={() => {
                 if (!apply(null, null))
-                  toast.error("图片已变化，请重新选择图片");
+                  toast.error(t("图片已变化，请重新选择图片"));
               }}
             >
               <RotateCcw />
-              恢复原始尺寸
+              {t("恢复原始尺寸")}
             </ContextMenuItem>
           </ContextMenuGroup>
         </ContextMenuContent>
@@ -191,9 +192,9 @@ export function RichImageControls({
           }}
         >
           <DialogHeader>
-            <DialogTitle>调整图片尺寸</DialogTitle>
+            <DialogTitle>{t("调整图片尺寸")}</DialogTitle>
             <DialogDescription>
-              只调整正文显示大小，保留原图片清晰度和文件内容。
+              {t("只调整正文显示大小，保留原图片清晰度和文件内容。")}
             </DialogDescription>
           </DialogHeader>
           <form
@@ -202,7 +203,7 @@ export function RichImageControls({
               const w = imageDimension(width),
                 h = imageDimension(height);
               if (!w || !h) {
-                setError("宽高请填写 1 至 10000 的整数（像素）。");
+                setError(t("宽高请填写 1 至 10000 的整数（像素）。"));
                 return;
               }
               apply(w, h);
@@ -211,7 +212,9 @@ export function RichImageControls({
             <FieldGroup className="gap-4">
               <div className="grid grid-cols-2 gap-3">
                 <Field data-invalid={!!error}>
-                  <FieldLabel htmlFor="rich-image-width">宽度（px）</FieldLabel>
+                  <FieldLabel htmlFor="rich-image-width">
+                    {t("宽度（px）")}
+                  </FieldLabel>
                   <Input
                     id="rich-image-width"
                     type="number"
@@ -228,7 +231,7 @@ export function RichImageControls({
                 </Field>
                 <Field data-invalid={!!error}>
                   <FieldLabel htmlFor="rich-image-height">
-                    高度（px）
+                    {t("高度（px）")}
                   </FieldLabel>
                   <Input
                     id="rich-image-height"
@@ -260,11 +263,13 @@ export function RichImageControls({
                   }}
                 />
                 <FieldLabel htmlFor="rich-image-proportion">
-                  锁定宽高比例
+                  {t("锁定宽高比例")}
                 </FieldLabel>
               </Field>
               <Field>
-                <FieldLabel htmlFor="rich-image-scale">按原图缩放</FieldLabel>
+                <FieldLabel htmlFor="rich-image-scale">
+                  {t("按原图缩放")}
+                </FieldLabel>
                 <SelectField
                   id="rich-image-scale"
                   value={preset}
@@ -285,7 +290,9 @@ export function RichImageControls({
                   }}
                 >
                   <SelectGroup>
-                    <SelectOption value="custom">自定义尺寸</SelectOption>
+                    <SelectOption value="custom">
+                      {t("自定义尺寸")}
+                    </SelectOption>
                     {[25, 50, 75, 100].map((value) => (
                       <SelectOption key={value} value={value}>
                         {value}%
@@ -302,10 +309,10 @@ export function RichImageControls({
                   disabled={disabled}
                   onClick={() => apply(null, null)}
                 >
-                  恢复原始
+                  {t("恢复原始")}
                 </Button>
                 <Button type="submit" disabled={disabled}>
-                  应用尺寸
+                  {t("应用尺寸")}
                 </Button>
               </DialogFooter>
             </FieldGroup>

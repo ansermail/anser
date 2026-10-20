@@ -1,3 +1,4 @@
+import { dateLocale, t } from "./i18n";
 import { safeMailHtml } from "./mail-html";
 import { isTauri } from "@tauri-apps/api/core";
 import type { Detail } from "./types";
@@ -36,22 +37,22 @@ async function printImagesReady(sheet: HTMLElement) {
 export function printableMail(detail: Detail, doc: Document = document) {
   const sheet = doc.createElement("main");
   sheet.id = "mail-print-root";
-  sheet.setAttribute("aria-label", "待打印邮件");
+  sheet.setAttribute("aria-label", t("待打印邮件"));
 
   const header = doc.createElement("header");
   header.className = "mail-print-header";
   const subject = doc.createElement("h1");
-  subject.textContent = detail.mail.subject || "（无主题）";
+  subject.textContent = detail.mail.subject || t("（无主题）");
   header.append(subject);
   const date = new Date(detail.mail.date);
   for (const [label, value] of [
-    ["发件人", detail.mail.sender],
-    ["收件人", detail.mail.recipients],
+    [t("发件人"), detail.mail.sender],
+    [t("收件人"), detail.mail.recipients],
     [
-      "日期",
+      t("日期"),
       Number.isNaN(date.getTime())
         ? detail.mail.date
-        : date.toLocaleString("zh-CN"),
+        : date.toLocaleString(dateLocale()),
     ],
   ]) {
     if (!value?.trim()) continue;
@@ -88,7 +89,7 @@ export function printableMail(detail: Detail, doc: Document = document) {
     const attachments = doc.createElement("section");
     attachments.className = "mail-print-attachments";
     const heading = doc.createElement("h2");
-    heading.textContent = "附件";
+    heading.textContent = t("附件");
     const list = doc.createElement("ul");
     for (const attachment of detail.attachments) {
       const item = doc.createElement("li");

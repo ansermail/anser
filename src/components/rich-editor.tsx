@@ -1,3 +1,4 @@
+import { t } from "@/lib/i18n";
 import {
   Dialog,
   DialogContent,
@@ -79,7 +80,7 @@ export function RichEditor({
       attributes: {
         class: "rich-body",
         role: "textbox",
-        "aria-label": "邮件正文",
+        "aria-label": t("邮件正文"),
         "aria-multiline": "true",
       },
       handleKeyDown: (_view, event) => {
@@ -107,7 +108,7 @@ export function RichEditor({
           files.length > 20 ||
           files.reduce((sum, file) => sum + file.size, 0) > 50 * 1024 * 1024
         ) {
-          toast.error("每次最多插入20张图片，总大小不能超过50 MB");
+          toast.error(t("每次最多插入20张图片，总大小不能超过50 MB"));
           return true;
         }
         void insertImages(() => Promise.all(files.map(readBodyImage)));
@@ -122,7 +123,7 @@ export function RichEditor({
           files.length > 20 ||
           files.reduce((sum, file) => sum + file.size, 0) > 50 * 1024 * 1024
         ) {
-          toast.error("每次最多插入20张图片，总大小不能超过50 MB");
+          toast.error(t("每次最多插入20张图片，总大小不能超过50 MB"));
           return true;
         }
         const pos = view.posAtCoords({
@@ -143,7 +144,7 @@ export function RichEditor({
   async function insertImages(load: () => Promise<BodyImage[]>, pos?: number) {
     const editor = instance.current;
     if (!native || isDemo()) {
-      toast.info("请在桌面客户端中插入正文图片");
+      toast.info(t("请在桌面客户端中插入正文图片"));
       return;
     }
     if (
@@ -192,7 +193,7 @@ export function RichEditor({
         .run();
     } catch (error) {
       if (alive.current && !editor.isDestroyed)
-        toast.error(`正文图片未插入：${String(error)}`);
+        toast.error(t("正文图片未插入：{value0}", { value0: String(error) }));
     } finally {
       editor.off("transaction", map);
       busy.current = false;
@@ -258,7 +259,7 @@ export function RichEditor({
                 multiple: true,
                 filters: [
                   {
-                    name: "正文图片",
+                    name: t("正文图片"),
                     extensions: ["png", "jpg", "jpeg", "gif", "webp"],
                   },
                 ],
@@ -284,9 +285,9 @@ export function RichEditor({
             }}
           >
             <DialogHeader>
-              <DialogTitle>插入链接</DialogTitle>
+              <DialogTitle>{t("插入链接")}</DialogTitle>
               <DialogDescription>
-                支持网页和邮箱地址。留空可移除当前链接。
+                {t("支持网页和邮箱地址。留空可移除当前链接。")}
               </DialogDescription>
             </DialogHeader>
             <form
@@ -302,7 +303,7 @@ export function RichEditor({
                     )
                       throw new Error();
                   } catch {
-                    setLinkError("请输入有效的 http、https 或 mailto 链接");
+                    setLinkError(t("请输入有效的 http、https 或 mailto 链接"));
                     return;
                   }
                 }
@@ -319,7 +320,9 @@ export function RichEditor({
             >
               <FieldGroup>
                 <Field data-invalid={!!linkError}>
-                  <FieldLabel htmlFor="rich-link-url">链接地址</FieldLabel>
+                  <FieldLabel htmlFor="rich-link-url">
+                    {t("链接地址")}
+                  </FieldLabel>
                   <Input
                     id="rich-link-url"
                     autoFocus
@@ -339,10 +342,10 @@ export function RichEditor({
                     variant="outline"
                     onClick={() => setLinkDialog(null)}
                   >
-                    取消
+                    {t("取消")}
                   </Button>
                   <Button type="submit" disabled={disabled}>
-                    保存链接
+                    {t("保存链接")}
                   </Button>
                 </DialogFooter>
               </FieldGroup>

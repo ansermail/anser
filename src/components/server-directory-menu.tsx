@@ -1,3 +1,4 @@
+import { t } from "@/lib/i18n";
 import { useEffect, useRef, useState } from "react";
 import {
   Archive,
@@ -37,7 +38,7 @@ export function ServerDirectoryMenu({
   remoteFolder?: string;
   disabled?: boolean;
 }) {
-  const verb = kind === "move" ? "移动" : "复制";
+  const verb = kind === "move" ? t("移动") : t("复制");
   const Icon = kind === "move" ? FolderInput : Copy;
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -125,7 +126,9 @@ export function ServerDirectoryMenu({
         target,
       });
       if (current.current === key && generation === epoch.current) {
-        toast.success(`${verb}任务已记录，可在设置中查看结果`);
+        toast.success(
+          t("{value0}任务已记录，可在设置中查看结果", { value0: verb }),
+        );
         setOpen(false);
       }
     } catch (e) {
@@ -151,8 +154,8 @@ export function ServerDirectoryMenu({
           variant="ghost"
           size="icon-sm"
           disabled={disabled || busy}
-          title={`${verb}到服务器文件夹`}
-          aria-label={`${verb}到服务器文件夹`}
+          title={t("{value0}到服务器文件夹", { value0: verb })}
+          aria-label={t("{value0}到服务器文件夹", { value0: verb })}
         >
           <Icon data-icon="inline-start" />
         </Button>
@@ -160,18 +163,22 @@ export function ServerDirectoryMenu({
       <DropdownMenuContent
         align="end"
         className="w-72"
-        aria-label={`${verb}目标文件夹`}
+        aria-label={t("{value0}目标文件夹", { value0: verb })}
       >
         <DropdownMenuGroup>
-          <DropdownMenuLabel>{verb}到</DropdownMenuLabel>
+          <DropdownMenuLabel>
+            {verb}
+            {t("到")}
+          </DropdownMenuLabel>
           {source && (
             <DropdownMenuLabel className="whitespace-normal break-words">
-              从 {folders.find((f) => f.name === source)?.displayName || source}
+              {t("从 ")}
+              {folders.find((f) => f.name === source)?.displayName || source}
             </DropdownMenuLabel>
           )}
         </DropdownMenuGroup>
         {loading && (
-          <Skeleton className="h-20" aria-label="正在加载服务器文件夹" />
+          <Skeleton className="h-20" aria-label={t("正在加载服务器文件夹")} />
         )}
         {error && (
           <Alert variant="destructive">
@@ -231,10 +238,12 @@ export function ServerDirectoryMenu({
                 ))}
               {!targets.length && (
                 <DropdownMenuItem disabled>
-                  没有可用的目标文件夹
+                  {t("没有可用的目标文件夹")}
                 </DropdownMenuItem>
               )}
-              {busy && <DropdownMenuItem disabled>正在记录…</DropdownMenuItem>}
+              {busy && (
+                <DropdownMenuItem disabled>{t("正在记录…")}</DropdownMenuItem>
+              )}
             </DropdownMenuGroup>
           </>
         )}
@@ -246,7 +255,7 @@ export function ServerDirectoryMenu({
                 void load();
               }}
             >
-              重新加载目录
+              {t("重新加载目录")}
             </DropdownMenuItem>
           </DropdownMenuGroup>
         )}

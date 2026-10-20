@@ -1,3 +1,4 @@
+import { t } from "@/lib/i18n";
 import { useCommandAria } from "@/hooks/use-command-aria";
 import { useId, useState } from "react";
 import { Folder } from "lucide-react";
@@ -58,8 +59,8 @@ export function FolderInput({
               setOpen(false);
             }
           }}
-          aria-label="本地文件夹名称"
-          placeholder="文件夹名称，例如：项目 / 设计"
+          aria-label={t("本地文件夹名称")}
+          placeholder={t("文件夹名称，例如：项目 / 设计")}
           value={value}
           onFocus={() => setOpen(true)}
           onChange={(e) => {
@@ -79,7 +80,7 @@ export function FolderInput({
         }}
       >
         <Command
-          label="已有本地文件夹"
+          label={t("已有本地文件夹")}
           shouldFilter={false}
           value={options[Math.min(active, options.length - 1)]}
           onValueChange={(folder) => {

@@ -27,6 +27,34 @@ impl SyncSchedule {
 }
 
 impl Store {
+    pub fn interface_language(&self) -> Result<String> {
+        use rusqlite::OptionalExtension;
+        let language: Option<String> = self
+            .db()?
+            .query_row(
+                "SELECT data FROM preferences WHERE key='interface-language'",
+                [],
+                |row| row.get(0),
+            )
+            .optional()
+            .map_err(err)?;
+        match language.as_deref() {
+            None => Ok(crate::interface_language::default_language().into()),
+            Some("zh-CN") => Ok("zh-CN".into()),
+            Some("en") => Ok("en".into()),
+            _ => Err("Invalid interface language".into()),
+        }
+    }
+    pub fn save_interface_language(&self, language: &str) -> Result<()> {
+        if !["zh-CN", "en"].contains(&language) {
+            return Err("Invalid interface language".into());
+        }
+        self.db()?.execute(
+            "INSERT INTO preferences(key,data) VALUES('interface-language',?1) ON CONFLICT(key) DO UPDATE SET data=excluded.data",
+            [language],
+        ).map_err(err)?;
+        Ok(())
+    }
     pub fn unread_total(&self) -> Result<u64> {
         let non_unread = crate::search::non_unread_mail_predicate("listing");
         self.db()?

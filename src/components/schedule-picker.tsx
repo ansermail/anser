@@ -1,6 +1,6 @@
+import { dateLocale, calendarLocale, t } from "@/lib/i18n";
 import { useId, useState } from "react";
 import { CalendarIcon, Clock } from "lucide-react";
-import { zhCN } from "react-day-picker/locale";
 import { Button } from "./ui/button";
 import { Calendar } from "./ui/calendar";
 import { Label } from "./ui/label";
@@ -40,7 +40,7 @@ export function SchedulePicker({
   return (
     <div className="schedule-picker">
       <div className="schedule-controls">
-        <Label htmlFor={`${id}-date`}>发送日期</Label>
+        <Label htmlFor={`${id}-date`}>{t("发送日期")}</Label>
         <Popover open={open} onOpenChange={setOpen}>
           <PopoverTrigger asChild>
             <Button
@@ -49,22 +49,22 @@ export function SchedulePicker({
               variant="outline"
               size="sm"
               disabled={busy}
-              aria-label="选择发送日期"
+              aria-label={t("选择发送日期")}
             >
               <CalendarIcon />
               {date
-                ? date.toLocaleDateString("zh-CN", {
+                ? date.toLocaleDateString(dateLocale(), {
                     year: "numeric",
                     month: "2-digit",
                     day: "2-digit",
                   })
-                : "选择日期"}
+                : t("选择日期")}
             </Button>
           </PopoverTrigger>
           <PopoverContent className="w-auto p-0" align="start">
             <Calendar
               mode="single"
-              locale={zhCN}
+              locale={calendarLocale()}
               selected={date}
               defaultMonth={date}
               disabled={[{ before: today }, ...(busy ? [() => true] : [])]}
@@ -83,12 +83,12 @@ export function SchedulePicker({
           className="inline-flex items-center gap-1"
         >
           <Clock className="size-3.5" />
-          时间
+          {t("时间")}
         </Label>
         <div className="flex items-center gap-1">
           <SelectField
             id={`${id}-hour`}
-            aria-label="发送小时"
+            aria-label={t("发送小时")}
             value={hour}
             onValueChange={(hour) => changeTime(hour, minute)}
             disabled={busy}
@@ -102,7 +102,7 @@ export function SchedulePicker({
           </SelectField>
           <span aria-hidden="true">:</span>
           <SelectField
-            aria-label="发送分钟"
+            aria-label={t("发送分钟")}
             value={minute}
             onValueChange={(minute) => changeTime(hour, minute)}
             disabled={busy}
@@ -121,13 +121,15 @@ export function SchedulePicker({
           disabled={busy || !date}
           onClick={() => onConfirm(value)}
         >
-          {busy ? "保存中…" : "确认定时发送"}
+          {busy ? t("保存中…") : t("确认定时发送")}
         </Button>
         <Button size="sm" variant="ghost" disabled={busy} onClick={onCancel}>
-          取消
+          {t("取消")}
         </Button>
       </div>
-      <p>本机定时：需要应用运行且 Mac 醒着。错过超过 5 分钟需重新安排。</p>
+      <p>
+        {t("本机定时：需要应用运行且 Mac 醒着。错过超过 5 分钟需重新安排。")}
+      </p>
     </div>
   );
 }

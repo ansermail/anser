@@ -1,6 +1,7 @@
+import { t } from "./i18n";
 export function mergeAttachmentPaths(existing: string[], incoming: string[]) {
   if (incoming.some((path) => !path || path.includes("\0")))
-    throw new Error("附件路径无效，未添加文件");
+    throw new Error(t("附件路径无效，未添加文件"));
   return [
     ...new Set([
       ...existing,

@@ -1,3 +1,12 @@
+import {
+  dateLocale,
+  interfaceLanguageRevision,
+  setInterfaceLanguage,
+  t,
+  useLanguage,
+  type InterfaceLanguage,
+} from "@/lib/i18n";
+import { LanguageSettings } from "./components/language-settings";
 import { TaskPanelHeader } from "./components/task-panel-header";
 import { SettingsLayout } from "./components/settings-layout";
 import { EmlViewer } from "./components/eml-viewer";
@@ -187,16 +196,29 @@ import { mailLink } from "./lib/mail-html";
 import { invoke } from "@tauri-apps/api/core";
 restoreDemo();
 const viewNames: Record<string, string> = {
-  all: "全部邮件",
-  unread: "未读邮件",
-  starred: "星标邮件",
-  sent: "已发送",
-  trash: "本地废纸篓",
-  local: "本地存档",
+  get all() {
+    return t("全部邮件");
+  },
+  get unread() {
+    return t("未读邮件");
+  },
+  get starred() {
+    return t("星标邮件");
+  },
+  get sent() {
+    return t("已发送");
+  },
+  get trash() {
+    return t("本地废纸篓");
+  },
+  get local() {
+    return t("本地存档");
+  },
 };
 function time(s: string) {
   const d = new Date(s);
-  if (Number.isNaN(d.getTime())) return "时间未知";
+  if (Number.isNaN(d.getTime())) return t("时间未知");
+  if (dateLocale() === "en-US") return d.toLocaleString(dateLocale());
   const pad = (n: number) => String(n).padStart(2, "0");
   return `${d.getFullYear()}/${pad(d.getMonth() + 1)}/${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
 }
@@ -213,6 +235,7 @@ function queryScope(query: Query) {
   return JSON.stringify({ ...query, limit: 0 });
 }
 export default function App() {
+  useLanguage();
   const updates = useAppUpdate();
   const { askConfirmation, confirmationDialog } = useConfirmation();
   useEffect(() => disableNativeContextMenu(document), []);
@@ -270,6 +293,19 @@ export default function App() {
     [moveFolder, setMoveFolder] = useState(""),
     [moveThreads, setMoveThreads] = useState(false),
     [dark, setDark] = useState(localStorage.getItem("mail-theme") === "dark");
+  useEffect(() => {
+    let live = true;
+    const revision = interfaceLanguageRevision();
+    void call<InterfaceLanguage>("get_interface_language")
+      .then((language) => {
+        if (live && revision === interfaceLanguageRevision())
+          setInterfaceLanguage(language);
+      })
+      .catch(() => {});
+    return () => {
+      live = false;
+    };
+  }, [demo]);
   const searchRef = useRef<HTMLInputElement>(null),
     request = useRef(0),
     draftRequest = useRef(0),
@@ -374,7 +410,9 @@ export default function App() {
       })
       .catch((error) => {
         if (live && ticket === notificationGeneration.current)
-          toast.error(`无法打开通知邮件：${String(error)}`);
+          toast.error(
+            t("无法打开通知邮件：{value0}", { value0: String(error) }),
+          );
       })
       .finally(() => {
         if (live && ticket === notificationGeneration.current)
@@ -579,7 +617,7 @@ export default function App() {
         subject: string;
         message: string;
       }>("send-result", ({ payload }) => {
-        const message = `${payload.subject || "（无主题）"}：${payload.message}`;
+        const message = `${payload.subject || t("（无主题）")}：${payload.message}`;
         if (payload.status === "sent") toast.success(message);
         else if (payload.status === "uncertain")
           toast.warning(message, { duration: 10000 });
@@ -588,7 +626,9 @@ export default function App() {
       const d = await listen<string>("mail-link-open", ({ payload }) => {
         void openMailLinkRef
           .current(payload)
-          .catch((error) => toast.error(`无法打开链接：${String(error)}`));
+          .catch((error) =>
+            toast.error(t("无法打开链接：{value0}", { value0: String(error) })),
+          );
       });
       if (!active) {
         a();
@@ -665,7 +705,7 @@ export default function App() {
         (a) => a.id === source.mail.accountId && a.enabled,
       );
       if (!account) {
-        toast.error("原发件账号已停用或移除，请先启用账号");
+        toast.error(t("原发件账号已停用或移除，请先启用账号"));
         return;
       }
       const draft = newDraft(account.id);
@@ -687,7 +727,7 @@ export default function App() {
       }
       if (native && !isDemo() && source.attachments.length) {
         if (!source.originalHash) {
-          toast.error("原邮件快照缺失，请重新打开邮件后再试");
+          toast.error(t("原邮件快照缺失，请重新打开邮件后再试"));
           return;
         }
         draft.forwardSource = { id: source.mail.id, hash: source.originalHash };
@@ -864,9 +904,9 @@ export default function App() {
       for (const id of ids) await updateMail(id, action, value);
       await refresh();
       setChecked([]);
-      toast.success("已更新邮件", {
+      toast.success(t("已更新邮件"), {
         action: {
-          label: "撤销",
+          label: t("撤销"),
           onClick: () => {
             void (async () => {
               try {
@@ -1075,10 +1115,10 @@ export default function App() {
       dataRef.current = merged;
       dataScope.current = queryScope(currentQuery);
       setData(merged);
-      if (reset) toast.info("邮件列表已更新，已重新加载最新结果");
+      if (reset) toast.info(t("邮件列表已更新，已重新加载最新结果"));
     } catch (e) {
       if (ticket === pageTicket.current && currentQuery === queryRef.current)
-        toast.error(`加载更多邮件失败：${String(e)}`);
+        toast.error(t("加载更多邮件失败：{value0}", { value0: String(e) }));
     } finally {
       if (ticket === pageTicket.current) {
         pagePending.current = false;
@@ -1144,7 +1184,7 @@ export default function App() {
       ) {
         if (neighborRequests.current?.id === reading)
           neighborRequests.current[direction] = undefined;
-        toast.error(`加载相邻邮件失败：${String(e)}`);
+        toast.error(t("加载相邻邮件失败：{value0}", { value0: String(e) }));
       }
     } finally {
       if (ticket === navigationRequest.current) {
@@ -1194,7 +1234,7 @@ export default function App() {
   async function sync() {
     if (syncing) return;
     if (demo) {
-      toast.info("演示模式不连接真实邮箱");
+      toast.info(t("演示模式不连接真实邮箱"));
       return;
     }
     setSyncing(true);
@@ -1227,7 +1267,7 @@ export default function App() {
       } else {
         n = await call<number>("sync_mail");
       }
-      toast.success(`收取完成，新增 ${n} 封邮件`);
+      toast.success(t("收取完成，新增 {value0} 封邮件", { value0: n }));
     } catch (e) {
       toast.error(String(e), { duration: 8000 });
     } finally {
@@ -1279,9 +1319,12 @@ export default function App() {
     try {
       if (
         !(await askConfirmation({
-          title: "清空草稿箱？",
-          description: `将删除这 ${expected.length} 份本地草稿，删除后无法恢复。正在编辑的草稿请先关闭。`,
-          action: "清空草稿",
+          title: t("清空草稿箱？"),
+          description: t(
+            "将删除这 {value0} 份本地草稿，删除后无法恢复。正在编辑的草稿请先关闭。",
+            { value0: expected.length },
+          ),
+          action: t("清空草稿"),
           destructive: true,
         }))
       )
@@ -1295,9 +1338,9 @@ export default function App() {
       const ids = new Set(expected.map((draft) => draft.id));
       setDrafts((current) => current.filter((draft) => !ids.has(draft.id)));
       await reloadDrafts();
-      toast.success(`已清空 ${result.deleted} 份草稿`);
+      toast.success(t("已清空 {value0} 份草稿", { value0: result.deleted }));
       if (result.cleanupPending)
-        toast.warning("草稿已清空，部分临时附件待后续清理");
+        toast.warning(t("草稿已清空，部分临时附件待后续清理"));
     } catch (e) {
       toast.error(String(e));
       await reloadDrafts();
@@ -1316,10 +1359,17 @@ export default function App() {
         blocked: number;
       }>("queue_archives", { ids, conversations });
       toast.success(
-        `已安排 ${result.queued} 封补存，${result.alreadySaved} 封已有完整存档，${result.blocked} 封需处理`,
+        t(
+          "已安排 {value0} 封补存，{value1} 封已有完整存档，{value2} 封需处理",
+          {
+            value0: result.queued,
+            value1: result.alreadySaved,
+            value2: result.blocked,
+          },
+        ),
         {
           action: {
-            label: "查看任务",
+            label: t("查看任务"),
             onClick: () => {
               setSettingsSection("tasks");
               setPage("settings");
@@ -1335,25 +1385,25 @@ export default function App() {
   }
   async function exportMail(m: Mail) {
     if (!native || demo) {
-      toast.info("真实邮件可在桌面客户端中导出为 EML");
+      toast.info(t("真实邮件可在桌面客户端中导出为 EML"));
       return;
     }
     const { save } = await import("@tauri-apps/plugin-dialog");
     const path = await save({
       defaultPath: `${m.subject.replace(/[\\/:*?"<>|]/g, "-").slice(0, 80)}.eml`,
-      filters: [{ name: "原始邮件", extensions: ["eml"] }],
+      filters: [{ name: t("原始邮件"), extensions: ["eml"] }],
     });
     if (path)
       try {
         await call("export_mail", { id: m.id, path });
-        toast.success("完整邮件已导出");
+        toast.success(t("完整邮件已导出"));
       } catch (e) {
         toast.error(String(e));
       }
   }
   async function attachment(index: number, name: string, mail = detail?.mail) {
     if (!mail || !native || demo) {
-      toast.info("请在桌面客户端中下载真实附件");
+      toast.info(t("请在桌面客户端中下载真实附件"));
       return;
     }
     const { save } = await import("@tauri-apps/plugin-dialog");
@@ -1361,21 +1411,21 @@ export default function App() {
     if (path)
       try {
         await call("save_attachment", { id: mail.id, index, path });
-        toast.success("附件已保存");
+        toast.success(t("附件已保存"));
       } catch (e) {
         toast.error(String(e));
       }
   }
   async function backup(restore = false) {
     if (!native || demo) {
-      toast.info("请在桌面客户端中备份真实存档");
+      toast.info(t("请在桌面客户端中备份真实存档"));
       return;
     }
     const { open } = await import("@tauri-apps/plugin-dialog");
     const path = await open({
       directory: true,
       multiple: false,
-      title: restore ? "选择雁信备份文件夹" : "选择备份保存位置",
+      title: restore ? t("选择雁信备份文件夹") : t("选择备份保存位置"),
     });
     if (path)
       try {
@@ -1384,7 +1434,9 @@ export default function App() {
           { path },
         );
         toast.success(
-          restore ? `已恢复 ${result} 封邮件` : `备份已保存至 ${result}`,
+          restore
+            ? t("已恢复 {value0} 封邮件", { value0: result })
+            : t("备份已保存至 {value0}", { value0: result }),
           { duration: 7000 },
         );
         void refresh();
@@ -1466,7 +1518,9 @@ export default function App() {
       });
       await refresh();
       toast.success(
-        changed ? `已将 ${changed} 封邮件标记为已读` : "没有未读邮件",
+        changed
+          ? t("已将 {value0} 封邮件标记为已读", { value0: changed })
+          : t("没有未读邮件"),
       );
     } catch (error) {
       toast.error(String(error));
@@ -1483,7 +1537,7 @@ export default function App() {
         })()
       : query.folder ||
         (query.view === "starred" && query.accountId
-          ? "星标邮件"
+          ? t("星标邮件")
           : activeAccount?.name) ||
         viewNames[query.view];
   const nav = (view: string, Icon: typeof Inbox, count?: number) => (
@@ -1515,28 +1569,28 @@ export default function App() {
         <EmlViewer />
         <UpdateIndicator updates={updates} />
         {publicPreview && (
-          <Badge variant="secondary">页面预览 · 虚构数据</Badge>
+          <Badge variant="secondary">{t("页面预览 · 虚构数据")}</Badge>
         )}
         {demo && !publicPreview && (
           <Button variant="ghost" className="demo-badge" onClick={demoMode}>
-            演示模式 · 退出
+            {t("演示模式 · 退出")}
           </Button>
         )}
         <span className="connection">
           <i className={syncing || syncText ? "pulse" : ""} />
           {syncText ||
             (demo
-              ? "示例数据"
+              ? t("示例数据")
               : syncing
-                ? "正在收取"
+                ? t("正在收取")
                 : data.accounts.length
-                  ? "本地优先"
-                  : "尚未连接邮箱")}
+                  ? t("本地优先")
+                  : t("尚未连接邮箱"))}
         </span>
         <Button
           variant="ghost"
           size="icon-sm"
-          title={dark ? "浅色模式" : "深色模式"}
+          title={dark ? t("浅色模式") : t("深色模式")}
           onClick={() => setDark(!dark)}
         >
           {dark ? <Sun size={16} /> : <Moon size={16} />}
@@ -1551,11 +1605,12 @@ export default function App() {
               <div className="brand">
                 <img
                   src={`${import.meta.env.BASE_URL}app-icon.png`}
-                  alt="雁信应用图标"
+                  alt={t("雁信应用图标")}
                 />
                 <div>
                   <strong>
-                    雁信<span>邮件，自在有序</span>
+                    {t("雁信")}
+                    <span>{t("邮件，自在有序")}</span>
                   </strong>
                 </div>
                 <Badge variant="outline" className="brand-version">
@@ -1568,7 +1623,8 @@ export default function App() {
                 onClick={() => compose()}
               >
                 <SquarePen size={17} />
-                写邮件<kbd>⌘ N</kbd>
+                {t("写邮件")}
+                <kbd>⌘ N</kbd>
               </Button>
             </SidebarHeader>
             <SidebarContent className="sidebar">
@@ -1582,7 +1638,7 @@ export default function App() {
                   onClick={() => void showDrafts()}
                 >
                   <FileText size={17} />
-                  <span>草稿箱</span>
+                  <span>{t("草稿箱")}</span>
                 </Button>
                 <Button
                   variant="ghost"
@@ -1590,14 +1646,14 @@ export default function App() {
                   onClick={() => setPage("outbox")}
                 >
                   <History size={17} />
-                  <span>发送记录</span>
+                  <span>{t("发送记录")}</span>
                 </Button>
               </nav>
               <div className="nav-section-heading">
-                <span>我的账号</span>
+                <span>{t("我的账号")}</span>
                 <Button
                   variant="ghost"
-                  title="添加邮箱账号"
+                  title={t("添加邮箱账号")}
                   disabled={publicPreview}
                   onClick={() => setAccountDialog(true)}
                 >
@@ -1639,7 +1695,9 @@ export default function App() {
                             <Button
                               variant="ghost"
                               size="icon-xs"
-                              aria-label={`${a.name} 收取异常`}
+                              aria-label={t("{value0} 收取异常", {
+                                value0: a.name,
+                              })}
                             >
                               <AlertCircle
                                 size={14}
@@ -1660,8 +1718,10 @@ export default function App() {
                         <Button
                           variant="ghost"
                           size="icon-sm"
-                          aria-label={`展开 ${a.name} 的服务器文件夹`}
-                          title="服务器文件夹"
+                          aria-label={t("展开 {value0} 的服务器文件夹", {
+                            value0: a.name,
+                          })}
+                          title={t("服务器文件夹")}
                         >
                           <ChevronRight
                             size={13}
@@ -1674,7 +1734,10 @@ export default function App() {
                     </div>
                     <CollapsibleContent className="remote-folder-list">
                       {folderLoading.includes(a.id) ? (
-                        <div role="status" aria-label="正在加载服务器文件夹">
+                        <div
+                          role="status"
+                          aria-label={t("正在加载服务器文件夹")}
+                        >
                           <Skeleton className="h-6 mb-2" />
                           <Skeleton className="h-6" />
                         </div>
@@ -1686,7 +1749,7 @@ export default function App() {
                               size="sm"
                               onClick={() => void loadFolders(a.id)}
                             >
-                              加载失败，重试
+                              {t("加载失败，重试")}
                             </Button>
                           ) : (
                             <RemoteFolderList
@@ -1746,12 +1809,12 @@ export default function App() {
                     onClick={() => setAccountDialog(true)}
                   >
                     <Plus size={14} />
-                    连接你的第一个邮箱
+                    {t("连接你的第一个邮箱")}
                   </Button>
                 )}
               </div>
               <div className="nav-section-heading">
-                <span>保存在这台 Mac</span>
+                <span>{t("保存在这台 Mac")}</span>
                 <HardDrive size={13} />
               </div>
               {nav("local", Archive, data.stats.saved)}
@@ -1779,7 +1842,7 @@ export default function App() {
                   }}
                 >
                   <UsersRound size={17} />
-                  <span>通讯录</span>
+                  <span>{t("通讯录")}</span>
                 </Button>
                 <Button
                   variant="ghost"
@@ -1787,7 +1850,7 @@ export default function App() {
                   onClick={() => setPage("rules")}
                 >
                   <SlidersHorizontal size={17} />
-                  <span>过滤规则</span>
+                  <span>{t("过滤规则")}</span>
                   {data.rules.length > 0 && <small>{data.rules.length}</small>}
                 </Button>
                 <Button
@@ -1796,7 +1859,7 @@ export default function App() {
                   onClick={() => setPage("settings")}
                 >
                   <Settings size={17} />
-                  <span>设置与账号</span>
+                  <span>{t("设置与账号")}</span>
                 </Button>
               </div>
             </SidebarFooter>
@@ -1838,12 +1901,12 @@ export default function App() {
                 <div>
                   <div className="page-title-row">
                     <SidebarTrigger
-                      title="切换侧边栏"
-                      aria-label="切换侧边栏"
+                      title={t("切换侧边栏")}
+                      aria-label={t("切换侧边栏")}
                     />
-                    <h1>设置与账号</h1>
+                    <h1>{t("设置与账号")}</h1>
                   </div>
-                  <p>管理邮箱、本地存档与日常使用偏好。</p>
+                  <p>{t("管理邮箱、本地存档与日常使用偏好。")}</p>
                 </div>
               </div>
               <Separator />
@@ -1855,15 +1918,17 @@ export default function App() {
                   <>
                     <div className="settings-section-heading">
                       <div>
-                        <h2>邮箱账号</h2>
-                        <p>管理已连接的邮箱，以及各账号的收取与保存方式。</p>
+                        <h2>{t("邮箱账号")}</h2>
+                        <p>
+                          {t("管理已连接的邮箱，以及各账号的收取与保存方式。")}
+                        </p>
                       </div>
                       <Button
                         disabled={publicPreview}
                         onClick={() => setAccountDialog(true)}
                       >
                         <Plus data-icon="inline-start" />
-                        添加账号
+                        {t("添加账号")}
                       </Button>
                     </div>
                     <div className="settings-accounts">
@@ -1882,19 +1947,23 @@ export default function App() {
                             <p>
                               {a.email}{" "}
                               <Badge variant="outline">
-                                默认：
+                                {t("默认：")}
                                 {a.saveLocally === false
-                                  ? "在线阅读"
-                                  : "本地留存"}
+                                  ? t("在线阅读")
+                                  : t("本地留存")}
                               </Badge>
                             </p>
                             <small>
                               {a.error ||
                                 (!a.enabled
-                                  ? "账号已暂停"
+                                  ? t("账号已暂停")
                                   : a.lastSync
-                                    ? `最近收取：${new Date(a.lastSync).toLocaleString("zh-CN")}`
-                                    : "已连接，等待首次收取")}
+                                    ? t("最近收取：{value0}", {
+                                        value0: new Date(
+                                          a.lastSync,
+                                        ).toLocaleString(dateLocale()),
+                                      })
+                                    : t("已连接，等待首次收取"))}
                             </small>
                           </div>
                           <DropdownMenu>
@@ -1902,8 +1971,10 @@ export default function App() {
                               <Button
                                 variant="ghost"
                                 size="icon"
-                                title="账号操作"
-                                aria-label={`${a.name}的账号操作`}
+                                title={t("账号操作")}
+                                aria-label={t("{value0}的账号操作", {
+                                  value0: a.name,
+                                })}
                               >
                                 <MoreHorizontal size={18} />
                               </Button>
@@ -1916,7 +1987,7 @@ export default function App() {
                                     setAccountDialog(true);
                                   }}
                                 >
-                                  编辑账号配置
+                                  {t("编辑账号配置")}
                                 </DropdownMenuItem>
                                 <DropdownMenuItem
                                   onClick={() => {
@@ -1925,14 +1996,14 @@ export default function App() {
                                   }}
                                 >
                                   {a.protocol === "imap"
-                                    ? "文件夹保存范围"
-                                    : "本地保存设置"}
+                                    ? t("文件夹保存范围")
+                                    : t("本地保存设置")}
                                 </DropdownMenuItem>
                                 {a.protocol === "imap" && (
                                   <DropdownMenuItem
                                     onClick={() => setMappingAccount(a)}
                                   >
-                                    特殊文件夹
+                                    {t("特殊文件夹")}
                                   </DropdownMenuItem>
                                 )}
                                 <DropdownMenuItem
@@ -1945,7 +2016,7 @@ export default function App() {
                                       .catch((e) => toast.error(String(e)))
                                   }
                                 >
-                                  {a.enabled ? "暂停收取" : "启用收取"}
+                                  {a.enabled ? t("暂停收取") : t("启用收取")}
                                 </DropdownMenuItem>
                                 <DropdownMenuSeparator />
                                 <DropdownMenuItem
@@ -1953,9 +2024,12 @@ export default function App() {
                                   onClick={async () => {
                                     if (
                                       await askConfirmation({
-                                        title: "移除账号？",
-                                        description: `移除 ${a.email} 后停止收取，本地完整存档会保留，未存档的列表记录将清理。`,
-                                        action: "移除账号",
+                                        title: t("移除账号？"),
+                                        description: t(
+                                          "移除 {value0} 后停止收取，本地完整存档会保留，未存档的列表记录将清理。",
+                                          { value0: a.email },
+                                        ),
+                                        action: t("移除账号"),
                                         destructive: true,
                                       })
                                     )
@@ -1967,7 +2041,7 @@ export default function App() {
                                         .catch((e) => toast.error(String(e)));
                                   }}
                                 >
-                                  移除账号，保留存档
+                                  {t("移除账号，保留存档")}
                                 </DropdownMenuItem>
                               </DropdownMenuGroup>
                             </DropdownMenuContent>
@@ -1978,8 +2052,10 @@ export default function App() {
                     {!data.accounts.length && (
                       <div className="panel-empty">
                         <MailIcon size={36} />
-                        <h3>从连接一个邮箱开始</h3>
-                        <p>支持 Gmail、Outlook、QQ、网易与自定义服务器。</p>
+                        <h3>{t("从连接一个邮箱开始")}</h3>
+                        <p>
+                          {t("支持 Gmail、Outlook、QQ、网易与自定义服务器。")}
+                        </p>
                       </div>
                     )}
                   </>
@@ -1988,8 +2064,8 @@ export default function App() {
                   <>
                     <div className="settings-section-heading">
                       <div>
-                        <h2>本地存档</h2>
-                        <p>查看完整邮件的保存情况，管理位置与备份。</p>
+                        <h2>{t("本地存档")}</h2>
+                        <p>{t("查看完整邮件的保存情况，管理位置与备份。")}</p>
                       </div>
                     </div>
                     <Card className="storage-card">
@@ -1998,24 +2074,26 @@ export default function App() {
                           <ShieldCheck size={25} />
                         </span>
                         <div>
-                          <h3>完整保存，独立留存</h3>
+                          <h3>{t("完整保存，独立留存")}</h3>
                           <p>
-                            开启本地保存的账号留存完整正文与附件，已有存档不会随账号移除。
+                            {t(
+                              "开启本地保存的账号留存完整正文与附件，已有存档不会随账号移除。",
+                            )}
                           </p>
                         </div>
-                        <Badge variant="secondary">按账号设置</Badge>
+                        <Badge variant="secondary">{t("按账号设置")}</Badge>
                       </div>
                       <div className="storage-metrics">
                         <div>
                           <strong>
                             {data.stats.saved}
-                            <small> 封</small>
+                            <small>{t(" 封")}</small>
                           </strong>
-                          <span>完整本地存档</span>
+                          <span>{t("完整本地存档")}</span>
                         </div>
                         <div>
                           <strong>{formatSize(data.stats.bytes)}</strong>
-                          <span>原始邮件大小</span>
+                          <span>{t("原始邮件大小")}</span>
                         </div>
                         <ArchiveIntegrity />
                       </div>
@@ -2025,14 +2103,14 @@ export default function App() {
                       >
                         <Button variant="outline" onClick={() => void backup()}>
                           <ArrowDownToLine size={15} />
-                          备份存档
+                          {t("备份存档")}
                         </Button>
                         <Button
                           variant="outline"
                           onClick={() => void backup(true)}
                         >
                           <Archive size={15} />
-                          恢复备份
+                          {t("恢复备份")}
                         </Button>
                         <DeleteArchiveDialog
                           onDeleted={() => {
@@ -2049,10 +2127,15 @@ export default function App() {
                   <>
                     <div className="settings-section-heading">
                       <div>
-                        <h2>应用偏好</h2>
-                        <p>设置通知、网络连接，以及阅读和写信时使用的功能。</p>
+                        <h2>{t("应用偏好")}</h2>
+                        <p>
+                          {t(
+                            "设置通知、网络连接，以及阅读和写信时使用的功能。",
+                          )}
+                        </p>
                       </div>
                     </div>
+                    <LanguageSettings />
                     <StorageTools testMailId={selected} />
                     <NetworkProxySettings />
                     <Separator className="settings-section-divider" />
@@ -2064,9 +2147,11 @@ export default function App() {
                   <>
                     <div className="settings-section-heading">
                       <div>
-                        <h2>后台任务</h2>
+                        <h2>{t("后台任务")}</h2>
                         <p>
-                          查看保存与同步进度，遇到问题时在这里检查最近活动。
+                          {t(
+                            "查看保存与同步进度，遇到问题时在这里检查最近活动。",
+                          )}
                         </p>
                       </div>
                     </div>
@@ -2079,8 +2164,10 @@ export default function App() {
                     <Collapsible asChild>
                       <Card>
                         <TaskPanelHeader
-                          title="最近活动"
-                          description="查看邮件收取、发送、规则执行及大模型翻译的最近记录。"
+                          title={t("最近活动")}
+                          description={t(
+                            "查看邮件收取、发送、规则执行及大模型翻译的最近记录。",
+                          )}
                           onRefresh={refresh}
                         />
                         <CollapsibleContent asChild>
@@ -2094,7 +2181,9 @@ export default function App() {
                               ))
                             ) : (
                               <p>
-                                这里会显示邮件收取、发送、规则执行及大模型翻译记录。
+                                {t(
+                                  "这里会显示邮件收取、发送、规则执行及大模型翻译记录。",
+                                )}
                               </p>
                             )}
                           </CardContent>
@@ -2107,16 +2196,17 @@ export default function App() {
                   <>
                     <div className="settings-section-heading">
                       <div>
-                        <h2>关于雁信</h2>
-                        <p>版本信息、应用更新与运行说明。</p>
+                        <h2>{t("关于雁信")}</h2>
+                        <p>{t("版本信息、应用更新与运行说明。")}</p>
                       </div>
                     </div>
                     <UpdateSettings updates={updates} />
                     <div className="info-strip">
                       <Info size={17} />
                       <span>
-                        关闭窗口后继续收取；退出
-                        App、睡眠或断网时暂停。邮件须在服务器删除前完整下载。
+                        {t(
+                          "关闭窗口后继续收取；退出 App、睡眠或断网时暂停。邮件须在服务器删除前完整下载。",
+                        )}
                       </span>
                     </div>
                     {import.meta.env.DEV && (
@@ -2125,7 +2215,7 @@ export default function App() {
                         className="text-link self-start"
                         onClick={demoMode}
                       >
-                        {demo ? "退出演示" : "体验示例邮箱"}
+                        {demo ? t("退出演示") : t("体验示例邮箱")}
                         <ArrowRight data-icon="inline-end" />
                       </Button>
                     )}
@@ -2140,12 +2230,12 @@ export default function App() {
                   <span className="eyebrow">TAKE YOUR TIME</span>
                   <div className="page-title-row">
                     <SidebarTrigger
-                      title="切换侧边栏"
-                      aria-label="切换侧边栏"
+                      title={t("切换侧边栏")}
+                      aria-label={t("切换侧边栏")}
                     />
-                    <h1>草稿箱</h1>
+                    <h1>{t("草稿箱")}</h1>
                   </div>
-                  <p>草稿自动保存到本机，随时继续。</p>
+                  <p>{t("草稿自动保存到本机，随时继续。")}</p>
                 </div>
                 <div className="flex items-center gap-2">
                   <Button
@@ -2154,11 +2244,11 @@ export default function App() {
                     onClick={() => void clearDrafts()}
                   >
                     <Trash2 data-icon="inline-start" />
-                    {clearingDrafts ? "正在清空…" : "清空草稿"}
+                    {clearingDrafts ? t("正在清空…") : t("清空草稿")}
                   </Button>
                   <Button disabled={clearingDrafts} onClick={() => compose()}>
                     <SquarePen data-icon="inline-start" />
-                    写邮件
+                    {t("写邮件")}
                   </Button>
                 </div>
               </div>
@@ -2172,22 +2262,25 @@ export default function App() {
                         if (!clearingDraftsNow.current) setDraft(d);
                       }}
                     >
-                      <h3>{d.subject || "（无主题）"}</h3>
-                      <p>收件人：{d.to || "尚未填写"}</p>
-                      <small>{d.body.slice(0, 120) || "空白草稿"}</small>
+                      <h3>{d.subject || t("（无主题）")}</h3>
+                      <p>
+                        {t("收件人：")}
+                        {d.to || t("尚未填写")}
+                      </p>
+                      <small>{d.body.slice(0, 120) || t("空白草稿")}</small>
                     </Button>
                     <Button
                       variant="ghost"
                       size="icon"
-                      title="删除草稿"
+                      title={t("删除草稿")}
                       disabled={clearingDrafts}
                       onClick={async () => {
                         if (clearingDraftsNow.current) return;
                         if (
                           await askConfirmation({
-                            title: "删除草稿？",
-                            description: "这份草稿删除后无法恢复。",
-                            action: "删除草稿",
+                            title: t("删除草稿？"),
+                            description: t("这份草稿删除后无法恢复。"),
+                            action: t("删除草稿"),
                             destructive: true,
                           })
                         )
@@ -2203,8 +2296,8 @@ export default function App() {
               ) : (
                 <div className="panel-empty">
                   <FileText size={36} />
-                  <h3>暂时没有草稿</h3>
-                  <p>每一封没写完的邮件，都会在这里等你。</p>
+                  <h3>{t("暂时没有草稿")}</h3>
+                  <p>{t("每一封没写完的邮件，都会在这里等你。")}</p>
                 </div>
               )}
             </section>
@@ -2216,19 +2309,19 @@ export default function App() {
                   <div className="list-heading">
                     <div>
                       <SidebarTrigger
-                        title="切换侧边栏"
-                        aria-label="切换侧边栏"
+                        title={t("切换侧边栏")}
+                        aria-label={t("切换侧边栏")}
                       />
                       <h1>{title}</h1>
                       <span>
-                        {data.matched} {grouped ? "个对话" : "封邮件"}
+                        {data.matched} {grouped ? t("个对话") : t("封邮件")}
                       </span>
                     </div>
                     <Button
                       variant="ghost"
                       size="icon-sm"
                       disabled={syncing || !data.accounts.length}
-                      title="收取邮件"
+                      title={t("收取邮件")}
                       onClick={() => void sync()}
                     >
                       <RefreshCw
@@ -2242,9 +2335,11 @@ export default function App() {
                       ?.syncError && (
                       <Alert className="mx-4 w-auto">
                         <AlertCircle />
-                        <AlertTitle>目录来源已隔离</AlertTitle>
+                        <AlertTitle>{t("目录来源已隔离")}</AlertTitle>
                         <AlertDescription>
-                          此目录的服务器响应不可靠。旧来源已暂停使用，本地存档仍可在“本地存档”中查看。请到设置与账号重新核查。
+                          {t(
+                            "此目录的服务器响应不可靠。旧来源已暂停使用，本地存档仍可在“本地存档”中查看。请到设置与账号重新核查。",
+                          )}
                         </AlertDescription>
                       </Alert>
                     )}
@@ -2255,14 +2350,14 @@ export default function App() {
                         ref={searchRef}
                         value={search}
                         onChange={(e) => setSearch(e.target.value)}
-                        placeholder="搜索当前范围的邮件…"
-                        aria-label="搜索邮件"
+                        placeholder={t("搜索当前范围的邮件…")}
+                        aria-label={t("搜索邮件")}
                       />
                       {search ? (
                         <Button
                           variant="ghost"
                           onClick={() => setSearch("")}
-                          title="清除搜索"
+                          title={t("清除搜索")}
                         >
                           <X size={14} />
                         </Button>
@@ -2285,18 +2380,22 @@ export default function App() {
                             <Button
                               variant="ghost"
                               size="sm"
-                              aria-label="正文搜索范围"
+                              aria-label={t("正文搜索范围")}
                             >
                               <Info data-icon="inline-start" />
-                              正文范围
+                              {t("正文范围")}
                             </Button>
                           </TooltipTrigger>
                           <TooltipContent className="max-w-72">
                             <p>
-                              正文只检索本机已有内容，搜索不会自动下载。当前范围完整{" "}
-                              {data.bodyCoverage.known} 封，未完整{" "}
-                              {data.bodyCoverage.unknown}{" "}
-                              封；需要纳入完整正文搜索时，可选择完整保存。
+                              {t(
+                                "正文只检索本机已有内容，搜索不会自动下载。当前范围完整",
+                              )}{" "}
+                              {data.bodyCoverage.known}
+                              {t(" 封，未完整")} {data.bodyCoverage.unknown}{" "}
+                              {t(
+                                "封；需要纳入完整正文搜索时，可选择完整保存。",
+                              )}
                             </p>
                           </TooltipContent>
                         </Tooltip>
@@ -2313,8 +2412,8 @@ export default function App() {
                       }
                     >
                       <TabsList>
-                        <TabsTrigger value="all">全部</TabsTrigger>
-                        <TabsTrigger value="unread">未读</TabsTrigger>
+                        <TabsTrigger value="all">{t("全部")}</TabsTrigger>
+                        <TabsTrigger value="unread">{t("未读")}</TabsTrigger>
                       </TabsList>
                     </Tabs>
                     <DropdownMenu>
@@ -2322,14 +2421,14 @@ export default function App() {
                         <Button
                           variant="ghost"
                           size="sm"
-                          aria-label="邮件显示方式"
+                          aria-label={t("邮件显示方式")}
                         >
                           {grouped ? (
                             <MessagesSquare data-icon="inline-start" />
                           ) : (
                             <List data-icon="inline-start" />
                           )}
-                          {grouped ? "按对话" : "逐封邮件"}
+                          {grouped ? t("按对话") : t("逐封邮件")}
                           <ChevronDown data-icon="inline-end" />
                         </Button>
                       </DropdownMenuTrigger>
@@ -2352,10 +2451,10 @@ export default function App() {
                           }}
                         >
                           <DropdownMenuRadioItem value="conversations">
-                            按对话分组
+                            {t("按对话分组")}
                           </DropdownMenuRadioItem>
                           <DropdownMenuRadioItem value="messages">
-                            逐封邮件
+                            {t("逐封邮件")}
                           </DropdownMenuRadioItem>
                         </DropdownMenuRadioGroup>
                       </DropdownMenuContent>
@@ -2364,12 +2463,13 @@ export default function App() {
                   {checked.length > 0 && (
                     <div className="batch-toolbar">
                       <span>
-                        已选 {checked.length} {grouped ? "个对话" : "封邮件"}
+                        {t("已选 ")}
+                        {checked.length} {grouped ? t("个对话") : t("封邮件")}
                       </span>
                       <Button
                         variant="ghost"
                         size="icon-sm"
-                        title="完整保存到本地"
+                        title={t("完整保存到本地")}
                         disabled={archiving}
                         onClick={() => void queueArchives(checked, grouped)}
                       >
@@ -2378,7 +2478,7 @@ export default function App() {
                       <Button
                         variant="ghost"
                         size="icon-sm"
-                        title="标记为已读"
+                        title={t("标记为已读")}
                         onClick={() =>
                           void mutate(checked, "read", "true", grouped)
                         }
@@ -2388,7 +2488,7 @@ export default function App() {
                       <Button
                         variant="ghost"
                         size="icon-sm"
-                        title="归入本地文件夹"
+                        title={t("归入本地文件夹")}
                         onClick={() => {
                           setMoveIds(checked);
                           setMoveThreads(grouped);
@@ -2400,7 +2500,7 @@ export default function App() {
                       <Button
                         variant="ghost"
                         size="icon-sm"
-                        title="移到本地废纸篓"
+                        title={t("移到本地废纸篓")}
                         onClick={() =>
                           void mutate(
                             checked,
@@ -2427,7 +2527,9 @@ export default function App() {
                             >
                               <div className="row-check">
                                 <Checkbox
-                                  aria-label={`选择 ${m.subject}`}
+                                  aria-label={t("选择 {value0}", {
+                                    value0: m.subject,
+                                  })}
                                   checked={checked.includes(m.id)}
                                   onCheckedChange={(v) =>
                                     setChecked((ids) =>
@@ -2451,7 +2553,10 @@ export default function App() {
                                 </div>
                                 <div className="row-subject">
                                   {!m.isRead && !isNonUnreadMail(m) && (
-                                    <i aria-label="未读" title="未读" />
+                                    <i
+                                      aria-label={t("未读")}
+                                      title={t("未读")}
+                                    />
                                   )}
                                   <span className="row-subject-text">
                                     {m.subject}
@@ -2471,12 +2576,12 @@ export default function App() {
                                   <span
                                     className={`mini-dot color-${data.accounts.findIndex((a) => a.id === m.accountId) % 4}`}
                                     aria-hidden="true"
-                                    title="邮箱颜色标识"
+                                    title={t("邮箱颜色标识")}
                                   />
                                   <span>
                                     {data.accounts.find(
                                       (a) => a.id === m.accountId,
-                                    )?.name || "已移除账号"}
+                                    )?.name || t("已移除账号")}
                                   </span>
                                   {m.localFolder !== "全部存档" && (
                                     <small>{m.localFolder}</small>
@@ -2488,7 +2593,7 @@ export default function App() {
                                   {m.hasAttachments && (
                                     <Paperclip
                                       className="size-3 shrink-0"
-                                      aria-label="包含附件"
+                                      aria-label={t("包含附件")}
                                     />
                                   )}
                                 </div>
@@ -2503,7 +2608,7 @@ export default function App() {
                                 }
                               >
                                 <MailOpen />
-                                {m.isRead ? "标记为未读" : "标记为已读"}
+                                {m.isRead ? t("标记为未读") : t("标记为已读")}
                               </ContextMenuItem>
                             </ContextMenuContent>
                           )}
@@ -2514,17 +2619,17 @@ export default function App() {
                         <Inbox size={30} />
                         <h3>
                           {search
-                            ? "没有找到邮件"
+                            ? t("没有找到邮件")
                             : data.accounts.length
-                              ? "这里很安静"
-                              : "收件箱准备好了"}
+                              ? t("这里很安静")
+                              : t("收件箱准备好了")}
                         </h3>
                         <p>
                           {search
-                            ? "试试其他关键词。"
+                            ? t("试试其他关键词。")
                             : data.accounts.length
-                              ? "点击上方刷新，收取新的邮件。"
-                              : "连接邮箱后，邮件会出现在这里。"}
+                              ? t("点击上方刷新，收取新的邮件。")
+                              : t("连接邮箱后，邮件会出现在这里。")}
                         </p>
                       </div>
                     )}
@@ -2537,8 +2642,11 @@ export default function App() {
                         aria-busy={pageLoading}
                       >
                         {pageLoading
-                          ? "正在加载…"
-                          : `加载更多（${data.messages.length} / ${data.matched}）`}
+                          ? t("正在加载…")
+                          : t("加载更多（{value0} / {value1}）", {
+                              value0: data.messages.length,
+                              value1: data.matched,
+                            })}
                       </Button>
                     )}
                   </div>
@@ -2566,7 +2674,7 @@ export default function App() {
                                 <Button
                                   variant="ghost"
                                   size="icon-sm"
-                                  aria-label="上一封邮件"
+                                  aria-label={t("上一封邮件")}
                                   aria-busy={navigationLoading}
                                   disabled={
                                     navigationLoading ||
@@ -2581,8 +2689,8 @@ export default function App() {
                               </TooltipTrigger>
                               <TooltipContent>
                                 {navigationLoading
-                                  ? "正在查找相邻邮件…"
-                                  : "上一封邮件（⌥↑）"}
+                                  ? t("正在查找相邻邮件…")
+                                  : t("上一封邮件（⌥↑）")}
                               </TooltipContent>
                             </Tooltip>
                             <Tooltip>
@@ -2590,7 +2698,7 @@ export default function App() {
                                 <Button
                                   variant="ghost"
                                   size="icon-sm"
-                                  aria-label="下一封邮件"
+                                  aria-label={t("下一封邮件")}
                                   aria-busy={navigationLoading}
                                   disabled={
                                     navigationLoading || !canNavigate("next")
@@ -2602,12 +2710,12 @@ export default function App() {
                               </TooltipTrigger>
                               <TooltipContent>
                                 {navigationLoading
-                                  ? "正在查找相邻邮件…"
-                                  : "下一封邮件（⌥↓）"}
+                                  ? t("正在查找相邻邮件…")
+                                  : t("下一封邮件（⌥↓）")}
                               </TooltipContent>
                               {navigationLoading && (
                                 <span className="sr-only" role="status">
-                                  正在查找相邻邮件…
+                                  {t("正在查找相邻邮件…")}
                                 </span>
                               )}
                             </Tooltip>
@@ -2615,7 +2723,7 @@ export default function App() {
                             <Button
                               variant="ghost"
                               size="icon-sm"
-                              title="归入本地文件夹"
+                              title={t("归入本地文件夹")}
                               onClick={() => {
                                 setMoveIds([detail.mail.id]);
                                 setMoveThreads(false);
@@ -2627,7 +2735,7 @@ export default function App() {
                             <Button
                               variant="ghost"
                               size="icon-sm"
-                              title="导出完整原始邮件"
+                              title={t("导出完整原始邮件")}
                               onClick={() => void exportMail(detail.mail)}
                             >
                               <ArrowDownToLine size={17} />
@@ -2637,14 +2745,18 @@ export default function App() {
                               <MailActionTooltip
                                 action="read"
                                 label={
-                                  detail.mail.isRead ? "标记未读" : "标记已读"
+                                  detail.mail.isRead
+                                    ? t("标记未读")
+                                    : t("标记已读")
                                 }
                               >
                                 <Button
                                   variant="ghost"
                                   size="icon-sm"
                                   title={
-                                    detail.mail.isRead ? "标记未读" : "标记已读"
+                                    detail.mail.isRead
+                                      ? t("标记未读")
+                                      : t("标记已读")
                                   }
                                   aria-keyshortcuts="Meta+Shift+U Control+Shift+U"
                                   onClick={() =>
@@ -2659,11 +2771,11 @@ export default function App() {
                                 </Button>
                               </MailActionTooltip>
                             )}
-                            <MailActionTooltip action="star" label={"星标"}>
+                            <MailActionTooltip action="star" label={t("星标")}>
                               <Button
                                 variant="ghost"
                                 size="icon-sm"
-                                title="星标"
+                                title={t("星标")}
                                 aria-keyshortcuts="Meta+Shift+L Control+Shift+L"
                                 onClick={() =>
                                   void mutate(
@@ -2684,11 +2796,15 @@ export default function App() {
                             <Button
                               variant="ghost"
                               size="icon-sm"
-                              title="打印这封邮件"
-                              aria-label="打印这封邮件"
+                              title={t("打印这封邮件")}
+                              aria-label={t("打印这封邮件")}
                               onClick={() =>
                                 void printMail(detail).catch((error) =>
-                                  toast.error(`打印失败：${String(error)}`),
+                                  toast.error(
+                                    t("打印失败：{value0}", {
+                                      value0: String(error),
+                                    }),
+                                  ),
                                 )
                               }
                             >
@@ -2699,8 +2815,8 @@ export default function App() {
                               size="icon-sm"
                               title={
                                 detail.mail.trashed
-                                  ? "恢复本地邮件"
-                                  : "移到本地废纸篓"
+                                  ? t("恢复本地邮件")
+                                  : t("移到本地废纸篓")
                               }
                               onClick={() =>
                                 void mutate(
@@ -2718,17 +2834,19 @@ export default function App() {
                             </Button>
                           </div>
                           <div className="reader-actions">
-                            <MailActionTooltip action="reply" label={"回复"}>
+                            <MailActionTooltip action="reply" label={t("回复")}>
                               <Button
                                 variant="ghost"
                                 size="sm"
-                                aria-label="回复"
-                                title="回复"
+                                aria-label={t("回复")}
+                                title={t("回复")}
                                 aria-keyshortcuts="Meta+R Control+R"
                                 onClick={() => compose(detail.mail)}
                               >
                                 <Reply size={15} />
-                                <span className="action-label">回复</span>
+                                <span className="action-label">
+                                  {t("回复")}
+                                </span>
                               </Button>
                             </MailActionTooltip>
                             <DropdownMenu>
@@ -2736,8 +2854,8 @@ export default function App() {
                                 <Button
                                   variant="ghost"
                                   size="icon-sm"
-                                  title="更多回复操作"
-                                  aria-label="更多回复操作"
+                                  title={t("更多回复操作")}
+                                  aria-label={t("更多回复操作")}
                                 >
                                   <ChevronDown size={12} />
                                 </Button>
@@ -2751,7 +2869,7 @@ export default function App() {
                                     }
                                   >
                                     <ReplyAll size={15} />
-                                    全部回复
+                                    {t("全部回复")}
                                     <DropdownMenuShortcut>
                                       {mailShortcutKeys.replyAll}
                                     </DropdownMenuShortcut>
@@ -2762,7 +2880,9 @@ export default function App() {
                                         detail.mail.sender,
                                       )[0];
                                       if (!address) {
-                                        toast.error("无法识别发件人邮箱地址");
+                                        toast.error(
+                                          t("无法识别发件人邮箱地址"),
+                                        );
                                         return;
                                       }
                                       setContactSeed(address);
@@ -2770,22 +2890,27 @@ export default function App() {
                                     }}
                                   >
                                     <UsersRound size={15} />
-                                    添加发件人为联系人
+                                    {t("添加发件人为联系人")}
                                   </DropdownMenuItem>
                                 </DropdownMenuGroup>
                               </DropdownMenuContent>
                             </DropdownMenu>
-                            <MailActionTooltip action="forward" label={"转发"}>
+                            <MailActionTooltip
+                              action="forward"
+                              label={t("转发")}
+                            >
                               <Button
                                 variant="ghost"
                                 size="sm"
-                                aria-label="转发"
-                                title="转发"
+                                aria-label={t("转发")}
+                                title={t("转发")}
                                 aria-keyshortcuts="Meta+Shift+F Control+Shift+F"
                                 onClick={() => compose(detail.mail, true)}
                               >
                                 <ArrowRight size={15} />
-                                <span className="action-label">转发</span>
+                                <span className="action-label">
+                                  {t("转发")}
+                                </span>
                               </Button>
                             </MailActionTooltip>
                             {query.view === "sent" && (
@@ -2795,7 +2920,7 @@ export default function App() {
                                 onClick={() => reeditSent(detail)}
                               >
                                 <SquarePen size={15} />
-                                重新编辑
+                                {t("重新编辑")}
                               </Button>
                             )}
                             {(["copy", "move"] as const).map((kind) => (
@@ -2822,12 +2947,14 @@ export default function App() {
                             size="icon-sm"
                             className="reader-expand-button"
                             aria-label={
-                              readerExpanded ? "还原阅读区域" : "最大化阅读区域"
+                              readerExpanded
+                                ? t("还原阅读区域")
+                                : t("最大化阅读区域")
                             }
                             title={
                               readerExpanded
-                                ? "还原阅读区域（Esc）"
-                                : "最大化阅读区域"
+                                ? t("还原阅读区域（Esc）")
+                                : t("最大化阅读区域")
                             }
                             aria-pressed={readerExpanded}
                             aria-controls="mail-reader-content"
@@ -2847,7 +2974,8 @@ export default function App() {
                             className="recipient-address"
                             title={detail.mail.recipients}
                           >
-                            收件人：{detail.mail.recipients}
+                            {t("收件人：")}
+                            {detail.mail.recipients}
                           </span>
                         )}
                         {detail.mail.cc?.trim() && (
@@ -2855,7 +2983,8 @@ export default function App() {
                             className="recipient-address"
                             title={detail.mail.cc}
                           >
-                            抄送：{detail.mail.cc}
+                            {t("抄送：")}
+                            {detail.mail.cc}
                           </span>
                         )}
                         <div className="message-metadata">
@@ -2865,10 +2994,10 @@ export default function App() {
                           <span className="saved-chip">
                             <ShieldCheck size={13} />
                             {demo
-                              ? "演示存档"
+                              ? t("演示存档")
                               : detail.mail.savedLocally === false
-                                ? "服务器邮件"
-                                : "完整已保存"}
+                                ? t("服务器邮件")
+                                : t("完整已保存")}
                           </span>
                           {detail.mail.savedLocally === false && (
                             <Button
@@ -2880,7 +3009,7 @@ export default function App() {
                               }
                             >
                               <HardDriveDownload />
-                              完整保存到本地
+                              {t("完整保存到本地")}
                             </Button>
                           )}
                         </div>
@@ -2933,14 +3062,14 @@ export default function App() {
                     {detailError?.id === selected ? (
                       <>
                         <AlertCircle size={24} />
-                        <span>邮件加载失败</span>
+                        <span>{t("邮件加载失败")}</span>
                         <p>{detailError.message}</p>
                         <Button
                           variant="outline"
                           size="sm"
                           onClick={() => setDetailRetry((value) => value + 1)}
                         >
-                          重新加载
+                          {t("重新加载")}
                         </Button>
                       </>
                     ) : (
@@ -2954,7 +3083,7 @@ export default function App() {
                     <div className="welcome-art">
                       <img
                         src={`${import.meta.env.BASE_URL}app-icon.png`}
-                        alt="雁信"
+                        alt={t("雁信")}
                       />
                       <span className="orbit one" />
                       <span className="orbit two" />
@@ -2966,22 +3095,26 @@ export default function App() {
                     </span>
                     <h1>
                       {data.accounts.length
-                        ? "留一点空间，给重要的事"
-                        : "邮件，自在有序。"}
+                        ? t("留一点空间，给重要的事")
+                        : t("邮件，自在有序。")}
                     </h1>
                     <p>
                       {data.accounts.length
-                        ? "选择一封邮件，开始阅读。\n你的往来，都在这里妥善留存。"
-                        : "把不同的邮箱放在一起。\n让每一封重要的邮件，都有一个长久的归处。"}
+                        ? t(
+                            "选择一封邮件，开始阅读。\n你的往来，都在这里妥善留存。",
+                          )
+                        : t(
+                            "把不同的邮箱放在一起。\n让每一封重要的邮件，都有一个长久的归处。",
+                          )}
                     </p>
                     {!data.accounts.length && (
                       <div className="welcome-actions">
                         <Button onClick={() => setAccountDialog(true)}>
                           <Plus size={16} />
-                          连接我的邮箱
+                          {t("连接我的邮箱")}
                         </Button>
                         <Button variant="ghost" onClick={demoMode}>
-                          先体验一下
+                          {t("先体验一下")}
                           <ArrowRight size={15} />
                         </Button>
                       </div>
@@ -2989,20 +3122,20 @@ export default function App() {
                     <div className="welcome-features">
                       <span>
                         <Inbox size={17} />
-                        多账号管理
+                        {t("多账号管理")}
                       </span>
                       <span>
                         <SlidersHorizontal size={17} />
-                        自动归类
+                        {t("自动归类")}
                       </span>
                       <span>
                         <ShieldCheck size={17} />
-                        本地留存
+                        {t("本地留存")}
                       </span>
                     </div>
                     {!native && (
                       <small className="browser-note">
-                        浏览器预览 · 真实收发请使用 macOS 桌面客户端
+                        {t("浏览器预览 · 真实收发请使用 macOS 桌面客户端")}
                       </small>
                     )}
                   </div>
@@ -3060,9 +3193,11 @@ export default function App() {
       >
         <DialogContent className="sm:max-w-[430px]">
           <DialogHeader>
-            <DialogTitle>归入本地文件夹</DialogTitle>
+            <DialogTitle>{t("归入本地文件夹")}</DialogTitle>
             <DialogDescription>
-              整理 {moveIds.length} 封本地邮件，不改变服务器上的原件。
+              {t("整理 ")}
+              {moveIds.length}
+              {t(" 封本地邮件，不改变服务器上的原件。")}
             </DialogDescription>
           </DialogHeader>
           <FolderInput
@@ -3077,7 +3212,7 @@ export default function App() {
               setMoveIds([]);
             }}
           >
-            确认归类
+            {t("确认归类")}
           </Button>
         </DialogContent>
       </Dialog>

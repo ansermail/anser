@@ -1,13 +1,14 @@
+import { t } from "@/lib/i18n";
 import { Skeleton } from "./ui/skeleton";
 export function MailBodySkeleton({ images = false }: { images?: boolean }) {
   return (
     <div
       className={`mail-body-skeleton ${images ? "images-pending" : ""}`}
       role="status"
-      aria-label={images ? "正在加载图片" : "正在加载正文"}
+      aria-label={images ? t("正在加载图片") : t("正在加载正文")}
     >
       <span className="sr-only">
-        {images ? "正在加载图片…" : "正在加载正文…"}
+        {images ? t("正在加载图片…") : t("正在加载正文…")}
       </span>
       {images ? (
         <Skeleton className="h-2 w-full" />
@@ -27,8 +28,12 @@ export function MailBodySkeleton({ images = false }: { images?: boolean }) {
 }
 export function MailReaderSkeleton() {
   return (
-    <div className="reader-skeleton" role="status" aria-label="正在加载邮件">
-      <span className="sr-only">正在加载邮件…</span>
+    <div
+      className="reader-skeleton"
+      role="status"
+      aria-label={t("正在加载邮件")}
+    >
+      <span className="sr-only">{t("正在加载邮件…")}</span>
       <div className="reader-skeleton-header">
         <Skeleton className="size-10 rounded-xl" />
         <div className="flex-1">
@@ -48,8 +53,8 @@ export function MailReaderSkeleton() {
 }
 export function MailListSkeleton() {
   return (
-    <div role="status" aria-label="正在打开你的邮件">
-      <span className="sr-only">正在打开你的邮件…</span>
+    <div role="status" aria-label={t("正在打开你的邮件")}>
+      <span className="sr-only">{t("正在打开你的邮件…")}</span>
       {Array.from({ length: 6 }, (_, i) => (
         <div key={i} className="mail-row-skeleton">
           <div className="flex justify-between gap-4">

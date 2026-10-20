@@ -1,3 +1,4 @@
+import { t } from "@/lib/i18n";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { ChevronDown, RefreshCw } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -55,7 +56,7 @@ export function TaskPanelHeader({
       <CollapsibleTrigger asChild>
         <Button
           variant="ghost"
-          aria-label={`展开或收起${title}`}
+          aria-label={t("展开或收起{value0}", { value0: title })}
           className="group h-auto min-w-0 flex-1 items-start justify-start gap-4 px-2 py-1 text-left whitespace-normal"
         >
           <span className="flex min-w-0 flex-1 flex-col gap-2">
@@ -70,7 +71,7 @@ export function TaskPanelHeader({
       <Button
         variant="ghost"
         size="sm"
-        aria-label={`刷新${title}`}
+        aria-label={t("刷新{value0}", { value0: title })}
         aria-busy={refreshing}
         disabled={refreshing}
         onClick={() => void refresh()}
@@ -81,7 +82,7 @@ export function TaskPanelHeader({
             refreshing && "animate-spin motion-reduce:animate-none",
           )}
         />
-        <span aria-live="polite">{refreshing ? "刷新中" : "刷新"}</span>
+        <span aria-live="polite">{refreshing ? t("刷新中") : t("刷新")}</span>
       </Button>
     </CardHeader>
   );

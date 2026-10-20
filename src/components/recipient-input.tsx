@@ -1,3 +1,4 @@
+import { t } from "@/lib/i18n";
 import { useCommandAria } from "@/hooks/use-command-aria";
 import { useState } from "react";
 import { Command, CommandItem, CommandList } from "./ui/command";
@@ -61,7 +62,7 @@ export function RecipientInput({
             autoFocus={autoFocus}
             value={value}
             autoComplete="off"
-            placeholder="多个地址用逗号分隔"
+            placeholder={t("多个地址用逗号分隔")}
             role="combobox"
             aria-autocomplete="list"
             aria-expanded={open && options.length > 0}
@@ -107,7 +108,7 @@ export function RecipientInput({
         }}
       >
         <Command
-          label="收件人建议"
+          label={t("收件人建议")}
           shouldFilter={false}
           value={options[Math.min(active, options.length - 1)]?.email}
           onValueChange={(email) => {

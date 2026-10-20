@@ -1,3 +1,4 @@
+import { t } from "@/lib/i18n";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { EyeOff, Languages, LoaderCircle, RotateCcw } from "lucide-react";
@@ -26,7 +27,7 @@ export function TranslatableMailBody({
   html,
   body,
   onOpenLink,
-  title = "邮件正文",
+  title = t("邮件正文"),
   actionsContainer,
 }: {
   actionsContainer: HTMLElement | null;
@@ -99,7 +100,7 @@ export function TranslatableMailBody({
       );
       if (!active()) return;
       if (!config)
-        throw new Error("请先在“设置与账号 → 大模型翻译”中保存模型配置。");
+        throw new Error(t("请先在“设置与账号 → 大模型翻译”中保存模型配置。"));
       setLanguage(config.targetLanguage);
       const next = planMailTranslation(
         currentDoc,
@@ -107,7 +108,8 @@ export function TranslatableMailBody({
         html ? undefined : plain.current!,
       );
       plan.current = next;
-      if (!next.parts.length) throw new Error("未找到需要翻译的可见正文文字。");
+      if (!next.parts.length)
+        throw new Error(t("未找到需要翻译的可见正文文字。"));
       const total = next.parts.length;
       setProgress({ done: 0, total });
       setShown(true);
@@ -138,16 +140,23 @@ export function TranslatableMailBody({
     }
   }
   const actionLabel = busy
-    ? "取消翻译"
+    ? t("取消翻译")
     : error
-      ? "重试翻译"
+      ? t("重试翻译")
       : shown
-        ? "隐藏译文"
-        : "翻译";
+        ? t("隐藏译文")
+        : t("翻译");
   const status = busy
-    ? `正在翻译 ${progress.done}/${progress.total}`
+    ? t("正在翻译 {value0}/{value1}", {
+        value0: progress.done,
+        value1: progress.total,
+      })
     : shown
-      ? `${translationLanguages[language]} · ${progress.done}/${progress.total} 段文字`
+      ? t("{value0} · {value1}/{value2} 段文字", {
+          value0: translationLanguages[language],
+          value1: progress.done,
+          value2: progress.total,
+        })
       : "";
   return (
     <div className="flex min-w-0 flex-col gap-3">
@@ -161,13 +170,13 @@ export function TranslatableMailBody({
                     <Button
                       variant="ghost"
                       size="icon-sm"
-                      aria-label="隐藏译文"
+                      aria-label={t("隐藏译文")}
                       onClick={reset}
                     >
                       <EyeOff aria-hidden="true" />
                     </Button>
                   </TooltipTrigger>
-                  <TooltipContent>隐藏译文</TooltipContent>
+                  <TooltipContent>{t("隐藏译文")}</TooltipContent>
                 </Tooltip>
               )}
               <Tooltip>
@@ -183,7 +192,7 @@ export function TranslatableMailBody({
                         cancel();
                         setBusy(false);
                         setError(
-                          "翻译已取消，已完成的段落保留；可重试或隐藏。",
+                          t("翻译已取消，已完成的段落保留；可重试或隐藏。"),
                         );
                       } else if (shown && !error) reset();
                       else void translate();
@@ -215,7 +224,7 @@ export function TranslatableMailBody({
       {busy && progress.total > 0 && (
         <Progress
           value={(progress.done / progress.total) * 100}
-          aria-label="翻译进度"
+          aria-label={t("翻译进度")}
         />
       )}
       {error && (

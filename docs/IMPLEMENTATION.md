@@ -1,5 +1,13 @@
 # 实施与验收状态
 
+## 配置文件国际化（2026-10-20，开发分支）
+
+`src/locales/config.json` 定义默认/回退语言及语言选项，`zh-CN.json` 与 `en.json` 集中维护同一组文案键和插值参数。`src/lib/i18n.ts` 提供文本查询、日期/日历区域及 React 外部订阅；切换只触发重新渲染，不通过语言键重建 App、草稿或设置表单。静态选项在使用时读取当前语言，动态参数作为普通文本插入，不再次解析为模板或 HTML。邮件内容和协议标识不进入文案翻译。
+
+语言由独立 IPC `get_interface_language` / `set_interface_language` 存在现有 preferences 表的 `interface-language` 键，与 sync/通知/代理设置分离；旧库缺失时使用中文，非法语言拒绝写入。保存成功再发布前端状态；菜单更新失败回滚配置，启动的迟到读取不覆盖后续切换。原生托盘和通知固定文案共用英文配置；历史日志、服务器原始诊断和发布说明保持其原语言。正式包与开发包同时声明 `zh-Hans` / `en`，操作系统原生面板仍由系统选择。
+
+Pages 语言选择仍只使用隔离的虚构数据/内存偏好，不调用真实 IPC。`npm run check:i18n` 检查语言键、非空译文、占位符与代码引用，已接入生产/Pages 构建。翻译配置随构建内置；修改 JSON 后重新构建生效。验证证据见 [国际化工作点](I18N_WORKING.md)。
+
 ## Homebrew 同仓库分发（2026-10-17）
 
 `Casks/anser.rb` 与源码共用 `ansermail/anser`。`homebrew.yml` 在正式版本发布或 main 手动 dispatch 后执行；`scripts/homebrew.mjs` 只读组织 latest，按固定文件名和 URL 选择两架构 DMG，有界下载核对长度与 SHA-256，重新核对 release/asset 身份后生成配方。Homebrew 校验后再次执行公开资源核验，读取 main 上配方 blob SHA，通过 Contents API 单文件条件更新；并发修改失败不重试覆盖，语义版本不倒退，同版本摘要不可变化，相同内容无提交。默认仓库 token 仅在本仓库获得 contents:write，不维护跨仓库密钥；生成与提交都不接触邮箱、原件、客户端版本或发布资产。

@@ -1,3 +1,4 @@
+import { t } from "@/lib/i18n";
 import { useEffect, useRef, useState } from "react";
 import { ChevronDown, RefreshCw } from "lucide-react";
 import { call } from "@/lib/api";
@@ -33,12 +34,24 @@ export type RuleRun = {
   updatedAt: string;
 };
 const states: Record<string, string> = {
-  queued: "待处理",
-  running: "核对与处理",
-  paused: "已暂停",
-  blocked: "需要处理",
-  completed: "步骤已处理",
-  cancelled: "已取消",
+  get queued() {
+    return t("待处理");
+  },
+  get running() {
+    return t("核对与处理");
+  },
+  get paused() {
+    return t("已暂停");
+  },
+  get blocked() {
+    return t("需要处理");
+  },
+  get completed() {
+    return t("步骤已处理");
+  },
+  get cancelled() {
+    return t("已取消");
+  },
 };
 export function RuleRunsPanel({ onShowTasks }: { onShowTasks: () => void }) {
   const [open, setOpen] = useState(false);
@@ -87,7 +100,7 @@ export function RuleRunsPanel({ onShowTasks }: { onShowTasks: () => void }) {
       <Card className="mt-6">
         <CardHeader>
           <CardTitle>
-            规则处理任务{" "}
+            {t("规则处理任务")}{" "}
             <Badge
               variant={
                 items?.some((item) => item.status === "blocked")
@@ -98,19 +111,22 @@ export function RuleRunsPanel({ onShowTasks }: { onShowTasks: () => void }) {
               {items?.filter(
                 (item) => !["completed", "cancelled"].includes(item.status),
               ).length ?? 0}{" "}
-              项待处理
+              {t("项待处理")}
             </Badge>
           </CardTitle>
           <CardDescription>
-            最近 100
-            项。在线正文按需核对；完整保存成功后再归类。核对、保存或入队失败会停止后续规则；服务器执行结果请查看关联任务。
+            {t(
+              "最近 100 项。在线正文按需核对；完整保存成功后再归类。核对、保存或入队失败会停止后续规则；服务器执行结果请查看关联任务。",
+            )}
           </CardDescription>
           <CardAction className="flex items-center gap-2">
             <CollapsibleTrigger asChild>
               <Button
                 variant="ghost"
                 size="icon-sm"
-                aria-label={open ? "折叠规则处理任务" : "展开规则处理任务"}
+                aria-label={
+                  open ? t("折叠规则处理任务") : t("展开规则处理任务")
+                }
               >
                 <ChevronDown className={open ? "rotate-180" : ""} />
               </Button>
@@ -122,7 +138,7 @@ export function RuleRunsPanel({ onShowTasks }: { onShowTasks: () => void }) {
               onClick={() => void reload.current()}
             >
               <RefreshCw data-icon="inline-start" />
-              刷新
+              {t("刷新")}
             </Button>
           </CardAction>
           {error && !open && (
@@ -139,11 +155,13 @@ export function RuleRunsPanel({ onShowTasks }: { onShowTasks: () => void }) {
               </Alert>
             )}
             {!items && !error && (
-              <Skeleton className="h-24" aria-label="正在加载规则任务" />
+              <Skeleton className="h-24" aria-label={t("正在加载规则任务")} />
             )}
             {items?.length === 0 && (
               <p className="text-sm text-muted-foreground">
-                暂无需要异步处理的规则。涉及在线正文或完整保存时，任务会显示在这里。
+                {t(
+                  "暂无需要异步处理的规则。涉及在线正文或完整保存时，任务会显示在这里。",
+                )}
               </p>
             )}
             {items?.map((item) => (
@@ -154,12 +172,17 @@ export function RuleRunsPanel({ onShowTasks }: { onShowTasks: () => void }) {
                       {item.subject}
                     </p>
                     <p className="text-sm text-muted-foreground">
-                      {item.accountEmail} · 已检查 {item.cursor}/{item.total}{" "}
-                      项，匹配 {item.applied} 项
+                      {item.accountEmail}
+                      {t(" · 已检查 ")}
+                      {item.cursor}/{item.total} {t("项，匹配 ")}
+                      {item.applied}
+                      {t(" 项")}
                     </p>
                     <p className="text-sm text-muted-foreground">
-                      {item.status === "completed" ? "最后检查" : "当前步骤"}：
-                      {item.step || "规则检查"}
+                      {item.status === "completed"
+                        ? t("最后检查")
+                        : t("当前步骤")}
+                      ：{item.step || t("规则检查")}
                     </p>
                   </div>
                   <Badge
@@ -183,7 +206,7 @@ export function RuleRunsPanel({ onShowTasks }: { onShowTasks: () => void }) {
                       disabled={busy}
                       onClick={() => void action(item.id, "pause")}
                     >
-                      暂停
+                      {t("暂停")}
                     </Button>
                   )}
                   {item.status === "paused" && (
@@ -193,7 +216,7 @@ export function RuleRunsPanel({ onShowTasks }: { onShowTasks: () => void }) {
                       disabled={busy}
                       onClick={() => void action(item.id, "resume")}
                     >
-                      继续
+                      {t("继续")}
                     </Button>
                   )}
                   {item.status === "blocked" && (
@@ -203,7 +226,7 @@ export function RuleRunsPanel({ onShowTasks }: { onShowTasks: () => void }) {
                       disabled={busy}
                       onClick={() => void action(item.id, "retry")}
                     >
-                      重新核对并执行剩余规则
+                      {t("重新核对并执行剩余规则")}
                     </Button>
                   )}
                   {!["completed", "cancelled"].includes(item.status) && (
@@ -213,7 +236,7 @@ export function RuleRunsPanel({ onShowTasks }: { onShowTasks: () => void }) {
                       disabled={busy}
                       onClick={() => void action(item.id, "cancel")}
                     >
-                      取消剩余规则
+                      {t("取消剩余规则")}
                     </Button>
                   )}
                 </div>
@@ -222,10 +245,12 @@ export function RuleRunsPanel({ onShowTasks }: { onShowTasks: () => void }) {
           </CardContent>
           <CardFooter className="flex flex-wrap gap-3">
             <p className="text-sm text-muted-foreground">
-              已保存原件保留。重新核对会以当前标记和归类为起点执行剩余规则；服务器动作的实际结果需查看关联任务。
+              {t(
+                "已保存原件保留。重新核对会以当前标记和归类为起点执行剩余规则；服务器动作的实际结果需查看关联任务。",
+              )}
             </p>
             <Button variant="outline" size="sm" onClick={onShowTasks}>
-              查看保存与服务器任务
+              {t("查看保存与服务器任务")}
             </Button>
           </CardFooter>
         </CollapsibleContent>

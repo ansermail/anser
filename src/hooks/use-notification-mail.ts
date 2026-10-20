@@ -1,3 +1,4 @@
+import { t } from "@/lib/i18n";
 import { useEffect, useRef } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { call } from "../lib/api";
@@ -31,7 +32,10 @@ export function useNotificationMail(
           if (token) handler.current(token);
         } while (again);
       } catch (error) {
-        if (!disposed) toast.error(`无法打开通知邮件：${String(error)}`);
+        if (!disposed)
+          toast.error(
+            t("无法打开通知邮件：{value0}", { value0: String(error) }),
+          );
       } finally {
         draining = false;
       }

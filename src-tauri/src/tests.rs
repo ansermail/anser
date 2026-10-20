@@ -2700,3 +2700,32 @@ fn parser_upgrade_keeps_online_only_headers_unknown_until_downloaded() {
     assert_eq!(preview.len(), 1);
     assert!(preview[0].contains("等待完整邮件核对"));
 }
+
+#[test]
+fn interface_language_is_independent_of_other_preferences_and_survives_reopening() {
+    let temp = tempfile::tempdir().unwrap();
+    let store = Store::new(temp.path().to_path_buf()).unwrap();
+    assert_eq!(store.interface_language().unwrap(), "zh-CN");
+    store.save_interface_language("en").unwrap();
+    store
+        .save_preferences(&Preferences {
+            sync_interval_minutes: 15,
+            ..Default::default()
+        })
+        .unwrap();
+    assert_eq!(store.interface_language().unwrap(), "en");
+    assert!(store.save_interface_language("fr").is_err());
+    assert_eq!(store.interface_language().unwrap(), "en");
+    drop(store);
+    let reopened = Store::new(temp.path().to_path_buf()).unwrap();
+    assert_eq!(reopened.interface_language().unwrap(), "en");
+    assert_eq!(reopened.preferences().unwrap().sync_interval_minutes, 15);
+    assert_eq!(
+        crate::interface_language::text("en", "立即检查新邮件"),
+        "Check for new mail now"
+    );
+    assert_eq!(
+        crate::interface_language::text("zh-CN", "立即检查新邮件"),
+        "立即检查新邮件"
+    );
+}

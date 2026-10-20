@@ -1,3 +1,4 @@
+import { t } from "@/lib/i18n";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { usePanelRef, type Layout } from "react-resizable-panels";
 import {
@@ -97,7 +98,7 @@ export function NavigationLayout({
       </ResizablePanel>
       <ResizableHandle
         withHandle
-        aria-label="调整左侧菜单宽度"
+        aria-label={t("调整左侧菜单宽度")}
         className={`navigation-handle ${hidden ? "handle-hidden" : ""}`}
         disabled={hidden}
       />
@@ -168,7 +169,7 @@ export function MailLayout({
       </ResizablePanel>
       <ResizableHandle
         withHandle
-        aria-label="调整邮件列表与正文宽度"
+        aria-label={t("调整邮件列表与正文宽度")}
         className={`mail-pane-handle ${expanded ? "handle-hidden" : ""}`}
         disabled={expanded}
       />

@@ -11,6 +11,7 @@ mod directory_operations;
 mod eml_files;
 mod folder_health;
 mod idle;
+mod interface_language;
 mod mail_images;
 mod mail_styles;
 mod models;
@@ -518,6 +519,27 @@ async fn archive_outbox(state: tauri::State<'_, AppState>, id: String) -> Result
 #[tauri::command]
 fn get_preferences(state: tauri::State<AppState>) -> Result<Preferences> {
     state.store.preferences()
+}
+#[tauri::command]
+fn get_interface_language(state: tauri::State<AppState>) -> Result<String> {
+    state.store.interface_language()
+}
+#[tauri::command]
+fn set_interface_language(
+    app: tauri::AppHandle,
+    state: tauri::State<AppState>,
+    language: String,
+) -> Result<()> {
+    let previous = state.store.interface_language()?;
+    state.store.save_interface_language(&language)?;
+    if let Some(menu) = app.try_state::<interface_language::LanguageMenu>() {
+        if let Err(error) = menu.apply(&language) {
+            state.store.save_interface_language(&previous)?;
+            let _ = menu.apply(&previous);
+            return Err(error);
+        }
+    }
+    Ok(())
 }
 #[tauri::command]
 fn save_preferences(state: tauri::State<AppState>, preferences: Preferences) -> Result<()> {
@@ -1400,6 +1422,7 @@ pub fn run() {
                 &[&open_item, &sync_item, &quiet_item, &quit_item],
             )?;
             let quiet_control = quiet_item.clone();
+            let language_items = (open_item, sync_item, quiet_item, quit_item);
             let tray = tauri::tray::TrayIconBuilder::new()
                 .tooltip("雁信 · 点击打开")
                 .icon(app.default_window_icon().unwrap().clone())
@@ -1446,6 +1469,17 @@ pub fn run() {
                     }
                 })
                 .build(app)?;
+            let language_menu = interface_language::LanguageMenu {
+                open: language_items.0,
+                sync: language_items.1,
+                quiet: language_items.2,
+                quit: language_items.3,
+                tray: tray.clone(),
+            };
+            language_menu
+                .apply(&store.interface_language().map_err(std::io::Error::other)?)
+                .map_err(std::io::Error::other)?;
+            app.manage(language_menu);
             let tray_store = store.clone();
             #[cfg(target_os = "macos")]
             let badge_app = app.handle().clone();
@@ -1596,6 +1630,8 @@ pub fn run() {
             translation::cancel_translation,
             translation::clear_translation_cache,
             get_preferences,
+            get_interface_language,
+            set_interface_language,
             save_preferences,
             save_network_proxy,
             desktop_settings,

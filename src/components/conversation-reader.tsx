@@ -1,3 +1,4 @@
+import { t } from "@/lib/i18n";
 import {
   useCallback,
   useEffect,
@@ -44,11 +45,11 @@ function ParseWarnings({ mail }: { mail: Mail }) {
   if (!mail.parseWarnings?.length) return null;
   return (
     <Alert className="mb-4">
-      <AlertTitle>这封邮件的部分内容编码异常</AlertTitle>
+      <AlertTitle>{t("这封邮件的部分内容编码异常")}</AlertTitle>
       <AlertDescription>
         {mail.savedLocally !== false
-          ? "完整原件已保存，其余内容正常显示。"
-          : "服务器原件未修改，其余内容正常显示。"}
+          ? t("完整原件已保存，其余内容正常显示。")
+          : t("服务器原件未修改，其余内容正常显示。")}
         {mail.parseWarnings.map((warning, index) => (
           <p key={index}>{warning}</p>
         ))}
@@ -120,14 +121,14 @@ function Turn({
     <article
       className={`conversation-turn ${own ? "outgoing" : "incoming"}`}
       data-mail-id={mail.id}
-      aria-label={`${own ? "我发出的邮件" : "收到的邮件"}：${mail.subject}`}
+      aria-label={`${own ? t("我发出的邮件") : t("收到的邮件")}：${mail.subject}`}
     >
       <div className="turn-byline">
         <span className="sender-avatar" aria-hidden="true">
-          {own ? "我" : senderName(mail.sender).slice(0, 1)}
+          {own ? t("我") : senderName(mail.sender).slice(0, 1)}
         </span>
         <div className="turn-sender">
-          <strong>{own ? "我" : senderName(mail.sender)}</strong>
+          <strong>{own ? t("我") : senderName(mail.sender)}</strong>
           <span title={mail.sender}>{senderAddress(mail.sender)}</span>
         </div>
         <time dateTime={mail.date}>{mailTime(mail.date)}</time>
@@ -136,7 +137,7 @@ function Turn({
             <Button
               variant="ghost"
               size="icon-sm"
-              aria-label={`邮件操作：${mail.subject}`}
+              aria-label={t("邮件操作：{value0}", { value0: mail.subject })}
             >
               <MoreHorizontal size={15} />
             </Button>
@@ -148,21 +149,21 @@ function Turn({
                 onClick={() => detail && onReply(detail)}
               >
                 <Reply size={14} />
-                回复这封邮件
+                {t("回复这封邮件")}
               </DropdownMenuItem>
               <DropdownMenuItem
                 disabled={!detail}
                 onClick={() => detail && onReply(detail, false, true)}
               >
                 <ReplyAll size={14} />
-                全部回复
+                {t("全部回复")}
               </DropdownMenuItem>
               <DropdownMenuItem
                 disabled={!detail}
                 onClick={() => detail && onReply(detail, true)}
               >
                 <Send size={14} />
-                转发
+                {t("转发")}
               </DropdownMenuItem>
               {own && (
                 <DropdownMenuItem
@@ -170,32 +171,32 @@ function Turn({
                   onClick={() => detail && onReedit(detail)}
                 >
                   <SquarePen size={14} />
-                  重新编辑为新邮件
+                  {t("重新编辑为新邮件")}
                 </DropdownMenuItem>
               )}
               <DropdownMenuSeparator />
               {mail.savedLocally === false && (
                 <DropdownMenuItem onClick={() => onAction(mail, "save", "")}>
                   <ArrowDownToLine />
-                  完整保存到本地
+                  {t("完整保存到本地")}
                 </DropdownMenuItem>
               )}
               <DropdownMenuItem onClick={() => onExport(mail)}>
                 <ArrowDownToLine size={14} />
-                导出原始邮件
+                {t("导出原始邮件")}
               </DropdownMenuItem>
               <DropdownMenuItem
                 onClick={() => onAction(mail, "star", String(!mail.starred))}
               >
                 <Star size={14} />
-                {mail.starred ? "取消星标" : "星标"}
+                {mail.starred ? t("取消星标") : t("星标")}
               </DropdownMenuItem>
               <DropdownMenuItem
                 variant="destructive"
                 onClick={() => onAction(mail, "trash", String(!mail.trashed))}
               >
                 <Trash2 size={14} />
-                {mail.trashed ? "恢复邮件" : "移到本地废纸篓"}
+                {mail.trashed ? t("恢复邮件") : t("移到本地废纸篓")}
               </DropdownMenuItem>
             </DropdownMenuGroup>
           </DropdownMenuContent>
@@ -205,25 +206,27 @@ function Turn({
       <Card className={`conversation-bubble ${detail?.html ? "has-html" : ""}`}>
         {mail.recipients.trim() && (
           <div className="turn-recipients" title={mail.recipients}>
-            收件人：{mail.recipients}
+            {t("收件人：")}
+            {mail.recipients}
           </div>
         )}
         {mail.cc?.trim() && (
           <div className="turn-recipients" title={mail.cc}>
-            抄送：{mail.cc}
+            {t("抄送：")}
+            {mail.cc}
           </div>
         )}
         {detail && <ParseWarnings mail={detail.mail} />}
         {!detail ? (
           error ? (
             <div role="alert" className="turn-error">
-              正文加载失败
+              {t("正文加载失败")}
               <Button
                 variant="outline"
                 size="sm"
                 onClick={() => setRetry((n) => n + 1)}
               >
-                重新加载
+                {t("重新加载")}
               </Button>
             </div>
           ) : (
@@ -234,7 +237,7 @@ function Turn({
             key={`${mail.id}:${mail.hash}`}
             html={detail.html}
             body={detail.mail.body}
-            title={`邮件正文：${mail.id}`}
+            title={t("邮件正文：{value0}", { value0: mail.id })}
             actionsContainer={selected ? translationActions : localActions}
             onOpenLink={onLink}
           />
@@ -249,10 +252,10 @@ function Turn({
           <ShieldCheck size={12} />
           <span>
             {demo
-              ? "演示存档"
+              ? t("演示存档")
               : mail.savedLocally === false
-                ? "服务器邮件"
-                : "已保存"}
+                ? t("服务器邮件")
+                : t("已保存")}
           </span>
           {mail.starred && <Star size={12} className="star-on" />}
         </div>
@@ -317,7 +320,7 @@ function QuickReply({
         setReady(true);
       })
       .catch((e) => {
-        if (live) toast.error(`回复草稿读取失败：${e}`);
+        if (live) toast.error(t("回复草稿读取失败：{value0}", { value0: e }));
       });
     return () => {
       live = false;
@@ -339,7 +342,7 @@ function QuickReply({
         .catch((e) => {
           setSaving(false);
           setSaveError(true);
-          toast.error(`草稿保存失败：${e}`);
+          toast.error(t("草稿保存失败：{value0}", { value0: e }));
         });
     }, 600);
     return () => clearTimeout(timer);
@@ -350,7 +353,7 @@ function QuickReply({
       const current = latest.current;
       if (current && (current.body.trim() || persisted.current))
         void call("save_draft", { draft: current }).catch((e) =>
-          toast.error(`草稿保存失败：${e}`),
+          toast.error(t("草稿保存失败：{value0}", { value0: e })),
         );
     },
     [],
@@ -380,7 +383,7 @@ function QuickReply({
         cc: draft.cc,
         subject: draft.subject,
       });
-      toast.success("已加入待发队列，8 秒内可在待发页取消发送");
+      toast.success(t("已加入待发队列，8 秒内可在待发页取消发送"));
       onSent();
     } catch (e) {
       toast.error(String(e), { duration: 10000 });
@@ -400,7 +403,7 @@ function QuickReply({
   if (complex)
     return (
       <div className="conversation-reply quick-rich-draft">
-        <span>已有回复草稿 · 保留原格式和附件</span>
+        <span>{t("已有回复草稿 · 保留原格式和附件")}</span>
         <Button
           size="sm"
           disabled={sending}
@@ -410,7 +413,7 @@ function QuickReply({
           }}
         >
           <SquarePen size={14} />
-          继续编辑回复
+          {t("继续编辑回复")}
         </Button>
       </div>
     );
@@ -420,7 +423,7 @@ function QuickReply({
         <>
           <div className="quick-reply-heading">
             <span>
-              回复给{" "}
+              {t("回复给")}{" "}
               <strong>{draft?.to || senderName(target.mail.sender)}</strong>
             </span>
             <Button
@@ -435,12 +438,12 @@ function QuickReply({
               }}
             >
               <SquarePen size={14} />
-              完整编辑
+              {t("完整编辑")}
             </Button>
           </div>
           <Textarea
-            aria-label="对话回复正文"
-            placeholder="写下回复…"
+            aria-label={t("对话回复正文")}
+            placeholder={t("写下回复…")}
             value={draft?.body || ""}
             disabled={!ready || sending}
             onChange={(e) => {
@@ -460,14 +463,14 @@ function QuickReply({
           <div className="quick-reply-actions">
             <span>
               {sending
-                ? "正在发送…"
+                ? t("正在发送…")
                 : saving
-                  ? "正在保存草稿…"
+                  ? t("正在保存草稿…")
                   : saveError
-                    ? "草稿保存失败"
+                    ? t("草稿保存失败")
                     : draft?.body.trim()
-                      ? "草稿已保存"
-                      : "以邮件发送"}
+                      ? t("草稿已保存")
+                      : t("以邮件发送")}
             </span>
             <Button
               size="sm"
@@ -477,12 +480,12 @@ function QuickReply({
               onClick={() => void send()}
             >
               <Send size={14} />
-              发送回复
+              {t("发送回复")}
             </Button>
           </div>
         </>
       ) : (
-        <span>原账号已暂停或移除，启用账号后可回复。</span>
+        <span>{t("原账号已暂停或移除，启用账号后可回复。")}</span>
       )}
     </div>
   );
@@ -651,18 +654,21 @@ export function ConversationReader({
       >
         <div className="conversation-stream" ref={stream}>
           <div className="conversation-start">
-            <Badge variant="secondary">{messages.length} 封邮件</Badge>
-            <span>按时间排列</span>
+            <Badge variant="secondary">
+              {messages.length}
+              {t(" 封邮件")}
+            </Badge>
+            <span>{t("按时间排列")}</span>
           </div>
           {error && (
             <div role="alert" className="turn-error">
-              对话加载失败
+              {t("对话加载失败")}
               <Button
                 variant="outline"
                 size="sm"
                 onClick={() => setRetry((n) => n + 1)}
               >
-                重新加载对话
+                {t("重新加载对话")}
               </Button>
             </div>
           )}
@@ -693,7 +699,7 @@ export function ConversationReader({
           onClick={bottom}
         >
           <ArrowDown size={14} />
-          有新邮件 · 查看
+          {t("有新邮件 · 查看")}
         </Button>
       )}
       {targetDetail && !editorOpen && !selected.mail.trashed && (

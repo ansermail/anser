@@ -1,3 +1,4 @@
+import { dateLocale, t } from "@/lib/i18n";
 import { TaskPanelHeader } from "./task-panel-header";
 import { useEffect, useRef, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
@@ -102,8 +103,8 @@ export function FolderHealthPanel({
     <Collapsible defaultOpen={!defaultCollapsed} asChild>
       <Card>
         <TaskPanelHeader
-          title="目录来源检查"
-          description={<>异常目录暂停同步，本地存档保留。</>}
+          title={t("目录来源检查")}
+          description={<>{t("异常目录暂停同步，本地存档保留。")}</>}
           onRefresh={() => reload.current()}
         />
         <CollapsibleContent asChild>
@@ -111,15 +112,20 @@ export function FolderHealthPanel({
             {(error || loadError) && (
               <Alert variant="destructive">
                 <AlertCircle />
-                <AlertTitle>核查未完成</AlertTitle>
+                <AlertTitle>{t("核查未完成")}</AlertTitle>
                 <AlertDescription>{error || loadError}</AlertDescription>
               </Alert>
             )}
             {!items && !error && !loadError && (
-              <Skeleton className="h-16 w-full" aria-label="正在加载目录检查" />
+              <Skeleton
+                className="h-16 w-full"
+                aria-label={t("正在加载目录检查")}
+              />
             )}
             {items?.length === 0 && (
-              <p className="text-sm text-muted-foreground">暂无隔离的目录。</p>
+              <p className="text-sm text-muted-foreground">
+                {t("暂无隔离的目录。")}
+              </p>
             )}
             {items?.map((item) => {
               const key = JSON.stringify([item.accountId, item.folder]);
@@ -128,24 +134,30 @@ export function FolderHealthPanel({
                   <AlertCircle />
                   <AlertTitle className="flex flex-wrap items-center gap-2">
                     {item.displayName}
-                    <Badge variant="secondary">来源已隔离</Badge>
+                    <Badge variant="secondary">{t("来源已隔离")}</Badge>
                   </AlertTitle>
                   <AlertDescription className="gap-2">
                     <p>{item.accountEmail}</p>
                     <p>{item.reason}</p>
                     <p>
-                      保留 {item.sources} 条旧来源，其中 {item.alternateSources}{" "}
-                      条另有可用来源，{item.saved} 条有完整本地存档。
+                      {t("保留 ")}
+                      {item.sources}
+                      {t(" 条旧来源，其中 ")}
+                      {item.alternateSources} {t("条另有可用来源，")}
+                      {item.saved}
+                      {t(" 条有完整本地存档。")}
                     </p>
                     {result?.key === key && (
                       <p role="status">
                         {result.evidence.exists === 0 &&
                         (result.evidence.uidCount || 0) > 0
-                          ? "核查后目录响应仍矛盾，继续隔离。"
+                          ? t("核查后目录响应仍矛盾，继续隔离。")
                           : result.evidence.exists === null ||
                               result.evidence.uidCount === null
-                            ? "仍无法确认目录已打开，继续隔离。"
-                            : "目录响应已恢复，请重新收取此目录以核对旧来源。"}
+                            ? t("仍无法确认目录已打开，继续隔离。")
+                            : t(
+                                "目录响应已恢复，请重新收取此目录以核对旧来源。",
+                              )}
                       </p>
                     )}
                     <div className="mt-2 flex flex-wrap items-center gap-3">
@@ -154,16 +166,19 @@ export function FolderHealthPanel({
                         size="sm"
                         disabled={!!busy}
                         onClick={() => void probe(item)}
-                        aria-label={`重新核查 ${item.accountEmail} ${item.displayName}`}
+                        aria-label={t("重新核查 {value0} {value1}", {
+                          value0: item.accountEmail,
+                          value1: item.displayName,
+                        })}
                       >
                         <RefreshCw
                           className={busy === key ? "animate-spin" : ""}
                         />
-                        {busy === key ? "正在核查…" : "重新核查"}
+                        {busy === key ? t("正在核查…") : t("重新核查")}
                       </Button>
                       <span className="text-xs text-muted-foreground">
-                        核查时间{" "}
-                        {new Date(item.checkedAt).toLocaleString("zh-CN", {
+                        {t("核查时间")}{" "}
+                        {new Date(item.checkedAt).toLocaleString(dateLocale(), {
                           hour12: false,
                         })}
                       </span>

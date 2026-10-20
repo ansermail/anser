@@ -1,3 +1,4 @@
+import { t, useLanguage } from "@/lib/i18n";
 import { Fragment, useEffect, useMemo, useState } from "react";
 import {
   Archive,
@@ -28,6 +29,7 @@ import {
 } from "./ui/collapsible";
 import {
   remoteFolderTree,
+  localizedFolderLabel,
   sidebarFolderError,
   type FolderNode,
 } from "../lib/remote-folders";
@@ -59,7 +61,8 @@ export function RemoteFolderList({
     starred: boolean,
   ) => void;
 }) {
-  const tree = useMemo(() => remoteFolderTree(folders), [folders]);
+  const language = useLanguage();
+  const tree = useMemo(() => remoteFolderTree(folders), [folders, language]);
   const hasFlagged = folders.some((folder) =>
     folder.roles?.includes("flagged"),
   );
@@ -75,15 +78,17 @@ export function RemoteFolderList({
             onClick={onSelectStarred}
           >
             <Star data-icon="inline-start" />
-            <span>星标邮件</span>
+            <span>{t("星标邮件")}</span>
             {starredUnread > 0 && (
-              <em aria-label={`未读 ${starredUnread} 封`}>{starredUnread}</em>
+              <em aria-label={t("未读 {value0} 封", { value0: starredUnread })}>
+                {starredUnread}
+              </em>
             )}
           </Button>
         </ContextMenuTrigger>
         <ContextMenuContent>
           <ContextMenuItem onSelect={() => onMarkRead?.("", false, "", true)}>
-            标记为已读
+            {t("标记为已读")}
           </ContextMenuItem>
         </ContextMenuContent>
       </ContextMenu>
@@ -187,7 +192,10 @@ function FolderBranch({
           <Button
             variant="ghost"
             size="icon-xs"
-            aria-label={`${open ? "收起" : "展开"}文件夹 ${node.label}`}
+            aria-label={t("{value0}文件夹 {value1}", {
+              value0: open ? t("收起") : t("展开"),
+              value1: node.label,
+            })}
           >
             <ChevronRight className={open ? "rotate-90" : ""} />
           </Button>
@@ -216,14 +224,16 @@ function FolderBranch({
             disabled={!node.folder?.selectable && !hasChildren}
           >
             <Icon data-icon="inline-start" />
-            <span>{node.label}</span>
+            <span>{localizedFolderLabel(node.folder, node.label)}</span>
             {showUnread && !!count && (
-              <em aria-label={`未读 ${count} 封`}>{count}</em>
+              <em aria-label={t("未读 {value0} 封", { value0: count })}>
+                {count}
+              </em>
             )}
             {syncError && (
               <AlertCircle
                 className="text-destructive"
-                aria-label="目录来源已隔离"
+                aria-label={t("目录来源已隔离")}
               />
             )}
           </Button>
@@ -240,7 +250,7 @@ function FolderBranch({
                 )
               }
             >
-              标记为已读
+              {t("标记为已读")}
             </ContextMenuItem>
           </ContextMenuContent>
         )}

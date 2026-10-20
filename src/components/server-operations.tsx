@@ -1,3 +1,4 @@
+import { t } from "@/lib/i18n";
 import { TaskPanelHeader } from "./task-panel-header";
 import { Collapsible, CollapsibleContent } from "./ui/collapsible";
 import { useEffect, useState } from "react";
@@ -31,12 +32,24 @@ export type OperationSnapshot = {
   items: ServerOperation[];
 };
 const states = {
-  queued: "待同步",
-  running: "同步中",
-  completed: "已同步",
-  blocked: "需要处理",
-  paused: "账号已暂停",
-  isolated: "来源已隔离",
+  get queued() {
+    return t("待同步");
+  },
+  get running() {
+    return t("同步中");
+  },
+  get completed() {
+    return t("已同步");
+  },
+  get blocked() {
+    return t("需要处理");
+  },
+  get paused() {
+    return t("账号已暂停");
+  },
+  get isolated() {
+    return t("来源已隔离");
+  },
 };
 export function ServerOperations({
   defaultCollapsed = false,
@@ -97,11 +110,12 @@ export function ServerOperations({
     <Collapsible defaultOpen={!defaultCollapsed} asChild>
       <Card>
         <TaskPanelHeader
-          title="服务器状态同步"
+          title={t("服务器状态同步")}
           description={
             <>
-              已读和星标自动同步到 IMAP 邮箱，断网后自动重试。POP3
-              与仅本地邮件保留本地状态。
+              {t(
+                "已读和星标自动同步到 IMAP 邮箱，断网后自动重试。POP3 与仅本地邮件保留本地状态。",
+              )}
             </>
           }
           onRefresh={() => reload()}
@@ -111,31 +125,42 @@ export function ServerOperations({
             {error && (
               <Alert variant="destructive">
                 <AlertCircle />
-                <AlertTitle>无法更新同步任务</AlertTitle>
+                <AlertTitle>{t("无法更新同步任务")}</AlertTitle>
                 <AlertDescription>{error}</AlertDescription>
               </Alert>
             )}
             {!data && !error && (
-              <Skeleton className="h-16 w-full" aria-label="正在加载同步任务" />
+              <Skeleton
+                className="h-16 w-full"
+                aria-label={t("正在加载同步任务")}
+              />
             )}
             {data && (
               <>
                 <div className="flex flex-wrap gap-2">
-                  <Badge variant="secondary">待同步 {data.pending}</Badge>
-                  <Badge variant={data.blocked ? "destructive" : "secondary"}>
-                    需要处理 {data.blocked}
+                  <Badge variant="secondary">
+                    {t("待同步 ")}
+                    {data.pending}
                   </Badge>
-                  <Badge variant="outline">已同步 {data.completed}</Badge>
+                  <Badge variant={data.blocked ? "destructive" : "secondary"}>
+                    {t("需要处理 ")}
+                    {data.blocked}
+                  </Badge>
+                  <Badge variant="outline">
+                    {t("已同步 ")}
+                    {data.completed}
+                  </Badge>
                   {!!data.isolated && (
                     <Badge variant="secondary">
-                      来源已隔离 {data.isolated}
+                      {t("来源已隔离 ")}
+                      {data.isolated}
                     </Badge>
                   )}
                 </div>
                 {data.items.length ? (
                   <ul
                     className="flex flex-col gap-4"
-                    aria-label="服务器同步任务"
+                    aria-label={t("服务器同步任务")}
                   >
                     {data.items.map((item) => (
                       <li
@@ -144,17 +169,17 @@ export function ServerOperations({
                       >
                         <div className="min-w-0 flex-1 space-y-1">
                           <p className="truncate text-sm font-medium">
-                            {item.subject || "（无主题）"}
+                            {item.subject || t("（无主题）")}
                           </p>
                           <p className="break-words text-xs text-muted-foreground">
                             {item.accountEmail} · {item.folder} ·{" "}
                             {item.action === "read"
                               ? item.value
-                                ? "标记已读"
-                                : "标记未读"
+                                ? t("标记已读")
+                                : t("标记未读")
                               : item.value
-                                ? "加星标"
-                                : "取消星标"}
+                                ? t("加星标")
+                                : t("取消星标")}
                           </p>
                           {item.error && (
                             <p className="break-words text-sm text-destructive">
@@ -171,7 +196,7 @@ export function ServerOperations({
                             }
                           >
                             {item.status === "queued" && item.error
-                              ? "等待重试"
+                              ? t("等待重试")
                               : states[item.status]}
                           </Badge>
                           {(item.status === "blocked" ||
@@ -182,7 +207,7 @@ export function ServerOperations({
                               disabled={busy !== null}
                               onClick={() => void retry(item.id)}
                             >
-                              {busy === item.id ? "正在重试…" : "重试"}
+                              {busy === item.id ? t("正在重试…") : t("重试")}
                             </Button>
                           )}
                         </div>
@@ -190,11 +215,13 @@ export function ServerOperations({
                     ))}
                   </ul>
                 ) : (
-                  <p className="text-sm text-muted-foreground">暂无同步任务</p>
+                  <p className="text-sm text-muted-foreground">
+                    {t("暂无同步任务")}
+                  </p>
                 )}
                 {data.items.length >= 50 && (
                   <p className="text-xs text-muted-foreground">
-                    最多显示 50 条，优先展示待处理任务。
+                    {t("最多显示 50 条，优先展示待处理任务。")}
                   </p>
                 )}
               </>

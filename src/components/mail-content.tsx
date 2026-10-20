@@ -1,3 +1,4 @@
+import { t } from "@/lib/i18n";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { isTauri } from "@tauri-apps/api/core";
 import { MailBodySkeleton } from "./mail-skeleton";
@@ -15,7 +16,7 @@ import { mailDocumentHeight } from "../lib/mail-layout";
 export function MailContent({
   html,
   onOpenLink,
-  title = "邮件正文",
+  title = t("邮件正文"),
   inspectable = false,
   onDocumentReady,
 }: {
@@ -182,19 +183,22 @@ export function MailContent({
         <Alert className="mb-2">
           <AlertDescription className="flex flex-wrap items-center justify-between gap-2">
             <span>
-              {`有 ${images.failed + images.timedOut} 张正文图片未加载（${[
-                images.failed > 0 && `${images.failed} 张失败`,
-                images.timedOut > 0 && `${images.timedOut} 张超时`,
-              ]
-                .filter(Boolean)
-                .join("，")}）`}
+              {t("有 {value0} 张正文图片未加载（{value1}）", {
+                value0: images.failed + images.timedOut,
+                value1: [
+                  images.failed > 0 && `${images.failed} 张失败`,
+                  images.timedOut > 0 && `${images.timedOut} 张超时`,
+                ]
+                  .filter(Boolean)
+                  .join("，"),
+              })}
             </span>
             <Button
               variant="ghost"
               size="sm"
               onClick={() => retryImages.current()}
             >
-              重新加载图片
+              {t("重新加载图片")}
             </Button>
           </AlertDescription>
         </Alert>

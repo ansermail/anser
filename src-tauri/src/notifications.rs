@@ -1,3 +1,4 @@
+use crate::interface_language::text;
 use crate::{archive, models::*, store::Store};
 use std::{
     collections::HashSet,
@@ -74,6 +75,9 @@ pub fn show(app: &tauri::AppHandle, title: &str, body: &str) -> Result<()> {
         .map_err(err)
 }
 pub fn received(store: &Store, app: &tauri::AppHandle, account: &Account, after: i64) {
+    let language = store
+        .interface_language()
+        .unwrap_or_else(|_| "zh-CN".into());
     #[cfg(target_os = "macos")]
     let _ = app;
     let preferences = store.preferences().unwrap_or_default();
@@ -86,10 +90,11 @@ pub fn received(store: &Store, app: &tauri::AppHandle, account: &Account, after:
         for mail in mails {
             let body = format!("{}\n{}", mail.sender, mail.subject);
             #[cfg(target_os = "macos")]
-            let result = crate::notification_open::bind(store, &mail)
-                .and_then(|token| crate::notification_open::show("雁信 · 新邮件", &body, &token));
+            let result = crate::notification_open::bind(store, &mail).and_then(|token| {
+                crate::notification_open::show(text(&language, "雁信 · 新邮件"), &body, &token)
+            });
             #[cfg(not(target_os = "macos"))]
-            let result = show(app, "雁信 · 新邮件", &body);
+            let result = show(app, text(&language, "雁信 · 新邮件"), &body);
             if let Err(error) = result {
                 let _ = store.log(&format!("系统通知失败：{error}"));
             }
@@ -133,6 +138,9 @@ mod receiving_tests {
     }
 }
 pub fn receipt(store: &Store, draft: &Compose, result: &Result<String>) -> SendReceipt {
+    let language = store
+        .interface_language()
+        .unwrap_or_else(|_| "zh-CN".into());
     use rusqlite::OptionalExtension;
     let status = store
         .db()
@@ -154,18 +162,23 @@ pub fn receipt(store: &Store, draft: &Compose, result: &Result<String>) -> SendR
     };
     let message = match status {
         "sent" => format!(
-            "发送服务器已接受这封邮件。{}",
+            "{}{}",
+            text(&language, "发送服务器已接受这封邮件。"),
             result.as_ref().cloned().unwrap_or_else(|e| e.clone())
         ),
         "uncertain" => format!(
-            "未取得服务器确认，可能已经发送；请先核对发送记录，避免重复发送。{}",
+            "{}{}",
+            text(
+                &language,
+                "未取得服务器确认，可能已经发送；请先核对发送记录，避免重复发送。"
+            ),
             result.as_ref().err().cloned().unwrap_or_default()
         ),
         _ => result
             .as_ref()
             .err()
             .cloned()
-            .unwrap_or_else(|| "发送失败，草稿已保留".into()),
+            .unwrap_or_else(|| text(&language, "发送失败，草稿已保留").into()),
     };
     SendReceipt {
         id: draft.id.clone(),
@@ -196,9 +209,12 @@ pub fn sent(
     }
     let preferences = store.preferences().unwrap_or_default();
     if preferences.send_result_notifications && !preferences.do_not_disturb {
+        let language = store
+            .interface_language()
+            .unwrap_or_else(|_| "zh-CN".into());
         if let Err(error) = show(
             app,
-            &format!("雁信 · {label}"),
+            &format!("{} · {}", text(&language, "雁信"), text(&language, label)),
             &format!("{}\n{}", receipt.subject, receipt.message),
         ) {
             let _ = store.log(&format!("系统通知失败：{error}"));

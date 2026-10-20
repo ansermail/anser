@@ -1,3 +1,4 @@
+import { t } from "@/lib/i18n";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -30,7 +31,9 @@ import { call } from "@/lib/api";
 import type { NetworkProxy, Preferences } from "@/lib/types";
 
 const emptyProxy: NetworkProxy = {
-  name: "本地代理",
+  get name() {
+    return t("本地代理");
+  },
   kind: "socks5",
   host: "127.0.0.1",
   port: 7890,
@@ -68,7 +71,9 @@ export function NetworkProxySettings() {
       setProxy(next);
       setOpen(false);
       setPassword("");
-      toast.success(next ? "网络代理已保存，新连接立即使用" : "网络代理已关闭");
+      toast.success(
+        next ? t("网络代理已保存，新连接立即使用") : t("网络代理已关闭"),
+      );
     } catch (error) {
       toast.error(String(error));
     } finally {
@@ -80,14 +85,15 @@ export function NetworkProxySettings() {
     <>
       <Card>
         <CardHeader>
-          <CardTitle>网络代理</CardTitle>
+          <CardTitle>{t("网络代理")}</CardTitle>
           <CardDescription>
-            所有邮箱的收信、发信、邮件正文资源、模型翻译及 OAuth
-            令牌请求使用同一代理。是否转发目标地址由代理软件决定。
+            {t(
+              "所有邮箱的收信、发信、邮件正文资源、模型翻译及 OAuth 令牌请求使用同一代理。是否转发目标地址由代理软件决定。",
+            )}
           </CardDescription>
           <CardAction>
             <Switch
-              aria-label="启用网络代理"
+              aria-label={t("启用网络代理")}
               checked={!!proxy}
               disabled={!ready || busy}
               onCheckedChange={(enabled) => {
@@ -116,7 +122,7 @@ export function NetworkProxySettings() {
                 setOpen(true);
               }}
             >
-              编辑代理
+              {t("编辑代理")}
             </Button>
           </CardContent>
         )}
@@ -129,9 +135,9 @@ export function NetworkProxySettings() {
       >
         <DialogContent className="sm:max-w-lg">
           <DialogHeader>
-            <DialogTitle>编辑代理</DialogTitle>
+            <DialogTitle>{t("编辑代理")}</DialogTitle>
             <DialogDescription>
-              填写代理软件提供的本地地址和端口。
+              {t("填写代理软件提供的本地地址和端口。")}
             </DialogDescription>
           </DialogHeader>
           <form
@@ -143,7 +149,7 @@ export function NetworkProxySettings() {
                 draft.port < 1 ||
                 draft.port > 65535
               ) {
-                toast.error("请填写有效的名称、服务器地址和端口");
+                toast.error(t("请填写有效的名称、服务器地址和端口"));
                 return;
               }
               void save(draft, password);
@@ -151,7 +157,7 @@ export function NetworkProxySettings() {
           >
             <FieldGroup className="gap-4">
               <Field>
-                <FieldLabel htmlFor="proxy-name">名称</FieldLabel>
+                <FieldLabel htmlFor="proxy-name">{t("名称")}</FieldLabel>
                 <Input
                   id="proxy-name"
                   value={draft.name}
@@ -162,7 +168,7 @@ export function NetworkProxySettings() {
                 />
               </Field>
               <Field>
-                <FieldLabel>类型</FieldLabel>
+                <FieldLabel>{t("类型")}</FieldLabel>
                 <ToggleGroup
                   type="single"
                   variant="outline"
@@ -174,7 +180,7 @@ export function NetworkProxySettings() {
                         kind: kind as NetworkProxy["kind"],
                       });
                   }}
-                  aria-label="代理类型"
+                  aria-label={t("代理类型")}
                 >
                   <ToggleGroupItem value="socks5">SOCKS5</ToggleGroupItem>
                   <ToggleGroupItem value="http">HTTP</ToggleGroupItem>
@@ -182,7 +188,7 @@ export function NetworkProxySettings() {
                 </ToggleGroup>
               </Field>
               <Field>
-                <FieldLabel htmlFor="proxy-host">服务器地址</FieldLabel>
+                <FieldLabel htmlFor="proxy-host">{t("服务器地址")}</FieldLabel>
                 <Input
                   id="proxy-host"
                   value={draft.host}
@@ -193,7 +199,7 @@ export function NetworkProxySettings() {
                 />
               </Field>
               <Field>
-                <FieldLabel htmlFor="proxy-port">端口</FieldLabel>
+                <FieldLabel htmlFor="proxy-port">{t("端口")}</FieldLabel>
                 <Input
                   id="proxy-port"
                   type="number"
@@ -207,7 +213,9 @@ export function NetworkProxySettings() {
                 />
               </Field>
               <Field>
-                <FieldLabel htmlFor="proxy-username">用户名（可选）</FieldLabel>
+                <FieldLabel htmlFor="proxy-username">
+                  {t("用户名（可选）")}
+                </FieldLabel>
                 <Input
                   id="proxy-username"
                   autoComplete="off"
@@ -218,16 +226,20 @@ export function NetworkProxySettings() {
                 />
               </Field>
               <Field>
-                <FieldLabel htmlFor="proxy-password">密码（可选）</FieldLabel>
+                <FieldLabel htmlFor="proxy-password">
+                  {t("密码（可选）")}
+                </FieldLabel>
                 <Input
                   id="proxy-password"
                   type="password"
                   autoComplete="new-password"
                   value={password}
                   onChange={(event) => setPassword(event.target.value)}
-                  placeholder={proxy ? "留空保持原密码" : ""}
+                  placeholder={proxy ? t("留空保持原密码") : ""}
                 />
-                <FieldDescription>密码仅保存在本机钥匙串中。</FieldDescription>
+                <FieldDescription>
+                  {t("密码仅保存在本机钥匙串中。")}
+                </FieldDescription>
               </Field>
               <Field orientation="horizontal">
                 <Switch
@@ -238,11 +250,13 @@ export function NetworkProxySettings() {
                   }
                 />
                 <FieldLabel htmlFor="proxy-fallback">
-                  代理连接失败时直连
+                  {t("代理连接失败时直连")}
                 </FieldLabel>
               </Field>
               <FieldDescription>
-                仅在连接代理或建立隧道失败前回退；邮件发送结果不明时不会自动重发。
+                {t(
+                  "仅在连接代理或建立隧道失败前回退；邮件发送结果不明时不会自动重发。",
+                )}
               </FieldDescription>
             </FieldGroup>
             <DialogFooter className="mt-6">
@@ -252,10 +266,10 @@ export function NetworkProxySettings() {
                 onClick={() => setOpen(false)}
                 disabled={busy}
               >
-                取消
+                {t("取消")}
               </Button>
               <Button type="submit" disabled={busy}>
-                {busy ? "保存中…" : "保存"}
+                {busy ? t("保存中…") : t("保存")}
               </Button>
             </DialogFooter>
           </form>

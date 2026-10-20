@@ -1,3 +1,4 @@
+import { dateLocale, t } from "./i18n";
 import type { Account, RemoteFolder } from "./types";
 
 const gmailContainer = (name: string) =>
@@ -139,7 +140,8 @@ export function remoteFolderTree(folders: RemoteFolder[]): FolderNode[] {
       return index < 0 ? 9 : index;
     };
     nodes.sort(
-      (a, b) => rank(a) - rank(b) || a.label.localeCompare(b.label, "zh-CN"),
+      (a, b) =>
+        rank(a) - rank(b) || a.label.localeCompare(b.label, dateLocale()),
     );
     nodes.forEach((n) => sort(n.children));
   };
@@ -148,7 +150,29 @@ export function remoteFolderTree(folders: RemoteFolder[]): FolderNode[] {
 }
 
 export function remoteFolderLabel(folder: RemoteFolder) {
-  return folder.delimiter
+  const label = folder.delimiter
     ? folder.displayName.split(folder.delimiter).at(-1) || folder.displayName
     : folder.displayName;
+  return localizedFolderLabel(folder, label);
+}
+
+export function localizedFolderLabel(
+  folder: RemoteFolder | undefined,
+  label: string,
+) {
+  const labels: Record<string, string> = {
+    inbox: "收件箱",
+    sent: "已发送",
+    drafts: "草稿箱",
+    trash: "废纸篓",
+    junk: "垃圾邮件",
+    archive: "归档",
+    all: "所有邮件",
+    flagged: "星标邮件",
+    important: "重要邮件",
+  };
+  const role =
+    folder?.roles?.[0] ||
+    (folder?.name.toUpperCase() === "INBOX" ? "inbox" : "");
+  return role && labels[role] ? t(labels[role]) : label;
 }

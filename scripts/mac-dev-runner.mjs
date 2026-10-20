@@ -43,7 +43,7 @@ await writeFile(
 <key>CFBundlePackageType</key><string>APPL</string>
 <key>CFBundleIconFile</key><string>icon.icns</string>
 <key>CFBundleDevelopmentRegion</key><string>zh-Hans</string>
-<key>CFBundleLocalizations</key><array><string>zh-Hans</string></array>
+<key>CFBundleLocalizations</key><array><string>zh-Hans</string><string>en</string></array>
 <key>NSHighResolutionCapable</key><true/>
 ${documentTypes(config.bundle.fileAssociations)}
 </dict></plist>`,
