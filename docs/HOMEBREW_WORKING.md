@@ -1,6 +1,8 @@
 # Homebrew 同仓库维护工作点（2026-10-17）
 
-## 当前状态：已部署，0.1.21 自动同步验证通过（2026-10-18）
+## 当前状态：0.1.23 自动同步验证通过（2026-10-20）
+
+- [Homebrew 运行 39363711322](https://github.com/ansermail/anser/actions/runs/39363711322) 成功，主仓库 [配方提交 43b96d6](https://github.com/ansermail/anser/commit/43b96d67dd1578401e9065674fec116b23c6e93d) 仅更新 Casks/anser.rb；重复核验 [39363835908](https://github.com/ansermail/anser/actions/runs/39363835908) 成功并返回 `Cask is already current; no commit needed.`。配方与两架构公开 DMG 摘要一致，本机 brew style/audit/Apple Silicon fetch 通过；未覆盖安装本机应用。
 
 - 0.1.21 于 2026-10-18 11:14:23（Asia/Shanghai）发布后，`release.published` 自动触发 [Homebrew 流水线 39092910712](https://github.com/ansermail/anser/actions/runs/39092910712)，脚本回归、两架构 DMG 下载/摘要、style/audit/fetch 与提交前复核全部成功，主仓库提交 [1c85297](https://github.com/ansermail/anser/commit/1c852970a9c1686a72b0daca8caf1fb30f4c5f6a) 仅更新 `Casks/anser.rb`。
 - 手动复核 [39092992802](https://github.com/ansermail/anser/actions/runs/39092992802) 成功并返回 `Cask is already current; no commit needed.`；本机更新 Tap 后对 0.1.21 执行 `brew style`、`brew audit`、Apple Silicon `brew fetch` 再次通过，未安装或覆盖应用。
@@ -13,8 +15,8 @@
 ## 目标与入口
 
 - 用户要求配方在主仓库维护，更新流水线，避免单独维护 `ansermail/homebrew-tap`。
-- 起点为 `main / b2e89e1`，工作区干净，origin 为 `git@github.com:ansermail/anser.git`。当前正式版本为 0.1.21；配方自动化不自行提升桌面版本或改写已发布资源。
-- `Casks/anser.rb` 引用已公开核验的 0.1.21 两架构 DMG；旧 Tap 历史保留，安装名称继续为 `ansermail/tap/anser`。
+- 起点为 `main / b2e89e1`，工作区干净，origin 为 `git@github.com:ansermail/anser.git`。当前正式版本为 0.1.23；配方自动化不自行提升桌面版本或改写已发布资源。
+- `Casks/anser.rb` 引用已公开核验的 0.1.23 两架构 DMG；旧 Tap 历史保留，安装名称继续为 `ansermail/tap/anser`。
 
 ## 已实现
 

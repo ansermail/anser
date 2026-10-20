@@ -43,12 +43,18 @@ brew update-reset "$(brew --repository ansermail/tap)"
 对已经发布但尚未同步的版本，可以手动运行（不重建桌面包）：
 
 ```sh
-gh workflow run homebrew.yml --repo ansermail/anser --ref main -f tag=v0.1.21
+gh workflow run homebrew.yml --repo ansermail/anser --ref main -f tag=v0.1.23
 ```
 
 省略 `tag` 则选择当前 latest。通过 `GITHUB_TOKEN` 发布 Release 不会再触发 `release.published`，此时应显式 dispatch；本地 `gh release edit` 或人工发布可触发事件。发布自动化若改变，须保留这条衔接。
 
 本地只生成和核对配方：`node scripts/homebrew.mjs generate`，不会写远端。测试入口为 `npm run test:desktop`。实际安装、原位升级与 Intel 实机运行仍单独验收，不能用配方和下载校验代替。
+
+## 0.1.23 主仓库配方同步（2026-10-20）
+
+[Homebrew 运行 39363711322](https://github.com/ansermail/anser/actions/runs/39363711322) 成功，主仓库 [配方提交 43b96d6](https://github.com/ansermail/anser/commit/43b96d67dd1578401e9065674fec116b23c6e93d) 仅更新 Casks/anser.rb；重复核验 [39363835908](https://github.com/ansermail/anser/actions/runs/39363835908) 成功并返回 `Cask is already current; no commit needed.`。配方与两架构公开 DMG 摘要一致，本机 brew style/audit/Apple Silicon fetch 通过；未覆盖安装本机应用。
+
+两架构 DMG 字节数与 SHA-256 见 [发布工作点](RELEASE_0_1_23_WORKING.md)。
 
 ## 迁移前发布记录
 

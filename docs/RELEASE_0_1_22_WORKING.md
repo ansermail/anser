@@ -26,3 +26,5 @@
 ## 2026-10-20 发布源码核对修正
 
 首个提交 `0828545f5bb9d54c95f5a7bcbc4a023a6f0716eb` 已推送 main 与 v0.1.22，但提交时漏暂存 `src-tauri/tauri.conf.json`，标签内 Tauri 仍为 0.1.21。工作树验证不能替代暂存/标签验证；此版本不发布，不移动既有标签。改用 0.1.23，后续从 [新发布工作点](RELEASE_0_1_23_WORKING.md) 接续。
+
+[0.1.22 Release macOS 39362340564](https://github.com/ansermail/anser/actions/runs/39362340564) 已在版本验证阶段失败（npm/Tauri 版本不一致），未进入双架构构建或创建发布草稿。修正使用新版本流水线，不重跑错误标签。

@@ -1,10 +1,16 @@
 # 发布与应用内更新
 
-## 0.1.23 发布准备（2026-10-20）
+## 当前正式版本：0.1.23（2026-10-20）
 
-中英文界面、JSON 文案配置与独立语言偏好、日历/日期及语言选择器单行布局已完成本地实现。用户已授权提交、双架构桌面构建与发版，0.1.22 首次提交遗漏 Tauri 版本配置，保留标签并改用五处一致的 0.1.23；完整门槛及后续资源审计/公开/Homebrew 证据从 [发布工作点](RELEASE_0_1_23_WORKING.md) 接续。当前公开版本仍为 0.1.21。
+0.1.23 Alpha 于 2026-10-20 11:19:48（Asia/Shanghai）正式发布为 latest，固定源码 `6fb7d55c3cfb2167a860efbf5cc65de4e41ea1ef`。[Release macOS 39362486985](https://github.com/ansermail/anser/actions/runs/39362486985)、[Checks 39362479797](https://github.com/ansermail/anser/actions/runs/39362479797) 与 [Pages 39362479801](https://github.com/ansermail/anser/actions/runs/39362479801) 均成功，[0.1.23 正式版本](https://github.com/ansermail/anser/releases/tag/v0.1.23) 已公开。
 
-## 当前正式版本：0.1.21（2026-10-18）
+支持简体中文/English 切换，1196 条界面文案与语言选项由 JSON 配置维护；语言独立持久化，切换保留未保存输入，日期/日历和菜单/通知固定提示同步。语言标签和 160px 下拉框同行显示。邮件原文、账号/自建目录名称、历史诊断和发布说明保持原文。
+
+双架构七资源、更新签名/固定代码签名身份、App/DMG、语言声明/EML/许可与原生 OAuth 编译配置、匿名公开资源及标准 latest 更新端点均已核验。[Homebrew 运行 39363711322](https://github.com/ansermail/anser/actions/runs/39363711322) 成功，主仓库 [配方提交 43b96d6](https://github.com/ansermail/anser/commit/43b96d67dd1578401e9065674fec116b23c6e93d) 仅更新 Casks/anser.rb；重复核验 [39363835908](https://github.com/ansermail/anser/actions/runs/39363835908) 成功并返回 `Cask is already current; no commit needed.`。配方与两架构公开 DMG 摘要一致，本机 brew style/audit/Apple Silicon fetch 通过；未覆盖安装本机应用。
+
+原生托盘实际点击、系统通知横幅、系统文件/打印面板、正式包安装与应用内原位升级、Intel 实机未验证。自签名和更新归档签名不等同于 Apple Developer ID、公证或 Gatekeeper 认可。 详细验证与源码记录见 [发布工作点](RELEASE_0_1_23_WORKING.md)，完整版本说明见 [0.1.23](releases/v0.1.23.md)。
+
+## 前一正式版本：0.1.21（2026-10-18）
 
 0.1.21 Alpha 于 2026-10-18 11:14:23（Asia/Shanghai）正式发布为 latest，固定源码 `1229985020909b8eccbd4d5343c4cbd0a2913a8b`。[Release macOS 39090575840](https://github.com/ansermail/anser/actions/runs/39090575840)、[Checks 39090571461](https://github.com/ansermail/anser/actions/runs/39090571461) 与 [Preview Pages 39090571453](https://github.com/ansermail/anser/actions/runs/39090571453) 全部成功，[0.1.21 正式版本](https://github.com/ansermail/anser/releases/tag/v0.1.21) 已公开。本版将设置整理为五类导航并适配窗口宽度，分类切换保留未保存输入；后台任务支持点击标题或说明展开，手动刷新提供旋转、忙碌文字、防重复点击和失败恢复。
 
