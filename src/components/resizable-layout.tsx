@@ -98,7 +98,7 @@ export function NavigationLayout({
       </ResizablePanel>
       <ResizableHandle
         withHandle
-        aria-label={t("调整左侧菜单宽度")}
+        aria-label={t("Resize navigation pane")}
         className={`navigation-handle ${hidden ? "handle-hidden" : ""}`}
         disabled={hidden}
       />
@@ -169,7 +169,7 @@ export function MailLayout({
       </ResizablePanel>
       <ResizableHandle
         withHandle
-        aria-label={t("调整邮件列表与正文宽度")}
+        aria-label={t("Resize message list and reading pane")}
         className={`mail-pane-handle ${expanded ? "handle-hidden" : ""}`}
         disabled={expanded}
       />

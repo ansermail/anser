@@ -22,76 +22,87 @@ export function RetentionBudgetView({
   return (
     <section
       className="flex flex-col gap-3"
-      aria-label={t("服务器数量与空间预算")}
+      aria-label={t("Server count & space estimate")}
     >
       <Separator />
-      <p className="text-sm font-medium">{t("所选保存范围的服务器检查")}</p>
+      <p className="text-sm font-medium">
+        {t("Server review for the selected retention scope")}
+      </p>
       <dl className="grid grid-cols-2 gap-3 text-sm">
         <div>
-          <dt className="text-muted-foreground">{t("服务器邮件位置")}</dt>
+          <dt className="text-muted-foreground">
+            {t("Server message locations")}
+          </dt>
           <dd>
             {budget.complete
-              ? t("{value0} 项", { value0: total })
-              : t("检查未完成")}
+              ? t("{value0} items", { value0: total })
+              : t("Check incomplete")}
           </dd>
         </div>
         <div>
-          <dt className="text-muted-foreground">{t("尚未缓存的位置")}</dt>
+          <dt className="text-muted-foreground">{t("Locations not cached")}</dt>
           <dd>
             {budget.complete
-              ? t("{value0} 项", { value0: uncached })
-              : t("未知")}
+              ? t("{value0} items", { value0: uncached })
+              : t("Unknown")}
           </dd>
         </div>
         <div>
-          <dt className="text-muted-foreground">{t("预计仍需保存")}</dt>
+          <dt className="text-muted-foreground">
+            {t("Estimated remaining to save")}
+          </dt>
           <dd>
             {budget.complete
-              ? t("{value0} 项", { value0: pending })
-              : t("未知")}
+              ? t("{value0} items", { value0: pending })
+              : t("Unknown")}
           </dd>
         </div>
         <div>
-          <dt className="text-muted-foreground">{t("存档磁盘可用空间")}</dt>
+          <dt className="text-muted-foreground">
+            {t("Available space on archive disk")}
+          </dt>
           <dd>
             {budget.availableBytes === null
-              ? t("无法读取")
+              ? t("Could not read")
               : budgetSize(budget.availableBytes)}
           </dd>
         </div>
       </dl>
       <p className="text-sm text-muted-foreground">
-        {t("预计需预留：")}
+        {t("Estimated space needed: ")}
         {budget.requiredBytes === null
-          ? t("无法完整估算")
+          ? t("Cannot estimate completely")
           : budgetSize(budget.requiredBytes)}
         {t(
-          "。 以服务器原件大小及本机保存记录估算，另加 10% 与 128 MB 余量；多个目录的同一邮件可能重复计入。",
+          ". Estimates use original sizes and local saving records, plus 10% and 128 MB headroom. Messages in multiple folders may be counted more than once.",
         )}
       </p>
       {budget.dataDir !== currentPath && (
         <p className="break-all text-sm text-muted-foreground">
-          {t("预算磁盘位置：")}
+          {t("Estimated disk location: ")}
           {budget.dataDir}
-          {t("。保存位置已变化，请刷新本地状态。")}
+          {t(". The save location changed. Refresh local status.")}
         </p>
       )}
       <p className="text-sm text-muted-foreground">
-        {t("检查时间：")}
+        {t("Checked: ")}
         {new Date(budget.checkedAt).toLocaleString(dateLocale())}
-        {t("。仅核对数量和大小，不下载邮件；保存范围变更后需重新检查。")}
+        {t(
+          ". Counts and sizes only; no messages are downloaded. Recheck after changing the retention scope.",
+        )}
       </p>
       {budget.folders.map((f) => (
         <p key={f.folder} className="text-sm break-words">
           {f.displayName}：
           {f.error
-            ? t("未完成 · {value0}", { value0: f.error })
-            : t("{value0} 项，预计待保存 {value1} 项 · {value2}", {
+            ? t("Incomplete · {value0}", { value0: f.error })
+            : t("{value0} items; estimated {value1} remaining · {value2}", {
                 value0: f.total,
                 value1: f.pending,
                 value2: budgetSize(f.pendingBytes ?? 0),
               })}
-          {f.conservative && t("（服务器未提供稳定编号，按全部原件估算）")}
+          {f.conservative &&
+            t("(No stable server IDs; estimate includes all originals)")}
         </p>
       ))}
       {(budget.diskError || budget.lowSpace || !budget.complete) && (
@@ -100,10 +111,10 @@ export function RetentionBudgetView({
             {budget.diskError ||
               (budget.lowSpace
                 ? t(
-                    "存档磁盘可用空间不足以覆盖当前预算，请调整保存范围或存档位置。",
+                    "The archive disk cannot cover this estimate. Adjust the retention scope or archive location.",
                   )
                 : t(
-                    "部分目录未完成检查，剩余邮件和所需空间仍未知，请处理异常后重新检查。",
+                    "Some folders could not be checked. Remaining mail and space are unknown. Resolve the problems and check again.",
                   ))}
           </AlertDescription>
         </Alert>

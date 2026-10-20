@@ -197,27 +197,27 @@ import { invoke } from "@tauri-apps/api/core";
 restoreDemo();
 const viewNames: Record<string, string> = {
   get all() {
-    return t("全部邮件");
+    return t("All mail");
   },
   get unread() {
-    return t("未读邮件");
+    return t("Unread mail");
   },
   get starred() {
-    return t("星标邮件");
+    return t("Starred mail");
   },
   get sent() {
-    return t("已发送");
+    return t("Sent");
   },
   get trash() {
-    return t("本地废纸篓");
+    return t("Local trash");
   },
   get local() {
-    return t("本地存档");
+    return t("Local archive");
   },
 };
 function time(s: string) {
   const d = new Date(s);
-  if (Number.isNaN(d.getTime())) return t("时间未知");
+  if (Number.isNaN(d.getTime())) return t("Unknown date");
   if (dateLocale() === "en-US") return d.toLocaleString(dateLocale());
   const pad = (n: number) => String(n).padStart(2, "0");
   return `${d.getFullYear()}/${pad(d.getMonth() + 1)}/${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
@@ -411,7 +411,9 @@ export default function App() {
       .catch((error) => {
         if (live && ticket === notificationGeneration.current)
           toast.error(
-            t("无法打开通知邮件：{value0}", { value0: String(error) }),
+            t("Could not open notification message: {value0}", {
+              value0: String(error),
+            }),
           );
       })
       .finally(() => {
@@ -617,7 +619,7 @@ export default function App() {
         subject: string;
         message: string;
       }>("send-result", ({ payload }) => {
-        const message = `${payload.subject || t("（无主题）")}：${payload.message}`;
+        const message = `${payload.subject || t("(No subject)")}：${payload.message}`;
         if (payload.status === "sent") toast.success(message);
         else if (payload.status === "uncertain")
           toast.warning(message, { duration: 10000 });
@@ -627,7 +629,9 @@ export default function App() {
         void openMailLinkRef
           .current(payload)
           .catch((error) =>
-            toast.error(t("无法打开链接：{value0}", { value0: String(error) })),
+            toast.error(
+              t("Could not open link: {value0}", { value0: String(error) }),
+            ),
           );
       });
       if (!active) {
@@ -705,7 +709,11 @@ export default function App() {
         (a) => a.id === source.mail.accountId && a.enabled,
       );
       if (!account) {
-        toast.error(t("原发件账号已停用或移除，请先启用账号"));
+        toast.error(
+          t(
+            "The original sending account is disabled or removed. Enable it first.",
+          ),
+        );
         return;
       }
       const draft = newDraft(account.id);
@@ -727,7 +735,11 @@ export default function App() {
       }
       if (native && !isDemo() && source.attachments.length) {
         if (!source.originalHash) {
-          toast.error(t("原邮件快照缺失，请重新打开邮件后再试"));
+          toast.error(
+            t(
+              "The original message snapshot is missing. Open the message again.",
+            ),
+          );
           return;
         }
         draft.forwardSource = { id: source.mail.id, hash: source.originalHash };
@@ -904,9 +916,9 @@ export default function App() {
       for (const id of ids) await updateMail(id, action, value);
       await refresh();
       setChecked([]);
-      toast.success(t("已更新邮件"), {
+      toast.success(t("Message updated"), {
         action: {
-          label: t("撤销"),
+          label: t("Undo"),
           onClick: () => {
             void (async () => {
               try {
@@ -1115,10 +1127,13 @@ export default function App() {
       dataRef.current = merged;
       dataScope.current = queryScope(currentQuery);
       setData(merged);
-      if (reset) toast.info(t("邮件列表已更新，已重新加载最新结果"));
+      if (reset)
+        toast.info(t("The message list changed. Latest results reloaded."));
     } catch (e) {
       if (ticket === pageTicket.current && currentQuery === queryRef.current)
-        toast.error(t("加载更多邮件失败：{value0}", { value0: String(e) }));
+        toast.error(
+          t("Could not load more messages: {value0}", { value0: String(e) }),
+        );
     } finally {
       if (ticket === pageTicket.current) {
         pagePending.current = false;
@@ -1184,7 +1199,11 @@ export default function App() {
       ) {
         if (neighborRequests.current?.id === reading)
           neighborRequests.current[direction] = undefined;
-        toast.error(t("加载相邻邮件失败：{value0}", { value0: String(e) }));
+        toast.error(
+          t("Could not load neighboring messages: {value0}", {
+            value0: String(e),
+          }),
+        );
       }
     } finally {
       if (ticket === navigationRequest.current) {
@@ -1234,7 +1253,7 @@ export default function App() {
   async function sync() {
     if (syncing) return;
     if (demo) {
-      toast.info(t("演示模式不连接真实邮箱"));
+      toast.info(t("Demo mode does not connect to real mailboxes"));
       return;
     }
     setSyncing(true);
@@ -1267,7 +1286,7 @@ export default function App() {
       } else {
         n = await call<number>("sync_mail");
       }
-      toast.success(t("收取完成，新增 {value0} 封邮件", { value0: n }));
+      toast.success(t("Mail checked. {value0} new messages.", { value0: n }));
     } catch (e) {
       toast.error(String(e), { duration: 8000 });
     } finally {
@@ -1319,12 +1338,12 @@ export default function App() {
     try {
       if (
         !(await askConfirmation({
-          title: t("清空草稿箱？"),
+          title: t("Clear drafts?"),
           description: t(
-            "将删除这 {value0} 份本地草稿，删除后无法恢复。正在编辑的草稿请先关闭。",
+            "Delete these {value0} local drafts permanently. Close any drafts being edited first.",
             { value0: expected.length },
           ),
-          action: t("清空草稿"),
+          action: t("Clear drafts"),
           destructive: true,
         }))
       )
@@ -1338,9 +1357,13 @@ export default function App() {
       const ids = new Set(expected.map((draft) => draft.id));
       setDrafts((current) => current.filter((draft) => !ids.has(draft.id)));
       await reloadDrafts();
-      toast.success(t("已清空 {value0} 份草稿", { value0: result.deleted }));
+      toast.success(t("Deleted {value0} drafts", { value0: result.deleted }));
       if (result.cleanupPending)
-        toast.warning(t("草稿已清空，部分临时附件待后续清理"));
+        toast.warning(
+          t(
+            "Drafts cleared; some temporary attachments will be cleaned up later",
+          ),
+        );
     } catch (e) {
       toast.error(String(e));
       await reloadDrafts();
@@ -1360,7 +1383,7 @@ export default function App() {
       }>("queue_archives", { ids, conversations });
       toast.success(
         t(
-          "已安排 {value0} 封补存，{value1} 封已有完整存档，{value2} 封需处理",
+          "Queued {value0} messages for saving; {value1} already archived; {value2} need attention",
           {
             value0: result.queued,
             value1: result.alreadySaved,
@@ -1369,7 +1392,7 @@ export default function App() {
         ),
         {
           action: {
-            label: t("查看任务"),
+            label: t("View tasks"),
             onClick: () => {
               setSettingsSection("tasks");
               setPage("settings");
@@ -1385,25 +1408,25 @@ export default function App() {
   }
   async function exportMail(m: Mail) {
     if (!native || demo) {
-      toast.info(t("真实邮件可在桌面客户端中导出为 EML"));
+      toast.info(t("Export real messages as EML in the desktop app"));
       return;
     }
     const { save } = await import("@tauri-apps/plugin-dialog");
     const path = await save({
       defaultPath: `${m.subject.replace(/[\\/:*?"<>|]/g, "-").slice(0, 80)}.eml`,
-      filters: [{ name: t("原始邮件"), extensions: ["eml"] }],
+      filters: [{ name: t("Original message"), extensions: ["eml"] }],
     });
     if (path)
       try {
         await call("export_mail", { id: m.id, path });
-        toast.success(t("完整邮件已导出"));
+        toast.success(t("Full message exported"));
       } catch (e) {
         toast.error(String(e));
       }
   }
   async function attachment(index: number, name: string, mail = detail?.mail) {
     if (!mail || !native || demo) {
-      toast.info(t("请在桌面客户端中下载真实附件"));
+      toast.info(t("Download real attachments in the desktop app"));
       return;
     }
     const { save } = await import("@tauri-apps/plugin-dialog");
@@ -1411,21 +1434,23 @@ export default function App() {
     if (path)
       try {
         await call("save_attachment", { id: mail.id, index, path });
-        toast.success(t("附件已保存"));
+        toast.success(t("Attachment saved"));
       } catch (e) {
         toast.error(String(e));
       }
   }
   async function backup(restore = false) {
     if (!native || demo) {
-      toast.info(t("请在桌面客户端中备份真实存档"));
+      toast.info(t("Back up real archives in the desktop app"));
       return;
     }
     const { open } = await import("@tauri-apps/plugin-dialog");
     const path = await open({
       directory: true,
       multiple: false,
-      title: restore ? t("选择雁信备份文件夹") : t("选择备份保存位置"),
+      title: restore
+        ? t("Select an Anser backup folder")
+        : t("Choose a backup destination"),
     });
     if (path)
       try {
@@ -1435,8 +1460,8 @@ export default function App() {
         );
         toast.success(
           restore
-            ? t("已恢复 {value0} 封邮件", { value0: result })
-            : t("备份已保存至 {value0}", { value0: result }),
+            ? t("Restored {value0} messages", { value0: result })
+            : t("Backup saved to {value0}", { value0: result }),
           { duration: 7000 },
         );
         void refresh();
@@ -1519,8 +1544,8 @@ export default function App() {
       await refresh();
       toast.success(
         changed
-          ? t("已将 {value0} 封邮件标记为已读", { value0: changed })
-          : t("没有未读邮件"),
+          ? t("Marked {value0} messages as read", { value0: changed })
+          : t("No unread messages"),
       );
     } catch (error) {
       toast.error(String(error));
@@ -1537,7 +1562,7 @@ export default function App() {
         })()
       : query.folder ||
         (query.view === "starred" && query.accountId
-          ? t("星标邮件")
+          ? t("Starred mail")
           : activeAccount?.name) ||
         viewNames[query.view];
   const nav = (view: string, Icon: typeof Inbox, count?: number) => (
@@ -1569,28 +1594,28 @@ export default function App() {
         <EmlViewer />
         <UpdateIndicator updates={updates} />
         {publicPreview && (
-          <Badge variant="secondary">{t("页面预览 · 虚构数据")}</Badge>
+          <Badge variant="secondary">{t("Web preview · Fictional data")}</Badge>
         )}
         {demo && !publicPreview && (
           <Button variant="ghost" className="demo-badge" onClick={demoMode}>
-            {t("演示模式 · 退出")}
+            {t("Demo mode · Exit")}
           </Button>
         )}
         <span className="connection">
           <i className={syncing || syncText ? "pulse" : ""} />
           {syncText ||
             (demo
-              ? t("示例数据")
+              ? t("Sample data")
               : syncing
-                ? t("正在收取")
+                ? t("Checking mail")
                 : data.accounts.length
-                  ? t("本地优先")
-                  : t("尚未连接邮箱"))}
+                  ? t("Local first")
+                  : t("No mailbox connected"))}
         </span>
         <Button
           variant="ghost"
           size="icon-sm"
-          title={dark ? t("浅色模式") : t("深色模式")}
+          title={dark ? t("Light mode") : t("Dark mode")}
           onClick={() => setDark(!dark)}
         >
           {dark ? <Sun size={16} /> : <Moon size={16} />}
@@ -1605,12 +1630,12 @@ export default function App() {
               <div className="brand">
                 <img
                   src={`${import.meta.env.BASE_URL}app-icon.png`}
-                  alt={t("雁信应用图标")}
+                  alt={t("Anser app icon")}
                 />
                 <div>
                   <strong>
-                    {t("雁信")}
-                    <span>{t("邮件，自在有序")}</span>
+                    {t("Anser")}
+                    <span>{t("Mail, thoughtfully organized")}</span>
                   </strong>
                 </div>
                 <Badge variant="outline" className="brand-version">
@@ -1623,7 +1648,7 @@ export default function App() {
                 onClick={() => compose()}
               >
                 <SquarePen size={17} />
-                {t("写邮件")}
+                {t("Compose")}
                 <kbd>⌘ N</kbd>
               </Button>
             </SidebarHeader>
@@ -1638,7 +1663,7 @@ export default function App() {
                   onClick={() => void showDrafts()}
                 >
                   <FileText size={17} />
-                  <span>{t("草稿箱")}</span>
+                  <span>{t("Drafts")}</span>
                 </Button>
                 <Button
                   variant="ghost"
@@ -1646,14 +1671,14 @@ export default function App() {
                   onClick={() => setPage("outbox")}
                 >
                   <History size={17} />
-                  <span>{t("发送记录")}</span>
+                  <span>{t("Send history")}</span>
                 </Button>
               </nav>
               <div className="nav-section-heading">
-                <span>{t("我的账号")}</span>
+                <span>{t("My accounts")}</span>
                 <Button
                   variant="ghost"
-                  title={t("添加邮箱账号")}
+                  title={t("Add email account")}
                   disabled={publicPreview}
                   onClick={() => setAccountDialog(true)}
                 >
@@ -1695,7 +1720,7 @@ export default function App() {
                             <Button
                               variant="ghost"
                               size="icon-xs"
-                              aria-label={t("{value0} 收取异常", {
+                              aria-label={t("Mail check failed for {value0}", {
                                 value0: a.name,
                               })}
                             >
@@ -1718,10 +1743,10 @@ export default function App() {
                         <Button
                           variant="ghost"
                           size="icon-sm"
-                          aria-label={t("展开 {value0} 的服务器文件夹", {
+                          aria-label={t("Expand server folders for {value0}", {
                             value0: a.name,
                           })}
-                          title={t("服务器文件夹")}
+                          title={t("Server folders")}
                         >
                           <ChevronRight
                             size={13}
@@ -1736,7 +1761,7 @@ export default function App() {
                       {folderLoading.includes(a.id) ? (
                         <div
                           role="status"
-                          aria-label={t("正在加载服务器文件夹")}
+                          aria-label={t("Loading server folders")}
                         >
                           <Skeleton className="h-6 mb-2" />
                           <Skeleton className="h-6" />
@@ -1749,7 +1774,7 @@ export default function App() {
                               size="sm"
                               onClick={() => void loadFolders(a.id)}
                             >
-                              {t("加载失败，重试")}
+                              {t("Could not load. Retry")}
                             </Button>
                           ) : (
                             <RemoteFolderList
@@ -1809,12 +1834,12 @@ export default function App() {
                     onClick={() => setAccountDialog(true)}
                   >
                     <Plus size={14} />
-                    {t("连接你的第一个邮箱")}
+                    {t("Connect your first mailbox")}
                   </Button>
                 )}
               </div>
               <div className="nav-section-heading">
-                <span>{t("保存在这台 Mac")}</span>
+                <span>{t("Saved on this Mac")}</span>
                 <HardDrive size={13} />
               </div>
               {nav("local", Archive, data.stats.saved)}
@@ -1842,7 +1867,7 @@ export default function App() {
                   }}
                 >
                   <UsersRound size={17} />
-                  <span>{t("通讯录")}</span>
+                  <span>{t("Contacts")}</span>
                 </Button>
                 <Button
                   variant="ghost"
@@ -1850,7 +1875,7 @@ export default function App() {
                   onClick={() => setPage("rules")}
                 >
                   <SlidersHorizontal size={17} />
-                  <span>{t("过滤规则")}</span>
+                  <span>{t("Mail rules")}</span>
                   {data.rules.length > 0 && <small>{data.rules.length}</small>}
                 </Button>
                 <Button
@@ -1859,7 +1884,7 @@ export default function App() {
                   onClick={() => setPage("settings")}
                 >
                   <Settings size={17} />
-                  <span>{t("设置与账号")}</span>
+                  <span>{t("Settings & accounts")}</span>
                 </Button>
               </div>
             </SidebarFooter>
@@ -1901,12 +1926,12 @@ export default function App() {
                 <div>
                   <div className="page-title-row">
                     <SidebarTrigger
-                      title={t("切换侧边栏")}
-                      aria-label={t("切换侧边栏")}
+                      title={t("Toggle sidebar")}
+                      aria-label={t("Toggle sidebar")}
                     />
-                    <h1>{t("设置与账号")}</h1>
+                    <h1>{t("Settings & accounts")}</h1>
                   </div>
-                  <p>{t("管理邮箱、本地存档与日常使用偏好。")}</p>
+                  <p>{t("Manage accounts, local archives and preferences.")}</p>
                 </div>
               </div>
               <Separator />
@@ -1918,9 +1943,11 @@ export default function App() {
                   <>
                     <div className="settings-section-heading">
                       <div>
-                        <h2>{t("邮箱账号")}</h2>
+                        <h2>{t("Email accounts")}</h2>
                         <p>
-                          {t("管理已连接的邮箱，以及各账号的收取与保存方式。")}
+                          {t(
+                            "Manage connected accounts and how their mail is fetched and saved.",
+                          )}
                         </p>
                       </div>
                       <Button
@@ -1928,7 +1955,7 @@ export default function App() {
                         onClick={() => setAccountDialog(true)}
                       >
                         <Plus data-icon="inline-start" />
-                        {t("添加账号")}
+                        {t("Add account")}
                       </Button>
                     </div>
                     <div className="settings-accounts">
@@ -1947,23 +1974,25 @@ export default function App() {
                             <p>
                               {a.email}{" "}
                               <Badge variant="outline">
-                                {t("默认：")}
+                                {t("Default: ")}
                                 {a.saveLocally === false
-                                  ? t("在线阅读")
-                                  : t("本地留存")}
+                                  ? t("Read online")
+                                  : t("Save locally")}
                               </Badge>
                             </p>
                             <small>
                               {a.error ||
                                 (!a.enabled
-                                  ? t("账号已暂停")
+                                  ? t("Account paused")
                                   : a.lastSync
-                                    ? t("最近收取：{value0}", {
+                                    ? t("Last checked: {value0}", {
                                         value0: new Date(
                                           a.lastSync,
                                         ).toLocaleString(dateLocale()),
                                       })
-                                    : t("已连接，等待首次收取"))}
+                                    : t(
+                                        "Connected. Waiting for the first mail check.",
+                                      ))}
                             </small>
                           </div>
                           <DropdownMenu>
@@ -1971,8 +2000,8 @@ export default function App() {
                               <Button
                                 variant="ghost"
                                 size="icon"
-                                title={t("账号操作")}
-                                aria-label={t("{value0}的账号操作", {
+                                title={t("Account actions")}
+                                aria-label={t("Actions for {value0}", {
                                   value0: a.name,
                                 })}
                               >
@@ -1987,7 +2016,7 @@ export default function App() {
                                     setAccountDialog(true);
                                   }}
                                 >
-                                  {t("编辑账号配置")}
+                                  {t("Edit account settings")}
                                 </DropdownMenuItem>
                                 <DropdownMenuItem
                                   onClick={() => {
@@ -1996,14 +2025,14 @@ export default function App() {
                                   }}
                                 >
                                   {a.protocol === "imap"
-                                    ? t("文件夹保存范围")
-                                    : t("本地保存设置")}
+                                    ? t("Folder retention scope")
+                                    : t("Local storage settings")}
                                 </DropdownMenuItem>
                                 {a.protocol === "imap" && (
                                   <DropdownMenuItem
                                     onClick={() => setMappingAccount(a)}
                                   >
-                                    {t("特殊文件夹")}
+                                    {t("Special folders")}
                                   </DropdownMenuItem>
                                 )}
                                 <DropdownMenuItem
@@ -2016,7 +2045,9 @@ export default function App() {
                                       .catch((e) => toast.error(String(e)))
                                   }
                                 >
-                                  {a.enabled ? t("暂停收取") : t("启用收取")}
+                                  {a.enabled
+                                    ? t("Pause mail checks")
+                                    : t("Enable mail checks")}
                                 </DropdownMenuItem>
                                 <DropdownMenuSeparator />
                                 <DropdownMenuItem
@@ -2024,12 +2055,12 @@ export default function App() {
                                   onClick={async () => {
                                     if (
                                       await askConfirmation({
-                                        title: t("移除账号？"),
+                                        title: t("Remove account?"),
                                         description: t(
-                                          "移除 {value0} 后停止收取，本地完整存档会保留，未存档的列表记录将清理。",
+                                          "Removing {value0} stops mail checks. Full local archives remain; unarchived list entries are removed.",
                                           { value0: a.email },
                                         ),
-                                        action: t("移除账号"),
+                                        action: t("Remove account"),
                                         destructive: true,
                                       })
                                     )
@@ -2041,7 +2072,7 @@ export default function App() {
                                         .catch((e) => toast.error(String(e)));
                                   }}
                                 >
-                                  {t("移除账号，保留存档")}
+                                  {t("Remove account, keep archives")}
                                 </DropdownMenuItem>
                               </DropdownMenuGroup>
                             </DropdownMenuContent>
@@ -2052,9 +2083,11 @@ export default function App() {
                     {!data.accounts.length && (
                       <div className="panel-empty">
                         <MailIcon size={36} />
-                        <h3>{t("从连接一个邮箱开始")}</h3>
+                        <h3>{t("Start by connecting a mailbox")}</h3>
                         <p>
-                          {t("支持 Gmail、Outlook、QQ、网易与自定义服务器。")}
+                          {t(
+                            "Supports Gmail, Outlook, QQ, NetEase and custom servers.",
+                          )}
                         </p>
                       </div>
                     )}
@@ -2064,8 +2097,12 @@ export default function App() {
                   <>
                     <div className="settings-section-heading">
                       <div>
-                        <h2>{t("本地存档")}</h2>
-                        <p>{t("查看完整邮件的保存情况，管理位置与备份。")}</p>
+                        <h2>{t("Local archive")}</h2>
+                        <p>
+                          {t(
+                            "Review saved messages, manage locations and backups.",
+                          )}
+                        </p>
                       </div>
                     </div>
                     <Card className="storage-card">
@@ -2074,26 +2111,28 @@ export default function App() {
                           <ShieldCheck size={25} />
                         </span>
                         <div>
-                          <h3>{t("完整保存，独立留存")}</h3>
+                          <h3>
+                            {t("Save complete copies, keep them independently")}
+                          </h3>
                           <p>
                             {t(
-                              "开启本地保存的账号留存完整正文与附件，已有存档不会随账号移除。",
+                              "Accounts with local saving enabled retain full messages and attachments. Removing an account keeps existing archives.",
                             )}
                           </p>
                         </div>
-                        <Badge variant="secondary">{t("按账号设置")}</Badge>
+                        <Badge variant="secondary">{t("Per account")}</Badge>
                       </div>
                       <div className="storage-metrics">
                         <div>
                           <strong>
                             {data.stats.saved}
-                            <small>{t(" 封")}</small>
+                            <small>{t("messages (storage)")}</small>
                           </strong>
-                          <span>{t("完整本地存档")}</span>
+                          <span>{t("Full local archives")}</span>
                         </div>
                         <div>
                           <strong>{formatSize(data.stats.bytes)}</strong>
-                          <span>{t("原始邮件大小")}</span>
+                          <span>{t("Original message size")}</span>
                         </div>
                         <ArchiveIntegrity />
                       </div>
@@ -2103,14 +2142,14 @@ export default function App() {
                       >
                         <Button variant="outline" onClick={() => void backup()}>
                           <ArrowDownToLine size={15} />
-                          {t("备份存档")}
+                          {t("Back up archives")}
                         </Button>
                         <Button
                           variant="outline"
                           onClick={() => void backup(true)}
                         >
                           <Archive size={15} />
-                          {t("恢复备份")}
+                          {t("Restore backup")}
                         </Button>
                         <DeleteArchiveDialog
                           onDeleted={() => {
@@ -2127,10 +2166,10 @@ export default function App() {
                   <>
                     <div className="settings-section-heading">
                       <div>
-                        <h2>{t("应用偏好")}</h2>
+                        <h2>{t("Preferences")}</h2>
                         <p>
                           {t(
-                            "设置通知、网络连接，以及阅读和写信时使用的功能。",
+                            "Configure notifications, network access, reading and composing.",
                           )}
                         </p>
                       </div>
@@ -2147,10 +2186,10 @@ export default function App() {
                   <>
                     <div className="settings-section-heading">
                       <div>
-                        <h2>{t("后台任务")}</h2>
+                        <h2>{t("Background tasks")}</h2>
                         <p>
                           {t(
-                            "查看保存与同步进度，遇到问题时在这里检查最近活动。",
+                            "Review saving and sync progress. Check recent activity for problems.",
                           )}
                         </p>
                       </div>
@@ -2164,9 +2203,9 @@ export default function App() {
                     <Collapsible asChild>
                       <Card>
                         <TaskPanelHeader
-                          title={t("最近活动")}
+                          title={t("Recent activity")}
                           description={t(
-                            "查看邮件收取、发送、规则执行及大模型翻译的最近记录。",
+                            "Recent mail checks, sends, rule actions and model translations.",
                           )}
                           onRefresh={refresh}
                         />
@@ -2182,7 +2221,7 @@ export default function App() {
                             ) : (
                               <p>
                                 {t(
-                                  "这里会显示邮件收取、发送、规则执行及大模型翻译记录。",
+                                  "Mail checks, sends, rule actions and model translations appear here.",
                                 )}
                               </p>
                             )}
@@ -2196,8 +2235,8 @@ export default function App() {
                   <>
                     <div className="settings-section-heading">
                       <div>
-                        <h2>{t("关于雁信")}</h2>
-                        <p>{t("版本信息、应用更新与运行说明。")}</p>
+                        <h2>{t("About Anser")}</h2>
+                        <p>{t("Version, updates and background operation.")}</p>
                       </div>
                     </div>
                     <UpdateSettings updates={updates} />
@@ -2205,7 +2244,7 @@ export default function App() {
                       <Info size={17} />
                       <span>
                         {t(
-                          "关闭窗口后继续收取；退出 App、睡眠或断网时暂停。邮件须在服务器删除前完整下载。",
+                          "Mail checks continue after closing the window. Quitting, sleep or loss of connectivity pauses them. Download complete messages before the server deletes them.",
                         )}
                       </span>
                     </div>
@@ -2215,7 +2254,7 @@ export default function App() {
                         className="text-link self-start"
                         onClick={demoMode}
                       >
-                        {demo ? t("退出演示") : t("体验示例邮箱")}
+                        {demo ? t("Exit demo") : t("Try sample mailbox")}
                         <ArrowRight data-icon="inline-end" />
                       </Button>
                     )}
@@ -2230,12 +2269,12 @@ export default function App() {
                   <span className="eyebrow">TAKE YOUR TIME</span>
                   <div className="page-title-row">
                     <SidebarTrigger
-                      title={t("切换侧边栏")}
-                      aria-label={t("切换侧边栏")}
+                      title={t("Toggle sidebar")}
+                      aria-label={t("Toggle sidebar")}
                     />
-                    <h1>{t("草稿箱")}</h1>
+                    <h1>{t("Drafts")}</h1>
                   </div>
-                  <p>{t("草稿自动保存到本机，随时继续。")}</p>
+                  <p>{t("Drafts are saved locally. Continue anytime.")}</p>
                 </div>
                 <div className="flex items-center gap-2">
                   <Button
@@ -2244,11 +2283,11 @@ export default function App() {
                     onClick={() => void clearDrafts()}
                   >
                     <Trash2 data-icon="inline-start" />
-                    {clearingDrafts ? t("正在清空…") : t("清空草稿")}
+                    {clearingDrafts ? t("Clearing…") : t("Clear drafts")}
                   </Button>
                   <Button disabled={clearingDrafts} onClick={() => compose()}>
                     <SquarePen data-icon="inline-start" />
-                    {t("写邮件")}
+                    {t("Compose")}
                   </Button>
                 </div>
               </div>
@@ -2262,25 +2301,27 @@ export default function App() {
                         if (!clearingDraftsNow.current) setDraft(d);
                       }}
                     >
-                      <h3>{d.subject || t("（无主题）")}</h3>
+                      <h3>{d.subject || t("(No subject)")}</h3>
                       <p>
-                        {t("收件人：")}
-                        {d.to || t("尚未填写")}
+                        {t("To: ")}
+                        {d.to || t("Not entered")}
                       </p>
-                      <small>{d.body.slice(0, 120) || t("空白草稿")}</small>
+                      <small>{d.body.slice(0, 120) || t("Empty draft")}</small>
                     </Button>
                     <Button
                       variant="ghost"
                       size="icon"
-                      title={t("删除草稿")}
+                      title={t("Delete draft")}
                       disabled={clearingDrafts}
                       onClick={async () => {
                         if (clearingDraftsNow.current) return;
                         if (
                           await askConfirmation({
-                            title: t("删除草稿？"),
-                            description: t("这份草稿删除后无法恢复。"),
-                            action: t("删除草稿"),
+                            title: t("Delete draft?"),
+                            description: t(
+                              "This draft cannot be recovered after deletion.",
+                            ),
+                            action: t("Delete draft"),
                             destructive: true,
                           })
                         )
@@ -2296,8 +2337,8 @@ export default function App() {
               ) : (
                 <div className="panel-empty">
                   <FileText size={36} />
-                  <h3>{t("暂时没有草稿")}</h3>
-                  <p>{t("每一封没写完的邮件，都会在这里等你。")}</p>
+                  <h3>{t("No drafts yet")}</h3>
+                  <p>{t("Your unfinished messages will wait for you here.")}</p>
                 </div>
               )}
             </section>
@@ -2309,19 +2350,20 @@ export default function App() {
                   <div className="list-heading">
                     <div>
                       <SidebarTrigger
-                        title={t("切换侧边栏")}
-                        aria-label={t("切换侧边栏")}
+                        title={t("Toggle sidebar")}
+                        aria-label={t("Toggle sidebar")}
                       />
                       <h1>{title}</h1>
                       <span>
-                        {data.matched} {grouped ? t("个对话") : t("封邮件")}
+                        {data.matched}{" "}
+                        {grouped ? t("conversations") : t("messages")}
                       </span>
                     </div>
                     <Button
                       variant="ghost"
                       size="icon-sm"
                       disabled={syncing || !data.accounts.length}
-                      title={t("收取邮件")}
+                      title={t("Check mail")}
                       onClick={() => void sync()}
                     >
                       <RefreshCw
@@ -2335,10 +2377,12 @@ export default function App() {
                       ?.syncError && (
                       <Alert className="mx-4 w-auto">
                         <AlertCircle />
-                        <AlertTitle>{t("目录来源已隔离")}</AlertTitle>
+                        <AlertTitle>
+                          {t("Folder source quarantined")}
+                        </AlertTitle>
                         <AlertDescription>
                           {t(
-                            "此目录的服务器响应不可靠。旧来源已暂停使用，本地存档仍可在“本地存档”中查看。请到设置与账号重新核查。",
+                            "The server returned inconsistent responses for this folder. Old sources are suspended; local archives remain available in Local archive. Review the account in Settings & accounts.",
                           )}
                         </AlertDescription>
                       </Alert>
@@ -2350,14 +2394,14 @@ export default function App() {
                         ref={searchRef}
                         value={search}
                         onChange={(e) => setSearch(e.target.value)}
-                        placeholder={t("搜索当前范围的邮件…")}
-                        aria-label={t("搜索邮件")}
+                        placeholder={t("Search mail in this scope…")}
+                        aria-label={t("Search mail")}
                       />
                       {search ? (
                         <Button
                           variant="ghost"
                           onClick={() => setSearch("")}
-                          title={t("清除搜索")}
+                          title={t("Clear search")}
                         >
                           <X size={14} />
                         </Button>
@@ -2380,21 +2424,22 @@ export default function App() {
                             <Button
                               variant="ghost"
                               size="sm"
-                              aria-label={t("正文搜索范围")}
+                              aria-label={t("Body search coverage")}
                             >
                               <Info data-icon="inline-start" />
-                              {t("正文范围")}
+                              {t("Body coverage")}
                             </Button>
                           </TooltipTrigger>
                           <TooltipContent className="max-w-72">
                             <p>
                               {t(
-                                "正文只检索本机已有内容，搜索不会自动下载。当前范围完整",
+                                "Only locally available bodies are searched; no messages are downloaded. Complete in this scope: ",
                               )}{" "}
                               {data.bodyCoverage.known}
-                              {t(" 封，未完整")} {data.bodyCoverage.unknown}{" "}
+                              {t(" messages; incomplete: ")}{" "}
+                              {data.bodyCoverage.unknown}{" "}
                               {t(
-                                "封；需要纳入完整正文搜索时，可选择完整保存。",
+                                " messages. Save complete messages to include their bodies in search.",
                               )}
                             </p>
                           </TooltipContent>
@@ -2412,8 +2457,8 @@ export default function App() {
                       }
                     >
                       <TabsList>
-                        <TabsTrigger value="all">{t("全部")}</TabsTrigger>
-                        <TabsTrigger value="unread">{t("未读")}</TabsTrigger>
+                        <TabsTrigger value="all">{t("All")}</TabsTrigger>
+                        <TabsTrigger value="unread">{t("Unread")}</TabsTrigger>
                       </TabsList>
                     </Tabs>
                     <DropdownMenu>
@@ -2421,14 +2466,16 @@ export default function App() {
                         <Button
                           variant="ghost"
                           size="sm"
-                          aria-label={t("邮件显示方式")}
+                          aria-label={t("Message display mode")}
                         >
                           {grouped ? (
                             <MessagesSquare data-icon="inline-start" />
                           ) : (
                             <List data-icon="inline-start" />
                           )}
-                          {grouped ? t("按对话") : t("逐封邮件")}
+                          {grouped
+                            ? t("Conversations")
+                            : t("Individual messages")}
                           <ChevronDown data-icon="inline-end" />
                         </Button>
                       </DropdownMenuTrigger>
@@ -2451,10 +2498,10 @@ export default function App() {
                           }}
                         >
                           <DropdownMenuRadioItem value="conversations">
-                            {t("按对话分组")}
+                            {t("Group by conversation")}
                           </DropdownMenuRadioItem>
                           <DropdownMenuRadioItem value="messages">
-                            {t("逐封邮件")}
+                            {t("Individual messages")}
                           </DropdownMenuRadioItem>
                         </DropdownMenuRadioGroup>
                       </DropdownMenuContent>
@@ -2463,13 +2510,14 @@ export default function App() {
                   {checked.length > 0 && (
                     <div className="batch-toolbar">
                       <span>
-                        {t("已选 ")}
-                        {checked.length} {grouped ? t("个对话") : t("封邮件")}
+                        {t("Selected ")}
+                        {checked.length}{" "}
+                        {grouped ? t("conversations") : t("messages")}
                       </span>
                       <Button
                         variant="ghost"
                         size="icon-sm"
-                        title={t("完整保存到本地")}
+                        title={t("Save complete message locally")}
                         disabled={archiving}
                         onClick={() => void queueArchives(checked, grouped)}
                       >
@@ -2478,7 +2526,7 @@ export default function App() {
                       <Button
                         variant="ghost"
                         size="icon-sm"
-                        title={t("标记为已读")}
+                        title={t("Mark as read")}
                         onClick={() =>
                           void mutate(checked, "read", "true", grouped)
                         }
@@ -2488,7 +2536,7 @@ export default function App() {
                       <Button
                         variant="ghost"
                         size="icon-sm"
-                        title={t("归入本地文件夹")}
+                        title={t("Move to local folder")}
                         onClick={() => {
                           setMoveIds(checked);
                           setMoveThreads(grouped);
@@ -2500,7 +2548,7 @@ export default function App() {
                       <Button
                         variant="ghost"
                         size="icon-sm"
-                        title={t("移到本地废纸篓")}
+                        title={t("Move to local trash")}
                         onClick={() =>
                           void mutate(
                             checked,
@@ -2527,7 +2575,7 @@ export default function App() {
                             >
                               <div className="row-check">
                                 <Checkbox
-                                  aria-label={t("选择 {value0}", {
+                                  aria-label={t("Select {value0}", {
                                     value0: m.subject,
                                   })}
                                   checked={checked.includes(m.id)}
@@ -2554,8 +2602,8 @@ export default function App() {
                                 <div className="row-subject">
                                   {!m.isRead && !isNonUnreadMail(m) && (
                                     <i
-                                      aria-label={t("未读")}
-                                      title={t("未读")}
+                                      aria-label={t("Unread")}
+                                      title={t("Unread")}
                                     />
                                   )}
                                   <span className="row-subject-text">
@@ -2576,12 +2624,12 @@ export default function App() {
                                   <span
                                     className={`mini-dot color-${data.accounts.findIndex((a) => a.id === m.accountId) % 4}`}
                                     aria-hidden="true"
-                                    title={t("邮箱颜色标识")}
+                                    title={t("Account color indicator")}
                                   />
                                   <span>
                                     {data.accounts.find(
                                       (a) => a.id === m.accountId,
-                                    )?.name || t("已移除账号")}
+                                    )?.name || t("Removed account")}
                                   </span>
                                   {m.localFolder !== "全部存档" && (
                                     <small>{m.localFolder}</small>
@@ -2593,7 +2641,7 @@ export default function App() {
                                   {m.hasAttachments && (
                                     <Paperclip
                                       className="size-3 shrink-0"
-                                      aria-label={t("包含附件")}
+                                      aria-label={t("Has attachments")}
                                     />
                                   )}
                                 </div>
@@ -2608,7 +2656,9 @@ export default function App() {
                                 }
                               >
                                 <MailOpen />
-                                {m.isRead ? t("标记为未读") : t("标记为已读")}
+                                {m.isRead
+                                  ? t("Mark as unread")
+                                  : t("Mark as read")}
                               </ContextMenuItem>
                             </ContextMenuContent>
                           )}
@@ -2619,17 +2669,19 @@ export default function App() {
                         <Inbox size={30} />
                         <h3>
                           {search
-                            ? t("没有找到邮件")
+                            ? t("No messages found")
                             : data.accounts.length
-                              ? t("这里很安静")
-                              : t("收件箱准备好了")}
+                              ? t("All quiet here")
+                              : t("Your inbox is ready")}
                         </h3>
                         <p>
                           {search
-                            ? t("试试其他关键词。")
+                            ? t("Try different keywords.")
                             : data.accounts.length
-                              ? t("点击上方刷新，收取新的邮件。")
-                              : t("连接邮箱后，邮件会出现在这里。")}
+                              ? t("Click refresh above to check for new mail.")
+                              : t(
+                                  "Messages will appear here after you connect a mailbox.",
+                                )}
                         </p>
                       </div>
                     )}
@@ -2642,8 +2694,8 @@ export default function App() {
                         aria-busy={pageLoading}
                       >
                         {pageLoading
-                          ? t("正在加载…")
-                          : t("加载更多（{value0} / {value1}）", {
+                          ? t("Loading…")
+                          : t("Load more ({value0} / {value1})", {
                               value0: data.messages.length,
                               value1: data.matched,
                             })}
@@ -2674,7 +2726,7 @@ export default function App() {
                                 <Button
                                   variant="ghost"
                                   size="icon-sm"
-                                  aria-label={t("上一封邮件")}
+                                  aria-label={t("Previous message")}
                                   aria-busy={navigationLoading}
                                   disabled={
                                     navigationLoading ||
@@ -2689,8 +2741,8 @@ export default function App() {
                               </TooltipTrigger>
                               <TooltipContent>
                                 {navigationLoading
-                                  ? t("正在查找相邻邮件…")
-                                  : t("上一封邮件（⌥↑）")}
+                                  ? t("Finding neighboring messages…")
+                                  : t("Previous message (⌥↑)")}
                               </TooltipContent>
                             </Tooltip>
                             <Tooltip>
@@ -2698,7 +2750,7 @@ export default function App() {
                                 <Button
                                   variant="ghost"
                                   size="icon-sm"
-                                  aria-label={t("下一封邮件")}
+                                  aria-label={t("Next message")}
                                   aria-busy={navigationLoading}
                                   disabled={
                                     navigationLoading || !canNavigate("next")
@@ -2710,12 +2762,12 @@ export default function App() {
                               </TooltipTrigger>
                               <TooltipContent>
                                 {navigationLoading
-                                  ? t("正在查找相邻邮件…")
-                                  : t("下一封邮件（⌥↓）")}
+                                  ? t("Finding neighboring messages…")
+                                  : t("Next message (⌥↓)")}
                               </TooltipContent>
                               {navigationLoading && (
                                 <span className="sr-only" role="status">
-                                  {t("正在查找相邻邮件…")}
+                                  {t("Finding neighboring messages…")}
                                 </span>
                               )}
                             </Tooltip>
@@ -2723,7 +2775,7 @@ export default function App() {
                             <Button
                               variant="ghost"
                               size="icon-sm"
-                              title={t("归入本地文件夹")}
+                              title={t("Move to local folder")}
                               onClick={() => {
                                 setMoveIds([detail.mail.id]);
                                 setMoveThreads(false);
@@ -2735,7 +2787,7 @@ export default function App() {
                             <Button
                               variant="ghost"
                               size="icon-sm"
-                              title={t("导出完整原始邮件")}
+                              title={t("Export complete original message")}
                               onClick={() => void exportMail(detail.mail)}
                             >
                               <ArrowDownToLine size={17} />
@@ -2746,8 +2798,8 @@ export default function App() {
                                 action="read"
                                 label={
                                   detail.mail.isRead
-                                    ? t("标记未读")
-                                    : t("标记已读")
+                                    ? t("Mark unread")
+                                    : t("Mark read")
                                 }
                               >
                                 <Button
@@ -2755,8 +2807,8 @@ export default function App() {
                                   size="icon-sm"
                                   title={
                                     detail.mail.isRead
-                                      ? t("标记未读")
-                                      : t("标记已读")
+                                      ? t("Mark unread")
+                                      : t("Mark read")
                                   }
                                   aria-keyshortcuts="Meta+Shift+U Control+Shift+U"
                                   onClick={() =>
@@ -2771,11 +2823,11 @@ export default function App() {
                                 </Button>
                               </MailActionTooltip>
                             )}
-                            <MailActionTooltip action="star" label={t("星标")}>
+                            <MailActionTooltip action="star" label={t("Star")}>
                               <Button
                                 variant="ghost"
                                 size="icon-sm"
-                                title={t("星标")}
+                                title={t("Star")}
                                 aria-keyshortcuts="Meta+Shift+L Control+Shift+L"
                                 onClick={() =>
                                   void mutate(
@@ -2796,12 +2848,12 @@ export default function App() {
                             <Button
                               variant="ghost"
                               size="icon-sm"
-                              title={t("打印这封邮件")}
-                              aria-label={t("打印这封邮件")}
+                              title={t("Print this message")}
+                              aria-label={t("Print this message")}
                               onClick={() =>
                                 void printMail(detail).catch((error) =>
                                   toast.error(
-                                    t("打印失败：{value0}", {
+                                    t("Printing failed: {value0}", {
                                       value0: String(error),
                                     }),
                                   ),
@@ -2815,8 +2867,8 @@ export default function App() {
                               size="icon-sm"
                               title={
                                 detail.mail.trashed
-                                  ? t("恢复本地邮件")
-                                  : t("移到本地废纸篓")
+                                  ? t("Restore local message")
+                                  : t("Move to local trash")
                               }
                               onClick={() =>
                                 void mutate(
@@ -2834,18 +2886,21 @@ export default function App() {
                             </Button>
                           </div>
                           <div className="reader-actions">
-                            <MailActionTooltip action="reply" label={t("回复")}>
+                            <MailActionTooltip
+                              action="reply"
+                              label={t("Reply")}
+                            >
                               <Button
                                 variant="ghost"
                                 size="sm"
-                                aria-label={t("回复")}
-                                title={t("回复")}
+                                aria-label={t("Reply")}
+                                title={t("Reply")}
                                 aria-keyshortcuts="Meta+R Control+R"
                                 onClick={() => compose(detail.mail)}
                               >
                                 <Reply size={15} />
                                 <span className="action-label">
-                                  {t("回复")}
+                                  {t("Reply")}
                                 </span>
                               </Button>
                             </MailActionTooltip>
@@ -2854,8 +2909,8 @@ export default function App() {
                                 <Button
                                   variant="ghost"
                                   size="icon-sm"
-                                  title={t("更多回复操作")}
-                                  aria-label={t("更多回复操作")}
+                                  title={t("More reply actions")}
+                                  aria-label={t("More reply actions")}
                                 >
                                   <ChevronDown size={12} />
                                 </Button>
@@ -2869,7 +2924,7 @@ export default function App() {
                                     }
                                   >
                                     <ReplyAll size={15} />
-                                    {t("全部回复")}
+                                    {t("Reply all")}
                                     <DropdownMenuShortcut>
                                       {mailShortcutKeys.replyAll}
                                     </DropdownMenuShortcut>
@@ -2881,7 +2936,9 @@ export default function App() {
                                       )[0];
                                       if (!address) {
                                         toast.error(
-                                          t("无法识别发件人邮箱地址"),
+                                          t(
+                                            "Could not identify the sender's email address",
+                                          ),
                                         );
                                         return;
                                       }
@@ -2890,26 +2947,26 @@ export default function App() {
                                     }}
                                   >
                                     <UsersRound size={15} />
-                                    {t("添加发件人为联系人")}
+                                    {t("Add sender to contacts")}
                                   </DropdownMenuItem>
                                 </DropdownMenuGroup>
                               </DropdownMenuContent>
                             </DropdownMenu>
                             <MailActionTooltip
                               action="forward"
-                              label={t("转发")}
+                              label={t("Forward")}
                             >
                               <Button
                                 variant="ghost"
                                 size="sm"
-                                aria-label={t("转发")}
-                                title={t("转发")}
+                                aria-label={t("Forward")}
+                                title={t("Forward")}
                                 aria-keyshortcuts="Meta+Shift+F Control+Shift+F"
                                 onClick={() => compose(detail.mail, true)}
                               >
                                 <ArrowRight size={15} />
                                 <span className="action-label">
-                                  {t("转发")}
+                                  {t("Forward")}
                                 </span>
                               </Button>
                             </MailActionTooltip>
@@ -2920,7 +2977,7 @@ export default function App() {
                                 onClick={() => reeditSent(detail)}
                               >
                                 <SquarePen size={15} />
-                                {t("重新编辑")}
+                                {t("Edit as new")}
                               </Button>
                             )}
                             {(["copy", "move"] as const).map((kind) => (
@@ -2948,13 +3005,13 @@ export default function App() {
                             className="reader-expand-button"
                             aria-label={
                               readerExpanded
-                                ? t("还原阅读区域")
-                                : t("最大化阅读区域")
+                                ? t("Restore reading pane")
+                                : t("Expand reading pane")
                             }
                             title={
                               readerExpanded
-                                ? t("还原阅读区域（Esc）")
-                                : t("最大化阅读区域")
+                                ? t("Restore reading pane (Esc)")
+                                : t("Expand reading pane")
                             }
                             aria-pressed={readerExpanded}
                             aria-controls="mail-reader-content"
@@ -2974,7 +3031,7 @@ export default function App() {
                             className="recipient-address"
                             title={detail.mail.recipients}
                           >
-                            {t("收件人：")}
+                            {t("To: ")}
                             {detail.mail.recipients}
                           </span>
                         )}
@@ -2983,7 +3040,7 @@ export default function App() {
                             className="recipient-address"
                             title={detail.mail.cc}
                           >
-                            {t("抄送：")}
+                            {t("Cc: ")}
                             {detail.mail.cc}
                           </span>
                         )}
@@ -2994,10 +3051,10 @@ export default function App() {
                           <span className="saved-chip">
                             <ShieldCheck size={13} />
                             {demo
-                              ? t("演示存档")
+                              ? t("Demo archive")
                               : detail.mail.savedLocally === false
-                                ? t("服务器邮件")
-                                : t("完整已保存")}
+                                ? t("Server message")
+                                : t("Fully saved")}
                           </span>
                           {detail.mail.savedLocally === false && (
                             <Button
@@ -3009,7 +3066,7 @@ export default function App() {
                               }
                             >
                               <HardDriveDownload />
-                              {t("完整保存到本地")}
+                              {t("Save complete message locally")}
                             </Button>
                           )}
                         </div>
@@ -3062,14 +3119,14 @@ export default function App() {
                     {detailError?.id === selected ? (
                       <>
                         <AlertCircle size={24} />
-                        <span>{t("邮件加载失败")}</span>
+                        <span>{t("Could not load message")}</span>
                         <p>{detailError.message}</p>
                         <Button
                           variant="outline"
                           size="sm"
                           onClick={() => setDetailRetry((value) => value + 1)}
                         >
-                          {t("重新加载")}
+                          {t("Reload")}
                         </Button>
                       </>
                     ) : (
@@ -3083,7 +3140,7 @@ export default function App() {
                     <div className="welcome-art">
                       <img
                         src={`${import.meta.env.BASE_URL}app-icon.png`}
-                        alt={t("雁信")}
+                        alt={t("Anser")}
                       />
                       <span className="orbit one" />
                       <span className="orbit two" />
@@ -3095,26 +3152,26 @@ export default function App() {
                     </span>
                     <h1>
                       {data.accounts.length
-                        ? t("留一点空间，给重要的事")
-                        : t("邮件，自在有序。")}
+                        ? t("Make room for what matters")
+                        : t("Mail, thoughtfully organized.")}
                     </h1>
                     <p>
                       {data.accounts.length
                         ? t(
-                            "选择一封邮件，开始阅读。\n你的往来，都在这里妥善留存。",
+                            "Select a message to start reading.\nYour conversations, carefully kept.",
                           )
                         : t(
-                            "把不同的邮箱放在一起。\n让每一封重要的邮件，都有一个长久的归处。",
+                            "Bring your mailboxes together.\nGive every important message a lasting home.",
                           )}
                     </p>
                     {!data.accounts.length && (
                       <div className="welcome-actions">
                         <Button onClick={() => setAccountDialog(true)}>
                           <Plus size={16} />
-                          {t("连接我的邮箱")}
+                          {t("Connect my mailbox")}
                         </Button>
                         <Button variant="ghost" onClick={demoMode}>
-                          {t("先体验一下")}
+                          {t("Try it first")}
                           <ArrowRight size={15} />
                         </Button>
                       </div>
@@ -3122,20 +3179,22 @@ export default function App() {
                     <div className="welcome-features">
                       <span>
                         <Inbox size={17} />
-                        {t("多账号管理")}
+                        {t("Multiple accounts")}
                       </span>
                       <span>
                         <SlidersHorizontal size={17} />
-                        {t("自动归类")}
+                        {t("Automatic filing")}
                       </span>
                       <span>
                         <ShieldCheck size={17} />
-                        {t("本地留存")}
+                        {t("Save locally")}
                       </span>
                     </div>
                     {!native && (
                       <small className="browser-note">
-                        {t("浏览器预览 · 真实收发请使用 macOS 桌面客户端")}
+                        {t(
+                          "Browser preview · Use the macOS desktop app for real mail",
+                        )}
                       </small>
                     )}
                   </div>
@@ -3193,11 +3252,11 @@ export default function App() {
       >
         <DialogContent className="sm:max-w-[430px]">
           <DialogHeader>
-            <DialogTitle>{t("归入本地文件夹")}</DialogTitle>
+            <DialogTitle>{t("Move to local folder")}</DialogTitle>
             <DialogDescription>
-              {t("整理 ")}
+              {t("Organize ")}
               {moveIds.length}
-              {t(" 封本地邮件，不改变服务器上的原件。")}
+              {t(" local messages. Server originals remain unchanged.")}
             </DialogDescription>
           </DialogHeader>
           <FolderInput
@@ -3212,7 +3271,7 @@ export default function App() {
               setMoveIds([]);
             }}
           >
-            {t("确认归类")}
+            {t("Confirm filing")}
           </Button>
         </DialogContent>
       </Dialog>

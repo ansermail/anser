@@ -16,7 +16,7 @@ import { mailDocumentHeight } from "../lib/mail-layout";
 export function MailContent({
   html,
   onOpenLink,
-  title = t("邮件正文"),
+  title = t("Message body"),
   inspectable = false,
   onDocumentReady,
 }: {
@@ -183,7 +183,7 @@ export function MailContent({
         <Alert className="mb-2">
           <AlertDescription className="flex flex-wrap items-center justify-between gap-2">
             <span>
-              {t("有 {value0} 张正文图片未加载（{value1}）", {
+              {t("{value0} body images could not load ({value1})", {
                 value0: images.failed + images.timedOut,
                 value1: [
                   images.failed > 0 && `${images.failed} 张失败`,
@@ -198,7 +198,7 @@ export function MailContent({
               size="sm"
               onClick={() => retryImages.current()}
             >
-              {t("重新加载图片")}
+              {t("Reload images")}
             </Button>
           </AlertDescription>
         </Alert>

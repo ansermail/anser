@@ -24,7 +24,7 @@ import { RichImageControls } from "./rich-image-controls";
 import type { Transaction } from "@tiptap/pm/state";
 import DOMPurify from "dompurify";
 import { Button } from "./ui/button";
-import { textToHtml } from "@/lib/compose-format";
+import { textToHtml, hexColorStyles } from "@/lib/compose-format";
 import { native, isDemo } from "@/lib/api";
 import { toast } from "sonner";
 import { TooltipProvider } from "./ui/tooltip";
@@ -75,12 +75,12 @@ export function RichEditor({
   const [linkError, setLinkError] = useState("");
   const editor = useEditor({
     extensions: richExtensions(),
-    content: html || textToHtml(body),
+    content: html || (body ? textToHtml(body) : ""),
     editorProps: {
       attributes: {
         class: "rich-body",
         role: "textbox",
-        "aria-label": t("邮件正文"),
+        "aria-label": t("Message body"),
         "aria-multiline": "true",
       },
       handleKeyDown: (_view, event) => {
@@ -108,7 +108,9 @@ export function RichEditor({
           files.length > 20 ||
           files.reduce((sum, file) => sum + file.size, 0) > 50 * 1024 * 1024
         ) {
-          toast.error(t("每次最多插入20张图片，总大小不能超过50 MB"));
+          toast.error(
+            t("Insert up to 20 images at a time, totaling no more than 50 MB"),
+          );
           return true;
         }
         void insertImages(() => Promise.all(files.map(readBodyImage)));
@@ -123,7 +125,9 @@ export function RichEditor({
           files.length > 20 ||
           files.reduce((sum, file) => sum + file.size, 0) > 50 * 1024 * 1024
         ) {
-          toast.error(t("每次最多插入20张图片，总大小不能超过50 MB"));
+          toast.error(
+            t("Insert up to 20 images at a time, totaling no more than 50 MB"),
+          );
           return true;
         }
         const pos = view.posAtCoords({
@@ -137,14 +141,14 @@ export function RichEditor({
     onUpdate: ({ editor }) =>
       onChange(
         editor.getText({ blockSeparator: "\n" }),
-        DOMPurify.sanitize(editor.getHTML()),
+        hexColorStyles(DOMPurify.sanitize(editor.getHTML())),
       ),
   });
   instance.current = editor;
   async function insertImages(load: () => Promise<BodyImage[]>, pos?: number) {
     const editor = instance.current;
     if (!native || isDemo()) {
-      toast.info(t("请在桌面客户端中插入正文图片"));
+      toast.info(t("Insert body images in the desktop app"));
       return;
     }
     if (
@@ -193,7 +197,9 @@ export function RichEditor({
         .run();
     } catch (error) {
       if (alive.current && !editor.isDestroyed)
-        toast.error(t("正文图片未插入：{value0}", { value0: String(error) }));
+        toast.error(
+          t("Body image not inserted: {value0}", { value0: String(error) }),
+        );
     } finally {
       editor.off("transaction", map);
       busy.current = false;
@@ -259,7 +265,7 @@ export function RichEditor({
                 multiple: true,
                 filters: [
                   {
-                    name: t("正文图片"),
+                    name: t("Body images"),
                     extensions: ["png", "jpg", "jpeg", "gif", "webp"],
                   },
                 ],
@@ -285,9 +291,11 @@ export function RichEditor({
             }}
           >
             <DialogHeader>
-              <DialogTitle>{t("插入链接")}</DialogTitle>
+              <DialogTitle>{t("Insert link")}</DialogTitle>
               <DialogDescription>
-                {t("支持网页和邮箱地址。留空可移除当前链接。")}
+                {t(
+                  "Web and email addresses are supported. Leave blank to remove the current link.",
+                )}
               </DialogDescription>
             </DialogHeader>
             <form
@@ -303,7 +311,7 @@ export function RichEditor({
                     )
                       throw new Error();
                   } catch {
-                    setLinkError(t("请输入有效的 http、https 或 mailto 链接"));
+                    setLinkError(t("Enter a valid http, https or mailto link"));
                     return;
                   }
                 }
@@ -321,7 +329,7 @@ export function RichEditor({
               <FieldGroup>
                 <Field data-invalid={!!linkError}>
                   <FieldLabel htmlFor="rich-link-url">
-                    {t("链接地址")}
+                    {t("Link address")}
                   </FieldLabel>
                   <Input
                     id="rich-link-url"
@@ -342,10 +350,10 @@ export function RichEditor({
                     variant="outline"
                     onClick={() => setLinkDialog(null)}
                   >
-                    {t("取消")}
+                    {t("Cancel")}
                   </Button>
                   <Button type="submit" disabled={disabled}>
-                    {t("保存链接")}
+                    {t("Save link")}
                   </Button>
                 </DialogFooter>
               </FieldGroup>

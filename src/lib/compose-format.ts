@@ -1,5 +1,6 @@
 import { marked } from "marked";
 import DOMPurify from "dompurify";
+import { dateLocale, t } from "./i18n";
 import type { Compose } from "./types";
 
 export type ComposeFormat = NonNullable<Compose["format"]>;
@@ -136,14 +137,46 @@ export function textToHtml(text: string) {
     .join("");
 }
 
+const hexColor = (value: string) => {
+  const match =
+    /^rgba?\(\s*(\d+),\s*(\d+),\s*(\d+)(?:,\s*([\d.]+))?\s*\)$/i.exec(
+      value.trim(),
+    );
+  if (!match || (match[4] !== undefined && Number(match[4]) < 1)) return value;
+  return `#${match
+    .slice(1, 4)
+    .map((part) => Number(part).toString(16).padStart(2, "0"))
+    .join("")}`;
+};
+
+// ProseMirror renders inline styles through CSSOM, so editor colors come back
+// as rgb(). Store hex instead; desktop mail clients prefer it.
+export function hexColorStyles(html: string) {
+  const doc = new DOMParser().parseFromString(html, "text/html");
+  for (const element of doc.querySelectorAll("[style]")) {
+    const style = element.getAttribute("style") || "";
+    element.setAttribute(
+      "style",
+      style.replace(/rgba?\([^)]+\)/g, (value) => hexColor(value)),
+    );
+  }
+  return doc.body.innerHTML;
+}
+
 function quoteHeader(draft: Compose) {
   const quote = draft.quote!;
   return [
-    `--------- ${quote.kind === "forward" ? "转发邮件" : "原始邮件"} ---------`,
-    `发件人：${quote.sender}`,
-    ...(quote.recipients ? [`收件人：${quote.recipients}`] : []),
-    `时间：${new Date(quote.date).toLocaleString("zh-CN", { hour12: false })}`,
-    `主题：${quote.subject}`,
+    `--------- ${quote.kind === "forward" ? t("Forward message") : t("Original message")} ---------`,
+    t("From: {value0}", { value0: quote.sender }),
+    ...(quote.recipients
+      ? [t("To: {value0}", { value0: quote.recipients })]
+      : []),
+    t("Date: {value0}", {
+      value0: new Date(quote.date).toLocaleString(dateLocale(), {
+        hour12: false,
+      }),
+    }),
+    t("Subject: {value0}", { value0: quote.subject }),
   ].join("\n");
 }
 

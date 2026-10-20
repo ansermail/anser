@@ -38,7 +38,7 @@ export function ServerDirectoryMenu({
   remoteFolder?: string;
   disabled?: boolean;
 }) {
-  const verb = kind === "move" ? t("移动") : t("复制");
+  const verb = kind === "move" ? t("Move") : t("Copy");
   const Icon = kind === "move" ? FolderInput : Copy;
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -127,7 +127,9 @@ export function ServerDirectoryMenu({
       });
       if (current.current === key && generation === epoch.current) {
         toast.success(
-          t("{value0}任务已记录，可在设置中查看结果", { value0: verb }),
+          t("{value0} task recorded. View the result in Settings.", {
+            value0: verb,
+          }),
         );
         setOpen(false);
       }
@@ -154,8 +156,8 @@ export function ServerDirectoryMenu({
           variant="ghost"
           size="icon-sm"
           disabled={disabled || busy}
-          title={t("{value0}到服务器文件夹", { value0: verb })}
-          aria-label={t("{value0}到服务器文件夹", { value0: verb })}
+          title={t("{value0} to server folder", { value0: verb })}
+          aria-label={t("{value0} to server folder", { value0: verb })}
         >
           <Icon data-icon="inline-start" />
         </Button>
@@ -163,22 +165,23 @@ export function ServerDirectoryMenu({
       <DropdownMenuContent
         align="end"
         className="w-72"
-        aria-label={t("{value0}目标文件夹", { value0: verb })}
+        aria-label={t("{value0} destination folder", { value0: verb })}
       >
         <DropdownMenuGroup>
           <DropdownMenuLabel>
-            {verb}
-            {t("到")}
+            {t("{value0} to", { value0: verb })}
           </DropdownMenuLabel>
           {source && (
             <DropdownMenuLabel className="whitespace-normal break-words">
-              {t("从 ")}
-              {folders.find((f) => f.name === source)?.displayName || source}
+              {t("From {value0}", {
+                value0:
+                  folders.find((f) => f.name === source)?.displayName || source,
+              })}
             </DropdownMenuLabel>
           )}
         </DropdownMenuGroup>
         {loading && (
-          <Skeleton className="h-20" aria-label={t("正在加载服务器文件夹")} />
+          <Skeleton className="h-20" aria-label={t("Loading server folders")} />
         )}
         {error && (
           <Alert variant="destructive">
@@ -238,11 +241,11 @@ export function ServerDirectoryMenu({
                 ))}
               {!targets.length && (
                 <DropdownMenuItem disabled>
-                  {t("没有可用的目标文件夹")}
+                  {t("No available destination folders")}
                 </DropdownMenuItem>
               )}
               {busy && (
-                <DropdownMenuItem disabled>{t("正在记录…")}</DropdownMenuItem>
+                <DropdownMenuItem disabled>{t("Recording…")}</DropdownMenuItem>
               )}
             </DropdownMenuGroup>
           </>
@@ -255,7 +258,7 @@ export function ServerDirectoryMenu({
                 void load();
               }}
             >
-              {t("重新加载目录")}
+              {t("Reload folders")}
             </DropdownMenuItem>
           </DropdownMenuGroup>
         )}

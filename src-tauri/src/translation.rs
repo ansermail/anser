@@ -225,7 +225,8 @@ pub async fn save_translation_settings(
     };
     // Checkpoint distinguishes an absent (legacy) entry from a deletion tombstone.
     // Replacement/clear never needs to authorize an inaccessible legacy item.
-    let previous = entry.replace(key.as_deref())?;
+    // Saving settings is a user action, so the Keychain may prompt once.
+    let previous = entry.replace_interactive(key.as_deref())?;
     config.has_api_key = key.is_some();
     config.revision = uuid::Uuid::new_v4().to_string();
     if let Err(error) = store.put_translation_config(&config) {

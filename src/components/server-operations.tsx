@@ -33,22 +33,22 @@ export type OperationSnapshot = {
 };
 const states = {
   get queued() {
-    return t("待同步");
+    return t("Sync pending");
   },
   get running() {
-    return t("同步中");
+    return t("Syncing");
   },
   get completed() {
-    return t("已同步");
+    return t("Synced");
   },
   get blocked() {
-    return t("需要处理");
+    return t("Needs attention");
   },
   get paused() {
-    return t("账号已暂停");
+    return t("Account paused");
   },
   get isolated() {
-    return t("来源已隔离");
+    return t("Source quarantined");
   },
 };
 export function ServerOperations({
@@ -110,11 +110,11 @@ export function ServerOperations({
     <Collapsible defaultOpen={!defaultCollapsed} asChild>
       <Card>
         <TaskPanelHeader
-          title={t("服务器状态同步")}
+          title={t("Server flag synchronization")}
           description={
             <>
               {t(
-                "已读和星标自动同步到 IMAP 邮箱，断网后自动重试。POP3 与仅本地邮件保留本地状态。",
+                "Read and star flags sync automatically to IMAP, with retries after reconnecting. POP3 and local-only messages keep local flags.",
               )}
             </>
           }
@@ -125,34 +125,34 @@ export function ServerOperations({
             {error && (
               <Alert variant="destructive">
                 <AlertCircle />
-                <AlertTitle>{t("无法更新同步任务")}</AlertTitle>
+                <AlertTitle>{t("Could not update sync task")}</AlertTitle>
                 <AlertDescription>{error}</AlertDescription>
               </Alert>
             )}
             {!data && !error && (
               <Skeleton
                 className="h-16 w-full"
-                aria-label={t("正在加载同步任务")}
+                aria-label={t("Loading sync tasks")}
               />
             )}
             {data && (
               <>
                 <div className="flex flex-wrap gap-2">
                   <Badge variant="secondary">
-                    {t("待同步 ")}
+                    {t("Pending ")}
                     {data.pending}
                   </Badge>
                   <Badge variant={data.blocked ? "destructive" : "secondary"}>
-                    {t("需要处理 ")}
+                    {t("Needs attention ")}
                     {data.blocked}
                   </Badge>
                   <Badge variant="outline">
-                    {t("已同步 ")}
+                    {t("Synced ")}
                     {data.completed}
                   </Badge>
                   {!!data.isolated && (
                     <Badge variant="secondary">
-                      {t("来源已隔离 ")}
+                      {t("Source quarantined ")}
                       {data.isolated}
                     </Badge>
                   )}
@@ -160,7 +160,7 @@ export function ServerOperations({
                 {data.items.length ? (
                   <ul
                     className="flex flex-col gap-4"
-                    aria-label={t("服务器同步任务")}
+                    aria-label={t("Server sync tasks")}
                   >
                     {data.items.map((item) => (
                       <li
@@ -169,17 +169,17 @@ export function ServerOperations({
                       >
                         <div className="min-w-0 flex-1 space-y-1">
                           <p className="truncate text-sm font-medium">
-                            {item.subject || t("（无主题）")}
+                            {item.subject || t("(No subject)")}
                           </p>
                           <p className="break-words text-xs text-muted-foreground">
                             {item.accountEmail} · {item.folder} ·{" "}
                             {item.action === "read"
                               ? item.value
-                                ? t("标记已读")
-                                : t("标记未读")
+                                ? t("Mark read")
+                                : t("Mark unread")
                               : item.value
-                                ? t("加星标")
-                                : t("取消星标")}
+                                ? t("Add star")
+                                : t("Unstar")}
                           </p>
                           {item.error && (
                             <p className="break-words text-sm text-destructive">
@@ -196,7 +196,7 @@ export function ServerOperations({
                             }
                           >
                             {item.status === "queued" && item.error
-                              ? t("等待重试")
+                              ? t("Waiting to retry")
                               : states[item.status]}
                           </Badge>
                           {(item.status === "blocked" ||
@@ -207,7 +207,7 @@ export function ServerOperations({
                               disabled={busy !== null}
                               onClick={() => void retry(item.id)}
                             >
-                              {busy === item.id ? t("正在重试…") : t("重试")}
+                              {busy === item.id ? t("Retrying…") : t("Retry")}
                             </Button>
                           )}
                         </div>
@@ -216,12 +216,12 @@ export function ServerOperations({
                   </ul>
                 ) : (
                   <p className="text-sm text-muted-foreground">
-                    {t("暂无同步任务")}
+                    {t("No sync tasks")}
                   </p>
                 )}
                 {data.items.length >= 50 && (
                   <p className="text-xs text-muted-foreground">
-                    {t("最多显示 50 条，优先展示待处理任务。")}
+                    {t("Up to 50 entries, with pending tasks first.")}
                   </p>
                 )}
               </>

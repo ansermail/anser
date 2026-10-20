@@ -1,5 +1,9 @@
 # 发布与应用内更新
 
+## 0.1.24 发布准备（2026-10-20）
+
+本版修复收件箱实时推送漏检、Gmail 等 OAuth 账号后台收取因非交互钥匙串写入被拒而整次判失败、写信正文空内容时光标落在第二行、收件人/抄送/密送输入行过宽、富文本粘贴表格被摊平，以及英文界面原生托盘菜单、工具提示和发送结果通知仍显示中文；新增富文本字体颜色。五处版本已同步 0.1.24，本地门槛与发布资源检查通过后提交、打标签并触发双架构构建；云端结果、正式发布与 Homebrew 证据从 [发布工作点](RELEASE_0_1_24_WORKING.md) 接续。当前公开版本仍为 0.1.23。
+
 ## 当前正式版本：0.1.23（2026-10-20）
 
 0.1.23 Alpha 于 2026-10-20 11:19:48（Asia/Shanghai）正式发布为 latest，固定源码 `6fb7d55c3cfb2167a860efbf5cc65de4e41ea1ef`。[Release macOS 39362486985](https://github.com/ansermail/anser/actions/runs/39362486985)、[Checks 39362479797](https://github.com/ansermail/anser/actions/runs/39362479797) 与 [Pages 39362479801](https://github.com/ansermail/anser/actions/runs/39362479801) 均成功，[0.1.23 正式版本](https://github.com/ansermail/anser/releases/tag/v0.1.23) 已公开。

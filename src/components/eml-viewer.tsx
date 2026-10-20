@@ -95,7 +95,7 @@ export function EmlViewer() {
       } catch (cause) {
         if (!disposed)
           toast.error(
-            t("无法打开邮件文件：{value0}", { value0: String(cause) }),
+            t("Could not open email file: {value0}", { value0: String(cause) }),
           );
       } finally {
         draining = false;
@@ -140,7 +140,7 @@ export function EmlViewer() {
     try {
       if (download) {
         // Never use attachment-provided directories as the save dialog's path.
-        const filename = name.split(/[\\/]/).pop() || t("附件");
+        const filename = name.split(/[\\/]/).pop() || t("Attachments");
         const path = await save({ defaultPath: filename });
         if (path) await invoke("save_eml_attachment", { token, index, path });
       } else await invoke("preview_eml_attachment", { token, index });
@@ -161,16 +161,18 @@ export function EmlViewer() {
     >
       <DialogContent className="flex max-h-[88vh] flex-col sm:max-w-5xl">
         <DialogHeader>
-          <DialogTitle>{detail?.mail.subject || t("打开邮件文件")}</DialogTitle>
+          <DialogTitle>
+            {detail?.mail.subject || t("Open email file")}
+          </DialogTitle>
           <DialogDescription>
-            {document?.filename || t("本地 EML 文件")}{" "}
-            {t(" · 只读查看，不导入邮箱或存档")}
+            {document?.filename || t("Local EML file")}{" "}
+            {t(" · Read-only; not imported into a mailbox or archive")}
           </DialogDescription>
         </DialogHeader>
         {loading && (
           <div className="flex items-center gap-2" role="status">
             <Loader2 className="animate-spin" />
-            {t("正在读取邮件文件…")}
+            {t("Reading email file…")}
           </div>
         )}
         {error && (
@@ -181,13 +183,13 @@ export function EmlViewer() {
         {detail && (
           <div className="flex min-h-0 flex-col gap-4 overflow-y-auto">
             <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 text-sm break-words">
-              <dt className="text-muted-foreground">{t("发件人")}</dt>
-              <dd>{detail.mail.sender || t("未提供")}</dd>
-              <dt className="text-muted-foreground">{t("收件人")}</dt>
-              <dd>{detail.mail.recipients || t("未提供")}</dd>
+              <dt className="text-muted-foreground">{t("From")}</dt>
+              <dd>{detail.mail.sender || t("Not provided")}</dd>
+              <dt className="text-muted-foreground">{t("To")}</dt>
+              <dd>{detail.mail.recipients || t("Not provided")}</dd>
               {(detail.cc?.length ?? 0) > 0 && (
                 <>
-                  <dt className="text-muted-foreground">{t("抄送")}</dt>
+                  <dt className="text-muted-foreground">{t("Cc")}</dt>
                   <dd>
                     {detail.cc
                       ?.map((x) =>
@@ -197,8 +199,10 @@ export function EmlViewer() {
                   </dd>
                 </>
               )}
-              <dt className="text-muted-foreground">{t("日期")}</dt>
-              <dd>{detail.mail.date || t("原邮件未提供日期")}</dd>
+              <dt className="text-muted-foreground">{t("Date")}</dt>
+              <dd>
+                {detail.mail.date || t("No date in the original message")}
+              </dd>
             </dl>
             {detail.mail.parseWarnings?.length ? (
               <Alert>
@@ -238,7 +242,7 @@ export function EmlViewer() {
                         void attachment(item.index, item.name, false)
                       }
                     >
-                      {t("预览")}
+                      {t("Preview")}
                     </Button>
                     <Button
                       variant="outline"
@@ -249,7 +253,7 @@ export function EmlViewer() {
                       }
                     >
                       <Download data-icon="inline-start" />
-                      {t("另存为")}
+                      {t("Save as")}
                     </Button>
                   </>
                 )}
@@ -267,7 +271,7 @@ export function EmlViewer() {
               if (path) void load(path);
             }}
           >
-            {t("下一份邮件文件（剩余 ")}
+            {t("Next email file (remaining:")}
             {remaining.length}）
           </Button>
         )}

@@ -50,8 +50,8 @@ export function MailFilters({
         <Button
           variant={active ? "secondary" : "ghost"}
           size="icon-lg"
-          aria-label={t("筛选邮件")}
-          title={active ? t("筛选邮件（已启用）") : t("筛选邮件")}
+          aria-label={t("Filter mail")}
+          title={active ? t("Filter mail (active)") : t("Filter mail")}
         >
           <SlidersHorizontal />
         </Button>
@@ -63,11 +63,15 @@ export function MailFilters({
       >
         <FieldGroup className="gap-4">
           <PopoverHeader>
-            <PopoverTitle id={`${id}-title`}>{t("邮件筛选")}</PopoverTitle>
-            <PopoverDescription>{t("组合条件会同时生效。")}</PopoverDescription>
+            <PopoverTitle id={`${id}-title`}>{t("Mail filters")}</PopoverTitle>
+            <PopoverDescription>
+              {t("All selected conditions apply together.")}
+            </PopoverDescription>
           </PopoverHeader>
           <FieldSet>
-            <FieldLegend className="sr-only">{t("筛选条件")}</FieldLegend>
+            <FieldLegend className="sr-only">
+              {t("Filter conditions")}
+            </FieldLegend>
             <FieldGroup data-slot="checkbox-group">
               <Field orientation="horizontal">
                 <Checkbox
@@ -79,7 +83,7 @@ export function MailFilters({
                 />
                 <FieldLabel htmlFor={`${id}-star`}>
                   <Star className="size-4" />
-                  {t("星标邮件")}
+                  {t("Starred mail")}
                 </FieldLabel>
               </Field>
               <Field orientation="horizontal">
@@ -92,27 +96,29 @@ export function MailFilters({
                 />
                 <FieldLabel htmlFor={`${id}-attachment`}>
                   <Paperclip className="size-4" />
-                  {t("有附件")}
+                  {t("Has attachments")}
                 </FieldLabel>
               </Field>
             </FieldGroup>
           </FieldSet>
           <Separator />
           <Field>
-            <FieldLabel htmlFor={`${id}-search`}>{t("搜索字段")}</FieldLabel>
+            <FieldLabel htmlFor={`${id}-search`}>
+              {t("Search field")}
+            </FieldLabel>
             <SelectField
               id={`${id}-search`}
-              aria-label={t("搜索字段")}
+              aria-label={t("Search field")}
               value={query.searchField || ""}
               onValueChange={(searchField) => onChange({ searchField })}
             >
               <SelectGroup>
                 {[
-                  ["", t("全部字段")],
-                  ["subject", t("主题")],
-                  ["sender", t("发件人")],
-                  ["recipients", t("收件人")],
-                  ["body", t("正文")],
+                  ["", t("All fields")],
+                  ["subject", t("Subject")],
+                  ["sender", t("From")],
+                  ["recipients", t("To")],
+                  ["body", t("Body")],
                 ].map(([value, label]) => (
                   <SelectOption value={value} key={value}>
                     {label}
@@ -122,10 +128,10 @@ export function MailFilters({
             </SelectField>
           </Field>
           <Field>
-            <FieldLabel htmlFor={`${id}-date`}>{t("时间范围")}</FieldLabel>
+            <FieldLabel htmlFor={`${id}-date`}>{t("Date range")}</FieldLabel>
             <MailDateFilter
               id={`${id}-date`}
-              placeholder={t("不限时间")}
+              placeholder={t("Any time")}
               dateFrom={query.dateFrom}
               dateBefore={query.dateBefore}
               onChange={onChange}

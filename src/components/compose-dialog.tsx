@@ -217,7 +217,7 @@ export function ComposeDialog({
             return;
           const paths = event.payload.paths;
           if (paths.some((path) => !path || path.includes("\0"))) {
-            toast.error(t("附件路径无效，未添加文件"));
+            toast.error(t("Invalid attachment path. File not added."));
             return;
           }
           const images = paths.filter(isImagePath);
@@ -251,9 +251,12 @@ export function ComposeDialog({
       .catch((error) => {
         if (live)
           toast.error(
-            t("拖拽附件未就绪，可使用附件按钮：{value0}", {
-              value0: String(error),
-            }),
+            t(
+              "Attachment drop is unavailable. Use the attachment button: {value0}",
+              {
+                value0: String(error),
+              },
+            ),
           );
       });
     return () => {
@@ -353,7 +356,7 @@ export function ComposeDialog({
   async function close() {
     if (sending || closingNow.current) return;
     if (imageBusy.current) {
-      toast.info(t("正文图片正在读取，请稍后关闭"));
+      toast.info(t("Body images are loading. Wait before closing."));
       return;
     }
     const current = latest.current;
@@ -375,11 +378,11 @@ export function ComposeDialog({
       onClose();
     } catch (e) {
       toast.error(
-        t("{value0}失败：{value1}", {
+        t("{value0} failed: {value1}", {
           value0:
             current && !hasDraftContent(current)
-              ? t("空白邮件舍弃")
-              : t("草稿保存"),
+              ? t("Discarding empty message")
+              : t("Save draft"),
           value1: e,
         }),
       );
@@ -390,44 +393,52 @@ export function ComposeDialog({
   }
   async function valid() {
     if (imageBusy.current) {
-      toast.error(t("正文图片正在读取，请稍后发送"));
+      toast.error(t("Body images are loading. Wait before sending."));
       return false;
     }
     if (forwardLoading || value?.forwardSource) {
-      toast.error(t("原附件尚未准备完成，请重试或选择不携带原附件"));
+      toast.error(
+        t(
+          "Original attachments are not ready. Retry or choose not to include them.",
+        ),
+      );
       return false;
     }
     if (!value?.accountId || !value.to.trim()) {
-      toast.error(t("请选择发件账号并填写收件人"));
+      toast.error(t("Select a sending account and enter recipients"));
       return false;
     }
     if (value.signature?.accountId !== value.accountId) {
       toast.error(
         signatureError
-          ? t("签名读取失败，请重试或选择本封不使用签名")
-          : t("正在读取发件账号签名，请稍后发送"),
+          ? t("Could not load signature. Retry or omit it for this message.")
+          : t("Loading the sender's signature. Wait before sending."),
       );
       return false;
     }
     for (const [name, addresses] of [
-      [t("收件人"), value.to],
-      [t("抄送"), value.cc],
-      [t("密送"), value.bcc],
+      [t("To"), value.to],
+      [t("Cc"), value.cc],
+      [t("Bcc"), value.bcc],
     ]) {
       if (
         addressTokens(addresses).filter(Boolean).length !==
         parseAddresses(addresses).length
       ) {
-        toast.error(t("{value0}中存在无效的邮箱地址", { value0: name }));
+        toast.error(
+          t("{value0} contains an invalid email address", { value0: name }),
+        );
         return false;
       }
     }
     if (
       !value.subject.trim() &&
       !(await askConfirmation({
-        title: t("邮件主题为空"),
-        description: t("这封邮件没有主题，仍要继续发送或安排定时发送吗？"),
-        action: t("继续"),
+        title: t("Empty subject"),
+        description: t(
+          "This message has no subject. Send or schedule it anyway?",
+        ),
+        action: t("Continue"),
       }))
     )
       return false;
@@ -440,7 +451,9 @@ export function ComposeDialog({
     try {
       await persistence.current;
       await call("queue_send", { draft: prepareCompose(latest.current) });
-      toast.success(t("已加入发送记录，8 秒内可取消或立即发送"));
+      toast.success(
+        t("Added to send history. Cancel or send now within 8 seconds."),
+      );
       onSent();
       onQueued?.();
       onClose();
@@ -469,8 +482,8 @@ export function ComposeDialog({
       });
       toast.success(
         isDemo()
-          ? t("演示发送计划已保存，不会发送邮件")
-          : t("发送计划已保存，可在发送记录中修改或取消"),
+          ? t("Demo schedule saved. No messages will be sent.")
+          : t("Schedule saved. Edit or cancel it in Send history."),
       );
       onSent();
       onClose();
@@ -503,11 +516,13 @@ export function ComposeDialog({
   async function importSource(file: File) {
     try {
       if (file.size > 10 * 1024 * 1024)
-        throw new Error(t("正文文件超过 10 MB，请精简后导入"));
+        throw new Error(
+          t("Body file exceeds 10 MB. Reduce its size before importing."),
+        );
       const source = await file.text();
       const format = /\.html?$/i.test(file.name) ? "html" : "markdown";
       update({ format, source, ...compileSource(source, format) });
-      toast.success(t("已导入 {value0}", { value0: file.name }));
+      toast.success(t("Imported {value0}", { value0: file.name }));
     } catch (e) {
       toast.error(String(e));
     }
@@ -516,7 +531,7 @@ export function ComposeDialog({
   const hasContent = !!value && hasDraftContent(value);
   async function attach() {
     if (!native || isDemo()) {
-      toast.info(t("请在桌面客户端中添加真实附件"));
+      toast.info(t("Add real attachments in the desktop app"));
       return;
     }
     const id = latest.current?.id;
@@ -544,7 +559,9 @@ export function ComposeDialog({
         );
       }
     } catch (error) {
-      toast.error(t("添加附件失败：{value0}", { value0: String(error) }));
+      toast.error(
+        t("Could not add attachment: {value0}", { value0: String(error) }),
+      );
     }
   }
   return (
@@ -571,17 +588,21 @@ export function ComposeDialog({
           <div className="compose-heading">
             <DialogTitle>
               {draft?.subject.startsWith("Re:")
-                ? t("回复邮件")
+                ? t("Reply to message")
                 : draft?.subject.startsWith("Fwd:")
-                  ? t("转发邮件")
-                  : t("写邮件")}
+                  ? t("Forward message")
+                  : t("Compose")}
             </DialogTitle>
             <div>
               <Button
                 type="button"
                 variant="ghost"
                 size="icon-sm"
-                aria-label={expanded ? t("还原写信窗口") : t("最大化写信窗口")}
+                aria-label={
+                  expanded
+                    ? t("Restore compose window")
+                    : t("Expand compose window")
+                }
                 onClick={() => setExpanded(!expanded)}
               >
                 {expanded ? <Minimize2 size={17} /> : <Maximize2 size={17} />}
@@ -591,7 +612,9 @@ export function ComposeDialog({
                 variant="ghost"
                 size="icon-sm"
                 aria-label={
-                  hasContent ? t("保存草稿并关闭") : t("舍弃空白邮件")
+                  hasContent
+                    ? t("Save draft & close")
+                    : t("Discard empty message")
                 }
                 disabled={sending || closing || imageLoading}
                 onClick={() => void close()}
@@ -601,20 +624,22 @@ export function ComposeDialog({
             </div>
           </div>
           <DialogDescription className="sr-only">
-            {t("有内容的邮件会自动保存草稿，空白邮件关闭时直接舍弃。")}
+            {t(
+              "Messages with content are saved as drafts automatically. Empty messages are discarded on close.",
+            )}
           </DialogDescription>
         </DialogHeader>
         {value && (
           <>
             <fieldset className="compose-fields" disabled={sending || closing}>
               <div className="compose-row">
-                <Label>{t("发件人")}</Label>
+                <Label>{t("From")}</Label>
                 <SelectField
                   value={value.accountId}
                   onValueChange={(value) => update({ accountId: value })}
                 >
                   <SelectOption value="" disabled>
-                    {t("选择发件账号")}
+                    {t("Select sending account")}
                   </SelectOption>
                   {accounts
                     .filter((a) => a.enabled)
@@ -626,7 +651,7 @@ export function ComposeDialog({
                 </SelectField>
               </div>
               <div className="compose-row">
-                <Label htmlFor="to">{t("收件人")}</Label>
+                <Label htmlFor="to">{t("To")}</Label>
                 <RecipientInput
                   id="to"
                   autoFocus
@@ -637,16 +662,16 @@ export function ComposeDialog({
                 <Button
                   variant="ghost"
                   type="button"
-                  className="text-link"
+                  className="text-link ml-auto"
                   onClick={() => setExtra(!extra)}
                 >
-                  {t("抄送 / 密送")}
+                  {t("Cc / Bcc")}
                 </Button>
               </div>
               {extra && (
                 <>
                   <div className="compose-row">
-                    <Label htmlFor="cc">{t("抄送")}</Label>
+                    <Label htmlFor="cc">{t("Cc")}</Label>
                     <RecipientInput
                       id="cc"
                       value={value.cc}
@@ -655,7 +680,7 @@ export function ComposeDialog({
                     />
                   </div>
                   <div className="compose-row">
-                    <Label htmlFor="bcc">{t("密送")}</Label>
+                    <Label htmlFor="bcc">{t("Bcc")}</Label>
                     <RecipientInput
                       id="bcc"
                       value={value.bcc}
@@ -666,27 +691,27 @@ export function ComposeDialog({
                 </>
               )}
               <div className="compose-row">
-                <Label htmlFor="subject">{t("主题")}</Label>
+                <Label htmlFor="subject">{t("Subject")}</Label>
                 <Input
                   id="subject"
                   value={value.subject}
                   onChange={(e) => update({ subject: e.target.value })}
-                  placeholder={t("给这封邮件一个主题")}
+                  placeholder={t("Give this message a subject")}
                 />
               </div>
               <div className="compose-format">
-                <span>{t("正文")}</span>
+                <span>{t("Body")}</span>
                 <SelectField
-                  aria-label={t("正文格式")}
+                  aria-label={t("Body format")}
                   value={format}
                   onValueChange={(value) =>
                     changeFormat(value as ComposeFormat)
                   }
                 >
-                  <SelectOption value="plain">{t("纯文本")}</SelectOption>
-                  <SelectOption value="rich">{t("富文本")}</SelectOption>
+                  <SelectOption value="plain">{t("Plain text")}</SelectOption>
+                  <SelectOption value="rich">{t("Rich text")}</SelectOption>
                   <SelectOption value="markdown">Markdown</SelectOption>
-                  <SelectOption value="html">{t("HTML 源码")}</SelectOption>
+                  <SelectOption value="html">{t("HTML source")}</SelectOption>
                 </SelectField>
                 {value.quote && (
                   <Label
@@ -701,7 +726,7 @@ export function ComposeDialog({
                         update({ quote: { ...value.quote!, included } })
                       }
                     />
-                    {t("包含原文")}
+                    {t("Include original")}
                   </Label>
                 )}
                 <Button
@@ -711,7 +736,7 @@ export function ComposeDialog({
                   onClick={() => setDeliveryPreview(true)}
                 >
                   <Eye size={14} />
-                  {t("发送预览")}
+                  {t("Send preview")}
                 </Button>
                 {(format === "markdown" || format === "html") && (
                   <Button
@@ -721,7 +746,7 @@ export function ComposeDialog({
                     onClick={() => setPreview(!preview)}
                   >
                     <Eye size={14} />
-                    {preview ? t("收起预览") : t("预览正文")}
+                    {preview ? t("Hide preview") : t("Preview body")}
                   </Button>
                 )}
                 <Button
@@ -731,14 +756,14 @@ export function ComposeDialog({
                   onClick={() => sourceFile.current?.click()}
                 >
                   <FileUp size={14} />
-                  {t("导入文件")}
+                  {t("Import file")}
                 </Button>
                 <Input
                   ref={sourceFile}
                   type="file"
                   accept=".html,.htm,.md,.markdown"
                   className="sr-only"
-                  aria-label={t("导入正文文件")}
+                  aria-label={t("Import body file")}
                   onChange={(e) => {
                     const file = e.target.files?.[0];
                     e.target.value = "";
@@ -755,7 +780,7 @@ export function ComposeDialog({
                       fallback={
                         <div className="editor-loading">
                           <LoaderCircle className="animate-spin" size={18} />
-                          {t("正在加载编辑器…")}
+                          {t("Loading editor…")}
                         </div>
                       }
                     >
@@ -765,7 +790,10 @@ export function ComposeDialog({
                         onToggleTheme={onToggleTheme}
                         key={`${value.id}-${format}`}
                         body={value.body}
-                        html={value.html || textToHtml(value.body)}
+                        html={
+                          value.html ||
+                          (value.body ? textToHtml(value.body) : "")
+                        }
                         disabled={sending || closing}
                         onChange={(body, html) => update({ body, html })}
                         onBusy={(busy) => {
@@ -783,7 +811,9 @@ export function ComposeDialog({
                             interactionLocked.current
                           )
                             throw new Error(
-                              t("正文图片只能在当前桌面写信窗口读取"),
+                              t(
+                                "Body images can only be read in the current desktop compose window",
+                              ),
                             );
                           const token = await lease.promise;
                           if (
@@ -791,7 +821,9 @@ export function ComposeDialog({
                             closingNow.current ||
                             interactionLocked.current
                           )
-                            throw new Error(t("写信窗口已关闭或提交"));
+                            throw new Error(
+                              t("The compose window was closed or submitted"),
+                            );
                           return call<BodyImage[]>("read_body_images", {
                             id,
                             token,
@@ -807,14 +839,16 @@ export function ComposeDialog({
                       className="compose-body compose-source"
                       aria-label={
                         format === "markdown"
-                          ? t("Markdown 源码")
-                          : t("HTML 源码")
+                          ? t("Markdown source")
+                          : t("HTML source")
                       }
                       spellCheck={false}
                       placeholder={
                         format === "markdown"
-                          ? t("# 标题\n\n支持 **加粗**、列表、链接和表格…")
-                          : t("粘贴完整 HTML 文档或片段…")
+                          ? t(
+                              "# Heading\n\nSupports **bold**, lists, links and tables…",
+                            )
+                          : t("Paste a complete HTML document or fragment…")
                       }
                       value={value.source ?? ""}
                       onChange={(e) =>
@@ -831,11 +865,11 @@ export function ComposeDialog({
                       >
                         <div>
                           <Code2 size={13} />
-                          {t("正文预览")}
+                          {t("Body preview")}
                         </div>
                         <iframe
                           ref={previewFrame}
-                          title={t("写信正文预览")}
+                          title={t("Compose body preview")}
                           sandbox="allow-same-origin"
                           referrerPolicy="no-referrer"
                           srcDoc={safeMailHtml(
@@ -848,8 +882,8 @@ export function ComposeDialog({
                 ) : (
                   <Textarea
                     className="compose-body"
-                    aria-label={t("邮件正文")}
-                    placeholder={t("从一句问候开始…")}
+                    aria-label={t("Message body")}
+                    placeholder={t("Start with a greeting…")}
                     value={value.body}
                     onChange={(e) => update({ body: e.target.value })}
                   />
@@ -859,7 +893,7 @@ export function ComposeDialog({
                 <Alert variant="destructive" className="mx-6 w-auto">
                   <AlertDescription className="flex flex-wrap items-center gap-2">
                     <span className="text-sm text-destructive">
-                      {t("无法读取签名：")}
+                      {t("Could not load signature: ")}
                       {signatureError}
                     </span>
                     <Button
@@ -867,7 +901,7 @@ export function ComposeDialog({
                       size="sm"
                       onClick={() => setSignatureReload((v) => v + 1)}
                     >
-                      {t("重新读取签名")}
+                      {t("Reload signature")}
                     </Button>
                     <Button
                       variant="ghost"
@@ -884,7 +918,7 @@ export function ComposeDialog({
                         });
                       }}
                     >
-                      {t("本封不使用签名")}
+                      {t("Omit signature for this message")}
                     </Button>
                   </AlertDescription>
                 </Alert>
@@ -900,7 +934,7 @@ export function ComposeDialog({
                           value.signature.html ||
                           textToHtml(value.signature.body)
                         }
-                        title={t("本封邮件签名")}
+                        title={t("Signature for this message")}
                         onOpenLink={() => {}}
                       />
                     )}
@@ -909,15 +943,15 @@ export function ComposeDialog({
               {value.quote?.included && (
                 <section
                   className="compose-quoted-original"
-                  aria-label={t("引用的原邮件")}
+                  aria-label={t("Quoted original message")}
                 >
                   <div className="compose-quote-heading">
-                    {t("原文 · ")}
+                    {t("Original · ")}
                     {value.quote.subject}
                   </div>
                   <MailContent
                     html={value.quote.html || textToHtml(value.quote.body)}
-                    title={t("引用原文")}
+                    title={t("Quoted original")}
                     onOpenLink={() => {}}
                   />
                 </section>
@@ -927,8 +961,10 @@ export function ComposeDialog({
                   <FileUp />
                   <AlertDescription>
                     {forwardLoading
-                      ? t("正在准备原邮件附件，原件保持不变…")
-                      : forwardError || t("等待准备原邮件附件")}
+                      ? t(
+                          "Preparing original attachments. Originals remain unchanged…",
+                        )
+                      : forwardError || t("Waiting for original attachments")}
                     <div className="flex flex-wrap gap-2">
                       {!forwardLoading && (
                         <Button
@@ -939,7 +975,7 @@ export function ComposeDialog({
                             setForwardReload((n) => n + 1);
                           }}
                         >
-                          {t("重试准备")}
+                          {t("Retry preparation")}
                         </Button>
                       )}
                       <Button
@@ -952,7 +988,7 @@ export function ComposeDialog({
                           setForwardLoading(false);
                         }}
                       >
-                        {t("不携带原附件")}
+                        {t("Do not include original attachments")}
                       </Button>
                     </div>
                   </AlertDescription>
@@ -960,7 +996,7 @@ export function ComposeDialog({
               )}
               {!!value.forwardFiles?.length && (
                 <FieldSet className="min-w-0 shrink-0 px-7 py-3">
-                  <FieldLegend>{t("原邮件附件")}</FieldLegend>
+                  <FieldLegend>{t("Original attachments")}</FieldLegend>
                   <FieldGroup>
                     {value.forwardFiles.map((file) => (
                       <Field key={file.id} orientation="horizontal">
@@ -984,7 +1020,7 @@ export function ComposeDialog({
                             htmlFor={`forward-file-${file.id}`}
                           >
                             {file.name} · {file.size}
-                            {t(" 字节")}
+                            {t(" bytes")}
                           </FieldLabel>
                         </FieldContent>
                       </Field>
@@ -1000,7 +1036,7 @@ export function ComposeDialog({
                       {p.split("/").pop()}
                       <Button
                         variant="ghost"
-                        title={t("移除附件")}
+                        title={t("Remove attachment")}
                         onClick={() =>
                           update({
                             attachments: value.attachments.filter(
@@ -1043,7 +1079,7 @@ export function ComposeDialog({
                 ) : (
                   <Send size={16} />
                 )}{" "}
-                {sending ? t("准备发送…") : t("发送邮件")}
+                {sending ? t("Preparing to send…") : t("Send message")}
               </Button>
               <Button
                 variant="outline"
@@ -1058,7 +1094,7 @@ export function ComposeDialog({
                 onClick={() => setPlanning(!planning)}
               >
                 <Clock3 size={16} />
-                {t("定时发送")}
+                {t("Schedule send")}
               </Button>
               {value.signature &&
                 value.signature.accountId === value.accountId &&
@@ -1077,7 +1113,7 @@ export function ComposeDialog({
                         })
                       }
                     />
-                    {t("附加邮件签名")}
+                    {t("Include email signature")}
                   </Label>
                 )}
               <Button
@@ -1085,21 +1121,21 @@ export function ComposeDialog({
                 size="icon"
                 onClick={() => void attach()}
                 disabled={sending || closing}
-                title={t("添加附件")}
+                title={t("Add attachment")}
               >
                 <Paperclip size={18} />
               </Button>
               <span>
                 {hasContent && saved && <Check size={13} />}{" "}
                 {closing
-                  ? t("正在关闭…")
+                  ? t("Closing…")
                   : !hasContent
-                    ? t("空白邮件不会保存")
+                    ? t("Empty messages are not saved")
                     : saved
-                      ? t("草稿已保存")
-                      : t("正在保存草稿…")}
+                      ? t("Draft saved")
+                      : t("Saving draft…")}
               </span>
-              {isDemo() && <small>{t("演示模式不会发送邮件")}</small>}
+              {isDemo() && <small>{t("Demo mode does not send mail")}</small>}
             </div>
           </>
         )}
@@ -1110,15 +1146,17 @@ export function ComposeDialog({
       >
         <DialogContent className="delivery-preview-dialog">
           <DialogHeader>
-            <DialogTitle>{t("发送效果预览")}</DialogTitle>
+            <DialogTitle>{t("Final message preview")}</DialogTitle>
             <DialogDescription className="sr-only">
-              {t("发送正文预览，包含当前选择的原文。")}
+              {t(
+                "Preview the outgoing body with the selected original content.",
+              )}
             </DialogDescription>
           </DialogHeader>
           <div className="delivery-preview-body">
             {previewContent && (
               <MailContent
-                title={t("发送效果预览正文")}
+                title={t("Outgoing message body preview")}
                 html={
                   previewContent.deliveryHtml ||
                   textToHtml(previewContent.deliveryBody || "")

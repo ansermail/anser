@@ -1,3 +1,4 @@
+import { t } from "./i18n";
 import type { Mail } from "./types";
 
 // Match RFC reply links, scoped to the original account. A shared missing
@@ -97,7 +98,7 @@ export function replyHeaders(mail: Mail) {
 }
 export function mailTime(value: string) {
   const date = new Date(value);
-  if (!Number.isFinite(date.getTime())) return "时间未知";
+  if (!Number.isFinite(date.getTime())) return t("Unknown time");
   const pad = (n: number) => String(n).padStart(2, "0");
   return `${date.getFullYear()}/${pad(date.getMonth() + 1)}/${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
 }

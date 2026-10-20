@@ -40,6 +40,6 @@ export function checkedHistory(
     new Set(data.releases.map((item) => item.version)).size !==
       data.releases.length
   )
-    throw new Error(t("版本历史返回不完整或格式无效，请重试"));
+    throw new Error(t("Release history is incomplete or invalid. Retry."));
   return data;
 }

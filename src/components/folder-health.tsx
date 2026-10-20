@@ -103,8 +103,12 @@ export function FolderHealthPanel({
     <Collapsible defaultOpen={!defaultCollapsed} asChild>
       <Card>
         <TaskPanelHeader
-          title={t("目录来源检查")}
-          description={<>{t("异常目录暂停同步，本地存档保留。")}</>}
+          title={t("Folder source checks")}
+          description={
+            <>
+              {t("Inconsistent folders are suspended. Local archives remain.")}
+            </>
+          }
           onRefresh={() => reload.current()}
         />
         <CollapsibleContent asChild>
@@ -112,19 +116,19 @@ export function FolderHealthPanel({
             {(error || loadError) && (
               <Alert variant="destructive">
                 <AlertCircle />
-                <AlertTitle>{t("核查未完成")}</AlertTitle>
+                <AlertTitle>{t("Review incomplete")}</AlertTitle>
                 <AlertDescription>{error || loadError}</AlertDescription>
               </Alert>
             )}
             {!items && !error && !loadError && (
               <Skeleton
                 className="h-16 w-full"
-                aria-label={t("正在加载目录检查")}
+                aria-label={t("Loading folder checks")}
               />
             )}
             {items?.length === 0 && (
               <p className="text-sm text-muted-foreground">
-                {t("暂无隔离的目录。")}
+                {t("No quarantined folders.")}
               </p>
             )}
             {items?.map((item) => {
@@ -134,29 +138,34 @@ export function FolderHealthPanel({
                   <AlertCircle />
                   <AlertTitle className="flex flex-wrap items-center gap-2">
                     {item.displayName}
-                    <Badge variant="secondary">{t("来源已隔离")}</Badge>
+                    <Badge variant="secondary">{t("Source quarantined")}</Badge>
                   </AlertTitle>
                   <AlertDescription className="gap-2">
                     <p>{item.accountEmail}</p>
                     <p>{item.reason}</p>
                     <p>
-                      {t("保留 ")}
+                      {t("Keeping ")}
                       {item.sources}
-                      {t(" 条旧来源，其中 ")}
-                      {item.alternateSources} {t("条另有可用来源，")}
+                      {t(" old sources; ")}
+                      {item.alternateSources}{" "}
+                      {t(" have another usable source; ")}
                       {item.saved}
-                      {t(" 条有完整本地存档。")}
+                      {t(" have full local archives.")}
                     </p>
                     {result?.key === key && (
                       <p role="status">
                         {result.evidence.exists === 0 &&
                         (result.evidence.uidCount || 0) > 0
-                          ? t("核查后目录响应仍矛盾，继续隔离。")
+                          ? t(
+                              "Folder responses are still inconsistent. Quarantine continues.",
+                            )
                           : result.evidence.exists === null ||
                               result.evidence.uidCount === null
-                            ? t("仍无法确认目录已打开，继续隔离。")
+                            ? t(
+                                "Could not confirm the folder opened. Quarantine continues.",
+                              )
                             : t(
-                                "目录响应已恢复，请重新收取此目录以核对旧来源。",
+                                "Folder responses recovered. Fetch this folder again to review old sources.",
                               )}
                       </p>
                     )}
@@ -166,7 +175,7 @@ export function FolderHealthPanel({
                         size="sm"
                         disabled={!!busy}
                         onClick={() => void probe(item)}
-                        aria-label={t("重新核查 {value0} {value1}", {
+                        aria-label={t("Recheck {value0} {value1}", {
                           value0: item.accountEmail,
                           value1: item.displayName,
                         })}
@@ -174,10 +183,10 @@ export function FolderHealthPanel({
                         <RefreshCw
                           className={busy === key ? "animate-spin" : ""}
                         />
-                        {busy === key ? t("正在核查…") : t("重新核查")}
+                        {busy === key ? t("Rechecking…") : t("Recheck")}
                       </Button>
                       <span className="text-xs text-muted-foreground">
-                        {t("核查时间")}{" "}
+                        {t("Review time")}{" "}
                         {new Date(item.checkedAt).toLocaleString(dateLocale(), {
                           hour12: false,
                         })}

@@ -37,13 +37,13 @@ import {
 } from "./ui/dialog";
 
 const roles: [FolderRole, string][] = [
-  ["sent", "已发送"],
-  ["drafts", "草稿箱"],
-  ["trash", "废纸篓"],
-  ["junk", "垃圾邮件"],
-  ["archive", "归档"],
-  ["all", "所有邮件"],
-  ["flagged", "星标邮件"],
+  ["sent", "Sent"],
+  ["drafts", "Drafts"],
+  ["trash", "Trash"],
+  ["junk", "Junk"],
+  ["archive", "Archive"],
+  ["all", "All mail"],
+  ["flagged", "Starred mail"],
 ];
 const AUTO = "auto",
   NONE = "none",
@@ -148,7 +148,7 @@ export function FolderMappingDialog({
     try {
       await call("save_folder_mappings", { id: account.id, mappings });
       if (epoch.current !== current) return;
-      toast.success(t("特殊文件夹设置已保存"));
+      toast.success(t("Special folder settings saved"));
       onSaved();
       onClose();
     } catch (e) {
@@ -175,14 +175,14 @@ export function FolderMappingDialog({
         }}
       >
         <DialogHeader>
-          <DialogTitle>{t("特殊文件夹")}</DialogTitle>
+          <DialogTitle>{t("Special folders")}</DialogTitle>
           <DialogDescription>
             {account.name} · {account.email}
           </DialogDescription>
         </DialogHeader>
         <p className="text-sm text-muted-foreground">
           {t(
-            "指定服务器目录的用途。垃圾邮件和废纸篓不自动收取，仍可从侧栏手动查看。",
+            "Assign purposes to server folders. Junk and Trash are not fetched automatically, but remain accessible from the sidebar.",
           )}
         </p>
         {loading && !settings && <Skeleton className="h-64 w-full" />}
@@ -222,11 +222,15 @@ export function FolderMappingDialog({
                       </SelectTrigger>
                       <SelectContent>
                         <SelectGroup>
-                          <SelectItem value={AUTO}>{t("自动识别")}</SelectItem>
-                          <SelectItem value={NONE}>{t("不指定")}</SelectItem>
+                          <SelectItem value={AUTO}>
+                            {t("Detect automatically")}
+                          </SelectItem>
+                          <SelectItem value={NONE}>
+                            {t("Unassigned")}
+                          </SelectItem>
                           {invalid && (
                             <SelectItem value={value} disabled>
-                              {t("已设置的目录不可用")}
+                              {t("Configured folder unavailable")}
                             </SelectItem>
                           )}
                           {selectable.map((f) => (
@@ -239,18 +243,20 @@ export function FolderMappingDialog({
                     </Select>
                     {invalid ? (
                       <FieldError>
-                        {t("目录已移除或不能存放邮件，请重新选择。")}
+                        {t(
+                          "The folder was removed or cannot hold messages. Select another.",
+                        )}
                       </FieldError>
                     ) : (
                       value === AUTO && (
                         <FieldDescription>
                           {detected.length
-                            ? t("已识别：{value0}", {
+                            ? t("Detected: {value0}", {
                                 value0: detected
                                   .map((f) => f.displayName)
                                   .join("、"),
                               })
-                            : t("未识别到此用途的目录")}
+                            : t("No folder detected for this purpose")}
                         </FieldDescription>
                       )
                     )}
@@ -274,7 +280,7 @@ export function FolderMappingDialog({
             }
           >
             <RefreshCw data-icon="inline-start" />
-            {loading ? t("刷新中…") : t("刷新目录")}
+            {loading ? t("Refreshing…") : t("Refresh folders")}
           </Button>
           <div className="flex gap-2">
             <Button
@@ -282,13 +288,13 @@ export function FolderMappingDialog({
               disabled={loading || saving || !settings}
               onClick={() => setValues({})}
             >
-              {t("恢复自动识别")}
+              {t("Restore automatic detection")}
             </Button>
             <Button
               disabled={loading || saving || !settings || missing.length > 0}
               onClick={() => void save()}
             >
-              {saving ? t("保存中…") : t("保存")}
+              {saving ? t("Saving…") : t("Save")}
             </Button>
           </div>
         </DialogFooter>

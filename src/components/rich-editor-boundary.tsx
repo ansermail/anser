@@ -11,15 +11,21 @@ export class RichEditorBoundary extends Component<
 > {
   state = { error: "" };
   static getDerivedStateFromError(error: Error) {
-    return { error: error.message || t("未知错误") };
+    return { error: error.message || t("Unknown error") };
   }
   render() {
     if (!this.state.error) return this.props.children;
     return (
       <Alert variant="destructive" className="m-6 w-auto">
-        <AlertTitle>{t("富文本编辑器暂时无法加载")}</AlertTitle>
+        <AlertTitle>
+          {t("The rich-text editor is temporarily unavailable")}
+        </AlertTitle>
         <AlertDescription>
-          <p>{t("草稿内容仍保留，可以重试或切换到 HTML 源码继续编辑。")}</p>
+          <p>
+            {t(
+              "Your draft is preserved. Retry or switch to HTML source to continue editing.",
+            )}
+          </p>
           <p>{this.state.error}</p>
           <Button
             type="button"
@@ -27,7 +33,7 @@ export class RichEditorBoundary extends Component<
             size="sm"
             onClick={() => this.setState({ error: "" })}
           >
-            {t("重试编辑器")}
+            {t("Retry editor")}
           </Button>
         </AlertDescription>
       </Alert>

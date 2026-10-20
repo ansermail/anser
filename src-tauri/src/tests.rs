@@ -2721,11 +2721,11 @@ fn interface_language_is_independent_of_other_preferences_and_survives_reopening
     assert_eq!(reopened.interface_language().unwrap(), "en");
     assert_eq!(reopened.preferences().unwrap().sync_interval_minutes, 15);
     assert_eq!(
-        crate::interface_language::text("en", "立即检查新邮件"),
+        crate::interface_language::text("en", "Check for new mail now"),
         "Check for new mail now"
     );
     assert_eq!(
-        crate::interface_language::text("zh-CN", "立即检查新邮件"),
+        crate::interface_language::text("zh-CN", "Check for new mail now"),
         "立即检查新邮件"
     );
 }

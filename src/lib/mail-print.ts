@@ -37,19 +37,19 @@ async function printImagesReady(sheet: HTMLElement) {
 export function printableMail(detail: Detail, doc: Document = document) {
   const sheet = doc.createElement("main");
   sheet.id = "mail-print-root";
-  sheet.setAttribute("aria-label", t("待打印邮件"));
+  sheet.setAttribute("aria-label", t("Message to print"));
 
   const header = doc.createElement("header");
   header.className = "mail-print-header";
   const subject = doc.createElement("h1");
-  subject.textContent = detail.mail.subject || t("（无主题）");
+  subject.textContent = detail.mail.subject || t("(No subject)");
   header.append(subject);
   const date = new Date(detail.mail.date);
   for (const [label, value] of [
-    [t("发件人"), detail.mail.sender],
-    [t("收件人"), detail.mail.recipients],
+    [t("From"), detail.mail.sender],
+    [t("To"), detail.mail.recipients],
     [
-      t("日期"),
+      t("Date"),
       Number.isNaN(date.getTime())
         ? detail.mail.date
         : date.toLocaleString(dateLocale()),
@@ -89,7 +89,7 @@ export function printableMail(detail: Detail, doc: Document = document) {
     const attachments = doc.createElement("section");
     attachments.className = "mail-print-attachments";
     const heading = doc.createElement("h2");
-    heading.textContent = t("附件");
+    heading.textContent = t("Attachments");
     const list = doc.createElement("ul");
     for (const attachment of detail.attachments) {
       const item = doc.createElement("li");

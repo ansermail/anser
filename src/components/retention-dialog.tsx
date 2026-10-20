@@ -237,8 +237,8 @@ export function RetentionDialog({
       if (epoch.current !== current) return;
       toast.success(
         account.protocol === "imap"
-          ? t("文件夹保存范围已保存")
-          : t("本地保存设置已保存"),
+          ? t("Folder retention scope saved")
+          : t("Local storage settings saved"),
       );
       onSaved();
       onClose();
@@ -268,10 +268,10 @@ export function RetentionDialog({
         <DialogHeader>
           <DialogTitle>
             {onboarding
-              ? t("邮箱已连接")
+              ? t("Mailbox connected")
               : account.protocol === "imap"
-                ? t("文件夹保存范围")
-                : t("本地保存设置")}
+                ? t("Folder retention scope")
+                : t("Local storage settings")}
           </DialogTitle>
           <DialogDescription>
             {account.name} · {account.email}
@@ -281,27 +281,27 @@ export function RetentionDialog({
           <Alert>
             <AlertDescription>
               {t(
-                "收发服务器验证通过。后台将按你选择的账号默认方式收取；这里可以进一步调整保存范围，之后也能在设置与账号中修改。",
+                "Incoming and outgoing servers verified. Background checks use your selected account default. Adjust the retention scope here or later in Settings & accounts.",
               )}
             </AlertDescription>
           </Alert>
         )}
         <p className="text-sm text-muted-foreground">
-          {t("账号默认：")}
+          {t("Account default: ")}
           {settings
             ? settings.defaultSave
-              ? t("完整保存")
-              : t("在线阅读")
-            : t("读取中")}
-          {t("。可为每个文件夹单独设置；已有完整存档保留。")}
+              ? t("Save complete messages")
+              : t("Read online")
+            : t("Reading")}
+          {t(". Each folder can override this; existing full archives remain.")}
         </p>
         <p className="text-sm text-muted-foreground">
           {account.protocol === "pop3"
             ? t(
-                "POP3 保存服务端可收取的邮件及本客户端发送的邮件，保存方式跟随账号设置。",
+                "POP3 saves messages available from the server and mail sent by this client, following the account setting.",
               )
             : t(
-                "垃圾邮件和废纸篓默认不自动收取。选择“完整保存”后纳入后台收取；下次收取会补齐可用邮件的正文与附件。",
+                "Junk and Trash are not fetched automatically. Choosing Save complete messages includes them in background checks; the next check fills in available bodies and attachments.",
               )}
         </p>
         {settings?.summary && (
@@ -325,7 +325,7 @@ export function RetentionDialog({
               checking ? (
                 <Button variant="outline" size="sm" onClick={cancelInspection}>
                   <Loader2 data-icon="inline-start" className="animate-spin" />
-                  {t("取消预算检查")}
+                  {t("Cancel estimate")}
                 </Button>
               ) : (
                 <Button
@@ -334,20 +334,23 @@ export function RetentionDialog({
                   disabled={busy || loading || !settings || missing.length > 0}
                   onClick={() => void inspectBudget()}
                 >
-                  {t("检查服务器数量与空间")}
+                  {t("Check server count & space")}
                 </Button>
               )
             }
           />
         )}
         {loading && !settings && (
-          <Skeleton className="h-48" aria-label={t("正在加载保存范围")} />
+          <Skeleton
+            className="h-48"
+            aria-label={t("Loading retention scope")}
+          />
         )}
         {settings && (
           <FieldGroup className="gap-4">
             <Field data-invalid={!validDays}>
               <FieldLabel htmlFor="server-retention-days">
-                {t("服务器保留期（天，可选）")}
+                {t("Server retention (days, optional)")}
               </FieldLabel>
               <Input
                 id="server-retention-days"
@@ -358,15 +361,17 @@ export function RetentionDialog({
                 value={days}
                 disabled={busy || loading}
                 aria-invalid={!validDays}
-                placeholder={t("例如 3；未知时留空")}
+                placeholder={t("For example: 3. Leave blank if unknown.")}
                 onChange={(e) => setDays(e.target.value)}
               />
               <FieldDescription>
                 {validDays
                   ? t(
-                      "仅用于待保存提醒，不改变服务器删除规则。可填写 1–3650 天；只有删除前完整下载的邮件才有本地副本。",
+                      "Used for saving reminders only; server deletion rules are unchanged. Enter 1–3650 days. Only fully downloaded messages have local copies.",
                     )
-                  : t("请输入 1–3650 的整数，未知时留空。")}
+                  : t(
+                      "Enter an integer from 1 to 3650, or leave blank if unknown.",
+                    )}
               </FieldDescription>
             </Field>
             {folders.map((folder, i) => (
@@ -377,7 +382,9 @@ export function RetentionDialog({
                   </FieldLabel>
                   {folder.syncError && (
                     <FieldDescription>
-                      {t("来源需核查，设置保存后仍须通过来源检查。")}
+                      {t(
+                        "Source needs review. Saving settings does not bypass source verification.",
+                      )}
                     </FieldDescription>
                   )}
                 </div>
@@ -395,7 +402,7 @@ export function RetentionDialog({
                 >
                   <SelectTrigger
                     id={`retention-${i}`}
-                    aria-label={t("{value0}保存方式", {
+                    aria-label={t("Retention for {value0}", {
                       value0: folder.displayName,
                     })}
                     className="w-40 shrink-0"
@@ -404,9 +411,13 @@ export function RetentionDialog({
                   </SelectTrigger>
                   <SelectContent>
                     <SelectGroup>
-                      <SelectItem value="inherit">{t("跟随账号")}</SelectItem>
-                      <SelectItem value="save">{t("完整保存")}</SelectItem>
-                      <SelectItem value="online">{t("在线阅读")}</SelectItem>
+                      <SelectItem value="inherit">
+                        {t("Follow account default")}
+                      </SelectItem>
+                      <SelectItem value="save">
+                        {t("Save complete messages")}
+                      </SelectItem>
+                      <SelectItem value="online">{t("Read online")}</SelectItem>
                     </SelectGroup>
                   </SelectContent>
                 </Select>
@@ -415,16 +426,16 @@ export function RetentionDialog({
             {!folders.length && account.protocol === "imap" && (
               <FieldDescription>
                 {t(
-                  "尚无可读取文件夹，请刷新目录或先完成收取。当前按账号默认方式处理。",
+                  "No readable folders. Refresh the folders or complete a mail check. The account default applies for now.",
                 )}
               </FieldDescription>
             )}
             {missing.length > 0 && (
               <Alert variant="destructive">
                 <AlertDescription>
-                  {t("有 ")}
+                  {t("There are ")}
                   {missing.length}
-                  {t(" 个已失效文件夹设置。请刷新目录，或")}
+                  {t(" obsolete folder settings. Refresh folders, or ")}
                   <Button
                     variant="link"
                     disabled={busy || loading}
@@ -438,9 +449,9 @@ export function RetentionDialog({
                       )
                     }
                   >
-                    {t("移除失效设置")}
+                    {t("remove obsolete settings")}
                   </Button>
-                  {t("后保存。")}
+                  {t(" before saving.")}
                 </AlertDescription>
               </Alert>
             )}
@@ -458,10 +469,10 @@ export function RetentionDialog({
             onClick={() => void refresh()}
           >
             <RefreshCw />
-            {t("刷新目录")}
+            {t("Refresh folders")}
           </Button>
           <Button variant="outline" disabled={busy} onClick={onClose}>
-            {onboarding ? t("以后再设置") : t("取消")}
+            {onboarding ? t("Set up later") : t("Cancel")}
           </Button>
           <Button
             disabled={
@@ -470,10 +481,10 @@ export function RetentionDialog({
             onClick={() => void save()}
           >
             {busy
-              ? t("正在保存…")
+              ? t("Saving…")
               : account.protocol === "imap"
-                ? t("保存范围")
-                : t("保存设置")}
+                ? t("Save scope")
+                : t("Save settings")}
           </Button>
         </DialogFooter>
       </DialogContent>

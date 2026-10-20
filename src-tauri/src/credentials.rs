@@ -12,7 +12,7 @@ const VAULT: &str = "anser-credentials-v1";
 const MAX_BYTES: usize = 2 * 1024 * 1024;
 const LOCKED: &str = "无法解锁雁信凭据库；已停止重复授权，请解锁系统钥匙串后退出并重新打开雁信";
 const LEGACY: &str = "旧版凭据未获当前应用授权；原记录已保留，请重新连接该账号或重新填写对应密钥，不会逐项弹出钥匙串授权";
-const WRITE_FAILED: &str = "凭据库保存失败；请解锁系统钥匙串后退出并重新打开雁信，原有凭据未被替换";
+const WRITE_FAILED: &str = "凭据库保存失败；系统未允许雁信写入钥匙串。请确认钥匙串已解锁，并在弹出的窗口中选“始终允许”；原有凭据未被替换";
 
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -141,12 +141,12 @@ impl Session {
             .as_ref()
             .map_err(Clone::clone)
     }
-    fn commit(&mut self, backend: &impl Backend, doc: Document) -> Result<()> {
+    fn commit(&mut self, backend: &impl Backend, doc: Document, interactive: bool) -> Result<()> {
         let raw = serde_json::to_string(&doc).map_err(|_| WRITE_FAILED)?;
         if raw.len() > MAX_BYTES {
             return Err("凭据库超过容量限制，未保存本次修改".into());
         }
-        backend.write(VAULT, &raw, false)?;
+        backend.write(VAULT, &raw, interactive)?;
         self.document = Some(Ok(doc));
         Ok(())
     }
@@ -170,7 +170,7 @@ impl Session {
         // intact for recovery. Future reads prefer the shared vault exclusively.
         let mut doc = self.document(backend)?.clone();
         doc.entries.insert(id.into(), value.clone());
-        self.commit(backend, doc)?;
+        self.commit(backend, doc, false)?;
         value.ok_or_else(|| "未保存该项凭据，请重新连接账号或填写密钥".into())
     }
     fn replace(
@@ -179,9 +179,18 @@ impl Session {
         id: &str,
         value: Option<&str>,
     ) -> Result<Previous> {
+        self.replace_with(backend, id, value, false)
+    }
+    fn replace_with(
+        &mut self,
+        backend: &impl Backend,
+        id: &str,
+        value: Option<&str>,
+        interactive: bool,
+    ) -> Result<Previous> {
         let mut doc = self.document(backend)?.clone();
         let previous = Previous(doc.entries.insert(id.into(), value.map(str::to_owned)));
-        self.commit(backend, doc)?;
+        self.commit(backend, doc, interactive)?;
         self.legacy_errors.remove(id);
         Ok(previous)
     }
@@ -195,7 +204,7 @@ impl Session {
                 doc.entries.remove(id);
             }
         }
-        self.commit(backend, doc)
+        self.commit(backend, doc, false)
     }
 }
 fn session() -> &'static Mutex<Session> {
@@ -235,8 +244,16 @@ impl Entry {
     pub fn set_password(&self, value: &str) -> Result<()> {
         self.replace(Some(value)).map(|_| ())
     }
-    pub fn delete_credential(&self) -> Result<()> {
-        self.replace(None).map(|_| ())
+    /// Explicit user action: allow one macOS Keychain prompt so a denied
+    /// write can be granted again. Background refresh must not call this.
+    pub fn set_password_interactive(&self, value: &str) -> Result<()> {
+        self.replace_interactive(Some(value)).map(|_| ())
+    }
+    pub fn replace_interactive(&self, value: Option<&str>) -> Result<Previous> {
+        session()
+            .lock()
+            .map_err(|_| LOCKED)?
+            .replace_with(&NATIVE, &self.0, value, true)
     }
     pub fn replace(&self, value: Option<&str>) -> Result<Previous> {
         session()

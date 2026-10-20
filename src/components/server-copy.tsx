@@ -41,46 +41,46 @@ export type DirectoryOperation = {
 };
 const statuses = {
   get queued() {
-    return t("待复制");
+    return t("Waiting to copy");
   },
   get preparing() {
-    return t("核对来源");
+    return t("Checking source");
   },
   get submitted() {
-    return t("已提交");
+    return t("Submitted");
   },
   get confirmed() {
-    return t("待核对目标");
+    return t("Destination verification pending");
   },
   get verifying() {
-    return t("核对目标中");
+    return t("Checking destination");
   },
   get completed() {
-    return t("复制完成");
+    return t("Copy completed");
   },
   get uncertain() {
-    return t("结果未确认");
+    return t("Result unconfirmed");
   },
   get blocked() {
-    return t("需要处理");
+    return t("Needs attention");
   },
   get cancelled() {
-    return t("已取消");
+    return t("Canceled");
   },
   get cleanup_pending() {
-    return t("待完成移动");
+    return t("Move completion pending");
   },
   get cleanup_running() {
-    return t("核对两个副本");
+    return t("Checking both copies");
   },
   get cleanup_submitted() {
-    return t("移除原目录中");
+    return t("Removing source");
   },
   get cleanup_uncertain() {
-    return t("原目录结果未确认");
+    return t("Source result unconfirmed");
   },
   get cleanup_blocked() {
-    return t("原目录未移除");
+    return t("Source not removed");
   },
 };
 export function DirectoryOperationsPanel({
@@ -146,11 +146,11 @@ export function DirectoryOperationsPanel({
     <Collapsible defaultOpen={!defaultCollapsed} asChild>
       <Card>
         <TaskPanelHeader
-          title={t("服务器文件夹操作")}
+          title={t("Server folder operations")}
           description={
             <>
               {t(
-                "复制保留原邮件；移动确认后更新两个目录。结果未确认的任务不会自动重发。回执丢失的移动可先刷新目标目录，再只读核对。 兼容移动先复制并核验，再移除原目录；中断后需主动继续，继续前会重新核对两个副本。",
+                "Copy keeps the original; move updates both folders after confirmation. Unconfirmed tasks are not automatically resent. For moves with lost receipts, refresh the destination and verify read-only. Compatible moves copy and verify before removing the source. Interrupted moves require explicit continuation and a fresh check of both copies.",
               )}
             </>
           }
@@ -161,21 +161,24 @@ export function DirectoryOperationsPanel({
             {(loadError || error) && (
               <Alert variant="destructive">
                 <AlertCircle />
-                <AlertTitle>{t("操作未完成")}</AlertTitle>
+                <AlertTitle>{t("Operation incomplete")}</AlertTitle>
                 <AlertDescription>{error || loadError}</AlertDescription>
               </Alert>
             )}
             {!items && (
-              <Skeleton className="h-16" aria-label={t("正在加载文件夹操作")} />
+              <Skeleton
+                className="h-16"
+                aria-label={t("Loading folder operations")}
+              />
             )}
             {items?.length === 0 && (
               <p className="text-sm text-muted-foreground">
-                {t("暂无服务器文件夹操作。")}
+                {t("No server folder operations.")}
               </p>
             )}
             <ul
               className="flex flex-col gap-4"
-              aria-label={t("服务器文件夹任务")}
+              aria-label={t("Server folder tasks")}
             >
               {items?.map((item) => (
                 <li
@@ -184,17 +187,19 @@ export function DirectoryOperationsPanel({
                 >
                   <div className="flex min-w-0 flex-col gap-1">
                     <p className="break-words">
-                      {item.subject || t("（无主题）")}
+                      {item.subject || t("(No subject)")}
                     </p>
                     <p className="text-sm text-muted-foreground">
                       {item.accountEmail} ·{" "}
-                      {item.kind === "move" ? t("移动") : t("复制")} ·{" "}
+                      {item.kind === "move" ? t("Move") : t("Copy")} ·{" "}
                       {item.folder} → {item.target}
                     </p>
                     {item.receiptOrigin === "observed" &&
                       item.status === "completed" && (
                         <p className="text-sm text-muted-foreground">
-                          {t("目标全文与原目录只读核查通过")}
+                          {t(
+                            "Destination full content and source verified read-only",
+                          )}
                         </p>
                       )}
                     {item.error && (
@@ -202,16 +207,18 @@ export function DirectoryOperationsPanel({
                     )}
                     {item.strategy === "copy-delete" && (
                       <p className="text-sm text-muted-foreground">
-                        {t("兼容移动 · 先核验目标，再移除原目录")}
+                        {t(
+                          "Compatible move · Verify destination before removing source",
+                        )}
                       </p>
                     )}
                   </div>
                   <div className="flex items-center gap-2">
                     <Badge variant="outline">
                       {item.kind === "move" && item.status === "completed"
-                        ? t("移动完成")
+                        ? t("Move completed")
                         : item.kind === "move" && item.status === "queued"
-                          ? t("待移动")
+                          ? t("Waiting to move")
                           : statuses[item.status]}
                     </Badge>
                     {item.status === "blocked" && (
@@ -221,7 +228,7 @@ export function DirectoryOperationsPanel({
                         disabled={!!busy}
                         onClick={() => void action(item.id, "retry")}
                       >
-                        {t("重试")}
+                        {t("Retry")}
                       </Button>
                     )}
                     {(item.status === "confirmed" ||
@@ -235,7 +242,7 @@ export function DirectoryOperationsPanel({
                         disabled={!!busy}
                         onClick={() => void action(item.id, "verify")}
                       >
-                        {t("只读核对")}
+                        {t("Verify read-only")}
                       </Button>
                     )}
                     {item.kind === "move" &&
@@ -252,7 +259,7 @@ export function DirectoryOperationsPanel({
                           disabled={!!busy}
                           onClick={() => void action(item.id, "continue_move")}
                         >
-                          {t("继续移除原目录")}
+                          {t("Continue source removal")}
                         </Button>
                       )}
                     {["queued", "blocked"].includes(item.status) && (
@@ -262,7 +269,7 @@ export function DirectoryOperationsPanel({
                         disabled={!!busy}
                         onClick={() => void action(item.id, "cancel")}
                       >
-                        {t("取消任务")}
+                        {t("Cancel task")}
                       </Button>
                     )}
                   </div>

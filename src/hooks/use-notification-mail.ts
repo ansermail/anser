@@ -34,7 +34,9 @@ export function useNotificationMail(
       } catch (error) {
         if (!disposed)
           toast.error(
-            t("无法打开通知邮件：{value0}", { value0: String(error) }),
+            t("Could not open notification message: {value0}", {
+              value0: String(error),
+            }),
           );
       } finally {
         draining = false;

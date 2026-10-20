@@ -25,7 +25,7 @@ function selectedRange(from?: string, before?: string): DateRange | undefined {
 }
 export function MailDateFilter({
   id,
-  placeholder = t("时间范围"),
+  placeholder = t("Date range"),
   dateFrom,
   dateBefore,
   onChange,
@@ -69,7 +69,7 @@ export function MailDateFilter({
           id={id}
           variant={dateFrom ? "secondary" : "outline"}
           size="sm"
-          aria-label={t("按时间筛选邮件")}
+          aria-label={t("Filter messages by date")}
           title={label}
         >
           <CalendarDays data-icon="inline-start" />
@@ -79,13 +79,15 @@ export function MailDateFilter({
       <PopoverContent
         align="start"
         className="w-80 max-h-[var(--radix-popover-content-available-height)] overflow-y-auto"
-        aria-label={t("邮件时间范围")}
+        aria-label={t("Message date range")}
       >
         <FieldGroup>
           <Field>
-            <FieldLabel>{t("邮件时间范围")}</FieldLabel>
+            <FieldLabel>{t("Message date range")}</FieldLabel>
             <FieldDescription>
-              {t("包含起止日期，使用本机时区；时间未知的邮件不参与时间筛选。")}
+              {t(
+                "Both dates are included, using your local time zone. Messages without a known date are excluded.",
+              )}
             </FieldDescription>
             <Button
               variant="ghost"
@@ -93,7 +95,7 @@ export function MailDateFilter({
               className="self-start"
               onClick={() => setRange(undefined)}
             >
-              {t("重新选择")}
+              {t("Choose again")}
             </Button>
             <Calendar
               mode="range"
@@ -115,7 +117,7 @@ export function MailDateFilter({
                 setOpen(false);
               }}
             >
-              {t("不限时间")}
+              {t("Any time")}
             </Button>
             <Button
               disabled={!range?.from}
@@ -124,7 +126,7 @@ export function MailDateFilter({
                 setOpen(false);
               }}
             >
-              {t("应用筛选")}
+              {t("Apply filters")}
             </Button>
           </div>
         </FieldGroup>

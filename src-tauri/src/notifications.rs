@@ -91,10 +91,10 @@ pub fn received(store: &Store, app: &tauri::AppHandle, account: &Account, after:
             let body = format!("{}\n{}", mail.sender, mail.subject);
             #[cfg(target_os = "macos")]
             let result = crate::notification_open::bind(store, &mail).and_then(|token| {
-                crate::notification_open::show(text(&language, "雁信 · 新邮件"), &body, &token)
+                crate::notification_open::show(text(&language, "Anser · New mail"), &body, &token)
             });
             #[cfg(not(target_os = "macos"))]
-            let result = show(app, text(&language, "雁信 · 新邮件"), &body);
+            let result = show(app, text(&language, "Anser · New mail"), &body);
             if let Err(error) = result {
                 let _ = store.log(&format!("系统通知失败：{error}"));
             }
@@ -163,14 +163,14 @@ pub fn receipt(store: &Store, draft: &Compose, result: &Result<String>) -> SendR
     let message = match status {
         "sent" => format!(
             "{}{}",
-            text(&language, "发送服务器已接受这封邮件。"),
+            text(&language, "The outgoing server accepted this message. "),
             result.as_ref().cloned().unwrap_or_else(|e| e.clone())
         ),
         "uncertain" => format!(
             "{}{}",
             text(
                 &language,
-                "未取得服务器确认，可能已经发送；请先核对发送记录，避免重复发送。"
+                "No server confirmation; the message may have been sent. Check Send history before resending. "
             ),
             result.as_ref().err().cloned().unwrap_or_default()
         ),
@@ -178,7 +178,7 @@ pub fn receipt(store: &Store, draft: &Compose, result: &Result<String>) -> SendR
             .as_ref()
             .err()
             .cloned()
-            .unwrap_or_else(|| text(&language, "发送失败，草稿已保留").into()),
+            .unwrap_or_else(|| text(&language, "Send failed. Draft retained.").into()),
     };
     SendReceipt {
         id: draft.id.clone(),
@@ -200,6 +200,11 @@ pub fn sent(
         "uncertain" => "发送结果未确认",
         _ => "发送失败",
     };
+    let notice = match receipt.status.as_str() {
+        "sent" => "Sent",
+        "uncertain" => "Send result unconfirmed",
+        _ => "Send failed",
+    };
     let _ = store.log(&format!(
         "{label} · {}：{}",
         receipt.subject, receipt.message
@@ -214,7 +219,7 @@ pub fn sent(
             .unwrap_or_else(|_| "zh-CN".into());
         if let Err(error) = show(
             app,
-            &format!("{} · {}", text(&language, "雁信"), text(&language, label)),
+            &format!("{} · {}", text(&language, "Anser"), text(&language, notice)),
             &format!("{}\n{}", receipt.subject, receipt.message),
         ) {
             let _ = store.log(&format!("系统通知失败：{error}"));

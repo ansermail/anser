@@ -4,6 +4,7 @@ import {
   compileSource,
   composeFormat,
   hasDraftContent,
+  hexColorStyles,
   prepareCompose,
   prepareEditorCompose,
 } from "./compose-format";
@@ -197,5 +198,25 @@ describe("draft content detection", () => {
       { format: "html" as const, source: "<p></p>" },
     ])
       expect(hasDraftContent({ ...draft, ...fields })).toBe(true);
+  });
+});
+describe("rich text colors", () => {
+  it("stores editor text colors as hex styles for mail clients", () => {
+    expect(
+      hexColorStyles(
+        '<p><span style="color: rgb(197, 34, 31);">Red</span><span style="color: rgb(30, 123, 52);">Green</span></p>',
+      ),
+    ).toBe(
+      '<p><span style="color: #c5221f;">Red</span><span style="color: #1e7b34;">Green</span></p>',
+    );
+  });
+  it("converts highlighted backgrounds while leaving translucent and visible text alone", () => {
+    const result = hexColorStyles(
+      '<p style="background-color: rgb(187, 222, 251)">rgb(1, 2, 3)</p><mark style="background-color: rgba(255, 0, 0, 0.4)">x</mark><span style="color: rgba(197, 34, 31, 1)">y</span>',
+    );
+    expect(result).toContain("background-color: #bbdefb");
+    expect(result).toContain("rgba(255, 0, 0, 0.4)");
+    expect(result).toContain("rgb(1, 2, 3)");
+    expect(result).toContain("color: #c5221f");
   });
 });

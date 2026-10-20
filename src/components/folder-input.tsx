@@ -59,8 +59,8 @@ export function FolderInput({
               setOpen(false);
             }
           }}
-          aria-label={t("本地文件夹名称")}
-          placeholder={t("文件夹名称，例如：项目 / 设计")}
+          aria-label={t("Local folder name")}
+          placeholder={t("Folder name, for example: Projects / Design")}
           value={value}
           onFocus={() => setOpen(true)}
           onChange={(e) => {
@@ -71,7 +71,7 @@ export function FolderInput({
         />
       </PopoverAnchor>
       <PopoverContent
-        className="w-[var(--radix-popover-trigger-width)] min-w-72 p-1"
+        className="w-max min-w-72 max-w-[min(416px,var(--radix-popover-content-available-width))] p-1"
         align="start"
         onOpenAutoFocus={(e) => e.preventDefault()}
         onCloseAutoFocus={(e) => e.preventDefault()}
@@ -80,7 +80,7 @@ export function FolderInput({
         }}
       >
         <Command
-          label={t("已有本地文件夹")}
+          label={t("Existing local folders")}
           shouldFilter={false}
           value={options[Math.min(active, options.length - 1)]}
           onValueChange={(folder) => {

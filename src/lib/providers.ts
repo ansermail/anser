@@ -1,3 +1,4 @@
+import { t } from "./i18n";
 import type { Account } from "./types";
 export const providers = [
   {
@@ -35,7 +36,7 @@ export const providers = [
   },
   {
     id: "qq",
-    name: "QQ 邮箱",
+    name: "QQ Mail",
     letter: "Q",
     domain: "qq.com",
     imap: "imap.qq.com",
@@ -46,7 +47,7 @@ export const providers = [
   },
   {
     id: "netease",
-    name: "网易邮箱",
+    name: "NetEase Mail",
     letter: "易",
     domain: "163.com",
     imap: "imap.163.com",
@@ -57,7 +58,7 @@ export const providers = [
   },
   {
     id: "exmail",
-    name: "腾讯企业邮箱",
+    name: "Tencent Exmail",
     letter: "企",
     domain: "",
     imap: "imap.exmail.qq.com",
@@ -68,7 +69,7 @@ export const providers = [
   },
   {
     id: "neteaseWork",
-    name: "网易企业邮箱",
+    name: "NetEase Enterprise Mail",
     letter: "企",
     domain: "",
     imap: "imap.qiye.163.com",
@@ -79,7 +80,7 @@ export const providers = [
   },
   {
     id: "custom",
-    name: "自定义邮箱",
+    name: "Custom email",
     letter: "@",
     domain: "",
     imap: "",
@@ -93,7 +94,7 @@ export function makeAccount(provider = "custom"): Account {
   const p = providers.find((p) => p.id === provider)!;
   return {
     id: crypto.randomUUID(),
-    name: p.name,
+    name: t(p.name),
     email: "",
     provider,
     protocol: "imap",

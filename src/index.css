@@ -1943,6 +1943,27 @@ kbd {
 .rich-body img.ProseMirror-selectednode {
   outline: 2px solid var(--ring);
 }
+.rich-body table {
+  border-collapse: collapse;
+  table-layout: fixed;
+  width: 100%;
+  margin: 12px 0;
+}
+.rich-body th,
+.rich-body td {
+  border: 1px solid var(--border);
+  padding: 6px 10px;
+  min-width: 3em;
+  vertical-align: top;
+}
+.rich-body th {
+  background: var(--muted);
+  font-weight: 600;
+}
+.rich-body th p,
+.rich-body td p {
+  margin: 0;
+}
 .rich-body p {
   margin: 0 0 8px;
 }
@@ -2027,8 +2048,9 @@ kbd {
 }
 .recipient-input {
   position: relative;
-  flex: 1;
+  flex: 0 1 416px;
   min-width: 0;
+  max-width: 416px;
 }
 .contact-search {
   display: flex;
@@ -2926,10 +2948,10 @@ kbd {
   max-height: min(320px, var(--radix-dropdown-menu-content-available-height));
   padding: 4px;
 }
-.rich-format-menu[data-format-menu="正文字体"] {
+.rich-format-menu[data-format-menu="font"] {
   min-width: 176px;
 }
-.rich-format-menu[data-format-menu="正文字号"] {
+.rich-format-menu[data-format-menu="font-size"] {
   min-width: 104px;
 }
 .rich-format-menu [data-slot="dropdown-menu-radio-item"],

@@ -16,11 +16,11 @@ afterEach(() => {
 });
 it("switches catalog, calendar and document language without parsing inserted text", () => {
   setInterfaceLanguage("en");
-  expect(t("全部邮件")).toBe("All mail");
+  expect(t("All mail")).toBe("All mail");
   expect(dateLocale()).toBe("en-US");
   expect(calendarLocale().code).toBe("en-US");
   expect(document.documentElement.lang).toBe("en-US");
-  expect(t("选择 {value0}", { value0: "<b>账单 {value1}</b>" })).toBe(
+  expect(t("Select {value0}", { value0: "<b>账单 {value1}</b>" })).toBe(
     "Select <b>账单 {value1}</b>",
   );
   expect(t("user-defined-folder")).toBe("user-defined-folder");
@@ -29,7 +29,7 @@ it("switches catalog, calendar and document language without parsing inserted te
   expect(() => setInterfaceLanguage("fr" as "en")).toThrow();
   expect(interfaceLanguage()).toBe("en");
   setInterfaceLanguage("zh-CN");
-  expect(t("全部邮件")).toBe("全部邮件");
+  expect(t("All mail")).toBe("全部邮件");
   expect(calendarLocale().code).toBe("zh-CN");
 });
 it("localizes system folder display while preserving custom names and wire paths", () => {

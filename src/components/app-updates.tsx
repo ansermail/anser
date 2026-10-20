@@ -93,7 +93,9 @@ export function useAppUpdate() {
       await previous?.close().catch(() => {});
     } catch (e) {
       if (mounted.current) {
-        setError(t("无法检查更新：{value0}", { value0: String(e) }));
+        setError(
+          t("Could not check for updates: {value0}", { value0: String(e) }),
+        );
         setPhase(resource.current ? "available" : "idle");
       }
     } finally {
@@ -199,7 +201,11 @@ export function useAppUpdate() {
       }
     } catch (e) {
       if (mounted.current) {
-        setError(t("下载或签名校验失败：{value0}", { value0: String(e) }));
+        setError(
+          t("Download or signature verification failed: {value0}", {
+            value0: String(e),
+          }),
+        );
         setPhase("available");
       }
     } finally {
@@ -214,7 +220,9 @@ export function useAppUpdate() {
     try {
       await invoke("restart_for_update");
     } catch (e) {
-      setError(t("安装已完成，但重启失败：{value0}", { value0: String(e) }));
+      setError(
+        t("Installed, but restart failed: {value0}", { value0: String(e) }),
+      );
       setPhase("installed");
     } finally {
       busy.current = false;
@@ -230,7 +238,7 @@ export function useAppUpdate() {
       await current.install();
       setPhase("installed");
     } catch (e) {
-      setError(t("安装失败：{value0}", { value0: String(e) }));
+      setError(t("Installation failed: {value0}", { value0: String(e) }));
       setPhase("ready");
       busy.current = false;
       return;
@@ -270,7 +278,9 @@ function ReleaseNotes({ body, native }: { body: string; native: boolean }) {
     if (url)
       void invoke("open_mail_link", { url }).catch((error) =>
         toast.error(
-          t("无法打开更新说明链接：{value0}", { value0: String(error) }),
+          t("Could not open release notes link: {value0}", {
+            value0: String(error),
+          }),
         ),
       );
   };
@@ -314,7 +324,7 @@ function VersionNotes({
           <ReleaseNotes body={release.body} native={native} />
         ) : (
           <p className="text-sm text-muted-foreground">
-            {t("此版本未提供更新说明。")}
+            {t("No release notes are available for this version.")}
           </p>
         )}
       </CardContent>
@@ -331,7 +341,7 @@ function UpdateHistory({ updates: u }: { updates: Updates }) {
     return (
       <div role="status" className="flex flex-col gap-3">
         <p className="text-sm text-muted-foreground">
-          {t("正在获取各版本更新记录…")}
+          {t("Loading release history…")}
         </p>
         <Skeleton className="h-24 w-full" />
         <Skeleton className="h-24 w-full" />
@@ -354,7 +364,9 @@ function UpdateHistory({ updates: u }: { updates: Updates }) {
       <Alert>
         <AlertDescription className="flex flex-col gap-3">
           <p>
-            {t("版本历史未能完整加载，当前仅展示目标版本说明。")}
+            {t(
+              "Could not load the complete history. Only the target version's notes are shown.",
+            )}
             {state.error}
           </p>
           <Button
@@ -363,7 +375,7 @@ function UpdateHistory({ updates: u }: { updates: Updates }) {
             className="self-start"
             onClick={() => void u.loadHistory()}
           >
-            {t("重新加载更新记录")}
+            {t("Reload release history")}
           </Button>
         </AlertDescription>
       </Alert>
@@ -371,7 +383,7 @@ function UpdateHistory({ updates: u }: { updates: Updates }) {
         native={u.native}
         release={{
           version: releaseVersion(next.version),
-          name: t("目标版本说明"),
+          name: t("Target version notes"),
           body: next.body || "",
           publishedAt: "",
         }}
@@ -386,8 +398,10 @@ export function UpdateIndicator({ updates }: { updates: Updates }) {
     <Button
       variant="secondary"
       size="icon-sm"
-      aria-label={t("有新版本，打开更新中心")}
-      title={t("雁信 {value0} 可更新", { value0: updates.update.version })}
+      aria-label={t("New version available. Open update center.")}
+      title={t("Anser {value0} is available", {
+        value0: updates.update.version,
+      })}
       onClick={() => updates.setOpen(true)}
     >
       <Download />
@@ -398,11 +412,11 @@ export function UpdateSettings({ updates }: { updates: Updates }) {
   return (
     <Card>
       <CardHeader>
-        <CardTitle>{t("关于与更新")}</CardTitle>
+        <CardTitle>{t("About & updates")}</CardTitle>
         <CardDescription>
-          {t("Anser · 雁信 ")}
+          {t("Anser ")}
           {updates.version || "—"}
-          {t(" · 从 GitHub Release 获取更新")}
+          {t(" · Updates from GitHub Releases")}
         </CardDescription>
       </CardHeader>
       <CardContent className="flex flex-wrap items-center gap-3">
@@ -425,7 +439,7 @@ export function UpdateSettings({ updates }: { updates: Updates }) {
           }}
         >
           <RefreshCw data-icon="inline-start" />
-          {t("检查更新")}
+          {t("Check for updates")}
         </Button>
         <Button variant="ghost" asChild>
           <a
@@ -439,18 +453,20 @@ export function UpdateSettings({ updates }: { updates: Updates }) {
                 url: "https://github.com/ansermail/anser",
               }).catch((error) =>
                 toast.error(
-                  t("无法打开项目仓库：{value0}", { value0: String(error) }),
+                  t("Could not open project repository: {value0}", {
+                    value0: String(error),
+                  }),
                 ),
               );
             }}
           >
             <Github data-icon="inline-start" />
-            {t("项目仓库")}
+            {t("Project repository")}
           </a>
         </Button>
         {updates.update && (
           <Button variant="ghost" onClick={() => updates.setOpen(true)}>
-            {t("查看更新")}
+            {t("View update")}
           </Button>
         )}
       </CardContent>
@@ -488,27 +504,27 @@ export function UpdateDialog({
         }}
       >
         <DialogHeader>
-          <DialogTitle>{t("更新中心")}</DialogTitle>
+          <DialogTitle>{t("Update center")}</DialogTitle>
           <DialogDescription>
             {u.update
-              ? `${u.update.currentVersion} → ${u.update.version}${history?.phase === "ready" ? t(" · 共 {value0} 个版本", { value0: history.releases.length }) : t(" · 版本更新记录")}`
-              : t("当前版本 {value0}", { value0: u.version || "—" })}
+              ? `${u.update.currentVersion} → ${u.update.version}${history?.phase === "ready" ? t(" · {value0} releases", { value0: history.releases.length }) : t(" · Release history")}`
+              : t("Current version {value0}", { value0: u.version || "—" })}
           </DialogDescription>
         </DialogHeader>
         <div
           className="min-h-0 flex-1 overflow-y-auto"
           role="region"
-          aria-label={t("版本更新记录")}
+          aria-label={t("Release history")}
         >
           {u.update ? (
             <UpdateHistory updates={u} />
           ) : (
             <p className="text-sm leading-relaxed">
               {u.phase === "checking"
-                ? t("正在检查更新…")
+                ? t("Checking for updates…")
                 : u.error
-                  ? t("暂时无法获取更新信息。")
-                  : t("当前没有可用更新。")}
+                  ? t("Update information is temporarily unavailable.")
+                  : t("No updates available.")}
             </p>
           )}
         </div>
@@ -516,7 +532,7 @@ export function UpdateDialog({
           <Alert>
             <AlertDescription>
               {t(
-                "开发预览可以检查更新。下载和安装请使用正式应用，以免覆盖开发实例。",
+                "Development previews can check for updates. Download and install from the released app to avoid replacing the development instance.",
               )}
             </AlertDescription>
           </Alert>
@@ -529,28 +545,37 @@ export function UpdateDialog({
         {blocked && (
           <Alert>
             <AlertDescription>
-              {t("请先完成写信并关闭编辑窗口，再安装更新。")}
+              {t(
+                "Finish composing and close the editor before installing an update.",
+              )}
             </AlertDescription>
           </Alert>
         )}
         {u.phase === "downloading" && (
           <div className="flex flex-col gap-2" role="status">
-            <Progress value={u.progress} aria-label={t("更新下载进度")} />
+            <Progress
+              value={u.progress}
+              aria-label={t("Update download progress")}
+            />
             <p className="text-sm text-muted-foreground">
               {u.progress === null
-                ? t("正在下载…")
-                : t("已下载 {value0}%", { value0: u.progress })}
+                ? t("Downloading…")
+                : t("Downloaded {value0}%", { value0: u.progress })}
             </p>
           </div>
         )}
         {u.phase === "ready" && (
           <p role="status" className="text-sm">
-            {t("下载及签名校验完成，可以安装。")}
+            {t(
+              "Download and signature verification complete. Ready to install.",
+            )}
           </p>
         )}
         {u.phase === "restarting" && (
           <p role="status" className="text-sm">
-            {t("等待正在进行的邮件处理完成，然后重启…")}
+            {t(
+              "Waiting for current mail operations to finish, then restarting…",
+            )}
           </p>
         )}
         <DialogFooter>
@@ -560,18 +585,20 @@ export function UpdateDialog({
               void invoke("open_mail_link", { url: releasePage }).catch(
                 (error) =>
                   toast.error(
-                    t("无法打开发布页：{value0}", { value0: String(error) }),
+                    t("Could not open release page: {value0}", {
+                      value0: String(error),
+                    }),
                   ),
               )
             }
             disabled={!u.native || locked}
           >
-            {t("打开发布页")}
+            {t("Open release page")}
           </Button>
           {u.update && u.phase === "available" && (
             <Button disabled={u.preview} onClick={() => void u.download()}>
               <Download data-icon="inline-start" />
-              {t("下载更新")}
+              {t("Download update")}
             </Button>
           )}
           {u.phase === "ready" && (
@@ -580,18 +607,18 @@ export function UpdateDialog({
               onClick={() => void u.install()}
             >
               <RotateCw data-icon="inline-start" />
-              {t("安装并重启")}
+              {t("Install & restart")}
             </Button>
           )}
           {u.phase === "installed" && (
             <Button disabled={blocked} onClick={() => void u.restart()}>
-              {t("重新启动")}
+              {t("Restart again")}
             </Button>
           )}
           {locked && (
             <Button disabled>
-              {t("正在")}
-              {u.phase === "installing" ? t("安装") : t("重启")}…
+              {t("In progress: ")}
+              {u.phase === "installing" ? t("Install") : t("Restart")}…
             </Button>
           )}
         </DialogFooter>

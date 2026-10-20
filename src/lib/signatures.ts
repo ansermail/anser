@@ -38,7 +38,8 @@ export function signatureContent(
   };
 }
 export async function importSignature(file: File) {
-  if (file.size > 2 * 1024 * 1024) throw new Error(t("签名文件不能超过 2 MB"));
+  if (file.size > 2 * 1024 * 1024)
+    throw new Error(t("Signature files must not exceed 2 MB"));
   if (/\.(txt|html?|htm)$/i.test(file.name)) {
     const content = await file.text();
     const html = /\.html?$/i.test(file.name)
@@ -51,11 +52,12 @@ export async function importSignature(file: File) {
     };
   }
   if (!/^image\/(png|jpeg|gif|webp)$/.test(file.type))
-    throw new Error(t("请选择文本、HTML、PNG、JPEG、GIF 或 WebP 文件"));
+    throw new Error(t("Choose a text, HTML, PNG, JPEG, GIF or WebP file"));
   const data = await new Promise<string>((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = () => resolve(String(reader.result));
-    reader.onerror = () => reject(new Error(t("无法读取签名图片")));
+    reader.onerror = () =>
+      reject(new Error(t("Could not read signature image")));
     reader.readAsDataURL(file);
   });
   const image = document.createElement("img");

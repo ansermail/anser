@@ -43,19 +43,19 @@ pub struct LanguageMenu {
 impl LanguageMenu {
     pub fn apply(&self, language: &str) -> Result<()> {
         self.open
-            .set_text(text(language, "打开雁信"))
+            .set_text(text(language, "Open Anser"))
             .map_err(err)?;
         self.sync
-            .set_text(text(language, "立即检查新邮件"))
+            .set_text(text(language, "Check for new mail now"))
             .map_err(err)?;
         self.quiet
-            .set_text(text(language, "暂停新邮件通知"))
+            .set_text(text(language, "Pause new mail notifications"))
             .map_err(err)?;
         self.quit
-            .set_text(text(language, "退出雁信"))
+            .set_text(text(language, "Quit Anser"))
             .map_err(err)?;
         self.tray
-            .set_tooltip(Some(text(language, "雁信 · 点击打开")))
+            .set_tooltip(Some(text(language, "Anser · Click to open")))
             .map_err(err)?;
         Ok(())
     }

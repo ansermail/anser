@@ -78,9 +78,13 @@ export function RemoteFolderList({
             onClick={onSelectStarred}
           >
             <Star data-icon="inline-start" />
-            <span>{t("星标邮件")}</span>
+            <span>{t("Starred mail")}</span>
             {starredUnread > 0 && (
-              <em aria-label={t("未读 {value0} 封", { value0: starredUnread })}>
+              <em
+                aria-label={t("{value0} unread messages", {
+                  value0: starredUnread,
+                })}
+              >
                 {starredUnread}
               </em>
             )}
@@ -88,7 +92,7 @@ export function RemoteFolderList({
         </ContextMenuTrigger>
         <ContextMenuContent>
           <ContextMenuItem onSelect={() => onMarkRead?.("", false, "", true)}>
-            {t("标记为已读")}
+            {t("Mark as read")}
           </ContextMenuItem>
         </ContextMenuContent>
       </ContextMenu>
@@ -192,8 +196,8 @@ function FolderBranch({
           <Button
             variant="ghost"
             size="icon-xs"
-            aria-label={t("{value0}文件夹 {value1}", {
-              value0: open ? t("收起") : t("展开"),
+            aria-label={t("{value0}folder {value1}", {
+              value0: open ? t("Collapse") : t("Expand"),
               value1: node.label,
             })}
           >
@@ -226,14 +230,14 @@ function FolderBranch({
             <Icon data-icon="inline-start" />
             <span>{localizedFolderLabel(node.folder, node.label)}</span>
             {showUnread && !!count && (
-              <em aria-label={t("未读 {value0} 封", { value0: count })}>
+              <em aria-label={t("{value0} unread messages", { value0: count })}>
                 {count}
               </em>
             )}
             {syncError && (
               <AlertCircle
                 className="text-destructive"
-                aria-label={t("目录来源已隔离")}
+                aria-label={t("Folder source quarantined")}
               />
             )}
           </Button>
@@ -250,7 +254,7 @@ function FolderBranch({
                 )
               }
             >
-              {t("标记为已读")}
+              {t("Mark as read")}
             </ContextMenuItem>
           </ContextMenuContent>
         )}

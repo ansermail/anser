@@ -21,22 +21,22 @@ export type ArchiveJob = {
 };
 const states: Record<string, string> = {
   get queued() {
-    return t("待保存");
+    return t("Waiting to save");
   },
   get running() {
-    return t("下载与校验中");
+    return t("Downloading & verifying");
   },
   get paused() {
-    return t("已暂停");
+    return t("Paused");
   },
   get blocked() {
-    return t("保存失败");
+    return t("Save failed");
   },
   get completed() {
-    return t("完整已保存");
+    return t("Fully saved");
   },
   get cancelled() {
-    return t("已取消");
+    return t("Canceled");
   },
 };
 export function ArchiveJobsPanel({
@@ -85,11 +85,11 @@ export function ArchiveJobsPanel({
     <Collapsible defaultOpen={!defaultCollapsed} asChild>
       <Card>
         <TaskPanelHeader
-          title={t("完整保存任务")}
+          title={t("Full-message saving tasks")}
           description={
             <>
               {t(
-                "最近 100 项手动补存。账号在线阅读时也可主动完整保存；关闭窗口后继续，退出应用后下次恢复。已保存的原件不会因取消任务而删除。",
+                "The latest 100 manual saves. Save complete messages even for online-only accounts. Tasks continue after closing the window and resume after relaunch. Canceling keeps saved originals.",
               )}
             </>
           }
@@ -103,18 +103,21 @@ export function ArchiveJobsPanel({
               </Alert>
             )}
             {!items && !error && (
-              <Skeleton className="h-20" aria-label={t("正在加载保存任务")} />
+              <Skeleton
+                className="h-20"
+                aria-label={t("Loading saving tasks")}
+              />
             )}
             {items?.length === 0 && (
               <p className="text-sm text-muted-foreground">
                 {t(
-                  "尚无手动补存任务。在阅读面板或列表选择邮件后，点击“完整保存到本地”。",
+                  "No manual saving tasks. Select messages in the list or reader, then choose Save complete message locally.",
                 )}
               </p>
             )}
             <ul
               className="flex flex-col gap-4"
-              aria-label={t("完整保存任务记录")}
+              aria-label={t("Full-message saving history")}
             >
               {items?.map((job) => (
                 <li
@@ -123,10 +126,11 @@ export function ArchiveJobsPanel({
                 >
                   <div className="flex min-w-0 flex-1 flex-col gap-1">
                     <p className="break-words">
-                      {job.subject || t("（无主题）")}
+                      {job.subject || t("(No subject)")}
                     </p>
                     <p className="text-sm text-muted-foreground">
-                      {job.accountEmail} · {job.folder || t("来源需核查")}
+                      {job.accountEmail} ·{" "}
+                      {job.folder || t("Source needs review")}
                     </p>
                     {job.error && (
                       <p className="text-sm text-destructive">{job.error}</p>
@@ -143,7 +147,7 @@ export function ArchiveJobsPanel({
                         disabled={busy}
                         onClick={() => void action(job.id, "pause")}
                       >
-                        {t("暂停")}
+                        {t("Pause")}
                       </Button>
                     )}
                     {job.status === "paused" && (
@@ -153,7 +157,7 @@ export function ArchiveJobsPanel({
                         disabled={busy}
                         onClick={() => void action(job.id, "resume")}
                       >
-                        {t("继续保存")}
+                        {t("Resume saving")}
                       </Button>
                     )}
                     {job.status === "blocked" && (
@@ -163,7 +167,7 @@ export function ArchiveJobsPanel({
                         disabled={busy}
                         onClick={() => void action(job.id, "retry")}
                       >
-                        {t("重新检查并保存")}
+                        {t("Recheck & save")}
                       </Button>
                     )}
                     {["queued", "running", "paused", "blocked"].includes(
@@ -175,7 +179,7 @@ export function ArchiveJobsPanel({
                         disabled={busy}
                         onClick={() => void action(job.id, "cancel")}
                       >
-                        {t("取消任务")}
+                        {t("Cancel task")}
                       </Button>
                     )}
                   </div>
@@ -190,7 +194,7 @@ export function ArchiveJobsPanel({
               disabled={busy}
               onClick={() => void action("", "pause")}
             >
-              {t("暂停全部待保存")}
+              {t("Pause all pending saves")}
             </Button>
             <Button
               variant="outline"
@@ -198,7 +202,7 @@ export function ArchiveJobsPanel({
               disabled={busy}
               onClick={() => void action("", "resume")}
             >
-              {t("继续全部已暂停")}
+              {t("Resume all paused saves")}
             </Button>
             <Button
               variant="ghost"
@@ -206,7 +210,7 @@ export function ArchiveJobsPanel({
               disabled={busy}
               onClick={() => void action("", "cancel")}
             >
-              {t("取消全部未完成")}
+              {t("Cancel all unfinished")}
             </Button>
           </CardFooter>
         </CollapsibleContent>

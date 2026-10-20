@@ -1,11 +1,22 @@
 import StarterKit from "@tiptap/starter-kit";
 import Image from "@tiptap/extension-image";
-import { TextStyle, FontFamily, FontSize } from "@tiptap/extension-text-style";
+import {
+  TextStyle,
+  FontFamily,
+  FontSize,
+  Color,
+} from "@tiptap/extension-text-style";
 import Highlight from "@tiptap/extension-highlight";
 import Subscript from "@tiptap/extension-subscript";
 import Superscript from "@tiptap/extension-superscript";
 import TextAlign from "@tiptap/extension-text-align";
 import { TaskList, TaskItem } from "@tiptap/extension-list";
+import {
+  Table,
+  TableRow,
+  TableHeader,
+  TableCell,
+} from "@tiptap/extension-table";
 import FindAndReplace from "@tiptap/extension-find-and-replace";
 import { mergeAttributes } from "@tiptap/core";
 import { imageDimension } from "./rich-image-size";
@@ -58,6 +69,7 @@ export function richExtensions() {
       inline: true,
     }),
     TextStyle,
+    Color,
     FontFamily,
     FontSize,
     Highlight.configure({
@@ -71,6 +83,25 @@ export function richExtensions() {
       HTMLAttributes: { style: "list-style:none;padding-left:0" },
     }),
     TaskItem.configure({ nested: true }),
+    Table.configure({
+      resizable: false,
+      HTMLAttributes: {
+        style: "border-collapse:collapse;width:100%;margin:12px 0",
+      },
+    }),
+    TableRow,
+    TableHeader.configure({
+      HTMLAttributes: {
+        style:
+          "border:1px solid #d0d0d0;padding:6px 10px;background:#f6f6f6;text-align:left;vertical-align:top",
+      },
+    }),
+    TableCell.configure({
+      HTMLAttributes: {
+        style:
+          "border:1px solid #d0d0d0;padding:6px 10px;text-align:left;vertical-align:top",
+      },
+    }),
     FindAndReplace.configure({ searchDebounceMs: 0, injectCSS: false }),
   ];
 }

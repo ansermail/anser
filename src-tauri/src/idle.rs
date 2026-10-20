@@ -47,9 +47,10 @@ impl ConnectionControl {
 #[derive(Default)]
 pub struct MailboxActivity {
     count: Option<u32>,
+    uid_next: Option<u32>,
+    uid_validity: Option<u32>,
     changed: bool,
     line: Vec<u8>,
-    notify: Option<Arc<dyn Fn() + Send + Sync>>,
     probe_deadline: Option<Instant>,
 }
 /// Bound an entire NOOP response, including a stream of keepalives. Removing
@@ -72,31 +73,7 @@ impl Drop for ProbeDeadline {
         }
     }
 }
-/// Registration is removed on normal return, protocol failure and unwind.
-pub struct ActivityNotification(Arc<Mutex<MailboxActivity>>);
-impl ActivityNotification {
-    pub fn register(
-        activity: &Arc<Mutex<MailboxActivity>>,
-        notify: Arc<dyn Fn() + Send + Sync>,
-    ) -> Result<Self> {
-        let mut state = activity.lock().map_err(err)?;
-        state.take_changed();
-        state.notify = Some(notify);
-        Ok(Self(activity.clone()))
-    }
-}
-impl Drop for ActivityNotification {
-    fn drop(&mut self) {
-        if let Ok(mut state) = self.0.lock() {
-            state.notify = None;
-        }
-    }
-}
 impl MailboxActivity {
-    #[cfg(test)]
-    pub fn notify_is_registered(&self) -> bool {
-        self.notify.is_some()
-    }
     fn observe(&mut self, bytes: &[u8]) {
         for byte in bytes {
             // IDLE only sends short unsolicited status lines; bound malformed input.
@@ -107,18 +84,36 @@ impl MailboxActivity {
             if *byte != b'\n' {
                 continue;
             }
-            let line = String::from_utf8_lossy(&self.line);
-            let fields = line.split_whitespace().collect::<Vec<_>>();
-            if fields.len() == 3 && fields[0] == "*" {
-                if let Ok(number) = fields[1].parse::<u32>() {
-                    if fields[2].eq_ignore_ascii_case("EXISTS") {
-                        self.changed |= self.count.is_some_and(|old| old != number);
-                        self.count = Some(number);
-                    } else if fields[2].eq_ignore_ascii_case("EXPUNGE") {
-                        self.changed = true;
-                        self.count = self.count.map(|old| old.saturating_sub(1));
-                    }
+            use imap_proto::{MailboxDatum, Response, ResponseCode, Status};
+            match imap_proto::parse_response(&self.line) {
+                Ok(([], Response::MailboxData(MailboxDatum::Exists(number)))) => {
+                    self.changed |= self.count.is_some_and(|old| old != number);
+                    self.count = Some(number);
                 }
+                Ok(([], Response::Expunge(_))) => {
+                    self.changed = true;
+                    self.count = self.count.map(|old| old.saturating_sub(1));
+                }
+                Ok((
+                    [],
+                    Response::Data {
+                        status: Status::Ok,
+                        code: Some(code),
+                        ..
+                    },
+                )) => {
+                    let (slot, number) = match code {
+                        ResponseCode::UidNext(number) => (&mut self.uid_next, number),
+                        ResponseCode::UidValidity(number) => (&mut self.uid_validity, number),
+                        _ => {
+                            self.line.clear();
+                            continue;
+                        }
+                    };
+                    self.changed |= slot.is_some_and(|old| old != number);
+                    *slot = Some(number);
+                }
+                _ => {}
             }
             self.line.clear();
         }
@@ -170,22 +165,8 @@ impl<T: TimedStream> Read for ObservedStream<T> {
             self.stream.read_timeout(Some(remaining))?;
         }
         let size = self.stream.read(buffer)?;
-        let notify = if let Ok(mut activity) = self.activity.lock() {
+        if let Ok(mut activity) = self.activity.lock() {
             activity.observe(&buffer[..size]);
-            if activity.notify.is_some() && activity.take_changed() {
-                activity.notify.clone()
-            } else {
-                None
-            }
-        } else {
-            None
-        };
-        // Enqueue as soon as the status line arrives. imap's IDLE handle sends
-        // DONE and waits for its acknowledgement before wait_with_timeout
-        // returns; a slow acknowledgement must not delay a separate inbox job.
-        // Never execute a callback while holding the activity mutex.
-        if let Some(notify) = notify {
-            notify();
         }
         Ok(size)
     }
@@ -251,17 +232,6 @@ mod tests {
         server.join().unwrap();
     }
     #[test]
-    fn notification_registration_is_removed_on_unwind() {
-        let activity = Arc::new(Mutex::new(MailboxActivity::default()));
-        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            let _registration = ActivityNotification::register(&activity, Arc::new(|| {})).unwrap();
-            assert!(activity.lock().unwrap().notify_is_registered());
-            panic!("simulated protocol failure");
-        }));
-        assert!(result.is_err());
-        assert!(!activity.lock().unwrap().notify_is_registered());
-    }
-    #[test]
     fn tracks_fragmented_notifications_without_syncing_on_keepalive_or_repeated_counts() {
         let mut activity = MailboxActivity::default();
         activity.observe(b"* 3 EXI");
@@ -273,6 +243,23 @@ mod tests {
         assert!(activity.take_changed());
         activity.observe(b"* 2 EXPUNGE\r\n* 4 EXISTS\r\n");
         assert!(activity.take_changed());
+        assert!(!activity.take_changed());
+    }
+    #[test]
+    fn uid_changes_are_observed_even_when_message_count_stays_equal() {
+        let mut activity = MailboxActivity::default();
+        let original = b"* 3 EXISTS\r\n* OK [UIDNEXT 7] Next\r\n* OK [UIDVALIDITY 9] Valid\r\n";
+        activity.observe(original);
+        assert!(!activity.take_changed());
+        activity.observe(original);
+        assert!(!activity.take_changed());
+        activity.observe(b"* 3 EXISTS\r\n* OK [UIDNEXT 8] Next\r\n");
+        assert!(activity.take_changed());
+        activity.observe(b"* OK [UIDVALIDITY 10] Valid\r\n");
+        assert!(activity.take_changed());
+        activity.observe(b"* NO [UIDNEXT 99] Rejected\r\n* OK [UIDNEXT invalid] Bad\r\n");
+        assert!(!activity.take_changed());
+        activity.observe(b"* OK [UIDNEXT 8] Same\r\n");
         assert!(!activity.take_changed());
     }
     #[test]

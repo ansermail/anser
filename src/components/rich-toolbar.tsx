@@ -25,6 +25,7 @@ import {
   AlignCenter,
   AlignRight,
   AlignJustify,
+  Baseline,
   Highlighter,
   RemoveFormatting,
   Minus,
@@ -54,39 +55,83 @@ import { RichSearch } from "./rich-search";
 const colors = [
   {
     get label() {
-      return t("黄色");
+      return t("Yellow");
     },
     value: "#fff59d",
   },
   {
     get label() {
-      return t("绿色");
+      return t("Green");
     },
     value: "#b9f6ca",
   },
   {
     get label() {
-      return t("蓝色");
+      return t("Blue");
     },
     value: "#bbdefb",
   },
   {
     get label() {
-      return t("紫色");
+      return t("Purple");
     },
     value: "#e1bee7",
   },
   {
     get label() {
-      return t("粉色");
+      return t("Pink");
     },
     value: "#f8bbd0",
   },
   {
     get label() {
-      return t("橙色");
+      return t("Orange");
     },
     value: "#ffe0b2",
+  },
+];
+const textColors = [
+  {
+    get label() {
+      return t("Grey");
+    },
+    value: "#5f6368",
+  },
+  {
+    get label() {
+      return t("Red");
+    },
+    value: "#c5221f",
+  },
+  {
+    get label() {
+      return t("Orange");
+    },
+    value: "#b06000",
+  },
+  {
+    get label() {
+      return t("Green");
+    },
+    value: "#1e7b34",
+  },
+  {
+    get label() {
+      return t("Blue");
+    },
+    value: "#1a56b0",
+  },
+  {
+    get label() {
+      return t("Purple");
+    },
+    value: "#7627bb",
+  },
+  {
+    get label() {
+      return t("Pink");
+    },
+    value: "#a4295a",
   },
 ];
 export function RichToolbar({
@@ -113,6 +158,7 @@ export function RichToolbar({
   const state = useEditorState({
     editor,
     selector: ({ editor }) => ({
+      color: editor.getAttributes("textStyle").color || "",
       font: editor.getAttributes("textStyle").fontFamily || "default",
       size: editor.getAttributes("textStyle").fontSize || "12pt",
       heading: editor.getAttributes("heading").level || "paragraph",
@@ -153,14 +199,15 @@ export function RichToolbar({
   );
   const menus = [
     {
-      label: t("正文段落类型"),
+      id: "paragraph-type",
+      label: t("Paragraph type"),
       icon: Heading,
       value: String(state.heading),
       options: [
-        { value: "paragraph", label: t("正文") },
+        { value: "paragraph", label: t("Body") },
         ...[1, 2, 3, 4].map((level) => ({
           value: String(level),
-          label: t("标题 {value0}", { value0: level }),
+          label: t("Heading {value0}", { value0: level }),
         })),
       ],
       run: (value: string) =>
@@ -173,14 +220,19 @@ export function RichToolbar({
               .run(),
     },
     {
-      label: t("正文字体"),
+      id: "font",
+      label: t("Body font"),
       icon: Type,
       value: font?.value || state.font,
       options: [
-        { value: "default", label: t("默认字体") },
-        ...BODY_FONTS,
+        { value: "default", label: t("Default font") },
+        ...BODY_FONTS.map((item) => ({
+          ...item,
+          group: t(item.group),
+          label: t(item.label),
+        })),
         ...(state.font !== "default" && !font
-          ? [{ value: state.font, label: t("原字体") }]
+          ? [{ value: state.font, label: t("Original font") }]
           : []),
       ],
       run: (value: string) =>
@@ -189,7 +241,8 @@ export function RichToolbar({
           : editor.chain().focus().setFontFamily(value).run(),
     },
     {
-      label: t("正文字号"),
+      id: "font-size",
+      label: t("Font size"),
       icon: ALargeSmall,
       value: state.size,
       options: [
@@ -204,14 +257,15 @@ export function RichToolbar({
       run: (value: string) => editor.chain().focus().setFontSize(value).run(),
     },
     {
-      label: t("正文列表"),
+      id: "list-type",
+      label: t("List type"),
       icon: List,
       value: state.list,
       options: [
-        { value: "none", label: t("普通段落") },
-        { value: "bullet", label: t("无序列表") },
-        { value: "ordered", label: t("有序列表") },
-        { value: "task", label: t("任务列表") },
+        { value: "none", label: t("Normal paragraph") },
+        { value: "bullet", label: t("Bulleted list") },
+        { value: "ordered", label: t("Numbered list") },
+        { value: "task", label: t("Task list") },
       ],
       run: (value: string) => {
         const chain = editor.chain().focus();
@@ -224,55 +278,55 @@ export function RichToolbar({
   ];
   const marks = [
     {
-      label: t("加粗"),
+      label: t("Bold"),
       icon: Bold,
       active: state.bold,
       run: () => editor.chain().focus().toggleBold().run(),
     },
     {
-      label: t("斜体"),
+      label: t("Italic"),
       icon: Italic,
       active: state.italic,
       run: () => editor.chain().focus().toggleItalic().run(),
     },
     {
-      label: t("下划线"),
+      label: t("Underline"),
       icon: Underline,
       active: state.underline,
       run: () => editor.chain().focus().toggleUnderline().run(),
     },
     {
-      label: t("删除线"),
+      label: t("Strikethrough"),
       icon: Strikethrough,
       active: state.strike,
       run: () => editor.chain().focus().toggleStrike().run(),
     },
     {
-      label: t("行内代码"),
+      label: t("Inline code"),
       icon: Code,
       active: state.code,
       run: () => editor.chain().focus().toggleCode().run(),
     },
     {
-      label: t("引用"),
+      label: t("Block quote"),
       icon: Quote,
       active: state.quote,
       run: () => editor.chain().focus().toggleBlockquote().run(),
     },
     {
-      label: t("代码块"),
+      label: t("Code block"),
       icon: SquareCode,
       active: state.codeBlock,
       run: () => editor.chain().focus().toggleCodeBlock().run(),
     },
     {
-      label: t("上标"),
+      label: t("Superscript"),
       icon: Superscript,
       active: state.sup,
       run: () => editor.chain().focus().toggleSuperscript().run(),
     },
     {
-      label: t("下标"),
+      label: t("Subscript"),
       icon: Subscript,
       active: state.sub,
       run: () => editor.chain().focus().toggleSubscript().run(),
@@ -280,13 +334,13 @@ export function RichToolbar({
   ];
   const actions = [
     {
-      label: t("撤销编辑"),
+      label: t("Undo edit"),
       icon: Undo2,
       blocked: !state.undo,
       run: () => editor.chain().focus().undo().run(),
     },
     {
-      label: t("重做编辑"),
+      label: t("Redo edit"),
       icon: Redo2,
       blocked: !state.redo,
       run: () => editor.chain().focus().redo().run(),
@@ -296,12 +350,12 @@ export function RichToolbar({
     <div
       className="format-toolbar"
       role="toolbar"
-      aria-label={t("正文格式工具条")}
+      aria-label={t("Body formatting toolbar")}
     >
       <div
         className="flex shrink-0 items-center gap-1"
         role="group"
-        aria-label={t("历史操作")}
+        aria-label={t("Edit history")}
       >
         {actions.map((action) => (
           <Tooltip key={action.label}>
@@ -352,7 +406,7 @@ export function RichToolbar({
             </Tooltip>
             <DropdownMenuContent
               className="rich-format-menu"
-              data-format-menu={menu.label}
+              data-format-menu={menu.id}
               align="start"
               onCloseAutoFocus={focus}
             >
@@ -372,13 +426,11 @@ export function RichToolbar({
                       {group && group !== previousGroup && (
                         <>
                           <DropdownMenuSeparator />
-                          <DropdownMenuLabel>
-                            {t(String(group))}
-                          </DropdownMenuLabel>
+                          <DropdownMenuLabel>{group}</DropdownMenuLabel>
                         </>
                       )}
                       <DropdownMenuRadioItem value={option.value}>
-                        {t(option.label)}
+                        {option.label}
                       </DropdownMenuRadioItem>
                     </Fragment>
                   );
@@ -395,7 +447,7 @@ export function RichToolbar({
       <div
         className="flex shrink-0 items-center gap-1"
         role="group"
-        aria-label={t("文字与块格式")}
+        aria-label={t("Text & block formatting")}
       >
         {marks.map((mark) => (
           <Tooltip key={mark.label}>
@@ -423,7 +475,51 @@ export function RichToolbar({
                 type="button"
                 variant="ghost"
                 size="icon-sm"
-                aria-label={t("高亮颜色")}
+                aria-label={t("Text color")}
+                aria-pressed={Boolean(state.color)}
+                disabled={disabled}
+              >
+                <Baseline
+                  style={state.color ? { color: state.color } : undefined}
+                />
+              </Button>
+            </DropdownMenuTrigger>
+          </TooltipTrigger>
+          <TooltipContent>{t("Text color")}</TooltipContent>
+        </Tooltip>
+        <DropdownMenuContent
+          className="rich-format-menu"
+          onCloseAutoFocus={focus}
+        >
+          <DropdownMenuGroup>
+            {textColors.map((color) => (
+              <DropdownMenuItem
+                key={color.value}
+                onSelect={() =>
+                  editor.chain().focus().setColor(color.value).run()
+                }
+              >
+                <Baseline style={{ color: color.value }} />
+                {color.label}
+              </DropdownMenuItem>
+            ))}
+            <DropdownMenuItem
+              onSelect={() => editor.chain().focus().unsetColor().run()}
+            >
+              {t("Default color")}
+            </DropdownMenuItem>
+          </DropdownMenuGroup>
+        </DropdownMenuContent>
+      </DropdownMenu>
+      <DropdownMenu>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <DropdownMenuTrigger asChild>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon-sm"
+                aria-label={t("Highlight color")}
                 aria-pressed={state.highlight}
                 disabled={disabled}
               >
@@ -431,7 +527,7 @@ export function RichToolbar({
               </Button>
             </DropdownMenuTrigger>
           </TooltipTrigger>
-          <TooltipContent>{t("文本高亮颜色")}</TooltipContent>
+          <TooltipContent>{t("Text highlight color")}</TooltipContent>
         </Tooltip>
         <DropdownMenuContent
           className="rich-format-menu"
@@ -456,7 +552,7 @@ export function RichToolbar({
             <DropdownMenuItem
               onSelect={() => editor.chain().focus().unsetHighlight().run()}
             >
-              {t("取消高亮")}
+              {t("Remove highlight")}
             </DropdownMenuItem>
           </DropdownMenuGroup>
         </DropdownMenuContent>
@@ -465,7 +561,7 @@ export function RichToolbar({
         <TooltipTrigger asChild>
           <Toggle
             size="sm"
-            aria-label={t("插入链接")}
+            aria-label={t("Insert link")}
             pressed={state.link}
             disabled={disabled}
             onMouseDown={(e) => e.preventDefault()}
@@ -474,7 +570,7 @@ export function RichToolbar({
             <Link />
           </Toggle>
         </TooltipTrigger>
-        <TooltipContent>{t("插入或编辑链接")}</TooltipContent>
+        <TooltipContent>{t("Insert or edit link")}</TooltipContent>
       </Tooltip>
       <Separator
         orientation="vertical"
@@ -485,17 +581,17 @@ export function RichToolbar({
         type="single"
         value={state.align}
         size="sm"
-        aria-label={t("段落对齐")}
+        aria-label={t("Paragraph alignment")}
         disabled={disabled}
         onValueChange={(value) => {
           if (value) editor.chain().focus().setTextAlign(value).run();
         }}
       >
         {[
-          { value: "left", label: t("左对齐"), icon: AlignLeft },
-          { value: "center", label: t("居中对齐"), icon: AlignCenter },
-          { value: "right", label: t("右对齐"), icon: AlignRight },
-          { value: "justify", label: t("两端对齐"), icon: AlignJustify },
+          { value: "left", label: t("Align left"), icon: AlignLeft },
+          { value: "center", label: t("Align center"), icon: AlignCenter },
+          { value: "right", label: t("Align right"), icon: AlignRight },
+          { value: "justify", label: t("Justify"), icon: AlignJustify },
         ].map((align) => (
           <Tooltip key={align.value}>
             <TooltipTrigger asChild>
@@ -518,7 +614,7 @@ export function RichToolbar({
             type="button"
             variant="ghost"
             size="icon-sm"
-            aria-label={t("插入分割线")}
+            aria-label={t("Insert separator")}
             disabled={disabled}
             onMouseDown={(e) => e.preventDefault()}
             onClick={() => editor.chain().focus().setHorizontalRule().run()}
@@ -526,7 +622,7 @@ export function RichToolbar({
             <Minus />
           </Button>
         </TooltipTrigger>
-        <TooltipContent>{t("插入分割线")}</TooltipContent>
+        <TooltipContent>{t("Insert separator")}</TooltipContent>
       </Tooltip>
       <Tooltip>
         <TooltipTrigger asChild>
@@ -534,7 +630,7 @@ export function RichToolbar({
             type="button"
             variant="ghost"
             size="icon-sm"
-            aria-label={t("清除格式")}
+            aria-label={t("Clear formatting")}
             disabled={disabled}
             onMouseDown={(e) => e.preventDefault()}
             onClick={() =>
@@ -544,7 +640,7 @@ export function RichToolbar({
             <RemoveFormatting />
           </Button>
         </TooltipTrigger>
-        <TooltipContent>{t("清除选中内容的格式")}</TooltipContent>
+        <TooltipContent>{t("Clear formatting of selection")}</TooltipContent>
       </Tooltip>
       <Tooltip>
         <TooltipTrigger asChild>
@@ -552,7 +648,7 @@ export function RichToolbar({
             type="button"
             variant="ghost"
             size="icon-sm"
-            aria-label={t("插入正文图片")}
+            aria-label={t("Insert body image")}
             disabled={disabled || imageBusy || !native || isDemo()}
             onClick={onImage}
           >
@@ -564,7 +660,7 @@ export function RichToolbar({
           </Button>
         </TooltipTrigger>
         <TooltipContent>
-          {t("插入正文图片（也可粘贴或拖入正文）")}
+          {t("Insert body image (or paste or drop into the body)")}
         </TooltipContent>
       </Tooltip>
       <RichSearch
@@ -580,14 +676,14 @@ export function RichToolbar({
               type="button"
               variant="ghost"
               size="icon-sm"
-              aria-label={t("切换写信主题")}
+              aria-label={t("Toggle compose theme")}
               disabled={disabled}
               onClick={onToggleTheme}
             >
               {dark ? <Sun /> : <Moon />}
             </Button>
           </TooltipTrigger>
-          <TooltipContent>{t("切换应用明暗主题")}</TooltipContent>
+          <TooltipContent>{t("Toggle application theme")}</TooltipContent>
         </Tooltip>
       )}
     </div>

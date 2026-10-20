@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { t } from "@/lib/i18n";
 import {
   AlertDialog,
   AlertDialogContent,
@@ -60,13 +61,13 @@ export function useConfirmation() {
         </AlertDialogHeader>
         <AlertDialogFooter>
           <AlertDialogCancel onClick={() => finish(false)}>
-            取消
+            {t("Cancel")}
           </AlertDialogCancel>
           <AlertDialogAction
             variant={request?.destructive ? "destructive" : "default"}
             onClick={() => finish(true)}
           >
-            {request?.action || "继续"}
+            {request?.action || t("Continue")}
           </AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>

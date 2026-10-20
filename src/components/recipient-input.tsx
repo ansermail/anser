@@ -62,7 +62,7 @@ export function RecipientInput({
             autoFocus={autoFocus}
             value={value}
             autoComplete="off"
-            placeholder={t("多个地址用逗号分隔")}
+            placeholder={t("Separate multiple addresses with commas")}
             role="combobox"
             aria-autocomplete="list"
             aria-expanded={open && options.length > 0}
@@ -99,7 +99,7 @@ export function RecipientInput({
         </div>
       </PopoverAnchor>
       <PopoverContent
-        className="w-[var(--radix-popover-trigger-width)] min-w-72 p-1"
+        className="w-max min-w-72 max-w-[min(416px,var(--radix-popover-content-available-width))] p-1"
         align="start"
         onOpenAutoFocus={(e) => e.preventDefault()}
         onCloseAutoFocus={(e) => e.preventDefault()}
@@ -108,7 +108,7 @@ export function RecipientInput({
         }}
       >
         <Command
-          label={t("收件人建议")}
+          label={t("Recipient suggestions")}
           shouldFilter={false}
           value={options[Math.min(active, options.length - 1)]?.email}
           onValueChange={(email) => {
@@ -127,7 +127,9 @@ export function RecipientInput({
                 onSelect={() => choose(a)}
               >
                 <strong>{a.name || a.email}</strong>
-                <small className="text-muted-foreground">{a.email}</small>
+                <small className="max-w-full break-all text-muted-foreground">
+                  {a.email}
+                </small>
               </CommandItem>
             ))}
           </CommandList>

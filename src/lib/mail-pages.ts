@@ -13,8 +13,8 @@ function bounds(query: Query) {
   const from = query.dateFrom ? Date.parse(query.dateFrom) : -Infinity;
   const before = query.dateBefore ? Date.parse(query.dateBefore) : Infinity;
   if (Number.isNaN(from) || Number.isNaN(before))
-    throw new Error(t("时间筛选格式无效"));
-  if (from >= before) throw new Error(t("结束时间必须晚于开始时间"));
+    throw new Error(t("Invalid date filter format"));
+  if (from >= before) throw new Error(t("End date must be after start date"));
   return { from, before };
 }
 const lower = (text: string) =>
@@ -105,9 +105,10 @@ export class DemoPager {
   page(base: Snapshot, query: Query, token = ""): MailPage {
     const filter = scope(query),
       cursor = token ? this.cursors.get(token) : undefined;
-    if (token && !cursor) throw new Error(t("分页游标无效，请重新搜索"));
+    if (token && !cursor)
+      throw new Error(t("Invalid page cursor. Search again."));
     if (cursor && cursor.scope !== filter)
-      throw new Error(t("分页范围已变化，请重新搜索"));
+      throw new Error(t("Page scope changed. Search again."));
     const reset = !!cursor && cursor.revision !== this.revision;
     const list = units(base.messages, query);
     const offset =
@@ -115,7 +116,7 @@ export class DemoPager {
         ? list.findIndex((mail) => compareMail(mail, cursor.anchor) === 0) + 1
         : 0;
     if (cursor && !reset && offset === 0)
-      throw new Error(t("分页位置无效，请重新搜索"));
+      throw new Error(t("Invalid page position. Search again."));
     const size = Math.max(1, Math.min(query.limit, 200)),
       current = list.slice(offset, offset + size);
     let nextCursor: string | null = null;
@@ -215,7 +216,10 @@ export class DemoPager {
         mail.id === id &&
         (!query.accountId || query.accountId === mail.accountId),
     );
-    if (!anchor) throw new Error(t("当前邮件已无可用来源，无法跳转"));
+    if (!anchor)
+      throw new Error(
+        t("This message no longer has a usable source for navigation"),
+      );
     const root = conversationIndex(base.messages).get(id);
     const list = units(base.messages, query).filter(
       (mail) => query.listMode === "messages" || mail.conversationId !== root,

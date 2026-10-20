@@ -81,7 +81,9 @@ export function MailSignatures({ accounts }: { accounts: Account[] }) {
       await call("save_mail_signature", { accountId: id, signature });
       if (selected.current === id) {
         savedSignature.current = signature;
-        toast.success(t("邮件签名已保存，新邮件和回复将使用此签名"));
+        toast.success(
+          t("Signature saved. New messages and replies will use it."),
+        );
       }
     } catch (e) {
       if (selected.current === id) setError(String(e));
@@ -113,17 +115,19 @@ export function MailSignatures({ accounts }: { accounts: Account[] }) {
     <Collapsible open={signature.enabled} asChild>
       <Card>
         <CardHeader>
-          <CardTitle>{t("邮件签名")}</CardTitle>
+          <CardTitle>{t("Email signature")}</CardTitle>
           <CardDescription>
             {t(
-              "按发件账号设置。签名与正文分开保存，切换账号会换用对应签名；已保存的草稿保留自己的签名。",
+              "Configure per sending account. Signatures are stored separately from the body. Switching accounts changes the signature; saved drafts retain their own.",
             )}
           </CardDescription>
           <CardAction className="flex flex-wrap items-center gap-3">
             <Field className="w-56 max-w-full">
-              <FieldLabel className="sr-only">{t("发件账号")}</FieldLabel>
+              <FieldLabel className="sr-only">
+                {t("Sending account")}
+              </FieldLabel>
               <SelectField
-                aria-label={t("签名所属账号")}
+                aria-label={t("Signature account")}
                 value={accountId}
                 disabled={busy || !accounts.length}
                 onValueChange={setAccountId}
@@ -138,7 +142,7 @@ export function MailSignatures({ accounts }: { accounts: Account[] }) {
 
             <Switch
               id="signature-enabled"
-              aria-label={t("启用邮件签名")}
+              aria-label={t("Enable email signature")}
               aria-controls="signature-settings-content"
               aria-expanded={signature.enabled}
               checked={signature.enabled}
@@ -153,7 +157,7 @@ export function MailSignatures({ accounts }: { accounts: Account[] }) {
           <CardContent>
             <Alert variant="destructive">
               <AlertCircle />
-              <AlertTitle>{t("签名未保存")}</AlertTitle>
+              <AlertTitle>{t("Signature not saved")}</AlertTitle>
               <AlertDescription>{error}</AlertDescription>
             </Alert>
           </CardContent>
@@ -176,14 +180,14 @@ export function MailSignatures({ accounts }: { accounts: Account[] }) {
                       }
                     />
                     <FieldLabel htmlFor="signature-html">
-                      {t("使用 HTML")}
+                      {t("Use HTML")}
                     </FieldLabel>
                   </Field>
                   <Field>
-                    <FieldLabel>{t("签名文件")}</FieldLabel>
+                    <FieldLabel>{t("Signature file")}</FieldLabel>
                     <FieldDescription>
                       {t(
-                        "可以附加文本、HTML 或图片。导入后保存文件内容，原文件移走后签名仍可使用。",
+                        "Attach text, HTML or an image. Imported content is saved and remains available after the source file is moved.",
                       )}
                     </FieldDescription>
                     <div className="flex flex-wrap items-center gap-2">
@@ -193,7 +197,7 @@ export function MailSignatures({ accounts }: { accounts: Account[] }) {
                         onClick={() => file.current?.click()}
                       >
                         <FileUp data-icon="inline-start" />
-                        {t("选择文件")}
+                        {t("Choose file")}
                       </Button>
                       {signature.fileName && (
                         <>
@@ -203,7 +207,7 @@ export function MailSignatures({ accounts }: { accounts: Account[] }) {
                           <Button
                             variant="ghost"
                             size="icon-sm"
-                            aria-label={t("移除签名文件")}
+                            aria-label={t("Remove signature file")}
                             disabled={busy || loading}
                             onClick={() => {
                               fileRevision.current++;
@@ -224,7 +228,7 @@ export function MailSignatures({ accounts }: { accounts: Account[] }) {
                       ref={file}
                       type="file"
                       className="sr-only"
-                      aria-label={t("导入签名文件")}
+                      aria-label={t("Import signature file")}
                       disabled={!accountId || busy || loading}
                       accept=".txt,.html,.htm,.png,.jpg,.jpeg,.gif,.webp"
                       onChange={(e) => {
@@ -256,7 +260,7 @@ export function MailSignatures({ accounts }: { accounts: Account[] }) {
                   }
                   onClick={() => void save()}
                 >
-                  {busy ? t("正在保存…") : t("保存签名")}
+                  {busy ? t("Saving…") : t("Save signature")}
                 </Button>
               </div>
               <div className="mail-signature-content">
@@ -268,7 +272,9 @@ export function MailSignatures({ accounts }: { accounts: Account[] }) {
                   <FieldGroup>
                     <Field data-disabled={!accountId || busy || loading}>
                       <FieldLabel htmlFor="signature-text">
-                        {signature.useHtml ? t("HTML 源码") : t("签名内容")}
+                        {signature.useHtml
+                          ? t("HTML source")
+                          : t("Signature content")}
                       </FieldLabel>
                       <Textarea
                         id="signature-text"
@@ -281,15 +287,19 @@ export function MailSignatures({ accounts }: { accounts: Account[] }) {
                         }
                         placeholder={
                           signature.useHtml
-                            ? "<p>祝工作愉快！<br><strong>姓名 · 公司</strong></p>"
-                            : t("祝工作愉快！\n姓名 · 公司\n联系方式")
+                            ? t(
+                                "<p>Best regards!<br><strong>Name · Company</strong></p>",
+                              )
+                            : t(
+                                "Best regards,\nName · Company\nContact details",
+                              )
                         }
                       />
                     </Field>
                     {signature.fileName && !signature.fileHtml && (
                       <Field>
                         <FieldLabel htmlFor="signature-file-content">
-                          {t("已导入的文本")}
+                          {t("Imported text")}
                         </FieldLabel>
                         <Textarea
                           id="signature-file-content"
@@ -298,7 +308,9 @@ export function MailSignatures({ accounts }: { accounts: Account[] }) {
                           rows={5}
                         />
                         <FieldDescription>
-                          {t("文件内容附加在签名文字之后，重新导入可替换。")}
+                          {t(
+                            "File content follows the signature text. Import again to replace it.",
+                          )}
                         </FieldDescription>
                       </Field>
                     )}
@@ -306,7 +318,7 @@ export function MailSignatures({ accounts }: { accounts: Account[] }) {
                   {(signature.useHtml || signature.fileHtml) && (
                     <Field>
                       <FieldLabel id="signature-preview-label">
-                        {t("签名预览")}
+                        {t("Signature preview")}
                       </FieldLabel>
                       <Card
                         className="signature-preview-frame min-w-0"
@@ -316,13 +328,13 @@ export function MailSignatures({ accounts }: { accounts: Account[] }) {
                         <CardContent className="min-h-0 flex-1 overflow-auto">
                           <MailContent
                             html={content.html || textToHtml(content.body)}
-                            title={t("签名预览")}
+                            title={t("Signature preview")}
                             onOpenLink={() => {}}
                           />
                         </CardContent>
                       </Card>
                       <FieldDescription>
-                        {t("编辑内容后实时更新显示效果")}
+                        {t("Preview updates as you edit")}
                       </FieldDescription>
                     </Field>
                   )}

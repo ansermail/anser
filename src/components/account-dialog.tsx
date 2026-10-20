@@ -116,7 +116,9 @@ export function AccountDialog({
       setAccount(null);
       toast.success(
         result ||
-          (editing ? t("账号设置已保存") : t("邮箱已连接，收发服务器验证通过")),
+          (editing
+            ? t("Account settings saved")
+            : t("Mailbox connected. Incoming and outgoing servers verified.")),
       );
     } catch (e) {
       setError(String(e));
@@ -165,15 +167,15 @@ export function AccountDialog({
           </div>
           <DialogTitle>
             {editing
-              ? t("编辑邮箱配置")
+              ? t("Edit email settings")
               : account
-                ? t("连接你的邮箱")
-                : t("把邮箱，放在一起")}
+                ? t("Connect your mailbox")
+                : t("Your mailboxes, together")}
           </DialogTitle>
           <DialogDescription>
             {account
-              ? t("配置邮箱服务器与本地留存方式。")
-              : t("无论工作还是生活，在一个安静的空间里处理邮件。")}
+              ? t("Configure mail servers and local retention.")
+              : t("A quiet space for work and personal mail.")}
           </DialogDescription>
         </DialogHeader>
         {!account ? (
@@ -199,7 +201,7 @@ export function AccountDialog({
             </div>
             <div className="privacy-note">
               <LockKeyhole size={15} />
-              {t("密码和令牌安全保存在 macOS 钥匙串中")}
+              {t("Passwords and tokens are stored securely in macOS Keychain")}
             </div>
           </>
         ) : (
@@ -219,7 +221,7 @@ export function AccountDialog({
                 disabled={busy}
               >
                 <ArrowLeft size={14} />
-                {t("返回其他邮箱")}
+                {t("Back to other providers")}
               </Button>
             )}
             <fieldset disabled={busy}>
@@ -244,10 +246,10 @@ export function AccountDialog({
                 }}
               />
               <div className="field">
-                <Label htmlFor="name">{t("账号名称")}</Label>
+                <Label htmlFor="name">{t("Account name")}</Label>
                 <Input
                   id="name"
-                  placeholder={t("例如：工作邮箱")}
+                  placeholder={t("For example: Work")}
                   value={account.name}
                   onChange={(e) => update({ name: e.target.value })}
                 />
@@ -256,8 +258,8 @@ export function AccountDialog({
                 <div className="field">
                   <Label htmlFor="password">
                     {editing
-                      ? t("更换密码 / 授权码（留空保留）")
-                      : t("密码 / 客户端授权码")}
+                      ? t("New password / app password (leave blank to keep)")
+                      : t("Password / app password")}
                   </Label>
                   <Input
                     id="password"
@@ -268,8 +270,10 @@ export function AccountDialog({
                     onChange={(e) => setPassword(e.target.value)}
                     placeholder={
                       editing
-                        ? t("保留钥匙串中已保存的凭据")
-                        : t("部分邮箱需先开启 IMAP/POP3 并生成授权码")
+                        ? t("Keep the credentials already saved in Keychain")
+                        : t(
+                            "Some providers require enabling IMAP/POP3 and generating an app password",
+                          )
                     }
                   />
                 </div>
@@ -277,12 +281,12 @@ export function AccountDialog({
                 <div className="oauth-note">
                   <ShieldCheck size={19} />
                   <div>
-                    {t("通过 ")}
+                    {t("Sign in with ")}
                     {account.provider === "gmail" ? "Google" : "Microsoft"}{" "}
-                    {t("安全登录")}
+                    {t("Secure sign-in")}
                     <small>
                       {t(
-                        "将打开系统浏览器完成授权。开发版需配置桌面应用 Client ID。",
+                        "Authorization opens in your system browser. Development builds require a desktop Client ID.",
                       )}
                     </small>
                   </div>
@@ -294,7 +298,7 @@ export function AccountDialog({
                     checked={reauthorize}
                     onCheckedChange={(value) => setReauthorize(value === true)}
                   />
-                  {t("重新进行浏览器授权")}
+                  {t("Authorize again in browser")}
                 </Label>
               )}
               <Button
@@ -303,7 +307,7 @@ export function AccountDialog({
                 type="button"
                 onClick={() => setAdvanced(!advanced)}
               >
-                {t("服务器与高级配置")}
+                {t("Servers & advanced settings")}
                 <ChevronDown
                   size={15}
                   className={advanced ? "rotate-180" : ""}
@@ -313,7 +317,7 @@ export function AccountDialog({
                 <div className="advanced-fields">
                   <div className="field-row">
                     <div className="field">
-                      <Label>{t("收件协议")}</Label>
+                      <Label>{t("Incoming protocol")}</Label>
                       <SelectField
                         value={account.protocol}
                         onValueChange={(value) => {
@@ -340,15 +344,15 @@ export function AccountDialog({
                         }}
                       >
                         <SelectOption value="imap">
-                          {t("IMAP（同步邮箱）")}
+                          {t("IMAP (sync mailbox)")}
                         </SelectOption>
                         <SelectOption value="pop3">
-                          {t("POP3（下载邮件）")}
+                          {t("POP3 (download mail)")}
                         </SelectOption>
                       </SelectField>
                     </div>
                     <div className="field">
-                      <Label>{t("认证方式")}</Label>
+                      <Label>{t("Authentication")}</Label>
                       <SelectField
                         value={account.auth}
                         onValueChange={(value) =>
@@ -356,7 +360,7 @@ export function AccountDialog({
                         }
                       >
                         <SelectOption value="password">
-                          {t("密码 / 授权码")}
+                          {t("Password / app password")}
                         </SelectOption>
                         {["gmail", "outlook", "microsoft365"].includes(
                           account.provider,
@@ -373,14 +377,16 @@ export function AccountDialog({
                   />
                   <ServerFields kind="smtp" account={account} update={update} />
                   <div className="field">
-                    <Label>{t("收件用户名")}</Label>
+                    <Label>{t("Incoming username")}</Label>
                     <Input
                       value={account.username}
                       onChange={(e) => update({ username: e.target.value })}
                     />
                   </div>
                   <div className="field">
-                    <Label>{t("SMTP 用户名（留空使用收件用户名）")}</Label>
+                    <Label>
+                      {t("SMTP username (blank uses incoming username)")}
+                    </Label>
                     <Input
                       value={account.smtpUsername}
                       onChange={(e) => update({ smtpUsername: e.target.value })}
@@ -390,8 +396,8 @@ export function AccountDialog({
                     <div className="field">
                       <Label>
                         {editing
-                          ? t("更换 SMTP 密码（留空保留）")
-                          : t("SMTP 密码（留空使用收件密码）")}
+                          ? t("New SMTP password (leave blank to keep)")
+                          : t("SMTP password (blank uses incoming password)")}
                       </Label>
                       <Input
                         type="password"
@@ -407,7 +413,7 @@ export function AccountDialog({
                               setSmtpUseIncoming(value === true)
                             }
                           />
-                          {t("SMTP 使用收件密码 / 授权码")}
+                          {t("Use incoming password / app password for SMTP")}
                         </Label>
                       )}
                     </div>
@@ -416,7 +422,9 @@ export function AccountDialog({
                       <Label>OAuth Client ID</Label>
                       <Input
                         value={account.oauthClientId}
-                        placeholder={t("桌面 / 公共客户端应用的 Client ID")}
+                        placeholder={t(
+                          "Desktop / public client application Client ID",
+                        )}
                         onChange={(e) =>
                           update({ oauthClientId: e.target.value })
                         }
@@ -435,16 +443,20 @@ export function AccountDialog({
               />
               <div>
                 <Label htmlFor="save-locally">
-                  {t("收到的邮件保存在本地")}
+                  {t("Save received messages locally")}
                 </Label>
                 <small>
                   {account.saveLocally !== false
-                    ? t("保存完整正文与附件，服务器删除后仍可阅读。")
+                    ? t(
+                        "Keep full messages and attachments, even after server deletion.",
+                      )
                     : t(
-                        "仅保存列表信息，打开正文时从服务器加载。已有存档保留。",
+                        "Keep list information only; load bodies from the server when opened. Existing archives remain.",
                       )}
                   {account.protocol === "imap" &&
-                    t(" 此项为账号默认，文件夹可在设置中单独选择保存范围。")}
+                    t(
+                      " This is the account default. Choose folder-specific retention in settings.",
+                    )}
                 </small>
               </div>
             </div>
@@ -457,33 +469,33 @@ export function AccountDialog({
               {busy ? <LoaderCircle className="animate-spin" /> : <KeyRound />}
               {busy
                 ? cancelling
-                  ? t("正在取消授权…")
+                  ? t("Canceling authorization…")
                   : stage === "browser"
-                    ? t("等待浏览器授权…")
+                    ? t("Waiting for browser authorization…")
                     : stage === "token"
-                      ? t("正在交换授权令牌…")
+                      ? t("Exchanging authorization tokens…")
                       : stage === "incoming"
-                        ? t("正在验证收件服务器…")
+                        ? t("Verifying incoming server…")
                         : stage === "smtp"
-                          ? t("正在验证发件服务器…")
+                          ? t("Verifying outgoing server…")
                           : stage === "saving"
-                            ? t("正在保存账号…")
+                            ? t("Saving account…")
                             : needsValidation
-                              ? t("正在验证连接…")
-                              : t("正在保存设置…")
+                              ? t("Verifying connection…")
+                              : t("Saving settings…")
                 : editing
                   ? needsValidation
-                    ? t("验证并保存配置")
-                    : t("保存设置")
+                    ? t("Verify & save configuration")
+                    : t("Save settings")
                   : account.auth === "oauth"
-                    ? t("授权并连接")
-                    : t("验证并连接邮箱")}
+                    ? t("Authorize & connect")
+                    : t("Verify & connect mailbox")}
             </Button>
             {busy && stage === "browser" && (
               <div className="flex flex-col gap-2" role="status">
                 <p className="text-sm text-muted-foreground">
                   {t(
-                    "请在新打开的系统浏览器页面完成授权，再返回雁信。等待超过 3 分钟会自动结束。",
+                    "Complete authorization in the browser, then return to Anser. The request expires after 3 minutes.",
                   )}
                 </p>
                 <Button
@@ -500,7 +512,7 @@ export function AccountDialog({
                     }
                   }}
                 >
-                  {t("取消授权")}
+                  {t("Cancel authorization")}
                 </Button>
               </div>
             )}
@@ -526,7 +538,7 @@ function ServerFields({
     <div className="server-row">
       <div className="field">
         <Label>
-          {kind === "incoming" ? t("收件服务器") : t("SMTP 服务器")}
+          {kind === "incoming" ? t("Incoming server") : t("SMTP server")}
         </Label>
         <Input
           required
@@ -536,7 +548,7 @@ function ServerFields({
         />
       </div>
       <div className="field">
-        <Label>{t("端口")}</Label>
+        <Label>{t("Port")}</Label>
         <Input
           type="number"
           min={1}
@@ -547,7 +559,7 @@ function ServerFields({
         />
       </div>
       <div className="field">
-        <Label>{t("加密")}</Label>
+        <Label>{t("Encryption")}</Label>
         <SelectField
           value={account[tls]}
           onValueChange={(value) => update({ [tls]: value })}

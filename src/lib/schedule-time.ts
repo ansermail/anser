@@ -10,6 +10,6 @@ export function scheduledIso(value: string) {
     !Number.isFinite(date.getTime()) ||
     date.getTime() <= Date.now()
   )
-    throw new Error(t("请选择未来的发送时间"));
+    throw new Error(t("Choose a future send time"));
   return date.toISOString();
 }

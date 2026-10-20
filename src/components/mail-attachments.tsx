@@ -35,7 +35,11 @@ export function MailAttachments({
   ) {
     if (pending[index]) return;
     if (action === "preview" && (!native || demo)) {
-      toast.info(t("请在桌面客户端中使用本地应用预览真实附件"));
+      toast.info(
+        t(
+          "Preview real attachments in a local application from the desktop app",
+        ),
+      );
       return;
     }
     setPending((p) => ({ ...p, [index]: action }));
@@ -55,7 +59,7 @@ export function MailAttachments({
   }
   if (!attachments.length) return null;
   return (
-    <div className="attachment-list" aria-label={t("邮件附件")}>
+    <div className="attachment-list" aria-label={t("Message attachments")}>
       {attachments.map((attachment) => {
         const Icon = attachment.mime.startsWith("image/")
           ? FileImage
@@ -75,10 +79,14 @@ export function MailAttachments({
               className="attachment-preview"
               title={
                 attachment.error ||
-                t("使用默认应用打开 {value0}", { value0: attachment.name })
+                t("Open {value0} in the default application", {
+                  value0: attachment.name,
+                })
               }
               disabled={disabled}
-              aria-label={t("预览附件 {value0}", { value0: attachment.name })}
+              aria-label={t("Preview attachment {value0}", {
+                value0: attachment.name,
+              })}
               onClick={() =>
                 void act(attachment.index, attachment.name, "preview")
               }
@@ -90,14 +98,14 @@ export function MailAttachments({
                   <span className="attachment-progress" role="status">
                     <Skeleton className="h-2 w-6" />
                     <small>
-                      {busy === "preview" ? t("正在打开…") : t("正在保存…")}
+                      {busy === "preview" ? t("Opening…") : t("Saving…")}
                     </small>
                   </span>
                 ) : (
                   <small>
                     {attachment.error
-                      ? t("附件编码异常")
-                      : t("{value0} · 点击预览", {
+                      ? t("Attachment encoding error")
+                      : t("{value0} · Click to preview", {
                           value0: formatSize(attachment.size),
                         })}
                   </small>
@@ -108,9 +116,11 @@ export function MailAttachments({
               variant="ghost"
               size="icon-sm"
               className="attachment-download"
-              title={attachment.error || t("另存附件")}
+              title={attachment.error || t("Save attachment as")}
               disabled={disabled}
-              aria-label={t("下载附件 {value0}", { value0: attachment.name })}
+              aria-label={t("Download attachment {value0}", {
+                value0: attachment.name,
+              })}
               onClick={() =>
                 void act(attachment.index, attachment.name, "download")
               }

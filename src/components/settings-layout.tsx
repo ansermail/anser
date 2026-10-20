@@ -8,35 +8,35 @@ const sections = [
   {
     value: "accounts",
     get label() {
-      return t("邮箱账号");
+      return t("Email accounts");
     },
     icon: Mail,
   },
   {
     value: "archive",
     get label() {
-      return t("本地存档");
+      return t("Local archive");
     },
     icon: Archive,
   },
   {
     value: "preferences",
     get label() {
-      return t("应用偏好");
+      return t("Preferences");
     },
     icon: SlidersHorizontal,
   },
   {
     value: "tasks",
     get label() {
-      return t("后台任务");
+      return t("Background tasks");
     },
     icon: History,
   },
   {
     value: "about",
     get label() {
-      return t("关于雁信");
+      return t("About Anser");
     },
     icon: Info,
   },
@@ -78,7 +78,10 @@ export function SettingsLayout({
         orientation={compact ? "horizontal" : "vertical"}
         className="settings-layout"
       >
-        <TabsList aria-label={t("设置分类")} className="settings-navigation">
+        <TabsList
+          aria-label={t("Settings categories")}
+          className="settings-navigation"
+        >
           {sections.map((section) => (
             <TabsTrigger key={section.value} value={section.value}>
               <section.icon />

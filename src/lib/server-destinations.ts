@@ -16,7 +16,11 @@ export function directorySource(
   );
   if (remoteFolder) {
     if (available.includes(remoteFolder)) return remoteFolder;
-    throw new Error(t("邮件已不在当前服务器文件夹，请刷新后重新打开。"));
+    throw new Error(
+      t(
+        "This message is no longer in the current server folder. Refresh and open it again.",
+      ),
+    );
   }
   const inbox = available.find((s) => s.toUpperCase() === "INBOX");
   if (view === "all" && inbox) return inbox;
@@ -25,7 +29,11 @@ export function directorySource(
       folders.some((f) => f.name === s && f.roles?.includes("sent")),
     );
     if (sent.length === 1) return sent[0];
-    throw new Error(t("无法确定已发送来源，请从具体服务器文件夹打开邮件。"));
+    throw new Error(
+      t(
+        "Could not determine the sent source. Open the message from a specific server folder.",
+      ),
+    );
   }
   // Match the canonical active source used by the aggregated reader.
   if (inbox) return inbox;
@@ -33,15 +41,17 @@ export function directorySource(
   if (available.length === 1) return available[0];
   throw new Error(
     available.length
-      ? "邮件有多个服务器来源，请从具体服务器文件夹打开。"
-      : "这封邮件没有可信的 IMAP 来源。",
+      ? t(
+          "This message has multiple server sources. Open it from a specific server folder.",
+        )
+      : t("This message has no trusted IMAP source."),
   );
 }
 
 export const moveShortcuts = [
-  { role: "archive", label: "归档" },
-  { role: "junk", label: "移到垃圾邮件" },
-  { role: "trash", label: "移到服务器废纸篓" },
+  { role: "archive", label: "Archive" },
+  { role: "junk", label: "Move to junk" },
+  { role: "trash", label: "Move to server trash" },
 ] as const;
 
 export function directoryShortcuts(folders: RemoteFolder[], source: string) {
@@ -49,14 +59,14 @@ export function directoryShortcuts(folders: RemoteFolder[], source: string) {
     const matches = folders.filter((f) => f.roles?.includes(shortcut.role));
     const folder = matches.length === 1 ? matches[0] : undefined;
     const reason = !matches.length
-      ? "请在账号中设置目标目录"
+      ? t("Set a target folder in the account")
       : matches.length > 1
-        ? "请在账号中指定唯一目标"
+        ? t("Choose a single target in the account")
         : !folder?.selectable || folder.syncError
-          ? "目标目录不可用"
+          ? t("Target folder unavailable")
           : folder.name === source
-            ? "已在此目录"
+            ? t("Already in this folder")
             : "";
-    return { ...shortcut, folder, reason };
+    return { role: shortcut.role, label: t(shortcut.label), folder, reason };
   });
 }

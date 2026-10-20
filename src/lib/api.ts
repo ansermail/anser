@@ -42,7 +42,7 @@ export function isDemo() {
 }
 export function enterDemo() {
   if (native && !import.meta.env.DEV)
-    throw new Error(t("正式应用不开放示例邮箱"));
+    throw new Error(t("Sample mailboxes are unavailable in the released app"));
   demo = makeDemo();
   demoPager.changed();
   demoStorage.setItem(key, JSON.stringify(demo));
@@ -214,7 +214,9 @@ export async function call<T = void>(
     ].includes(command)
   )
     throw new Error(
-      t("页面预览不连接邮箱、收发邮件或操作本机文件，请下载 Anser 客户端。"),
+      t(
+        "The web preview does not connect, send mail or access local files. Download the Anser desktop app.",
+      ),
     );
   if (demo) {
     let result: unknown;
@@ -234,7 +236,7 @@ export async function call<T = void>(
         break;
       case "move_archive_location":
       case "cleanup_archive_migration":
-        throw new Error(t("示例邮箱不会迁移本机文件"));
+        throw new Error(t("Sample mailboxes do not migrate local files"));
       case "mail_signature":
         result =
           JSON.parse(
@@ -286,7 +288,7 @@ export async function call<T = void>(
 
       case "mail_conversation": {
         const selected = demo.messages.find((m) => m.id === args.id);
-        if (!selected) throw new Error(t("邮件不存在"));
+        if (!selected) throw new Error(t("Message not found"));
         result = structuredClone(conversationMessages(demo.messages, selected));
         break;
       }
@@ -362,17 +364,21 @@ export async function call<T = void>(
       case "queue_archives":
       case "archive_job_action":
         throw new Error(
-          t("演示模式不下载服务器原件，请在桌面客户端中使用真实邮箱测试补存"),
+          t(
+            "Demo mode does not download server originals. Test complete saving with a real mailbox in the desktop app.",
+          ),
         );
       case "cancel_retention_inspection":
         return undefined as T;
       case "inspect_retention_budget":
         throw new Error(
-          t("示例邮箱不连接真实服务器或读取磁盘，请在桌面客户端中检查预算"),
+          t(
+            "Sample mailboxes do not connect to servers or read disks. Check estimates in the desktop app.",
+          ),
         );
       case "retention_settings": {
         const account = demo.accounts.find((a) => a.id === args.id);
-        if (!account) throw new Error(t("账号不存在"));
+        if (!account) throw new Error(t("Account not found"));
         const folders = await call<import("./types").RemoteFolder[]>(
           "account_folders",
           args,
@@ -422,7 +428,11 @@ export async function call<T = void>(
           days != null &&
           (!Number.isInteger(days) || days < 1 || days > 3650)
         )
-          throw new Error(t("服务器保留期请填写 1–3650 天，未知时留空"));
+          throw new Error(
+            t(
+              "Enter server retention from 1 to 3650 days, or leave blank if unknown",
+            ),
+          );
         demoStorage.setItem(
           `${key}:retention:${account.id}`,
           JSON.stringify(args.overrides),
@@ -463,7 +473,9 @@ export async function call<T = void>(
           )
         )
           throw new Error(
-            t("演示模式不执行服务器规则，请在真实桌面预览中测试"),
+            t(
+              "Demo mode does not run server rules. Test them in the native desktop preview.",
+            ),
           );
         let count = 0;
         const planned = demo.messages.map((mail) => ({ ...mail }));
@@ -472,7 +484,9 @@ export async function call<T = void>(
             const state = ruleMatchState(rule, mail);
             if (state === "needsBody")
               throw new Error(
-                t("示例预览不下载在线正文或附件，未知内容需在桌面客户端核对"),
+                t(
+                  "The sample preview does not download online bodies or attachments. Review unknown content in the desktop app.",
+                ),
               );
             if (state !== "match") continue;
             const steps = rule.actions?.length ? rule.actions : [rule];
@@ -483,7 +497,9 @@ export async function call<T = void>(
               mail.savedLocally === false
             )
               throw new Error(
-                t("示例仅对已有完整邮件演示保存与归类，不提供实际下载"),
+                t(
+                  "The sample only demonstrates saving and filing complete messages already available; no real downloads",
+                ),
               );
             for (const step of steps) {
               switch (step.action) {
@@ -552,7 +568,9 @@ export async function call<T = void>(
             );
           })
         )
-          throw new Error(t("草稿列表或内容已变化，请刷新后重新清空"));
+          throw new Error(
+            t("Draft list or content changed. Refresh before clearing again."),
+          );
         demoStorage.setItem(
           key + "-drafts",
           JSON.stringify(list.filter((draft) => !ids.has(draft.id))),
@@ -571,9 +589,11 @@ export async function call<T = void>(
       case "edit_account": {
         const account = args.account as Snapshot["accounts"][number];
         const index = demo.accounts.findIndex((a) => a.id === account.id);
-        if (index < 0) throw new Error(t("账号不存在"));
+        if (index < 0) throw new Error(t("Account not found"));
         if (demo.accounts[index].email !== account.email)
-          throw new Error(t("修改邮箱地址请添加新账号"));
+          throw new Error(
+            t("Add a new account to use a different email address"),
+          );
         demo.accounts[index] = structuredClone(account);
         break;
       }
@@ -591,7 +611,9 @@ export async function call<T = void>(
               x.id !== c.id && x.email.toLowerCase() === c.email.toLowerCase(),
           )
         )
-          throw new Error(t("该邮箱已存在于通讯录中"));
+          throw new Error(
+            t("This email address already exists in your contacts"),
+          );
         demoStorage.setItem(
           key + "-contacts",
           JSON.stringify([c, ...list.filter((x) => x.id !== c.id)]),
@@ -625,7 +647,11 @@ export async function call<T = void>(
         result = [];
         break;
       case "rule_run_action":
-        throw new Error(t("示例预览不执行异步规则任务，请在桌面客户端查看"));
+        throw new Error(
+          t(
+            "The sample preview does not run asynchronous rule tasks. View them in the desktop app.",
+          ),
+        );
       case "folder_health":
       case "directory_operations":
       case "rule_executions":
@@ -641,7 +667,9 @@ export async function call<T = void>(
       case "directory_operation_action":
       case "retry_rule_execution":
         throw new Error(
-          t("演示模式不执行服务器文件夹操作，请在真实桌面预览中测试"),
+          t(
+            "Demo mode does not perform server folder operations. Test them in the native desktop preview.",
+          ),
         );
       case "server_operations":
         result = { pending: 0, blocked: 0, completed: 0, items: [] };
@@ -667,12 +695,14 @@ export async function call<T = void>(
           new Date(scheduledAt).getTime() <= Date.now() ||
           !Number.isFinite(new Date(scheduledAt).getTime())
         )
-          throw new Error(t("请选择未来的发送时间"));
+          throw new Error(t("Choose a future send time"));
         const records = JSON.parse(
           demoStorage.getItem(key + "-outbox") || "[]",
         ) as OutboxRecord[];
         if (records.some((r) => r.id === draft.id))
-          throw new Error(t("已有发送计划，请在发送记录中检查"));
+          throw new Error(
+            t("A schedule already exists. Review it in Send history."),
+          );
         records.unshift({
           id: draft.id,
           draft,
@@ -703,7 +733,8 @@ export async function call<T = void>(
             r.status === "scheduled" &&
             r.sendKind === "undo",
         );
-        if (!record) throw new Error(t("撤回期限已结束或发送正在处理"));
+        if (!record)
+          throw new Error(t("The undo period ended or sending is in progress"));
         record.scheduledAt = new Date().toISOString();
         record.updatedAt = record.scheduledAt;
         demoStorage.setItem(key + "-outbox", JSON.stringify(records));
@@ -719,7 +750,7 @@ export async function call<T = void>(
           !record ||
           !["scheduled", "overdue", "paused"].includes(record.status)
         )
-          throw new Error(t("此计划不可修改"));
+          throw new Error(t("This schedule cannot be changed"));
         if (command === "cancel_schedule") {
           record.status = "cancelled";
           result = { ...record.draft, id: crypto.randomUUID() };
@@ -733,7 +764,7 @@ export async function call<T = void>(
         } else {
           const at = new Date(args.scheduledAt as string);
           if (!Number.isFinite(at.getTime()) || at.getTime() <= Date.now())
-            throw new Error(t("请选择未来的发送时间"));
+            throw new Error(t("Choose a future send time"));
           record.scheduledAt = at.toISOString();
           record.status = "scheduled";
           record.error = "";
@@ -909,8 +940,13 @@ export async function call<T = void>(
             .sort(),
         );
         if (mails.length !== args.expectedCount || token !== args.expectedToken)
-          throw new Error(t("存档范围已变化，请重新查看删除范围后确认"));
-        if (!mails.length) throw new Error(t("所选范围没有本地存档"));
+          throw new Error(
+            t(
+              "Archive scope changed. Review it again before confirming deletion.",
+            ),
+          );
+        if (!mails.length)
+          throw new Error(t("The selected scope has no local archives"));
         let offlineRemoved = 0;
         const offline = new Set<string>();
         for (const m of mails) {
@@ -991,7 +1027,7 @@ export async function call<T = void>(
     notifyTranslationActivity(command);
     return result as T;
   }
-  if (!native) throw new Error(t("请在 macOS 桌面客户端中使用此功能。"));
+  if (!native) throw new Error(t("Use this feature in the macOS desktop app."));
   try {
     return await invoke<T>(command, args);
   } finally {

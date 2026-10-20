@@ -61,16 +61,16 @@ export function ArchiveLocation({
     if (request.current || !native || isDemo()) return;
     if (
       !(await askConfirmation({
-        title: t("迁移本地存档？"),
+        title: t("Move local archives?"),
         description: t(
-          "邮件原件与附件将迁移至{value0}。完成校验后切换位置并清理原位置的已迁移文件。账号、列表和设置仍保存在本机；使用外置磁盘时请保持连接。",
+          "Original messages and attachments will move to {value0}. After verification, the location switches and migrated files at the old location are cleaned up. Accounts, indexes and settings stay on this Mac. Keep external disks connected.",
           {
             value0: parent
               ? `${parent}/Anser-Archive/archive`
               : status?.defaultPath,
           },
         ),
-        action: t("开始迁移"),
+        action: t("Start migration"),
       }))
     )
       return;
@@ -85,7 +85,9 @@ export function ArchiveLocation({
       if (live.current) {
         setStatus(result);
         onChanged();
-        toast.success(t("存档路径已更新，原件与附件迁移完成"));
+        toast.success(
+          t("Archive location updated. Originals and attachments migrated."),
+        );
       }
     } catch (e) {
       if (live.current) {
@@ -104,7 +106,7 @@ export function ArchiveLocation({
     const selected = await open({
       directory: true,
       multiple: false,
-      title: t("选择存档磁盘或文件夹"),
+      title: t("Select an archive disk or folder"),
     });
     if (typeof selected === "string") await move(selected);
   }
@@ -130,7 +132,7 @@ export function ArchiveLocation({
       <div
         className="flex flex-col gap-4"
         role="group"
-        aria-label={t("存档管理")}
+        aria-label={t("Archive management")}
       >
         <div className="storage-actions flex-wrap">
           {children}
@@ -146,7 +148,7 @@ export function ArchiveLocation({
             onClick={() => void select()}
           >
             <HardDrive data-icon="inline-start" />
-            {t("修改存档位置")}
+            {t("Change archive location")}
           </Button>
           {status?.external && (
             <Button
@@ -154,7 +156,7 @@ export function ArchiveLocation({
               disabled={busy || status.migrating || !status.available}
               onClick={() => void move("")}
             >
-              {t("恢复默认位置")}
+              {t("Restore default location")}
             </Button>
           )}
           <Button
@@ -165,19 +167,19 @@ export function ArchiveLocation({
             }
           >
             <FolderOpen data-icon="inline-start" />
-            {t("打开存储位置")}
+            {t("Open storage location")}
           </Button>
           <Button
             variant="ghost"
             size="icon-sm"
-            aria-label={t("刷新存档位置")}
+            aria-label={t("Refresh archive location")}
             onClick={() => void reload()}
           >
             <RefreshCw />
           </Button>
         </div>
         <p className="break-all text-xs text-muted-foreground">
-          {status?.path || initialPath || t("正在读取存档位置…")}
+          {status?.path || initialPath || t("Reading archive location…")}
         </p>
         {(error || status?.error) && (
           <Alert variant="destructive">
@@ -187,7 +189,7 @@ export function ArchiveLocation({
         {status?.external && (
           <p className="text-sm text-muted-foreground">
             {t(
-              "请保持存档磁盘连接。未连接时可以查看邮件列表，完整原件读取、备份和保存会暂停，不会自动改存到本机。",
+              "Keep the archive disk connected. The message list remains available when disconnected; original access, backups and saving pause without falling back to this Mac.",
             )}
           </p>
         )}
@@ -199,9 +201,9 @@ export function ArchiveLocation({
               }
             />
             <p className="text-sm text-muted-foreground">
-              {t("正在迁移与校验：")}
+              {t("Migrating & verifying: ")}
               {status?.completed || 0} / {status?.total || 0}{" "}
-              {t("个原件。完成后自动切换位置。")}
+              {t(" originals. The location switches when complete.")}
             </p>
           </div>
         )}
@@ -209,7 +211,7 @@ export function ArchiveLocation({
           <Alert>
             <AlertDescription>
               {t(
-                "新位置已保留完整原件，原位置还有待清理文件。连接相关磁盘后可继续清理。",
+                "The new location holds all originals. Some files at the old location still need cleanup. Connect the disks to continue.",
               )}
               <Button
                 variant="outline"
@@ -217,14 +219,16 @@ export function ArchiveLocation({
                 disabled={busy || status.migrating}
                 onClick={() => void cleanup()}
               >
-                {t("继续清理原位置")}
+                {t("Continue cleanup at old location")}
               </Button>
             </AlertDescription>
           </Alert>
         )}
         {(!native || isDemo()) && (
           <p className="text-sm text-muted-foreground">
-            {t("网页预览与示例邮箱不迁移本机文件，请在桌面应用中选择位置。")}
+            {t(
+              "Web previews and sample mailboxes do not migrate local files. Choose a location in the desktop app.",
+            )}
           </p>
         )}
       </div>

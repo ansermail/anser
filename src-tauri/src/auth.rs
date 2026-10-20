@@ -3,7 +3,7 @@ use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::{
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     io::{Read, Write},
     net::TcpListener,
     sync::{
@@ -29,20 +29,92 @@ pub struct Secret {
 fn entry(id: &str) -> Result<crate::credentials::Entry> {
     crate::credentials::entry(id)
 }
-pub fn save(id: &str, s: &Secret) -> Result<()> {
-    entry(id)?
-        .set_password(&serde_json::to_string(s).map_err(err)?)
-        .map_err(err)
+// A refresh can succeed while the Keychain write is temporarily denied. Keep
+// the new token usable for this session and retry the write only when the user
+// asks for it; background workers must never raise an authorization prompt.
+fn fresh_secrets() -> &'static Mutex<HashMap<String, Secret>> {
+    static FRESH: OnceLock<Mutex<HashMap<String, Secret>>> = OnceLock::new();
+    FRESH.get_or_init(Default::default)
+}
+fn pending_writes() -> &'static Mutex<HashSet<String>> {
+    static PENDING: OnceLock<Mutex<HashSet<String>>> = OnceLock::new();
+    PENDING.get_or_init(Default::default)
+}
+fn pending_notices() -> &'static Mutex<HashSet<String>> {
+    static NOTICES: OnceLock<Mutex<HashSet<String>>> = OnceLock::new();
+    NOTICES.get_or_init(Default::default)
+}
+fn forget_session_state(id: &str) {
+    if let Ok(mut fresh) = fresh_secrets().lock() {
+        fresh.remove(id);
+    }
+    if let Ok(mut pending) = pending_writes().lock() {
+        pending.remove(id);
+    }
+    if let Ok(mut notices) = pending_notices().lock() {
+        notices.remove(id);
+    }
+}
+fn save_with(id: &str, s: &Secret, interactive: bool) -> Result<()> {
+    let raw = serde_json::to_string(s).map_err(err)?;
+    if interactive {
+        entry(id)?.set_password_interactive(&raw)?;
+    } else {
+        entry(id)?.set_password(&raw)?;
+    }
+    forget_session_state(id);
+    Ok(())
+}
+/// The first explicit user action after a background write failure retries the
+/// Keychain write once with interaction enabled.
+pub fn save_interactive(id: &str, s: &Secret) -> Result<()> {
+    let gate = credential_gate(id)?;
+    let _guard = gate.lock().map_err(err)?;
+    save_with(id, s, true)
+}
+pub fn pending_write(id: &str) -> bool {
+    pending_writes()
+        .lock()
+        .map(|pending| pending.contains(id))
+        .unwrap_or(false)
+}
+/// Returns true only for the first notice in one pending episode, so a
+/// minute-by-minute retry cannot repeat the same warning.
+pub fn take_pending_notice(id: &str) -> bool {
+    if !pending_write(id) {
+        return false;
+    }
+    pending_notices()
+        .lock()
+        .map(|mut notices| notices.insert(id.to_owned()))
+        .unwrap_or(false)
+}
+pub fn flush_pending(id: &str) -> Result<bool> {
+    let gate = credential_gate(id)?;
+    let _guard = gate.lock().map_err(err)?;
+    let secret = fresh_secrets().lock().map_err(err)?.get(id).cloned();
+    let Some(secret) = secret else {
+        if let Ok(mut pending) = pending_writes().lock() {
+            pending.remove(id);
+        }
+        return Ok(false);
+    };
+    save_with(id, &secret, true)?;
+    Ok(true)
 }
 pub fn load(id: &str) -> Result<Secret> {
     let raw = entry(id)?.get_password()?;
     serde_json::from_str(&raw).map_err(|_| "账号凭据格式无效，原记录已保留，请重新连接账号".into())
 }
 pub fn remove(id: &str) -> Result<crate::credentials::Previous> {
-    entry(id)?.replace(None)
+    let previous = entry(id)?.replace(None)?;
+    forget_session_state(id);
+    Ok(previous)
 }
 pub fn restore(id: &str, previous: crate::credentials::Previous) -> Result<()> {
-    entry(id)?.restore(previous)
+    entry(id)?.restore(previous)?;
+    forget_session_state(id);
+    Ok(())
 }
 
 fn endpoints(a: &Account) -> Result<(&'static str, &'static str, &'static str)> {
@@ -142,7 +214,11 @@ fn credential_gate(id: &str) -> Result<Arc<Mutex<()>>> {
 pub fn credentials(a: &Account) -> Result<Secret> {
     let gate = credential_gate(&a.id)?;
     let _guard = gate.lock().map_err(err)?;
-    let mut s = load(&a.id)?;
+    let cached = fresh_secrets().lock().map_err(err)?.get(&a.id).cloned();
+    let mut s = match cached {
+        Some(secret) => secret,
+        None => load(&a.id)?,
+    };
     if a.auth == "oauth" && s.expires_at < chrono::Utc::now().timestamp() + 60 {
         if s.refresh_token.is_empty() {
             return Err("授权已过期，请重新连接账号".into());
@@ -157,7 +233,17 @@ pub fn credentials(a: &Account) -> Result<Secret> {
         if new.refresh_token.is_empty() {
             new.refresh_token = s.refresh_token;
         }
-        save(&a.id, &new)?;
+        if save_with(&a.id, &new, false).is_err() {
+            // The provider accepted the refresh. Keeping the token in memory
+            // lets mail flow continue; the next explicit check retries the
+            // Keychain write and may ask the user to allow it.
+            if let Ok(mut fresh) = fresh_secrets().lock() {
+                fresh.insert(a.id.clone(), new.clone());
+            }
+            if let Ok(mut pending) = pending_writes().lock() {
+                pending.insert(a.id.clone());
+            }
+        }
         s = new;
     }
     Ok(s)
@@ -325,6 +411,28 @@ pub fn authorize(a: &Account, progress: &impl Fn(&str)) -> Result<Secret> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn pending_notice_is_reported_once_per_episode() {
+        let id = uuid::Uuid::new_v4().to_string();
+        assert!(!pending_write(&id));
+        assert!(!take_pending_notice(&id));
+        pending_writes().lock().unwrap().insert(id.clone());
+        assert!(pending_write(&id));
+        assert!(take_pending_notice(&id));
+        assert!(!take_pending_notice(&id));
+        forget_session_state(&id);
+        assert!(!pending_write(&id));
+        pending_writes().lock().unwrap().insert(id.clone());
+        assert!(take_pending_notice(&id));
+        forget_session_state(&id);
+    }
+    #[test]
+    fn deferred_write_without_memory_secret_clears_pending() {
+        let id = uuid::Uuid::new_v4().to_string();
+        pending_writes().lock().unwrap().insert(id.clone());
+        assert!(!flush_pending(&id).unwrap());
+        assert!(!pending_write(&id));
+    }
     #[test]
     fn callback_requires_matching_state_and_reports_denial_without_sensitive_details() {
         assert_eq!(

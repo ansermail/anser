@@ -4,7 +4,9 @@ export function isTauri() {
   return false;
 }
 export async function invoke<T = never>(): Promise<T> {
-  throw new Error(t("网页预览不提供桌面功能，请下载 Anser 客户端。"));
+  throw new Error(
+    t("Desktop features are unavailable in the web preview. Download Anser."),
+  );
 }
 export class Channel<T> {
   onmessage?: (message: T) => void;
@@ -16,7 +18,7 @@ export function getCurrentWebview() {
   return { onDragDropEvent: async () => () => {} };
 }
 export async function getVersion() {
-  return "页面预览";
+  return t("Page preview");
 }
 export async function check() {
   return null;

@@ -58,7 +58,7 @@ export function StorageTools({ testMailId = "" }: { testMailId?: string }) {
       const p = { ...preferences, syncIntervalMinutes: interval };
       await call("save_preferences", { preferences: p });
       setPreferences(p);
-      toast.success(t("后台检查间隔已更新"));
+      toast.success(t("Background check interval updated"));
     } catch (e) {
       toast.error(String(e));
     } finally {
@@ -85,7 +85,9 @@ export function StorageTools({ testMailId = "" }: { testMailId?: string }) {
     try {
       await call("set_auto_start", { enabled });
       setDesktop(await call("desktop_settings"));
-      toast.success(enabled ? t("开机自启已开启") : t("开机自启已关闭"));
+      toast.success(
+        enabled ? t("Launch at login enabled") : t("Launch at login disabled"),
+      );
     } catch (e) {
       toast.error(String(e));
     } finally {
@@ -96,12 +98,16 @@ export function StorageTools({ testMailId = "" }: { testMailId?: string }) {
     <div className="storage-tools">
       <Card>
         <CardHeader>
-          <CardTitle>{t("系统通知与启动")}</CardTitle>
-          <CardDescription>{t("选择提醒方式与应用启动行为。")}</CardDescription>
+          <CardTitle>{t("Notifications & startup")}</CardTitle>
+          <CardDescription>
+            {t("Choose notification and startup behavior.")}
+          </CardDescription>
         </CardHeader>
         <CardContent className="flex flex-col gap-4">
           <div className="settings-tool-row justify-between">
-            <Label htmlFor="new-mail-notifications">{t("新邮件通知")}</Label>
+            <Label htmlFor="new-mail-notifications">
+              {t("New mail notifications")}
+            </Label>
             <Switch
               id="new-mail-notifications"
               checked={preferences.newMailNotifications ?? true}
@@ -113,7 +119,7 @@ export function StorageTools({ testMailId = "" }: { testMailId?: string }) {
           </div>
           <div className="settings-tool-row justify-between">
             <Label htmlFor="send-result-notifications">
-              {t("发送结果通知")}
+              {t("Send result notifications")}
             </Label>
             <Switch
               id="send-result-notifications"
@@ -126,7 +132,7 @@ export function StorageTools({ testMailId = "" }: { testMailId?: string }) {
           </div>
           <p className="text-sm text-muted-foreground leading-relaxed">
             {t(
-              "新邮件和发送成功、失败或结果未确认时使用系统通知。首次导入旧邮件不通知；通知横幅由 macOS 设置控制。",
+              "System notifications cover new mail and successful, failed or unconfirmed sends. Initial imports do not notify. Notification banners are controlled by macOS settings.",
             )}
           </p>
           <Button
@@ -137,18 +143,20 @@ export function StorageTools({ testMailId = "" }: { testMailId?: string }) {
                 .then(() =>
                   toast.success(
                     isDemo()
-                      ? t("演示模式不发送系统通知")
-                      : t("测试通知已提交，请检查通知中心"),
+                      ? t("Demo mode does not send system notifications")
+                      : t(
+                          "Test notification submitted. Check Notification Center.",
+                        ),
                   ),
                 )
                 .catch((e) => toast.error(String(e)))
             }
           >
-            {t("测试系统通知")}
+            {t("Test system notification")}
           </Button>
           <Separator />
           <div className="settings-tool-row justify-between">
-            <Label htmlFor="auto-start">{t("开机自启")}</Label>
+            <Label htmlFor="auto-start">{t("Launch at login")}</Label>
             <Switch
               id="auto-start"
               checked={desktop?.autoStart || false}
@@ -162,34 +170,40 @@ export function StorageTools({ testMailId = "" }: { testMailId?: string }) {
           </div>
           <p className="text-sm text-muted-foreground leading-relaxed">
             {desktop?.autoStartAvailable === false
-              ? t("开发预览依赖前端服务，请在正式应用中开启开机自启。")
-              : t("登录 Mac 后自动在后台启动，继续收信和处理定时发送。")}
+              ? t(
+                  "Development previews require the frontend server. Enable launch at login in the released app.",
+                )
+              : t(
+                  "Start in the background after logging into your Mac, then continue checking mail and scheduled sends.",
+                )}
           </p>
           {isDemo() && (
             <p className="text-sm text-muted-foreground leading-relaxed">
-              {t("演示模式不修改系统启动项。")}
+              {t("Demo mode does not change system login items.")}
             </p>
           )}
         </CardContent>
       </Card>
       <Card>
         <CardHeader>
-          <CardTitle>{t("后台检查")}</CardTitle>
-          <CardDescription>{t("设置定时补查新邮件的频率。")}</CardDescription>
+          <CardTitle>{t("Background checks")}</CardTitle>
+          <CardDescription>
+            {t("Choose how often to check for new mail.")}
+          </CardDescription>
         </CardHeader>
         <CardContent className="flex flex-col gap-4">
           <div className="settings-tool-row">
             <SelectField
-              aria-label={t("后台检查间隔")}
+              aria-label={t("Background check interval")}
               value={interval}
               disabled={!ready || saving}
               onValueChange={(value) => setInterval(Number(value))}
             >
               {[1, 5, 10, 15, 30, 60].map((n) => (
                 <SelectOption key={n} value={n}>
-                  {t("每 ")}
+                  {t("Every ")}
                   {n}
-                  {t(" 分钟")}
+                  {t(" minutes")}
                 </SelectOption>
               ))}
             </SelectField>
@@ -201,12 +215,12 @@ export function StorageTools({ testMailId = "" }: { testMailId?: string }) {
               }
               onClick={() => void save()}
             >
-              {saving ? t("保存中…") : t("保存")}
+              {saving ? t("Saving…") : t("Save")}
             </Button>
           </div>
           <p className="text-sm text-muted-foreground leading-relaxed">
             {t(
-              "IMAP 优先实时收取；此间隔用于定时补查和 POP3。关闭窗口后继续运行，唤醒后补收。",
+              "IMAP prioritizes real-time mail. This interval covers periodic checks and POP3. Checks continue after closing the window and catch up after waking.",
             )}
           </p>
         </CardContent>

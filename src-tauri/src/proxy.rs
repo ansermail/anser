@@ -83,7 +83,9 @@ pub fn apply(config: Option<ProxyConfig>, replacement_password: Option<&str>) ->
     let mut password = old.password.clone();
     drop(old);
     if let Some(value) = replacement_password.filter(|value| !value.is_empty()) {
-        entry()?.set_password(value).map_err(err)?;
+        // Settings are a user action, so one Keychain prompt is allowed when
+        // the vault item still needs to be re-authorized.
+        entry()?.set_password_interactive(value).map_err(err)?;
         password = value.to_owned();
     }
     if config
@@ -91,7 +93,7 @@ pub fn apply(config: Option<ProxyConfig>, replacement_password: Option<&str>) ->
         .is_none_or(|proxy| proxy.username.is_empty())
     {
         password.clear();
-        entry()?.delete_credential()?;
+        entry()?.replace_interactive(None).map_err(err)?;
     }
     *state().write().map_err(err)? = ProxyState {
         config,
@@ -461,6 +463,47 @@ mod tests {
         let mut response = [0; 4];
         client.read_exact(&mut response).unwrap();
         assert_eq!(&response, b"done");
+        server.join().unwrap();
+    }
+
+    #[test]
+    fn loopback_tunnel_delivers_server_push_without_waiting_for_client_writes() {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let (permit_tx, permit_rx) = std::sync::mpsc::channel();
+        let server = std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            stream
+                .set_read_timeout(Some(Duration::from_secs(3)))
+                .unwrap();
+            let mut header = Vec::new();
+            while !header.ends_with(b"\r\n\r\n") {
+                let mut byte = [0];
+                stream.read_exact(&mut byte).unwrap();
+                header.push(byte[0]);
+            }
+            stream.write_all(b"HTTP/1.1 200 OK\r\n\r\nready").unwrap();
+            permit_rx.recv_timeout(Duration::from_secs(3)).unwrap();
+            stream.write_all(b"new-mail").unwrap();
+            let mut ack = [0; 4];
+            stream.read_exact(&mut ack).unwrap();
+            assert_eq!(&ack, b"done");
+        });
+        let local_port = tunnel(&config("http", port), "", "mail.example", 993)
+            .unwrap()
+            .unwrap();
+        let mut client = std::net::TcpStream::connect(("127.0.0.1", local_port)).unwrap();
+        client
+            .set_read_timeout(Some(Duration::from_secs(3)))
+            .unwrap();
+        let mut ready = [0; 5];
+        client.read_exact(&mut ready).unwrap();
+        assert_eq!(&ready, b"ready");
+        permit_tx.send(()).unwrap();
+        let mut push = [0; 8];
+        client.read_exact(&mut push).unwrap();
+        assert_eq!(&push, b"new-mail");
+        client.write_all(b"done").unwrap();
         server.join().unwrap();
     }
 

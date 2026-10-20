@@ -60,14 +60,14 @@ export function RichSearch({
               type="button"
               variant="ghost"
               size="icon-sm"
-              aria-label={t("正文查找与替换")}
+              aria-label={t("Find & replace in body")}
               disabled={disabled}
             >
               <Search data-icon="inline-start" />
             </Button>
           </PopoverTrigger>
         </TooltipTrigger>
-        <TooltipContent>{t("正文查找与替换 · ⌘F")}</TooltipContent>
+        <TooltipContent>{t("Find & replace in body · ⌘F")}</TooltipContent>
       </Tooltip>
       <PopoverContent
         className="rich-search-panel w-64 max-h-[var(--radix-popover-content-available-height)] overflow-y-auto p-3"
@@ -79,7 +79,9 @@ export function RichSearch({
       >
         <FieldGroup className="gap-2.5">
           <Field className="gap-1">
-            <FieldLabel htmlFor="rich-search-text">{t("查找正文")}</FieldLabel>
+            <FieldLabel htmlFor="rich-search-text">
+              {t("Find in body")}
+            </FieldLabel>
             <Input
               id="rich-search-text"
               autoFocus
@@ -105,7 +107,7 @@ export function RichSearch({
               type="button"
               variant="ghost"
               size="icon-sm"
-              aria-label={t("上一个匹配")}
+              aria-label={t("Previous match")}
               disabled={disabled || !state.count}
               onClick={() => editor.commands.goToPreviousResult()}
             >
@@ -115,7 +117,7 @@ export function RichSearch({
               type="button"
               variant="ghost"
               size="icon-sm"
-              aria-label={t("下一个匹配")}
+              aria-label={t("Next match")}
               disabled={disabled || !state.count}
               onClick={() => editor.commands.goToNextResult()}
             >
@@ -123,7 +125,9 @@ export function RichSearch({
             </Button>
           </div>
           <Field className="gap-1">
-            <FieldLabel htmlFor="rich-replace-text">{t("替换为")}</FieldLabel>
+            <FieldLabel htmlFor="rich-replace-text">
+              {t("Replace with")}
+            </FieldLabel>
             <Input
               id="rich-replace-text"
               value={state.replaceTerm}
@@ -141,7 +145,7 @@ export function RichSearch({
               disabled={disabled || !state.count}
               onClick={() => editor.commands.replace()}
             >
-              {t("替换当前")}
+              {t("Replace current")}
             </Button>
             <Button
               type="button"
@@ -150,23 +154,23 @@ export function RichSearch({
               disabled={disabled || !state.count}
               onClick={() => editor.commands.replaceAll()}
             >
-              {t("全部替换")}
+              {t("Replace all")}
             </Button>
           </div>
           <div className="flex flex-wrap gap-x-3 gap-y-2">
             {[
               {
-                label: t("区分大小写"),
+                label: t("Match case"),
                 key: "caseSensitive" as const,
                 run: (v: boolean) => editor.commands.setCaseSensitive(v),
               },
               {
-                label: t("完整单词"),
+                label: t("Whole word"),
                 key: "wholeWord" as const,
                 run: (v: boolean) => editor.commands.setWholeWord(v),
               },
               {
-                label: t("正则表达式"),
+                label: t("Regular expression"),
                 key: "useRegex" as const,
                 run: (v: boolean) => editor.commands.setUseRegex(v),
               },

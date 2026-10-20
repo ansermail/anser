@@ -45,14 +45,16 @@ export function RuleServerFolders({
       {!supported && (
         <Alert>
           <AlertDescription>
-            {t("请选择一个已启用的 IMAP 账号。Gmail 标签动作尚未支持。")}
+            {t(
+              "Choose an enabled IMAP account. Gmail label actions are not yet supported.",
+            )}
           </AlertDescription>
         </Alert>
       )}
       {error && (
         <Alert variant="destructive">
           <AlertDescription>
-            {t("无法加载服务器目录：")}
+            {t("Could not load server folders: ")}
             {error}
           </AlertDescription>
         </Alert>
@@ -60,15 +62,17 @@ export function RuleServerFolders({
       {supported && settings && !folders.length && (
         <Alert>
           <AlertDescription>
-            {t("暂无可用目录，请先展开账号的服务器文件夹并完成收取。")}
+            {t(
+              "No available folders. Expand the account's server folders and complete a mail check.",
+            )}
           </AlertDescription>
         </Alert>
       )}
       <Field>
-        <FieldLabel htmlFor="rule-source">{t("来源文件夹")}</FieldLabel>
+        <FieldLabel htmlFor="rule-source">{t("Source folder")}</FieldLabel>
         <SelectField
           id="rule-source"
-          aria-label={t("规则来源文件夹")}
+          aria-label={t("Rule source folder")}
           value={rule.sourceFolder || ""}
           disabled={!supported || !settings}
           onValueChange={(sourceFolder) =>
@@ -81,7 +85,7 @@ export function RuleServerFolders({
           }
         >
           <SelectGroup>
-            <SelectOption value="">{t("选择来源文件夹")}</SelectOption>
+            <SelectOption value="">{t("Select source folder")}</SelectOption>
             {folders.map((f) => (
               <SelectOption key={f.name} value={f.name}>
                 {f.displayName}
@@ -91,21 +95,23 @@ export function RuleServerFolders({
         </SelectField>
         <FieldDescription>
           {t(
-            "仅处理当前位于此服务器文件夹的匹配邮件。服务器动作暂不支持正文条件。",
+            "Only processes matching messages currently in this server folder. Server actions do not yet support body conditions.",
           )}
         </FieldDescription>
       </Field>
       <Field>
-        <FieldLabel htmlFor="rule-target">{t("目标文件夹")}</FieldLabel>
+        <FieldLabel htmlFor="rule-target">{t("Destination folder")}</FieldLabel>
         <SelectField
           id="rule-target"
-          aria-label={t("规则目标文件夹")}
+          aria-label={t("Rule destination folder")}
           value={rule.destination}
           disabled={!supported || !settings}
           onValueChange={(destination) => onChange({ ...rule, destination })}
         >
           <SelectGroup>
-            <SelectOption value="">{t("选择目标文件夹")}</SelectOption>
+            <SelectOption value="">
+              {t("Select destination folder")}
+            </SelectOption>
             {folders
               .filter((f) => f.name !== rule.sourceFolder)
               .map((f) => (
@@ -117,10 +123,14 @@ export function RuleServerFolders({
         </SelectField>
         <FieldDescription>
           {rule.action === "serverMove"
-            ? t("移动核对完成后从来源目录移除，已有本地存档保留。")
-            : t("保留来源目录的邮件，并核对目标副本。")}
+            ? t(
+                "After move verification, the source is removed. Existing local archives remain.",
+              )
+            : t(
+                "Keep messages in the source folder and verify the destination copy.",
+              )}
           {t(
-            "同一规则配置命中过的邮件不会重复入队；停用或删除规则不会取消已创建的服务器任务。",
+            "Messages already matched by this rule configuration are not queued again. Disabling or deleting a rule does not cancel existing server tasks.",
           )}
         </FieldDescription>
       </Field>

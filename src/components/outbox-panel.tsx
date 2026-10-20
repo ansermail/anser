@@ -26,58 +26,58 @@ import {
 
 const uploadLabels: Record<string, string> = {
   get queued() {
-    return t("等待保存到服务器");
+    return t("Waiting to save to server");
   },
   get preparing() {
-    return t("正在核对已发送目录");
+    return t("Checking Sent folder");
   },
   get submitted() {
-    return t("上传已提交");
+    return t("Upload submitted");
   },
   get confirmed() {
-    return t("回执已保存，等待核对");
+    return t("Receipt saved; awaiting verification");
   },
   get verifying() {
-    return t("正在核对服务器副本");
+    return t("Checking server copy");
   },
   get checking() {
-    return t("等待只读核对");
+    return t("Awaiting read-only verification");
   },
   get completed() {
-    return t("服务器已发送副本已核对");
+    return t("Server sent copy verified");
   },
   get blocked() {
-    return t("尚未上传，需要处理");
+    return t("Not uploaded; needs attention");
   },
   get uncertain() {
-    return t("保存结果未确认");
+    return t("Save result unconfirmed");
   },
 };
 
 const labels = {
   get sending() {
-    return t("发送中");
+    return t("Sending");
   },
   get sent() {
-    return t("发送成功 · SMTP 已确认");
+    return t("Sent · SMTP confirmed");
   },
   get failed() {
-    return t("发送失败");
+    return t("Send failed");
   },
   get uncertain() {
-    return t("结果未确认");
+    return t("Result unconfirmed");
   },
   get scheduled() {
-    return t("待定时发送");
+    return t("Scheduled");
   },
   get overdue() {
-    return t("已错过时间");
+    return t("Scheduled time missed");
   },
   get paused() {
-    return t("计划已暂停");
+    return t("Schedule paused");
   },
   get cancelled() {
-    return t("计划已取消");
+    return t("Schedule canceled");
   },
 };
 export function OutboxPanel({
@@ -123,7 +123,9 @@ export function OutboxPanel({
     try {
       await call("send_queued_now", { id: record.id });
       await refresh();
-      toast.success(t("已交给发送队列；SMTP 结果请查看发送记录"));
+      toast.success(
+        t("Handed to the send queue. Check Send history for the SMTP result."),
+      );
     } catch (e) {
       toast.error(String(e));
       await refresh();
@@ -136,7 +138,9 @@ export function OutboxPanel({
     try {
       const draft = await call<Compose>("cancel_schedule", { id: r.id });
       await refresh();
-      toast.success(t("计划已取消，正文与附件已恢复为草稿"));
+      toast.success(
+        t("Schedule canceled. Body and attachments restored as a draft."),
+      );
       onDraft(draft);
     } catch (e) {
       toast.error(String(e));
@@ -157,7 +161,7 @@ export function OutboxPanel({
       await call("reschedule_mail", { id, scheduledAt });
       setEditing("");
       await refresh();
-      toast.success(t("发送时间已更新"));
+      toast.success(t("Scheduled time updated"));
     } catch (e) {
       toast.error(String(e));
     } finally {
@@ -169,11 +173,11 @@ export function OutboxPanel({
     if (
       uncertain &&
       !(await askConfirmation({
-        title: t("准备重发结果未确认的邮件？"),
+        title: t("Prepare to resend an unconfirmed message?"),
         description: t(
-          "此邮件可能已送达。请先检查服务端已发送文件夹；继续会创建一封可编辑草稿，重复发送可能产生重复邮件。",
+          "This message may have arrived. Check the server's Sent folder first. Continuing creates an editable draft; resending may produce duplicates.",
         ),
-        action: t("创建重发草稿"),
+        action: t("Create resend draft"),
       }))
     )
       return;
@@ -196,7 +200,7 @@ export function OutboxPanel({
     try {
       await call("archive_outbox", { id: record.id });
       await refresh();
-      toast.success(t("已发送邮件的本地存档已恢复"));
+      toast.success(t("Local sent archive restored"));
     } catch (e) {
       toast.error(String(e));
     } finally {
@@ -210,8 +214,8 @@ export function OutboxPanel({
       await refresh();
       toast.success(
         action === "verify"
-          ? t("已安排只读核对，不会重复上传或发送")
-          : t("已安排保存副本，不会重新发送邮件"),
+          ? t("Read-only verification queued. No repeat upload or send.")
+          : t("Copy saving queued. The message will not be sent again."),
       );
     } catch (e) {
       toast.error(String(e));
@@ -225,13 +229,13 @@ export function OutboxPanel({
         <div>
           <div className="page-title-row">
             <SidebarTrigger />
-            <h1>{t("发送记录")}</h1>
+            <h1>{t("Send history")}</h1>
           </div>
-          <p>{t("查看发送成功、失败和结果未确认的回执")}</p>
+          <p>{t("Review successful, failed and unconfirmed send receipts")}</p>
         </div>
         <Button variant="outline" onClick={() => void refresh()}>
           <RefreshCw size={15} />
-          {t("刷新")}
+          {t("Refresh")}
         </Button>
       </div>
       <div className="outbox-list">
@@ -253,7 +257,7 @@ export function OutboxPanel({
                       <AlertCircle size={17} />
                     )}{" "}
                     {r.status === "scheduled" && r.sendKind === "undo"
-                      ? t("等待发送 · {value0} 秒", {
+                      ? t("Waiting to send · {value0}s", {
                           value0: Math.max(
                             0,
                             Math.ceil(
@@ -263,9 +267,9 @@ export function OutboxPanel({
                         })
                       : labels[r.status]}
                   </span>
-                  <h3>{r.draft.subject || t("（无主题）")}</h3>
+                  <h3>{r.draft.subject || t("(No subject)")}</h3>
                   <p className="outbox-recipient">
-                    {t("收件人：")}
+                    {t("To: ")}
                     {r.draft.to}
                   </p>
                 </div>
@@ -273,7 +277,7 @@ export function OutboxPanel({
                   <small>
                     {r.scheduledAt && r.sendKind !== "undo" && (
                       <>
-                        {t("计划时间：")}
+                        {t("Scheduled: ")}
                         {new Date(r.scheduledAt).toLocaleString(dateLocale(), {
                           hour12: false,
                         })}{" "}
@@ -284,17 +288,17 @@ export function OutboxPanel({
                       ? new Date(r.updatedAt).toLocaleString(dateLocale(), {
                           hour12: false,
                         })
-                      : t("此前的发送记录")}
+                      : t("Earlier send history")}
                   </small>
                   <CollapsibleTrigger asChild>
                     <Button
                       variant="ghost"
                       size="sm"
-                      aria-label={t("查看 {value0} 的详情", {
-                        value0: r.draft.subject || t("无主题"),
+                      aria-label={t("View details for {value0}", {
+                        value0: r.draft.subject || t("No subject"),
                       })}
                     >
-                      {t("详情")}
+                      {t("Details")}
                     </Button>
                   </CollapsibleTrigger>
                 </div>
@@ -309,7 +313,7 @@ export function OutboxPanel({
                         100 - (Date.parse(r.scheduledAt || "") - now) / 80,
                       ),
                     )}
-                    aria-label={t("发送等待进度")}
+                    aria-label={t("Send delay progress")}
                     className="mt-2"
                   />
                   <div className="outbox-actions">
@@ -319,14 +323,14 @@ export function OutboxPanel({
                       disabled={!!busy}
                       onClick={() => void cancel(r)}
                     >
-                      {t("取消发送并编辑")}
+                      {t("Cancel & edit")}
                     </Button>
                     <Button
                       size="sm"
                       disabled={!!busy}
                       onClick={() => void sendNow(r)}
                     >
-                      {t("立即发送")}
+                      {t("Send now")}
                     </Button>
                   </div>
                 </div>
@@ -337,25 +341,32 @@ export function OutboxPanel({
                 )}
                 {r.status === "uncertain" && (
                   <p className="outbox-hint">
-                    {t("未取得发送确认，可能已送达。先核对服务端已发送邮件。")}
+                    {t(
+                      "Send was not confirmed; the message may have arrived. Check the server's Sent folder first.",
+                    )}
                   </p>
                 )}
                 {r.status === "sent" && (
                   <p className="outbox-hint">
-                    {t("发送服务器已接受，尚不代表收件人已收到。")}{" "}
+                    {t(
+                      "The outgoing server accepted the message. This does not confirm recipient delivery.",
+                    )}{" "}
                     {r.archived
-                      ? t("本地已发送副本已保存")
-                      : t("本地副本尚未归档，原始邮件仍保存在发送记录中")}
+                      ? t("Local sent copy saved")
+                      : t(
+                          "Local copy is not yet archived. The original remains in Send history.",
+                        )}
                   </p>
                 )}
                 {r.status === "sent" && r.serverCopy && (
                   <div className="outbox-hint">
                     <Badge variant="secondary">
-                      {uploadLabels[r.serverCopy.status] || t("保存状态待核对")}
+                      {uploadLabels[r.serverCopy.status] ||
+                        t("Save status needs verification")}
                     </Badge>
                     {r.serverCopy.target && (
                       <p>
-                        {t("服务器目录：")}
+                        {t("Server folder: ")}
                         {r.serverCopy.targetLabel || r.serverCopy.target}
                       </p>
                     )}
@@ -363,29 +374,33 @@ export function OutboxPanel({
                       <p className="form-error">{r.serverCopy.error}</p>
                     )}
                     {r.serverCopy.origin === "existing" && (
-                      <p>{t("服务器已有相同副本，未重复上传。")}</p>
+                      <p>
+                        {t(
+                          "An identical copy exists on the server. No duplicate upload.",
+                        )}
+                      </p>
                     )}
                     {r.serverCopy.origin === "smtpReported" && (
                       <p>
                         {r.serverCopy.status === "completed"
                           ? t(
-                              "服务器报告 SMTP 已保存，唯一副本已核对；未重复上传。",
+                              "The server reported an SMTP-saved copy. The unique copy was verified; no duplicate upload.",
                             )
                           : ["checking", "verifying"].includes(
                                 r.serverCopy.status,
                               )
                             ? t(
-                                "服务器报告 SMTP 已保存，正在核对唯一副本；不会再次上传。",
+                                "The server reported an SMTP-saved copy. Checking the unique copy; no repeat upload.",
                               )
                             : t(
-                                "服务器报告 SMTP 已保存，结果尚未确认；只能只读核对，不会再次上传。",
+                                "The server reported an SMTP-saved copy, but the result is unconfirmed. Read-only verification only; no repeat upload.",
                               )}
                       </p>
                     )}
                     {r.serverCopy.status === "uncertain" && (
                       <p>
                         {t(
-                          "SMTP 发送已经成功，副本可能已保存。仅核对结果，不会自动再次上传。",
+                          "SMTP sending succeeded and the copy may already be saved. Verification only; no automatic repeat upload.",
                         )}
                       </p>
                     )}
@@ -404,7 +419,7 @@ export function OutboxPanel({
                         disabled={!!busy}
                         onClick={() => void upload(r, "queue")}
                       >
-                        {t("保存到服务器已发送")}
+                        {t("Save to server Sent folder")}
                       </Button>
                     )}
                   {r.status === "sent" &&
@@ -416,7 +431,7 @@ export function OutboxPanel({
                         disabled={!!busy}
                         onClick={() => void upload(r, "retry")}
                       >
-                        {t("重试保存副本")}
+                        {t("Retry saving copy")}
                       </Button>
                     )}
                   {r.status === "sent" &&
@@ -432,7 +447,7 @@ export function OutboxPanel({
                         disabled={!!busy}
                         onClick={() => void upload(r, "verify")}
                       >
-                        {t("只读核对副本")}
+                        {t("Verify copy (read-only)")}
                       </Button>
                     )}
                   {["scheduled", "overdue", "paused"].includes(r.status) &&
@@ -457,7 +472,7 @@ export function OutboxPanel({
                             );
                           }}
                         >
-                          {t("修改时间")}
+                          {t("Change time")}
                         </Button>
                         <Button
                           variant="outline"
@@ -465,7 +480,7 @@ export function OutboxPanel({
                           disabled={!!busy}
                           onClick={() => void cancel(r)}
                         >
-                          {t("取消计划并编辑")}
+                          {t("Cancel schedule & edit")}
                         </Button>
                       </>
                     )}
@@ -476,7 +491,9 @@ export function OutboxPanel({
                       disabled={!!busy}
                       onClick={() => void retry(r)}
                     >
-                      {busy === r.id ? t("正在准备…") : t("编辑并准备重发")}
+                      {busy === r.id
+                        ? t("Preparing…")
+                        : t("Edit & prepare resend")}
                     </Button>
                   )}
                   {r.status === "sent" && (
@@ -486,7 +503,7 @@ export function OutboxPanel({
                       disabled={!!busy}
                       onClick={() => void retry(r)}
                     >
-                      {t("重新编辑此邮件")}
+                      {t("Edit this message as new")}
                     </Button>
                   )}
                   {r.status === "sent" && !r.archived && (
@@ -496,7 +513,7 @@ export function OutboxPanel({
                       disabled={!!busy}
                       onClick={() => void archive(r)}
                     >
-                      {t("恢复本地副本")}
+                      {t("Restore local copy")}
                     </Button>
                   )}
                 </div>
@@ -518,12 +535,17 @@ export function OutboxPanel({
             <Send size={32} />
             <h3>
               {loading
-                ? t("正在读取发送记录…")
+                ? t("Loading send history…")
                 : failure
-                  ? t("读取失败")
-                  : t("暂无发送记录")}
+                  ? t("Could not read")
+                  : t("No send history yet")}
             </h3>
-            <p>{failure || t("从这里查询发送结果，失败邮件可准备重发。")}</p>
+            <p>
+              {failure ||
+                t(
+                  "Review send results here. Failed messages can be prepared for resending.",
+                )}
+            </p>
           </div>
         )}
       </div>

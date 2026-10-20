@@ -31,46 +31,46 @@ export type RuleExecution = {
 };
 const states: Record<string, string> = {
   get queued() {
-    return t("待执行");
+    return t("Pending");
   },
   get preparing() {
-    return t("准备中");
+    return t("Preparing");
   },
   get submitted() {
-    return t("等待回执");
+    return t("Awaiting receipt");
   },
   get confirmed() {
-    return t("待核对");
+    return t("Needs verification");
   },
   get verifying() {
-    return t("核对中");
+    return t("Verifying");
   },
   get completed() {
-    return t("已完成");
+    return t("Completed");
   },
   get uncertain() {
-    return t("结果未确认");
+    return t("Result unconfirmed");
   },
   get blocked() {
-    return t("需要处理");
+    return t("Needs attention");
   },
   get cancelled() {
-    return t("已取消");
+    return t("Canceled");
   },
   get cleanup_pending() {
-    return t("待移除来源");
+    return t("Source removal pending");
   },
   get cleanup_running() {
-    return t("核对来源中");
+    return t("Checking source");
   },
   get cleanup_submitted() {
-    return t("来源移除待确认");
+    return t("Source removal awaiting confirmation");
   },
   get cleanup_uncertain() {
-    return t("来源移除未确认");
+    return t("Source removal unconfirmed");
   },
   get cleanup_blocked() {
-    return t("来源移除需处理");
+    return t("Source removal needs attention");
   },
 };
 export function RuleExecutions({ onShowTasks }: { onShowTasks: () => void }) {
@@ -116,16 +116,16 @@ export function RuleExecutions({ onShowTasks }: { onShowTasks: () => void }) {
   return (
     <Card className="mt-6">
       <CardHeader>
-        <CardTitle>{t("服务器规则执行记录")}</CardTitle>
+        <CardTitle>{t("Server rule history")}</CardTitle>
         <CardDescription>
           {t(
-            "最近 50 次命中。任务完成后才显示成功；结果未确认时不会自动重发。",
+            "The latest 50 matches. Success is shown only after task completion. Unconfirmed results are not resent automatically.",
           )}
         </CardDescription>
         <CardAction>
           <Button variant="ghost" size="sm" onClick={() => void reload()}>
             <RefreshCw />
-            {t("刷新")}
+            {t("Refresh")}
           </Button>
         </CardAction>
       </CardHeader>
@@ -136,16 +136,16 @@ export function RuleExecutions({ onShowTasks }: { onShowTasks: () => void }) {
           </Alert>
         )}
         {!items && !error && (
-          <Skeleton className="h-16" aria-label={t("正在加载规则记录")} />
+          <Skeleton className="h-16" aria-label={t("Loading rule history")} />
         )}
         {items?.length === 0 && (
           <p className="text-sm text-muted-foreground">
-            {t("暂无服务器规则命中。预览匹配不会创建任务。")}
+            {t("No server rule matches. Previewing does not create tasks.")}
           </p>
         )}
         <ul
           className="flex flex-col gap-4"
-          aria-label={t("服务器规则命中记录")}
+          aria-label={t("Server rule matches")}
         >
           {items?.map((item) => (
             <li
@@ -154,11 +154,11 @@ export function RuleExecutions({ onShowTasks }: { onShowTasks: () => void }) {
             >
               <div className="flex min-w-0 flex-col gap-1">
                 <p className="break-words">
-                  {item.ruleName} · {item.subject || t("（无主题）")}
+                  {item.ruleName} · {item.subject || t("(No subject)")}
                 </p>
                 <p className="text-sm text-muted-foreground">
                   {item.accountEmail} ·{" "}
-                  {item.action === "serverMove" ? t("移动") : t("复制")} ·{" "}
+                  {item.action === "serverMove" ? t("Move") : t("Copy")} ·{" "}
                   {item.source} → {item.target}
                 </p>
                 {item.error && (
@@ -176,14 +176,14 @@ export function RuleExecutions({ onShowTasks }: { onShowTasks: () => void }) {
                     disabled={busy}
                     onClick={() => void retry(item.id)}
                   >
-                    {t("重新检查并入队")}
+                    {t("Recheck & queue")}
                   </Button>
                 )}
                 {item.operationId &&
                   item.status !== "completed" &&
                   item.status !== "cancelled" && (
                     <Button variant="outline" size="sm" onClick={onShowTasks}>
-                      {t("查看服务器任务")}
+                      {t("View server tasks")}
                     </Button>
                   )}
               </div>

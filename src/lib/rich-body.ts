@@ -1,39 +1,63 @@
 import { t } from "./i18n";
 export const BODY_FONTS = [
-  { group: "中文字体", label: "宋体", value: "SimSun, 'Songti SC', serif" },
-  { group: "中文字体", label: "楷体", value: "KaiTi, 'Kaiti SC', serif" },
-  { group: "中文字体", label: "黑体", value: "SimHei, 'Heiti SC', sans-serif" },
-  { group: "中文字体", label: "仿宋", value: "FangSong, STFangsong, serif" },
   {
-    group: "中文字体",
-    label: "微软雅黑",
+    group: "Chinese fonts",
+    label: "SimSun",
+    value: "SimSun, 'Songti SC', serif",
+  },
+  { group: "Chinese fonts", label: "KaiTi", value: "KaiTi, 'Kaiti SC', serif" },
+  {
+    group: "Chinese fonts",
+    label: "SimHei",
+    value: "SimHei, 'Heiti SC', sans-serif",
+  },
+  {
+    group: "Chinese fonts",
+    label: "FangSong",
+    value: "FangSong, STFangsong, serif",
+  },
+  {
+    group: "Chinese fonts",
+    label: "Microsoft YaHei",
     value: "'Microsoft YaHei', 'PingFang SC', sans-serif",
   },
-  { group: "英文字体", label: "Arial", value: "Arial, Helvetica, sans-serif" },
   {
-    group: "英文字体",
+    group: "Latin fonts",
+    label: "Arial",
+    value: "Arial, Helvetica, sans-serif",
+  },
+  {
+    group: "Latin fonts",
     label: "Helvetica",
     value: "Helvetica, Arial, sans-serif",
   },
   {
-    group: "英文字体",
+    group: "Latin fonts",
     label: "Times New Roman",
     value: "'Times New Roman', Times, serif",
   },
   {
-    group: "英文字体",
+    group: "Latin fonts",
     label: "Georgia",
     value: "Georgia, 'Times New Roman', serif",
   },
-  { group: "英文字体", label: "Verdana", value: "Verdana, Geneva, sans-serif" },
-  { group: "英文字体", label: "Tahoma", value: "Tahoma, Geneva, sans-serif" },
   {
-    group: "英文字体",
+    group: "Latin fonts",
+    label: "Verdana",
+    value: "Verdana, Geneva, sans-serif",
+  },
+  {
+    group: "Latin fonts",
+    label: "Tahoma",
+    value: "Tahoma, Geneva, sans-serif",
+  },
+  {
+    group: "Latin fonts",
     label: "Trebuchet MS",
     value: "'Trebuchet MS', Arial, sans-serif",
   },
   {
-    group: "英文字体",
+    group: "Latin fonts",
     label: "Courier New",
     value: "'Courier New', Courier, monospace",
   },
@@ -56,14 +80,17 @@ export function rasterMime(bytes: Uint8Array): string {
     return "image/gif";
   if (prefix.startsWith("RIFF") && prefix.slice(8) === "WEBP")
     return "image/webp";
-  throw new Error(t("请选择 PNG、JPEG、GIF 或 WebP 图片"));
+  throw new Error(t("Choose a PNG, JPEG, GIF or WebP image"));
 }
 export function readBodyImage(file: File): Promise<BodyImage> {
   if (!file.size || file.size > MAX_INLINE_IMAGE)
-    return Promise.reject(new Error(t("单张正文图片须为 1 字节至 10 MB")));
+    return Promise.reject(
+      new Error(t("Each body image must be between 1 byte and 10 MB")),
+    );
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
-    reader.onerror = () => reject(new Error(t("无法读取正文图片，请重新选择")));
+    reader.onerror = () =>
+      reject(new Error(t("Could not read body image. Choose it again.")));
     reader.onload = () => {
       try {
         const bytes = new Uint8Array(reader.result as ArrayBuffer);
@@ -73,7 +100,7 @@ export function readBodyImage(file: File): Promise<BodyImage> {
           binary += String.fromCharCode(...bytes.subarray(i, i + 8192));
         resolve({
           src: `data:${mime};base64,${btoa(binary)}`,
-          name: file.name || "正文图片",
+          name: file.name || t("Inline image"),
         });
       } catch (error) {
         reject(error);
@@ -99,6 +126,6 @@ export function inlineImageBytes(
     if (encoded) total += atob(encoded).length;
   }
   if (total > 50 * 1024 * 1024)
-    throw new Error(t("正文图片总大小超过 50 MB，请减少图片"));
+    throw new Error(t("Body images exceed 50 MB. Remove some images."));
   return total;
 }

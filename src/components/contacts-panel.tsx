@@ -51,7 +51,7 @@ export function ContactsPanel({
       await call("save_contact", { contact: editing });
       setEditing(null);
       await refresh();
-      toast.success(t("联系人已保存"));
+      toast.success(t("Contact saved"));
     } catch (e) {
       toast.error(String(e));
     } finally {
@@ -67,11 +67,11 @@ export function ContactsPanel({
         <div>
           <div className="page-title-row">
             <SidebarTrigger />
-            <h1>{t("通讯录")}</h1>
+            <h1>{t("Contacts")}</h1>
           </div>
           <p>
             {contacts.length}
-            {t(" 位本地联系人")}
+            {t(" local contacts")}
           </p>
         </div>
         <Button
@@ -80,14 +80,14 @@ export function ContactsPanel({
           }
         >
           <Plus size={16} />
-          {t("添加联系人")}
+          {t("Add contact")}
         </Button>
       </div>
       <div className="contact-search">
         <Search size={16} />
         <Input
-          aria-label={t("搜索联系人")}
-          placeholder={t("搜索姓名或邮箱…")}
+          aria-label={t("Search contacts")}
+          placeholder={t("Search by name or email…")}
           value={search}
           onChange={(e) => setSearch(e.target.value)}
         />
@@ -105,7 +105,7 @@ export function ContactsPanel({
             <Button
               variant="ghost"
               size="icon-sm"
-              title={t("写邮件")}
+              title={t("Compose")}
               onClick={() => onCompose(c)}
             >
               <Mail size={16} />
@@ -113,7 +113,7 @@ export function ContactsPanel({
             <Button
               variant="ghost"
               size="icon-sm"
-              title={t("编辑联系人")}
+              title={t("Edit contact")}
               onClick={() => setEditing(c)}
             >
               <Pencil size={15} />
@@ -121,16 +121,16 @@ export function ContactsPanel({
             <Button
               variant="ghost"
               size="icon-sm"
-              title={t("删除联系人")}
+              title={t("Delete contact")}
               onClick={async () => {
                 if (
                   await askConfirmation({
-                    title: t("删除联系人？"),
+                    title: t("Delete contact?"),
                     description: t(
-                      "删除 {value0} 的本地联系人记录。邮件及历史往来不受影响。",
+                      "Delete the local contact record for {value0}. Messages and conversation history are unaffected.",
                       { value0: c.name || c.email },
                     ),
-                    action: t("删除联系人"),
+                    action: t("Delete contact"),
                     destructive: true,
                   })
                 )
@@ -148,12 +148,12 @@ export function ContactsPanel({
             <UserRound size={32} />
             <h3>
               {loading
-                ? t("正在读取联系人…")
+                ? t("Loading contacts…")
                 : search
-                  ? t("没有匹配的联系人")
-                  : t("保存常用联系人")}
+                  ? t("No matching contacts")
+                  : t("Save frequent contacts")}
             </h3>
-            <p>{t("也可以从邮件发件人菜单中添加。")}</p>
+            <p>{t("You can also add contacts from the sender menu.")}</p>
           </div>
         )}
       </div>
@@ -165,9 +165,9 @@ export function ContactsPanel({
       >
         <DialogContent className="sm:max-w-[430px]">
           <DialogHeader>
-            <DialogTitle>{t("联系人信息")}</DialogTitle>
+            <DialogTitle>{t("Contact details")}</DialogTitle>
             <DialogDescription>
-              {t("保存在本机，写信时可自动补全。")}
+              {t("Saved on this Mac, available for address autocomplete.")}
             </DialogDescription>
           </DialogHeader>
           {editing && (
@@ -179,7 +179,7 @@ export function ContactsPanel({
               }}
             >
               <div className="field">
-                <Label htmlFor="contact-name">{t("姓名")}</Label>
+                <Label htmlFor="contact-name">{t("Name")}</Label>
                 <Input
                   id="contact-name"
                   autoFocus
@@ -190,7 +190,7 @@ export function ContactsPanel({
                 />
               </div>
               <div className="field">
-                <Label htmlFor="contact-email">{t("邮箱")}</Label>
+                <Label htmlFor="contact-email">{t("Email")}</Label>
                 <Input
                   id="contact-email"
                   type="email"
@@ -202,7 +202,7 @@ export function ContactsPanel({
                 />
               </div>
               <Button type="submit" disabled={busy}>
-                {busy ? t("正在保存…") : t("保存联系人")}
+                {busy ? t("Saving…") : t("Save contact")}
               </Button>
             </form>
           )}

@@ -62,26 +62,28 @@ export function validateTranslationReply(
   translated: TranslationPart[],
 ) {
   if (!Array.isArray(translated) || translated.length !== requested.length)
-    throw new Error(t("模型未返回全部文字片段，请重试。"));
+    throw new Error(t("The model did not return all text segments. Retry."));
   const ids = new Set(requested.map((p) => p.id));
   const seen = new Set<string>();
   const nonempty = new Set<string>();
   for (const part of translated) {
     if (typeof part?.id !== "string" || !ids.has(part.id))
-      throw new Error(t("模型返回了未知文字片段标识，请重试。"));
+      throw new Error(t("The model returned an unknown segment ID. Retry."));
     if (seen.has(part.id))
-      throw new Error(t("模型返回了重复文字片段，请重试。"));
+      throw new Error(t("The model returned duplicate segments. Retry."));
     if (
       typeof part.text !== "string" ||
       part.text.includes("\0") ||
       new TextEncoder().encode(part.text).length > 24_000
     )
-      throw new Error(t("模型译文过长或含无效字符，请重试。"));
+      throw new Error(
+        t("The translation is too long or contains invalid characters. Retry."),
+      );
     seen.add(part.id);
     if (part.text.trim()) nonempty.add(paragraphKey(part.id));
   }
   if (requested.some((part) => !nonempty.has(paragraphKey(part.id))))
-    throw new Error(t("模型返回的整段译文为空，请重试。"));
+    throw new Error(t("The model returned an empty paragraph. Retry."));
 }
 export function translationBatches(parts: TranslationPart[]) {
   const groups: TranslationPart[][] = [];
@@ -131,7 +133,9 @@ export function planMailTranslation(
 ) {
   const elements = [...root.querySelectorAll("*")];
   if (elements.length > 40_000)
-    throw new Error(t("邮件结构过于复杂，未发送正文"));
+    throw new Error(
+      t("Message structure is too complex. No body text was sent."),
+    );
   const parts: TranslationPart[] = [];
   const groups: {
     parent: HTMLElement;
@@ -355,7 +359,10 @@ export function planMailTranslation(
       [];
     let flat = "";
     function scan(node: Node, depth = 0) {
-      if (depth > 120) throw new Error(t("邮件嵌套过深，未发送正文"));
+      if (depth > 120)
+        throw new Error(
+          t("Message nesting is too deep. No body text was sent."),
+        );
       if (node.nodeType === Node.TEXT_NODE) {
         const text = node as Text;
         if (!visibleText(text)) return;
@@ -385,7 +392,7 @@ export function planMailTranslation(
     }
     for (const node of nodes) scan(node);
     if (flat.length > 120_000)
-      throw new Error(t("邮件文字过长，未发送任何正文"));
+      throw new Error(t("Message text is too long. No body text was sent."));
     const spans: [number, number][] = [];
     let start = 0;
     for (const match of flat.matchAll(/\r?\n[\t ]*\r?\n(?:[\t ]*\r?\n)*/g)) {
@@ -468,7 +475,8 @@ export function planMailTranslation(
     }
   }
   function visit(parent: HTMLElement, depth = 0) {
-    if (depth > 120) throw new Error(t("邮件嵌套过深，未发送正文"));
+    if (depth > 120)
+      throw new Error(t("Message nesting is too deep. No body text was sent."));
     if (!visible(parent)) return;
     let run: Node[] = [];
     for (const node of [...parent.childNodes]) {
@@ -488,7 +496,11 @@ export function planMailTranslation(
     parts.length > 2000 ||
     parts.reduce((n, p) => n + p.text.length, 0) > 120_000
   )
-    throw new Error(t("邮件文字过长，请使用较短邮件进行翻译；未发送任何正文"));
+    throw new Error(
+      t(
+        "Message text is too long. Try a shorter message. No body text was sent.",
+      ),
+    );
   return {
     parts,
     apply(values: Map<string, string>) {
@@ -620,12 +632,16 @@ export const translationProviders: Record<
   string,
   { name: string; baseUrl: string; model: string }
 > = {
-  custom: { name: "OpenAI 兼容（自定义）", baseUrl: "", model: "" },
+  custom: { name: "OpenAI compatible (custom)", baseUrl: "", model: "" },
   deepseek: {
     name: "DeepSeek",
     baseUrl: "https://api.deepseek.com",
     model: "deepseek-flash",
   },
   openai: { name: "OpenAI", baseUrl: "https://api.openai.com/v1", model: "" },
-  local: { name: "本机模型", baseUrl: "http://127.0.0.1:11434/v1", model: "" },
+  local: {
+    name: "Local model",
+    baseUrl: "http://127.0.0.1:11434/v1",
+    model: "",
+  },
 };

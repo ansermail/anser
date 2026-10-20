@@ -40,7 +40,7 @@ export function SchedulePicker({
   return (
     <div className="schedule-picker">
       <div className="schedule-controls">
-        <Label htmlFor={`${id}-date`}>{t("发送日期")}</Label>
+        <Label htmlFor={`${id}-date`}>{t("Send date")}</Label>
         <Popover open={open} onOpenChange={setOpen}>
           <PopoverTrigger asChild>
             <Button
@@ -49,7 +49,7 @@ export function SchedulePicker({
               variant="outline"
               size="sm"
               disabled={busy}
-              aria-label={t("选择发送日期")}
+              aria-label={t("Choose send date")}
             >
               <CalendarIcon />
               {date
@@ -58,7 +58,7 @@ export function SchedulePicker({
                     month: "2-digit",
                     day: "2-digit",
                   })
-                : t("选择日期")}
+                : t("Choose date")}
             </Button>
           </PopoverTrigger>
           <PopoverContent className="w-auto p-0" align="start">
@@ -83,12 +83,12 @@ export function SchedulePicker({
           className="inline-flex items-center gap-1"
         >
           <Clock className="size-3.5" />
-          {t("时间")}
+          {t("Time")}
         </Label>
         <div className="flex items-center gap-1">
           <SelectField
             id={`${id}-hour`}
-            aria-label={t("发送小时")}
+            aria-label={t("Send hour")}
             value={hour}
             onValueChange={(hour) => changeTime(hour, minute)}
             disabled={busy}
@@ -102,7 +102,7 @@ export function SchedulePicker({
           </SelectField>
           <span aria-hidden="true">:</span>
           <SelectField
-            aria-label={t("发送分钟")}
+            aria-label={t("Send minute")}
             value={minute}
             onValueChange={(minute) => changeTime(hour, minute)}
             disabled={busy}
@@ -121,14 +121,16 @@ export function SchedulePicker({
           disabled={busy || !date}
           onClick={() => onConfirm(value)}
         >
-          {busy ? t("保存中…") : t("确认定时发送")}
+          {busy ? t("Saving…") : t("Confirm scheduled send")}
         </Button>
         <Button size="sm" variant="ghost" disabled={busy} onClick={onCancel}>
-          {t("取消")}
+          {t("Cancel")}
         </Button>
       </div>
       <p>
-        {t("本机定时：需要应用运行且 Mac 醒着。错过超过 5 分钟需重新安排。")}
+        {t(
+          "Scheduled on this Mac: Anser must be running and the Mac awake. Reschedule if missed by more than 5 minutes.",
+        )}
       </p>
     </div>
   );

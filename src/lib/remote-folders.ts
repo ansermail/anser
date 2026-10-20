@@ -161,15 +161,15 @@ export function localizedFolderLabel(
   label: string,
 ) {
   const labels: Record<string, string> = {
-    inbox: "收件箱",
-    sent: "已发送",
-    drafts: "草稿箱",
-    trash: "废纸篓",
-    junk: "垃圾邮件",
-    archive: "归档",
-    all: "所有邮件",
-    flagged: "星标邮件",
-    important: "重要邮件",
+    inbox: "Inbox",
+    sent: "Sent",
+    drafts: "Drafts",
+    trash: "Trash",
+    junk: "Junk",
+    archive: "Archive",
+    all: "All mail",
+    flagged: "Starred mail",
+    important: "Important",
   };
   const role =
     folder?.roles?.[0] ||

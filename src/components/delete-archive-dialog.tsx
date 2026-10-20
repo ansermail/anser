@@ -76,8 +76,8 @@ export function DeleteArchiveDialog({ onDeleted }: { onDeleted: () => void }) {
       setOpen(false);
       onDeleted();
       toast.success(
-        t("{value0}存档已删除 {value1} 封{value2}", {
-          value0: isDemo() ? t("示例") : t("本地"),
+        t("{value0}Deleted {value1} archived messages{value2}", {
+          value0: isDemo() ? t("Demo") : t("Local"),
           value1: result.deleted,
           value2: result.freedBytes
             ? `，释放 ${formatSize(result.freedBytes)}`
@@ -85,7 +85,9 @@ export function DeleteArchiveDialog({ onDeleted }: { onDeleted: () => void }) {
         }),
       );
       if (result.cleanupPending)
-        toast.warning(t("文件清理尚未完成，重新打开应用后会继续清理"));
+        toast.warning(
+          t("File cleanup is incomplete and will continue after relaunch"),
+        );
     } catch (e) {
       setError(String(e));
       setConfirmed(false);
@@ -104,7 +106,7 @@ export function DeleteArchiveDialog({ onDeleted }: { onDeleted: () => void }) {
         }}
       >
         <Trash2 size={15} />
-        {t("删除本地存档")}
+        {t("Delete local archives")}
       </Button>
       <Dialog
         open={open}
@@ -122,25 +124,27 @@ export function DeleteArchiveDialog({ onDeleted }: { onDeleted: () => void }) {
           }}
         >
           <DialogHeader>
-            <DialogTitle>{t("删除本地存档")}</DialogTitle>
+            <DialogTitle>{t("Delete local archives")}</DialogTitle>
             <DialogDescription>
-              {t("清理本机保存的邮件正文与附件，服务器上的邮件不受影响。")}
+              {t(
+                "Remove locally saved message bodies and attachments. Server messages are unaffected.",
+              )}
             </DialogDescription>
           </DialogHeader>
           <div className="grid gap-2">
-            <Label htmlFor="archive-delete-scope">{t("删除范围")}</Label>
+            <Label htmlFor="archive-delete-scope">{t("Deletion scope")}</Label>
             <SelectField
               id="archive-delete-scope"
-              aria-label={t("删除范围")}
+              aria-label={t("Deletion scope")}
               value={accountId}
               onValueChange={setAccountId}
               disabled={busy || !preview}
             >
-              <SelectOption value="">{t("全部账号")}</SelectOption>
+              <SelectOption value="">{t("All accounts")}</SelectOption>
               {accounts.map((a) => (
                 <SelectOption key={a.accountId} value={a.accountId}>
                   {a.name} · {a.email}（{a.count}
-                  {t(" 封）")}
+                  {t(" messages)")}
                 </SelectOption>
               ))}
             </SelectField>
@@ -149,16 +153,17 @@ export function DeleteArchiveDialog({ onDeleted }: { onDeleted: () => void }) {
           {preview && (
             <div className="text-sm space-y-2">
               <p>
-                {t("将删除 ")}
+                {t("Delete ")}
                 <strong>
                   {preview.count}
-                  {t(" 封")}
+                  {t("messages (storage)")}
                 </strong>
-                {t("本地存档，原始邮件大小")} {formatSize(preview.bytes)}。
+                {t("local archives, original size: ")}{" "}
+                {formatSize(preview.bytes)}。
               </p>
               <p className="text-muted-foreground">
                 {t(
-                  "有服务器来源的邮件保留列表信息，之后联网查看正文；服务器已删除的邮件无法在线找回。",
+                  "Messages with a server source remain in the list and can load bodies online. Messages already deleted from the server cannot be recovered online.",
                 )}
               </p>
               {preview.offlineOnly > 0 && (
@@ -166,19 +171,23 @@ export function DeleteArchiveDialog({ onDeleted }: { onDeleted: () => void }) {
                   <AlertDescription>
                     {preview.offlineOnly}{" "}
                     {t(
-                      "封没有可用的服务器来源，将从列表移除。删除后只能从已有备份恢复。",
+                      " messages have no available server source and will be removed from the list. Restore only from an existing backup after deletion.",
                     )}
                   </AlertDescription>
                 </Alert>
               )}
               <p className="text-muted-foreground">
-                {t("发送记录、草稿和已导出的备份单独保留。")}
+                {t(
+                  "Send history, drafts and exported backups are kept separately.",
+                )}
               </p>
             </div>
           )}
           <div className="flex items-center justify-between gap-4">
             <Label htmlFor="archive-stop-saving">
-              {t("同时关闭所选账号后续的自动本地保存")}
+              {t(
+                "Also disable future automatic local saving for selected accounts",
+              )}
             </Label>
             <Switch
               id="archive-stop-saving"
@@ -189,7 +198,9 @@ export function DeleteArchiveDialog({ onDeleted }: { onDeleted: () => void }) {
           </div>
           {!stopSaving && (
             <p className="text-sm text-muted-foreground">
-              {t("仍开启本地保存的账号会在之后收取时重新下载存档。")}
+              {t(
+                "Accounts with local saving enabled will download archives again during future checks.",
+              )}
             </p>
           )}
           <div className="flex items-start gap-2">
@@ -200,7 +211,9 @@ export function DeleteArchiveDialog({ onDeleted }: { onDeleted: () => void }) {
               onCheckedChange={(value) => setConfirmed(value === true)}
             />
             <Label htmlFor="archive-delete-confirm">
-              {t("我确认删除所选本地存档，已保留需要的备份")}
+              {t(
+                "I confirm deletion of the selected archives and have kept the backups I need",
+              )}
             </Label>
           </div>
           {error && (
@@ -210,7 +223,7 @@ export function DeleteArchiveDialog({ onDeleted }: { onDeleted: () => void }) {
           )}
           {isDemo() && (
             <p className="text-sm text-muted-foreground">
-              {t("演示模式仅清理示例邮件。")}
+              {t("Demo mode only clears sample messages.")}
             </p>
           )}
           <DialogFooter>
@@ -220,7 +233,7 @@ export function DeleteArchiveDialog({ onDeleted }: { onDeleted: () => void }) {
                 disabled={busy}
                 onClick={() => setRevision((v) => v + 1)}
               >
-                {t("重新查看范围")}
+                {t("Review scope again")}
               </Button>
             )}
             <Button
@@ -228,7 +241,7 @@ export function DeleteArchiveDialog({ onDeleted }: { onDeleted: () => void }) {
               disabled={busy}
               onClick={() => setOpen(false)}
             >
-              {t("取消")}
+              {t("Cancel")}
             </Button>
             <Button
               variant="destructive"
@@ -236,7 +249,7 @@ export function DeleteArchiveDialog({ onDeleted }: { onDeleted: () => void }) {
               onClick={() => void remove()}
             >
               {busy && <LoaderCircle size={15} className="animate-spin" />}
-              {busy ? t("正在删除…") : t("确认删除")}
+              {busy ? t("Deleting…") : t("Confirm deletion")}
             </Button>
           </DialogFooter>
         </DialogContent>

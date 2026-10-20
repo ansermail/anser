@@ -1,10 +1,7 @@
 use crate::{
     archive,
     auth::{self, Secret},
-    idle::{
-        ActivityNotification, ConnectionControl, MailboxActivity, ObservedStream, ProbeDeadline,
-        TimedStream,
-    },
+    idle::{ConnectionControl, MailboxActivity, ObservedStream, ProbeDeadline, TimedStream},
     models::*,
     store::Store,
 };
@@ -225,74 +222,116 @@ pub enum WatchOutcome {
 pub enum WatchSignal {
     CatchUp,
     MailboxChanged,
-    ProbeChanged,
+    RefreshChanged,
+    Poll,
+}
+/// The transport of the one IMAP connection an account uses for INBOX.
+pub type WatchSession = imap::Session<ObservedStream<TlsStream<TcpStream>>>;
+
+// Read-only directory refresh while idling. The same connection that listens
+// also downloads the inbox: desktop clients keep one INBOX session per account,
+// and providers that route new-mail notifications to the newest INBOX
+// selection (observed with QQ) drop them when a poll or a push handler opens a
+// short-lived download session instead.
+const WATCH_REFRESH: Duration = Duration::from_secs(60);
+// RFC 2177: renew IDLE before servers drop an inactive client.
+const WATCH_KEEPALIVE: Duration = Duration::from_secs(29 * 60);
+// Longest break between two independent inbox checks.
+const WATCH_POLL_FLOOR: Duration = Duration::from_secs(60);
+
+fn take_changed(activity: &Arc<Mutex<MailboxActivity>>) -> bool {
+    activity.lock().is_ok_and(|mut state| state.take_changed())
+}
+fn refresh_snapshot<T: std::io::Read + Write>(
+    session: &mut imap::Session<T>,
+    activity: &Arc<Mutex<MailboxActivity>>,
+) -> Result<bool> {
+    // A quiet server must not hang the listener on one EXAMINE response.
+    let deadline = ProbeDeadline::register(activity, Duration::from_secs(45))?;
+    let result = examine_verified(session, "INBOX");
+    drop(deadline);
+    result.map_err(|e| format!("实时连接补查失败：{e}"))?;
+    Ok(take_changed(activity))
 }
 fn watch_session<T: TimedStream>(
     session: &mut imap::Session<ObservedStream<T>>,
     activity: &Arc<Mutex<MailboxActivity>>,
     control: &ConnectionControl,
     mut ready: impl FnMut(),
-    changed: impl Fn(WatchSignal) + Send + Sync + 'static,
-    idle_timeout: Duration,
+    mut sync: impl FnMut(WatchSignal, &mut imap::Session<ObservedStream<T>>) -> Result<()>,
+    interval: impl Fn() -> Duration,
+    refresh: Duration,
 ) -> Result<WatchOutcome> {
     if !session.capabilities().map_err(|e| match e {
         other => format!("查询 IDLE 能力失败：{other}"),
     })?.iter().any(|cap| matches!(cap, imap_proto::types::Capability::Atom(name) if name.eq_ignore_ascii_case("IDLE"))) {
         return Ok(WatchOutcome::Unsupported);
     }
-    session
-        .examine("INBOX")
-        .map_err(|e| format!("打开实时收件箱失败：{e}"))?;
-    let changed = Arc::new(changed);
-    let notified = changed.clone();
-    let probing = Arc::new(std::sync::atomic::AtomicBool::new(false));
-    let notification_phase = probing.clone();
-    let _notification = ActivityNotification::register(
-        activity,
-        Arc::new(move || {
-            notified(
-                if notification_phase.load(std::sync::atomic::Ordering::Acquire) {
-                    WatchSignal::ProbeChanged
-                } else {
-                    WatchSignal::MailboxChanged
-                },
-            )
-        }),
-    )?;
-    let mut connected = false;
-    let mut next_probe = std::time::Instant::now() + idle_timeout;
+    examine_verified(session, "INBOX").map_err(|e| format!("打开实时收件箱失败：{e}"))?;
+    activity.lock().map_err(err)?.take_changed();
+    ready();
+    // The catch-up runs on this connection before the first IDLE so the
+    // listener never competes with a second INBOX session for notifications.
+    let mut pending = Some(WatchSignal::CatchUp);
+    let mut next_refresh = std::time::Instant::now() + refresh;
+    let mut next_poll = std::time::Instant::now() + interval().max(WATCH_POLL_FLOOR);
     while !control.stopped() {
-        if std::time::Instant::now() >= next_probe {
-            // DONE has been acknowledged before this loop. NOOP checks the
-            // selected mailbox without fetching bodies or writing flags, even
-            // on providers that delay spontaneous IDLE status updates.
-            probing.store(true, std::sync::atomic::Ordering::Release);
-            let deadline = ProbeDeadline::register(activity, Duration::from_secs(45))?;
-            let result = session.noop();
-            drop(deadline);
-            probing.store(false, std::sync::atomic::Ordering::Release);
+        if let Some(trigger) = pending.take() {
+            sync(trigger, session)?;
             if control.stopped() {
                 break;
             }
-            result.map_err(|e| format!("实时连接补查失败：{e}"))?;
-            next_probe = std::time::Instant::now() + idle_timeout;
+            // The download left the folder selected with its own snapshot;
+            // re-read it so its responses cannot look like new mail.
+            if refresh_snapshot(session, activity)? {
+                pending = Some(WatchSignal::RefreshChanged);
+            }
+            next_refresh = std::time::Instant::now() + refresh;
+            // A completed download is itself a full inbox check; the next
+            // independent poll starts a whole interval later.
+            next_poll = std::time::Instant::now() + interval().max(WATCH_POLL_FLOOR);
+            continue;
         }
-        // Start listening before queueing a catch-up, covering the SELECT/IDLE gap.
-        let idle = session.idle().map_err(|e| format!("启动 IDLE 失败：{e}"))?;
-        if !connected {
-            ready();
-            changed(WatchSignal::CatchUp);
-            connected = true;
+        let now = std::time::Instant::now();
+        if now >= next_refresh {
+            // A quiet connection may keep stale metadata after NOOP, so the
+            // read-only selection itself is refreshed; UIDNEXT also detects
+            // arrivals that deletions leave without an EXISTS change.
+            if refresh_snapshot(session, activity)? {
+                pending = Some(WatchSignal::RefreshChanged);
+            }
+            next_refresh = std::time::Instant::now() + refresh;
+            continue;
         }
-        let result = idle.wait_with_timeout(
-            next_probe
+        if now >= next_poll {
+            next_poll = now + interval().max(WATCH_POLL_FLOOR);
+            pending = Some(WatchSignal::Poll);
+            continue;
+        }
+        let deadline = [next_refresh, next_poll, now + WATCH_KEEPALIVE]
+            .into_iter()
+            .min()
+            .unwrap_or(next_refresh);
+        let idle = match session.idle() {
+            Ok(idle) => idle,
+            Err(_) if control.stopped() => break,
+            Err(error) => return Err(format!("启动 IDLE 失败：{error}")),
+        };
+        let outcome = idle.wait_with_timeout(
+            deadline
                 .saturating_duration_since(std::time::Instant::now())
                 .max(Duration::from_millis(1)),
         );
         if control.stopped() {
             break;
         }
-        result.map_err(|e| format!("等待 IDLE 通知失败：{e}"))?;
+        let outcome = outcome.map_err(|e| format!("等待 IDLE 通知失败：{e}"))?;
+        // Servers may wake IDLE with status lines that do not change the
+        // mailbox; only a tracked EXISTS/EXPUNGE/UID change starts a download.
+        if outcome == imap::extensions::idle::WaitOutcome::MailboxChanged && take_changed(activity)
+        {
+            pending = Some(WatchSignal::MailboxChanged);
+        }
     }
     Ok(WatchOutcome::Stopped)
 }
@@ -301,7 +340,8 @@ pub fn watch_imap(
     secret: &Secret,
     control: &ConnectionControl,
     ready: impl FnMut(),
-    changed: impl Fn(WatchSignal) + Send + Sync + 'static,
+    sync: impl FnMut(WatchSignal, &mut WatchSession) -> Result<()>,
+    interval: impl Fn() -> Duration,
 ) -> Result<WatchOutcome> {
     let result = catch_unwind(AssertUnwindSafe(|| {
         let activity = Arc::new(Mutex::new(MailboxActivity::default()));
@@ -314,13 +354,27 @@ pub fn watch_imap(
             &activity,
             control,
             ready,
-            changed,
-            Duration::from_secs(60),
+            sync,
+            interval,
+            WATCH_REFRESH,
         )
     }))
     .unwrap_or_else(|_| Err("服务器实时通知响应不兼容，继续使用定时补查".into()));
     control.clear();
     result
+}
+/// Download the inbox on the connection that owns it. The caller keeps the
+/// session listening afterwards, so this never opens a second INBOX session.
+pub fn sync_inbox_session<T: std::io::Read + Write>(
+    store: &Store,
+    a: &Account,
+    session: &mut imap::Session<T>,
+    updated: impl Fn(),
+) -> Result<u32> {
+    catch_unwind(AssertUnwindSafe(|| {
+        sync_imap_scope_controlled(store, a, session, &updated, Some("INBOX"), None)
+    }))
+    .unwrap_or_else(|_| Err("邮件协议库处理响应异常；已下载的本地存档已保留".into()))
 }
 fn smtp(a: &Account, s: &Secret) -> Result<SmtpTransport> {
     let route = crate::proxy::route(&a.smtp_host, a.smtp_port)?;
@@ -847,15 +901,30 @@ fn sync_imap_scope_controlled<T: std::io::Read + Write>(
         .iter()
         .filter(|folder| folder.selectable)
         .filter(|folder| {
+            // The listener owns INBOX while it is connected: its own periodic
+            // check keeps the inbox current, and a sweep on another connection
+            // must not become the INBOX session that receives notifications.
+            let listened =
+                folder.name.eq_ignore_ascii_case("INBOX") && crate::realtime::inbox_watched(&a.id);
             only.is_some()
-                || saved_folders.contains(&folder.name)
-                || !crate::remote::excluded_from_auto_sync(folder)
+                || (!listened
+                    && (saved_folders.contains(&folder.name)
+                        || !crate::remote::excluded_from_auto_sync(folder)))
         })
         .map(|folder| folder.name.clone())
         .collect::<Vec<_>>();
     folders.sort_by_key(|f| !f.eq_ignore_ascii_case("INBOX"));
     for folder in folders {
         if only.is_some_and(|name| name != folder) {
+            continue;
+        }
+        // A listener that claimed INBOX after the folder list was built owns
+        // the folder; selecting it here would make this sweep the newest
+        // INBOX session and divert the provider's push notifications.
+        if only.is_none()
+            && folder.eq_ignore_ascii_case("INBOX")
+            && crate::realtime::inbox_watched(&a.id)
+        {
             continue;
         }
         let folder_gate = crate::sync_control::folder_gate(&store.root, &a.id, &folder)?;
@@ -1660,11 +1729,13 @@ mod tests {
             &activity,
             &control,
             || {},
-            move |_| {
+            move |_signal, _session| {
                 if notified.fetch_add(1, std::sync::atomic::Ordering::SeqCst) == 1 {
                     cancelled.stop();
                 }
+                Ok(())
             },
+            || Duration::from_secs(60 * 60),
             if mode == "keepalive" {
                 Duration::from_millis(25)
             } else {
@@ -1685,7 +1756,7 @@ mod tests {
         assert_eq!(result.unwrap(), WatchOutcome::Stopped);
         assert_eq!(changes, 2);
         assert_eq!(commands.iter().filter(|c| c.ends_with("IDLE")).count(), 3);
-        assert_eq!(commands.iter().filter(|c| *c == "DONE").count(), 2);
+        assert_eq!(commands.iter().filter(|c| *c == "DONE").count(), 3);
     }
     #[test]
     fn tencent_post_login_capability_trailing_space_keeps_connection_usable_for_idle() {
@@ -1712,14 +1783,10 @@ mod tests {
         assert_eq!(commands.iter().filter(|c| c.ends_with("IDLE")).count(), 2);
     }
     #[test]
-    fn quiet_idle_probes_find_changes_before_ack_without_flooding_or_reusing_failed_sessions() {
-        for rejected in [false, true] {
+    fn quiet_idle_refreshes_stale_selection_and_detects_uid_changes_without_count_changes() {
+        for change in ["count", "uidnext", "uidvalidity"] {
             let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
             let address = listener.local_addr().unwrap();
-            let control = Arc::new(ConnectionControl::default());
-            let ack = Arc::new(std::sync::atomic::AtomicBool::new(false));
-            let ack_seen = ack.clone();
-            let (permit_tx, permit_rx) = std::sync::mpsc::channel();
             let server = std::thread::spawn(move || {
                 let (socket, _) = listener.accept().unwrap();
                 socket
@@ -1728,7 +1795,8 @@ mod tests {
                 let mut peer = BufReader::new(socket);
                 peer.get_mut().write_all(b"* OK Fixture\r\n").unwrap();
                 let mut commands = Vec::new();
-                let mut probes = 0;
+                let mut examinations = 0;
+                let mut idle_tag = String::new();
                 loop {
                     let mut line = String::new();
                     if peer.read_line(&mut line).unwrap_or(0) == 0 {
@@ -1741,36 +1809,25 @@ mod tests {
                     } else if line.contains("CAPABILITY") {
                         format!("* CAPABILITY IMAP4rev1 IDLE\r\n{tag} OK Caps\r\n")
                     } else if line.contains("EXAMINE") {
-                        format!("* 1 EXISTS\r\n* OK [UIDVALIDITY 7] Valid\r\n{tag} OK Opened\r\n")
-                    } else if line.contains("IDLE") {
-                        peer.get_mut().write_all(b"+ idling\r\n").unwrap();
-                        // Repeated keepalives must not reset the probe deadline.
-                        for _ in 0..8 {
-                            peer.get_mut().write_all(b"* OK Keepalive\r\n").unwrap();
-                            std::thread::sleep(Duration::from_millis(5));
-                        }
-                        let mut done = String::new();
-                        peer.read_line(&mut done).unwrap();
-                        assert_eq!(done, "DONE\r\n");
-                        commands.push("DONE".into());
-                        format!("{tag} OK Done\r\n")
-                    } else if line.contains("NOOP") {
-                        probes += 1;
-                        if rejected {
-                            peer.get_mut()
-                                .write_all(format!("{tag} NO Probe rejected\r\n").as_bytes())
-                                .unwrap();
-                            break;
-                        }
-                        if probes == 1 {
-                            format!("* 1 EXISTS\r\n{tag} OK Unchanged\r\n")
+                        examinations += 1;
+                        // Only the third fresh selection reveals the change.
+                        // NOOP deliberately returns no unsolicited metadata.
+                        let changed = examinations >= 3;
+                        let count = if changed && change == "count" { 2 } else { 1 };
+                        let next = if changed && change == "uidnext" { 3 } else { 2 };
+                        let validity = if changed && change == "uidvalidity" {
+                            8
                         } else {
-                            peer.get_mut().write_all(b"* 2 EXISTS\r\n").unwrap();
-                            peer.get_mut().flush().unwrap();
-                            permit_rx.recv_timeout(Duration::from_secs(3)).unwrap();
-                            ack_seen.store(true, std::sync::atomic::Ordering::Release);
-                            format!("{tag} OK Changed\r\n")
-                        }
+                            7
+                        };
+                        format!("* {count} EXISTS\r\n* OK [UIDNEXT {next}] Next\r\n* OK [UIDVALIDITY {validity}] Valid\r\n{tag} OK [READ-ONLY] Opened\r\n")
+                    } else if line.contains("NOOP") {
+                        format!("{tag} OK Alive\r\n")
+                    } else if line.contains("IDLE") {
+                        idle_tag = tag.to_owned();
+                        "+ idling\r\n".into()
+                    } else if line == "DONE\r\n" {
+                        format!("{idle_tag} OK Done\r\n")
                     } else {
                         panic!("unexpected command: {line}");
                     };
@@ -1784,6 +1841,7 @@ mod tests {
             socket
                 .set_read_timeout(Some(Duration::from_secs(3)))
                 .unwrap();
+            let control = Arc::new(ConnectionControl::default());
             control.attach(&socket).unwrap();
             let activity = Arc::new(Mutex::new(MailboxActivity::default()));
             let mut client = imap::Client::new(ObservedStream::new(socket, activity.clone()));
@@ -1792,71 +1850,125 @@ mod tests {
                 .login("fixture", "fixture-only")
                 .map_err(|(e, _)| e)
                 .unwrap();
-            let signals = Arc::new(Mutex::new(Vec::new()));
-            let seen = signals.clone();
-            let observed = activity.clone();
             let (tx, rx) = std::sync::mpsc::channel();
-            let worker_control = control.clone();
+            let stopped = control.clone();
+            let cancelled = control.clone();
             let thread = std::thread::spawn(move || {
                 let result = watch_session(
                     &mut session,
                     &activity,
-                    &worker_control,
+                    &stopped,
                     || {},
-                    move |signal| {
-                        seen.lock().unwrap().push(signal);
-                        if signal == WatchSignal::ProbeChanged {
-                            tx.send(observed.try_lock().is_ok()).unwrap();
+                    move |signal, _session| {
+                        let _ = tx.send(signal);
+                        if signal == WatchSignal::RefreshChanged {
+                            cancelled.stop();
                         }
+                        Ok(())
                     },
-                    Duration::from_millis(25),
+                    || Duration::from_secs(60 * 60),
+                    Duration::from_millis(20),
                 );
-                assert!(!activity.lock().unwrap().notify_is_registered());
                 drop(session);
                 result
             });
-            if !rejected {
-                assert!(rx.recv_timeout(Duration::from_secs(2)).unwrap());
-                assert!(!ack.load(std::sync::atomic::Ordering::Acquire));
-                control.stop();
-                permit_tx.send(()).unwrap();
-            }
-            let result = thread.join().unwrap();
+            assert_eq!(
+                rx.recv_timeout(Duration::from_secs(2)).unwrap(),
+                WatchSignal::CatchUp
+            );
+            let signal = rx.recv_timeout(Duration::from_secs(2));
             control.stop();
+            let result = thread.join().unwrap();
             let commands = server.join().unwrap();
-            if rejected {
-                assert!(result.unwrap_err().contains("补查失败"));
-                assert_eq!(commands.iter().filter(|c| c.ends_with("NOOP")).count(), 1);
-            } else {
-                assert_eq!(result.unwrap(), WatchOutcome::Stopped);
-                assert_eq!(
-                    *signals.lock().unwrap(),
-                    vec![WatchSignal::CatchUp, WatchSignal::ProbeChanged]
-                );
-                assert_eq!(commands.iter().filter(|c| c.ends_with("NOOP")).count(), 2);
-            }
-            assert!(!commands.iter().any(|c| [
-                "STATUS",
-                "UID FETCH",
-                "STORE",
-                "EXPUNGE",
-                "SELECT ",
-                "LOGOUT"
-            ]
-            .iter()
-            .any(|s| c.contains(s))));
+            assert_eq!(signal.unwrap(), WatchSignal::RefreshChanged, "{change}");
+            assert_eq!(result.unwrap(), WatchOutcome::Stopped);
+            assert_eq!(commands.iter().filter(|c| c.contains("LOGIN")).count(), 1);
+            assert_eq!(commands.iter().filter(|c| c.contains("EXAMINE")).count(), 3);
+            assert_eq!(commands.iter().filter(|c| c.ends_with("NOOP")).count(), 0);
+            assert!(!commands
+                .iter()
+                .any(|c| ["FETCH", "STORE", "SELECT ", "EXPUNGE", "LOGOUT"]
+                    .iter()
+                    .any(|s| c.contains(s))));
         }
     }
     #[test]
-    fn idle_notification_is_delivered_before_done_ack_and_outside_activity_lock() {
+    fn rejected_readonly_refresh_discards_the_session_instead_of_reusing_it() {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = listener.local_addr().unwrap();
+        let server = std::thread::spawn(move || {
+            let (socket, _) = listener.accept().unwrap();
+            socket
+                .set_read_timeout(Some(Duration::from_secs(3)))
+                .unwrap();
+            let mut peer = BufReader::new(socket);
+            peer.get_mut().write_all(b"* OK Fixture\r\n").unwrap();
+            let mut commands = Vec::new();
+            let mut examinations = 0;
+            loop {
+                let mut line = String::new();
+                if peer.read_line(&mut line).unwrap_or(0) == 0 {
+                    break;
+                }
+                commands.push(line.trim().to_owned());
+                let tag = line.split_whitespace().next().unwrap();
+                let response = if line.contains("LOGIN") {
+                    format!("{tag} OK Login\r\n")
+                } else if line.contains("CAPABILITY") {
+                    format!("* CAPABILITY IMAP4rev1 IDLE\r\n{tag} OK Caps\r\n")
+                } else if line.contains("EXAMINE") {
+                    examinations += 1;
+                    if examinations == 1 {
+                        format!("* 1 EXISTS\r\n* OK [UIDVALIDITY 7] Valid\r\n{tag} OK Opened\r\n")
+                    } else {
+                        // The catch-up snapshot cannot be re-read: the session
+                        // must be abandoned instead of reused for listening.
+                        format!("{tag} NO Rejected\r\n")
+                    }
+                } else {
+                    panic!("unexpected command: {line}");
+                };
+                if peer.get_mut().write_all(response.as_bytes()).is_err() {
+                    break;
+                }
+            }
+            commands
+        });
+        let socket = TcpStream::connect(address).unwrap();
+        socket
+            .set_read_timeout(Some(Duration::from_secs(3)))
+            .unwrap();
+        let control = Arc::new(ConnectionControl::default());
+        control.attach(&socket).unwrap();
+        let activity = Arc::new(Mutex::new(MailboxActivity::default()));
+        let mut client = imap::Client::new(ObservedStream::new(socket, activity.clone()));
+        client.read_greeting().unwrap();
+        let mut session = client
+            .login("fixture", "fixture-only")
+            .map_err(|(e, _)| e)
+            .unwrap();
+        let result = watch_session(
+            &mut session,
+            &activity,
+            &control,
+            || {},
+            |_, _| Ok(()),
+            || Duration::from_secs(60 * 60),
+            Duration::from_secs(1),
+        );
+        control.stop();
+        drop(session);
+        let commands = server.join().unwrap();
+        assert!(result.unwrap_err().contains("实时连接补查失败"));
+        assert_eq!(commands.iter().filter(|c| c.contains("EXAMINE")).count(), 2);
+        assert!(!commands.iter().any(|c| c.ends_with("IDLE")));
+    }
+    #[test]
+    fn push_download_runs_on_the_listening_connection_after_done_ack() {
         let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
         let socket = TcpStream::connect(listener.local_addr().unwrap()).unwrap();
         let control = Arc::new(ConnectionControl::default());
         control.attach(&socket).unwrap();
-        let (notified_tx, notified_rx) = std::sync::mpsc::channel();
-        let ack = Arc::new(std::sync::atomic::AtomicBool::new(false));
-        let server_ack = ack.clone();
-        let server_control = control.clone();
         let server = std::thread::spawn(move || {
             let (socket, _) = listener.accept().unwrap();
             socket
@@ -1864,9 +1976,13 @@ mod tests {
                 .unwrap();
             let mut reader = BufReader::new(socket);
             reader.get_mut().write_all(b"* OK Test IMAP\r\n").unwrap();
+            let mut commands = Vec::new();
             loop {
                 let mut line = String::new();
-                assert!(reader.read_line(&mut line).unwrap() > 0);
+                if reader.read_line(&mut line).unwrap_or(0) == 0 {
+                    break;
+                }
+                commands.push(line.trim().to_owned());
                 let tag = line.split_whitespace().next().unwrap();
                 let response = if line.contains("LOGIN") {
                     format!("{tag} OK Login\r\n")
@@ -1882,27 +1998,25 @@ mod tests {
                     let mut done = String::new();
                     reader.read_line(&mut done).unwrap();
                     assert_eq!(done, "DONE\r\n");
-                    // Deliberately withhold DONE's response until the independent
-                    // notification is delivered. The old after-wait callback
-                    // deadlocked here and missed the deadline.
-                    notified_rx.recv_timeout(Duration::from_secs(1)).unwrap();
-                    server_ack.store(true, std::sync::atomic::Ordering::SeqCst);
-                    reader
-                        .get_mut()
-                        .write_all(format!("{tag} OK Done\r\n").as_bytes())
-                        .unwrap();
-                    server_control.stop();
-                    break;
+                    commands.push("DONE".into());
+                    // The inbox download must wait for this acknowledgement
+                    // and then use this very connection.
+                    format!("{tag} OK Done\r\n")
+                } else if line.contains("NOOP") {
+                    format!("{tag} OK Alive\r\n")
                 } else {
                     panic!("Unexpected command: {line}");
                 };
-                reader.get_mut().write_all(response.as_bytes()).unwrap();
+                if reader.get_mut().write_all(response.as_bytes()).is_err() {
+                    break;
+                }
             }
+            commands
         });
         let activity = Arc::new(Mutex::new(MailboxActivity::default()));
-        let observed = activity.clone();
         let signals = Arc::new(Mutex::new(Vec::new()));
         let received = signals.clone();
+        let cancelled = control.clone();
         let mut client = imap::Client::new(ObservedStream::new(socket, activity.clone()));
         client.read_greeting().unwrap();
         let mut session = client.login("test", "test").map_err(|(e, _)| e).unwrap();
@@ -1911,24 +2025,33 @@ mod tests {
             &activity,
             &control,
             || {},
-            move |signal| {
+            move |signal, session| {
                 received.lock().unwrap().push(signal);
-                if signal == WatchSignal::MailboxChanged {
-                    assert!(!ack.load(std::sync::atomic::Ordering::SeqCst));
-                    assert!(observed.try_lock().is_ok());
-                    notified_tx.send(()).unwrap();
+                if signal == WatchSignal::CatchUp {
+                    return Ok(());
                 }
+                assert_eq!(signal, WatchSignal::MailboxChanged);
+                session.noop().map_err(err)?;
+                cancelled.stop();
+                Ok(())
             },
+            || Duration::from_secs(60 * 60),
             Duration::from_secs(1),
         );
         control.stop();
-        server.join().unwrap();
+        let commands = server.join().unwrap();
         assert_eq!(result.unwrap(), WatchOutcome::Stopped);
-        assert!(!activity.lock().unwrap().notify_is_registered());
-        assert!(signals
-            .lock()
-            .unwrap()
-            .contains(&WatchSignal::MailboxChanged));
+        assert_eq!(
+            *signals.lock().unwrap(),
+            vec![WatchSignal::CatchUp, WatchSignal::MailboxChanged]
+        );
+        let done = commands.iter().position(|c| c == "DONE").unwrap();
+        let noop = commands.iter().position(|c| c.ends_with("NOOP")).unwrap();
+        assert!(
+            done < noop,
+            "download must follow the DONE ack: {commands:?}"
+        );
+        assert_eq!(commands.iter().filter(|c| c.contains("LOGIN")).count(), 1);
     }
     #[test]
     fn starttls_never_returns_a_plain_connection_after_rejection() {

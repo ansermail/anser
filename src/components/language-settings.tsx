@@ -61,13 +61,15 @@ export function LanguageSettings() {
   return (
     <Card>
       <CardHeader>
-        <CardTitle>{t("界面语言")}</CardTitle>
-        <CardDescription>{t("选择雁信的显示语言，立即生效。")}</CardDescription>
+        <CardTitle>{t("Interface language")}</CardTitle>
+        <CardDescription>
+          {t("Choose Anser's display language. Changes apply immediately.")}
+        </CardDescription>
       </CardHeader>
       <CardContent className="flex flex-col gap-3">
         <Field orientation="horizontal" className="w-fit max-w-full">
           <FieldLabel htmlFor="interface-language">
-            {t("语言 / Language")}
+            {t("Language / 语言")}
           </FieldLabel>
           <SelectField
             id="interface-language"
@@ -87,7 +89,9 @@ export function LanguageSettings() {
           </SelectField>
         </Field>
         <FieldDescription id="interface-language-description">
-          {t("只改变应用界面，邮件原文和正文翻译目标语言保持各自设置。")}
+          {t(
+            "Changes the application interface only. Original messages and the body translation target keep their own settings.",
+          )}
         </FieldDescription>
       </CardContent>
     </Card>

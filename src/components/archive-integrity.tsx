@@ -38,21 +38,21 @@ export function ArchiveIntegrity() {
         ) : (
           <ShieldCheck data-icon="inline-start" />
         )}
-        {checking ? t("正在校验…") : t("校验存档")}
+        {checking ? t("Verifying…") : t("Verify archives")}
       </Button>
       <p className="text-xs text-muted-foreground" role="status">
         {checking
-          ? t("正在校验原始邮件与附件…")
+          ? t("Verifying original messages and attachments…")
           : health
-            ? t("{value0} / {value1} 封校验通过", {
+            ? t("{value0} / {value1} messages verified", {
                 value0: health.healthy,
                 value1: health.checked,
               })
-            : t("检查本地原件与附件的完整性")}
+            : t("Check the integrity of local originals and attachments")}
       </p>
       {health && (
         <p className="text-xs text-muted-foreground">
-          {t("最近校验：")}
+          {t("Last verified: ")}
           {new Date(health.checkedAt).toLocaleString(dateLocale(), {
             hour12: false,
           })}
@@ -63,15 +63,17 @@ export function ArchiveIntegrity() {
           <AlertCircle />
           <AlertTitle>
             {error
-              ? t("校验未完成")
-              : t("{value0} 封需要检查", { value0: health!.problems.length })}
+              ? t("Verification incomplete")
+              : t("{value0} messages need attention", {
+                  value0: health!.problems.length,
+                })}
           </AlertTitle>
           <AlertDescription className="max-h-48 overflow-auto">
             {error || (
               <ul className="flex flex-col gap-2">
                 {health!.problems.map((p) => (
                   <li key={p.mailId}>
-                    <p>{p.subject || t("（无主题）")}</p>
+                    <p>{p.subject || t("(No subject)")}</p>
                     <p>{p.error}</p>
                   </li>
                 ))}
@@ -82,7 +84,7 @@ export function ArchiveIntegrity() {
       )}
       {isDemo() && (
         <p className="text-xs text-muted-foreground">
-          {t("演示模式仅展示示例校验结果。")}
+          {t("Demo mode shows sample verification results only.")}
         </p>
       )}
     </div>

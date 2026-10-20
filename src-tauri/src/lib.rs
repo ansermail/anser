@@ -352,7 +352,8 @@ async fn connect_account(
             .map_err(|_| "正在发送邮件，请稍后修改账号")?;
         network::test_with_progress(&account, &secret, &progress)?;
         progress("saving");
-        auth::save(&account.id, &secret)?;
+        // Explicit account setup may ask the Keychain once.
+        auth::save_interactive(&account.id, &secret)?;
         account.error = None;
         store.save_account(&account)?;
         realtime.restart();
@@ -444,7 +445,7 @@ async fn edit_account(
         }
         network::test_with_progress(&account, &secret, &progress)?;
         progress("saving");
-        auth::save(&account.id, &secret)?;
+        auth::save_interactive(&account.id, &secret)?;
         store.edit_account(&account)?;
         realtime.restart();
         store.log(&format!("账号 {} 配置已更新，收发验证通过", account.email))?;
@@ -662,13 +663,82 @@ fn sync_one(store: &Store, app: &tauri::AppHandle, account: Account) -> Result<u
     sync_one_scope(store, app, account, false)
 }
 fn sync_inbox(store: &Store, app: &tauri::AppHandle, account: Account) -> Result<u32> {
-    sync_one_scope(store, app, account, true)
+    let result = sync_one_scope(store, app, account.clone(), true);
+    // A manual check downloaded INBOX on its own short-lived connection. When
+    // the account has a listener, reconnect it so providers route new-mail
+    // notifications to the long-lived session again.
+    if account.protocol == "imap" {
+        if let Some(state) = app.try_state::<AppState>() {
+            state.realtime.restart_account(&account.id);
+        }
+    }
+    result
 }
 fn sync_one_scope(
     store: &Store,
     app: &tauri::AppHandle,
-    mut account: Account,
+    account: Account,
     inbox_only: bool,
+) -> Result<u32> {
+    let scope = if inbox_only {
+        "收件箱收取"
+    } else {
+        "全部文件夹收取"
+    };
+    sync_scope(store, app, account.clone(), scope, |updated| {
+        if inbox_only {
+            network::sync_folder_with_updates(store, &account, "INBOX", updated)
+        } else {
+            network::sync_with_updates(store, &account, updated)
+        }
+    })
+}
+/// Download the inbox on the connection that already owns it (the IDLE
+/// listener). The session stays usable for listening afterwards.
+fn sync_watch_inbox(
+    store: &Store,
+    app: &tauri::AppHandle,
+    account: &Account,
+    signal: network::WatchSignal,
+    session: &mut network::WatchSession,
+) -> Result<u32> {
+    let current = store.account(&account.id)?;
+    if !current.enabled || current.protocol != "imap" || !current.same_connection(account) {
+        return Err("账号已暂停或连接配置已修改，停止旧收取任务".into());
+    }
+    let source = match signal {
+        network::WatchSignal::CatchUp => "监听连接后补查",
+        network::WatchSignal::MailboxChanged => "服务器实时通知",
+        network::WatchSignal::RefreshChanged => "实时目录复核发现变化",
+        network::WatchSignal::Poll => "定时补查",
+    };
+    if let Ok(gate) = crate::sync_control::folder_gate(&store.root, &account.id, "INBOX") {
+        // Signal without waiting for the held folder lock.
+        gate.notify();
+    }
+    let at = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
+    let _ = store.log(&format!(
+        "{} 收件诊断：{source} {at}；在同一实时连接上开始收件箱收取",
+        account.email
+    ));
+    let started = std::time::Instant::now();
+    let result = sync_scope(store, app, current, "收件箱收取", |updated| {
+        network::sync_inbox_session(store, account, session, updated)
+    });
+    let _ = store.log(&format!(
+        "{} 收件诊断：{source} {at}；本轮 {} 毫秒；{}",
+        account.email,
+        started.elapsed().as_millis(),
+        if result.is_ok() { "成功" } else { "失败" }
+    ));
+    result
+}
+fn sync_scope(
+    store: &Store,
+    app: &tauri::AppHandle,
+    mut account: Account,
+    scope: &str,
+    run: impl FnOnce(&dyn Fn()) -> Result<u32>,
 ) -> Result<u32> {
     let _ = app.emit("sync-progress", format!("正在收取 {}", account.email));
     let checkpoint = std::cell::Cell::new(notifications::checkpoint(store));
@@ -686,16 +756,7 @@ fn sync_one_scope(
             let _ = app.emit("mail-updated", ());
         }
     };
-    let result = if inbox_only {
-        network::sync_folder_with_updates(store, &account, "INBOX", updated)
-    } else {
-        network::sync_with_updates(store, &account, updated)
-    };
-    let scope = if inbox_only {
-        "收件箱收取"
-    } else {
-        "全部文件夹收取"
-    };
+    let result = run(&updated);
     match &result {
         Ok(count) => {
             account.last_sync = Some(chrono::Utc::now().to_rfc3339());
@@ -704,6 +765,15 @@ fn sync_one_scope(
                 "{} {}本轮结束，新增 {} 封邮件",
                 account.email, scope, count
             ));
+            // The provider keeps accepting the in-memory token, so mail flow is
+            // unaffected; record the denied write once per episode instead of
+            // failing every round and showing an account error.
+            if auth::pending_write(&account.id) && auth::take_pending_notice(&account.id) {
+                let _ = store.log(&format!(
+                    "{} 授权已在内存中更新并正常使用；系统尚未允许写入钥匙串，下次手动检查邮件时重试保存",
+                    account.email
+                ));
+            }
         }
         Err(error) => {
             account.error = Some(error.clone());
@@ -743,6 +813,25 @@ fn sync_inboxes(store: &Store, app: &tauri::AppHandle) -> Result<u32> {
         .into_iter()
         .filter(|a| a.enabled)
         .collect::<Vec<_>>();
+    // This path only runs from a user action (toolbar, tray menu or finishing
+    // account setup), so a deferred Keychain write may prompt once here.
+    for account in &accounts {
+        if !auth::pending_write(&account.id) {
+            continue;
+        }
+        match auth::flush_pending(&account.id) {
+            Ok(true) => {
+                let _ = store.log(&format!("{} 凭据已重新写入系统钥匙串", account.email));
+            }
+            Ok(false) => {}
+            Err(error) => {
+                let _ = store.log(&format!(
+                    "{} 凭据仍未能写入钥匙串，本次收取继续使用内存中的授权：{}",
+                    account.email, error
+                ));
+            }
+        }
+    }
     std::thread::scope(|scope| {
         let jobs = accounts
             .into_iter()
@@ -1395,19 +1484,25 @@ pub fn run() {
             rule_runs::start(store.clone(), app.handle().clone());
             let menu = tauri::menu::Menu::default(app.handle())?;
             app.set_menu(menu)?;
-            let open_item =
-                tauri::menu::MenuItem::with_id(app, "tray-open", "打开雁信", true, None::<&str>)?;
+            let language = store.interface_language().map_err(std::io::Error::other)?;
+            let open_item = tauri::menu::MenuItem::with_id(
+                app,
+                "tray-open",
+                interface_language::text(&language, "Open Anser"),
+                true,
+                None::<&str>,
+            )?;
             let sync_item = tauri::menu::MenuItem::with_id(
                 app,
                 "tray-sync",
-                "立即检查新邮件",
+                interface_language::text(&language, "Check for new mail now"),
                 true,
                 None::<&str>,
             )?;
             let quiet_item = tauri::menu::CheckMenuItem::with_id(
                 app,
                 "tray-quiet",
-                "暂停新邮件通知",
+                interface_language::text(&language, "Pause new mail notifications"),
                 true,
                 store
                     .preferences()
@@ -1415,8 +1510,13 @@ pub fn run() {
                     .do_not_disturb,
                 None::<&str>,
             )?;
-            let quit_item =
-                tauri::menu::MenuItem::with_id(app, "tray-quit", "退出雁信", true, None::<&str>)?;
+            let quit_item = tauri::menu::MenuItem::with_id(
+                app,
+                "tray-quit",
+                interface_language::text(&language, "Quit Anser"),
+                true,
+                None::<&str>,
+            )?;
             let tray_menu = tauri::menu::Menu::with_items(
                 app,
                 &[&open_item, &sync_item, &quiet_item, &quit_item],
@@ -1424,7 +1524,7 @@ pub fn run() {
             let quiet_control = quiet_item.clone();
             let language_items = (open_item, sync_item, quiet_item, quit_item);
             let tray = tauri::tray::TrayIconBuilder::new()
-                .tooltip("雁信 · 点击打开")
+                .tooltip(interface_language::text(&language, "Anser · Click to open"))
                 .icon(app.default_window_icon().unwrap().clone())
                 .menu(&tray_menu)
                 .show_menu_on_left_click(false)
