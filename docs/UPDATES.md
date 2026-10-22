@@ -1,10 +1,16 @@
 # 发布与应用内更新
 
-## 0.1.25 发布准备（2026-10-22）
+## 当前正式版本：0.1.25（2026-10-22）
 
-用户已授权提交与正式发布。本版修复通知重复点击的旧阅读位置、长对话定位及 WebKit 异步布局滚动误判；正文独立滚动，头部信息与底部回复固定，增加常驻可拖动滑块及清晰的对话数量 Badge。版本已同步，正在执行本轮发布检查，公开 latest 仍为 0.1.24。说明见 [0.1.25](releases/v0.1.25.md)，进度见 [发布工作点](RELEASE_0_1_25_WORKING.md)。真实系统通知横幅点击、正式安装/升级与 Intel 实机继续独立验收。
+0.1.25 Alpha 于 2026-10-22 11:29:39（Asia/Shanghai）正式发布为 latest，固定源码 `6d965c3e1f37a83e130969e726c503572fb6fdc5`。[Release macOS 39715043732](https://github.com/ansermail/anser/actions/runs/39715043732)、[Checks 39715044036](https://github.com/ansermail/anser/actions/runs/39715044036) 与 [Pages 39715044018](https://github.com/ansermail/anser/actions/runs/39715044018) 全部成功，[0.1.25 正式版本](https://github.com/ansermail/anser/releases/tag/v0.1.25) 已公开。
 
-## 当前正式版本：0.1.24（2026-10-20）
+修复通知重复点击时保留旧阅读位置、长对话打开后的邮件错位及 WebKit 异步布局滚动误判；所选单封从开头显示，用户开始浏览后不抢回位置。顶部邮件信息与底部简短回复固定，正文提供常驻可拖动滑块；列表对话数量改为清晰的 Badge。
+
+七资源长度/SHA-256、既有更新公钥和双架构更新签名、固定代码签名及精确 DR、App 版本/架构/标识/语言/EML/许可/原生 OAuth 编译配置、DMG 与更新归档内容、匿名公开下载与标准 latest 更新端点均核验通过。[Homebrew 39717132990](https://github.com/ansermail/anser/actions/runs/39717132990) 已成功，[配方提交 132613c](https://github.com/ansermail/anser/commit/132613c27ff44c637669f5f98b02fc8250c5c96a) 仅修改主仓库 Casks/anser.rb；两架构摘要与公开资源一致，本机 style/audit/Apple Silicon fetch 通过，重复运行 [39717314552](https://github.com/ansermail/anser/actions/runs/39717314552) 成功且无多余提交。
+
+本轮本地完整门槛为前端 397、桌面脚本 35、Rust 393 通过/3 项既有忽略、IMAP 39，格式/版本/生产构建/Pages 隔离均通过。真实 41 封对话阅读在开发预览核对；系统通知真实横幅点击、正式安装/原位升级、Intel 实机仍未复验，不以构建和静态产物代替。完整说明见 [0.1.25](releases/v0.1.25.md)，证据见 [发布工作点](RELEASE_0_1_25_WORKING.md)。
+
+## 前一正式版本：0.1.24（2026-10-20）
 
 0.1.24 Alpha 于 2026-10-20 19:11:12（Asia/Shanghai）正式发布为 latest，固定源码 `04391876cd605fe81b3df834e086c0bd81f0ec93`。[Release macOS 39411133657](https://github.com/ansermail/anser/actions/runs/39411133657)、[Verify macOS signing 39411123348](https://github.com/ansermail/anser/actions/runs/39411123348)、[Checks 39411123293](https://github.com/ansermail/anser/actions/runs/39411123293) 与 [Preview Pages 39411123273](https://github.com/ansermail/anser/actions/runs/39411123273) 均成功，[0.1.24 正式版本](https://github.com/ansermail/anser/releases/tag/v0.1.24) 已公开。本版修复收件箱实时推送漏检（单条 IDLE 连接独占 INBOX，QQ 与腾讯企业邮主动推送复验）、Gmail 等 OAuth 账号后台非交互钥匙串写入被拒导致整次收取判失败、写信空正文光标落在第二行、收件人/抄送/密送输入行过宽、富文本粘贴表格被摊平，以及英文界面原生托盘/通知回退中文；新增富文本字体颜色与十六进制样式输出。
 

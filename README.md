@@ -8,11 +8,9 @@
 
 [下载最新版本](https://github.com/ansermail/anser/releases/latest) · [界面预览](https://ansermail.github.io/anser/) · [使用说明](docs/USAGE.md) · [开发进度](docs/DEVELOPMENT_STATUS.md) · [反馈问题](https://github.com/ansermail/anser/issues)
 
-> 当前公开版本为 **0.1.24 Alpha**，支持 Apple Silicon 与 Intel Mac。长期稳定性、部分服务商兼容性及真实场景验收仍在持续完善。
+> 当前公开版本为 **0.1.25 Alpha**，支持 Apple Silicon 与 Intel Mac。长期稳定性、部分服务商兼容性及真实场景验收仍在持续完善。
 
-0.1.25 正在准备发布：修复通知重复定位与长对话阅读位置，固定阅读头部/底部回复，新增常驻正文滚动条及对话数量 Badge；[发布进度](docs/RELEASE_0_1_25_WORKING.md)。
-
-[0.1.24 已发布](https://github.com/ansermail/anser/releases/tag/v0.1.24)：修复收件箱实时推送漏检、Gmail 等 OAuth 账号后台钥匙串写入被拒导致整次收取判失败、写信空正文光标落在第二行、收件人/抄送/密送输入行过宽、富文本粘贴表格被摊平，以及英文界面原生托盘/通知回退中文；新增富文本字体颜色。双架构资源、签名、公开更新端点与 Homebrew 已核验，见 [发布记录](docs/RELEASE_0_1_24_WORKING.md)。实际安装/原位升级仍待验证。
+[0.1.25 已发布](https://github.com/ansermail/anser/releases/tag/v0.1.25)：修复通知重复定位、长对话阅读位置及 WebKit 异步布局滚动误判；顶部邮件信息与底部回复固定，正文提供常驻可拖动滚动条，对话数量使用清晰的 Badge。双架构资源、签名、公开更新端点与 Homebrew 同步均已核验，见 [发布记录](docs/RELEASE_0_1_25_WORKING.md)。实际通知横幅点击及正式安装/升级仍待复验。
 
 ![雁信的多账号收件箱与邮件阅读界面](docs/screenshots/inbox-demo.png)
 

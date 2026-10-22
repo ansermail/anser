@@ -2,7 +2,7 @@
 
 ## 范围与代码
 
-- 分支 `main`，起点 `490a432`，本轮尚未提交/发布。
+- 分支 `main`，起点 `490a432`。本轮修复已以固定源码 `6d965c3e1f37a83e130969e726c503572fb6fdc5` 提交并随 `v0.1.25` 正式发布；构建、公开资源与 Homebrew 证据见 [发布工作点](RELEASE_0_1_25_WORKING.md)。
 - `src/App.tsx`：通知定位保存点击代际，重复点击同一通知重建阅读区；列表对话数量 outline Badge 与双语数量说明。
 - `src/components/conversation-reader.tsx`：对话先定位当前单封头部；此前正文加载引起的高度变化保持锚点，明确用户操作后释放。WebKit 会因 iframe 布局触发 scroll，不能仅凭 scroll 事件判定用户滚动。ResizeObserver 延至下一帧，卸载清理事件/帧。
 - `src/components/ui/scroll-area.tsx`：官方 registry 新增，扩展 viewportRef/viewportProps 供阅读区沿用正文调试标识及既有滚动入口。
