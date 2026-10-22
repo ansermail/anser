@@ -2466,6 +2466,27 @@ describe("notification mail opening", () => {
       seed.messages[0].subject,
     );
   });
+  it("repositions a repeated notification to the exact message instead of retaining its old scroll", async () => {
+    await seedReplyThread();
+    const seed = await snapshot({ ...localQuery, listMode: "messages" });
+    const target = seed.messages.find((mail) => mail.id === "older-reply")!;
+    notificationMail();
+    await act(async () => notificationFixture.open(target.id));
+    const viewport = host.querySelector<HTMLDivElement>(
+      "#mail-reader-content",
+    )!;
+    viewport.scrollTop = 1200;
+    await act(async () => notificationFixture.open(target.id));
+    const reopened = host.querySelector<HTMLDivElement>(
+      "#mail-reader-content",
+    )!;
+    expect(reopened).not.toBe(viewport);
+    expect(reopened.scrollTop).toBe(0);
+    expect(host.querySelector(".conversation-stream")).toBeNull();
+    expect(host.querySelector(".message-heading h1")?.textContent).toBe(
+      target.subject,
+    );
+  });
   it("ignores a late earlier click and a late result after manual navigation", async () => {
     const seed = await snapshot({ ...localQuery, listMode: "messages" });
     const original = api.call;

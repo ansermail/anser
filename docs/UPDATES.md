@@ -1,5 +1,9 @@
 # 发布与应用内更新
 
+## 0.1.25 发布准备（2026-10-22）
+
+用户已授权提交与正式发布。本版修复通知重复点击的旧阅读位置、长对话定位及 WebKit 异步布局滚动误判；正文独立滚动，头部信息与底部回复固定，增加常驻可拖动滑块及清晰的对话数量 Badge。版本已同步，正在执行本轮发布检查，公开 latest 仍为 0.1.24。说明见 [0.1.25](releases/v0.1.25.md)，进度见 [发布工作点](RELEASE_0_1_25_WORKING.md)。真实系统通知横幅点击、正式安装/升级与 Intel 实机继续独立验收。
+
 ## 当前正式版本：0.1.24（2026-10-20）
 
 0.1.24 Alpha 于 2026-10-20 19:11:12（Asia/Shanghai）正式发布为 latest，固定源码 `04391876cd605fe81b3df834e086c0bd81f0ec93`。[Release macOS 39411133657](https://github.com/ansermail/anser/actions/runs/39411133657)、[Verify macOS signing 39411123348](https://github.com/ansermail/anser/actions/runs/39411123348)、[Checks 39411123293](https://github.com/ansermail/anser/actions/runs/39411123293) 与 [Preview Pages 39411123273](https://github.com/ansermail/anser/actions/runs/39411123273) 均成功，[0.1.24 正式版本](https://github.com/ansermail/anser/releases/tag/v0.1.24) 已公开。本版修复收件箱实时推送漏检（单条 IDLE 连接独占 INBOX，QQ 与腾讯企业邮主动推送复验）、Gmail 等 OAuth 账号后台非交互钥匙串写入被拒导致整次收取判失败、写信空正文光标落在第二行、收件人/抄送/密送输入行过宽、富文本粘贴表格被摊平，以及英文界面原生托盘/通知回退中文；新增富文本字体颜色与十六进制样式输出。

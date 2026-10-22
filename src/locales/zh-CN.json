@@ -469,6 +469,7 @@
   "Send reply": "发送回复",
   "The original account is paused or removed. Enable it to reply.": "原账号已暂停或移除，启用账号后可回复。",
   "messages (conversation)": " 封邮件",
+  "{value0} messages in this conversation": "此对话包含 {value0} 封邮件",
   "Chronological order": "按时间排列",
   "Could not load conversation": "对话加载失败",
   "Reload conversation": "重新加载对话",

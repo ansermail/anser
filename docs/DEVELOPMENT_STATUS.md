@@ -1,8 +1,12 @@
-# 开发计划与继续检查点（更新：2026-10-20）
+# 开发计划与继续检查点（更新：2026-10-22）
 
 依据 PRD 第 5、8、9 节、实施记录和当前代码核查。当前仍为 Alpha；功能代码已存在与真实场景验收通过分别记录。早期回归使用临时存储/演示数据；2026-10-05 用户授权后增加当前腾讯企业邮箱与 QQ 邮箱互发测试，未向其他地址发送，未删除真实邮件。
 
-## 当前未完成事项总览（2026-10-20 核对）
+## 当前未完成事项总览（2026-10-22 核对）
+
+**当前发布入口：0.1.25 本地检查通过，准备提交（2026-10-22）**。用户要求“提交发版”，五处版本已同步；公开最新仍为 0.1.24。本轮前端 397、桌面脚本 35、Rust 393/3 既有忽略、IMAP 39、生产/Pages 隔离构建及格式/版本检查通过，继续到提交/标签、双架构构建、资源核验、正式发布和 Homebrew 同步，详见 [0.1.25 发布工作点](RELEASE_0_1_25_WORKING.md)。真实通知横幅点击、正式安装/升级与 Intel 实机保持未验证。下方阅读阶段“未提交/发布”为发布前历史。
+
+**当前开发入口：通知重复定位与长对话阅读布局（2026-10-22，开发预览已验证）**。`main` / `490a432` 干净基线。通知成功打开时保存点击代际，重复点击同一条通知重建单封阅读区并回到开头，仍按绑定本机 ID 定位且只标记该封已读。对话不再一打开就滚至正文末尾；改为对齐选中单封的头部，先前正文异步变高时维持锚点，用户主动滚动后释放。WebKit iframe 加载引起的布局滚动不能当作用户操作，现由实际滚轮/触摸/按下或滚动键解除锚点，ResizeObserver 仅安排下一帧核对。新增官方 shadcn ScrollArea（常驻可拖动滑块），正文单独滚动，父阅读面板限制溢出，顶部信息和底部回复保留；对话数量使用清晰的 outline Badge 并补双语可访问说明。完整相关测试 `npm test -- src/components/conversation-reader.test.tsx src/App.test.tsx src/hooks/use-notification-mail.test.tsx` 85/85 通过；`npm run build`（含 check:ui、check:i18n 1219 键、tsc、Vite）和修改文件 Prettier/diff 检查通过。浏览器 41 封虚构长对话实际拖动滑块，scrollTop 37012.5→2239.5，邮件信息 top=41、回复 top=692 均不变。稳定签名原生开发实例由 Tauri 直接管理，真实 GitHub 41 封对话从较旧 undici 错位恢复为最新 markdown-it 邮件，顶部信息/底部回复与 Badge 目视通过；原生拖动后 scrollTop=4088，可到较早邮件。通过现有 `test_notification` 生成一条绑定当前邮件的本机通知；CUA 访问 Notification Center 返回 -10005 timeoutReached，未实际点击横幅，故不宣称系统通知端到端验收完成，亦未发送测试邮件。开发预览已关闭检查器并恢复当前最新邮件供用户核对；未提交、未云端构建或发布。剩余入口见 [阅读工作点](READING_LAYOUT_WORKING.md)，公开发行仍为 0.1.24；下面较早入口均为历史。
 
 **当前入口：0.1.24 已正式发布（2026-10-20 晚）**。0.1.24 Alpha 于 2026-10-20 19:11:12（Asia/Shanghai）发布为 latest，固定源码 `04391876cd605fe81b3df834e086c0bd81f0ec93`。[Release macOS 39411133657](https://github.com/ansermail/anser/actions/runs/39411133657)、[Verify macOS signing 39411123348](https://github.com/ansermail/anser/actions/runs/39411123348)、[Checks 39411123293](https://github.com/ansermail/anser/actions/runs/39411123293) 与 [Preview Pages 39411123273](https://github.com/ansermail/anser/actions/runs/39411123273) 均成功，[0.1.24 正式版本](https://github.com/ansermail/anser/releases/tag/v0.1.24) 已公开。本版包含：收件箱由单条 IDLE 监听连接独占（QQ 与企业邮主动推送已复验）、Gmail OAuth 后台刷新令牌的非交互钥匙串写入失败不再判整次收取失败、写信输入行 416px 与“抄送/密送”靠右、空正文单行、Tiptap 表格粘贴、界面文案键迁移为英文源文案及原生托盘/通知英文、富文本字体颜色（rgb→十六进制）。七资源、更新签名/固定代码签名、两架构 App/DMG/许可/语言声明、公开下载与标准 latest 均核验；[Homebrew 39413158105](https://github.com/ansermail/anser/actions/runs/39413158105) 生成 [e0f05a3](https://github.com/ansermail/anser/commit/e0f05a337669d80b64d7b9c6927b5072830323df)，重复核验 [39413252399](https://github.com/ansermail/anser/actions/runs/39413252399) 幂等。本地门槛：前端 395（58 文件）、桌面脚本 35、Rust 393 通过/3 既有忽略、IMAP 39、生产构建、check:ui、check:i18n（1218 键）、Prettier、cargo fmt、diff 检查通过。本轮未验证正式包安装/原位升级、系统通知横幅、托盘实际点击、Intel 实机、Gmail 交互重写与外部代理/睡眠弱网。完整证据见 [发布工作点](RELEASE_0_1_24_WORKING.md)。
 
@@ -135,6 +139,10 @@
 0.1.12 源码提交、组织远程流水线、资源审计与正式发布已完成，见 RELEASE_012_WORKING.md；富文本原生图片/草稿/互发矩阵由用户下载后继续验收，入口仍为 RICH_BODY_WORKING.md。0.1.11 已完成远程发版和源码清理。后续优先接 SAVE-01B2 保存范围真实验收、SYNC-02B2 繁忙/网络睡眠矩阵，以及 VERIFICATION_011_WORKING.md 当前边界。安全合并/来源恢复/MOVE复杂冲突、本地单封与选中项永久清理/清空废纸篓、服务商与P1仍需开发；正式安装与升级安排独立验收。
 
 ## 当前执行检查点
+
+- **2026-10-22 当前入口：0.1.25 本地检查通过，准备提交标签**。执行 [发布工作点](RELEASE_0_1_25_WORKING.md) 的本地全量、云端构建、草稿资源审计、正式公开与 Homebrew 步骤，逐段记录实际证据；下方入口为历史。
+
+- **2026-10-22 当前入口：阅读布局本地核对完成，通知真实横幅点击待复验**。85 项相关回归、生产构建与浏览器/原生长对话阅读核对通过，详情见顶部及 [阅读工作点](READING_LAYOUT_WORKING.md)。下一步由实际系统通知点击复验绑定的单封 ID 与开头位置；若仍不一致，从原生通知 token、前端选中 ID 与正文滚动位置逐层查证，不能改成按主题猜最新邮件。此前 0.1.24 发布证据不代表本次修改已发布。
 
 - **2026-10-16 当前入口：0.1.18 发布完成**。源码 `71224095b21aefea3f59d2cc89c23a87a85fb86d` 已固定发布；远程 Checks/Pages/双架构与草稿全成功，七资源、签名、包内配置、公开下载及标准更新地址匹配，Homebrew 已同步。正式包实际安装/升级待用户核对，其他功能边界从下表继续。见 [发布工作点](RELEASE_0_1_18_WORKING.md)，下方为历史。
 

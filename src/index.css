@@ -798,6 +798,8 @@ kbd {
 .reader {
   flex: 1;
   min-width: 0;
+  min-height: 0;
+  overflow: hidden;
   display: flex;
   flex-direction: column;
   position: relative;
@@ -840,10 +842,19 @@ kbd {
   border-color: var(--border);
 }
 .reader-scroll {
-  flex: 1;
+  flex: 1 1 0;
   min-height: 0;
-  overflow: auto;
+  overflow: hidden;
+}
+.reader-scroll-content {
   padding: 12px 16px 20px;
+}
+.reader-scroll [data-slot="scroll-area-viewport"] {
+  overscroll-behavior: contain;
+  overflow-anchor: none;
+}
+.reader-scroll [data-slot="scroll-area-thumb"] {
+  background: color-mix(in srgb, var(--muted) 55%, transparent);
 }
 .message-tags {
   display: flex;
@@ -2435,7 +2446,7 @@ kbd {
   .message-list {
     width: 315px;
   }
-  .reader-scroll {
+  .reader-scroll-content {
     padding: 12px 16px 20px;
   }
   .workspace-panel {
@@ -2772,7 +2783,7 @@ kbd {
   .connection {
     max-width: 130px;
   }
-  .reader-scroll {
+  .reader-scroll-content {
     padding: 12px 16px 20px;
   }
 }
@@ -3228,6 +3239,8 @@ kbd {
 /* Conversation layout composes shadcn Cards, menus and reply controls. */
 .conversation-scroll {
   background: color-mix(in srgb, var(--secondary) 35%, var(--background));
+}
+.conversation-scroll .reader-scroll-content {
   padding: 16px 20px 24px;
 }
 .conversation-stream {
@@ -3387,9 +3400,8 @@ kbd {
 }
 .conversation-count {
   margin-left: auto;
-  font-size: 10px;
-  padding: 0 5px;
-  flex-shrink: 0;
+  min-width: 28px;
+  font-variant-numeric: tabular-nums;
 }
 .row-subject {
   display: flex;
@@ -3397,7 +3409,7 @@ kbd {
   gap: 4px;
 }
 @container (max-width: 640px) {
-  .conversation-scroll {
+  .conversation-scroll .reader-scroll-content {
     padding: 12px;
   }
   .conversation-turn {

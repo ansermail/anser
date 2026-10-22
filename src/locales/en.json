@@ -469,6 +469,7 @@
   "Send reply": "Send reply",
   "The original account is paused or removed. Enable it to reply.": "The original account is paused or removed. Enable it to reply.",
   "messages (conversation)": " messages",
+  "{value0} messages in this conversation": "{value0} messages in this conversation",
   "Chronological order": "Chronological order",
   "Could not load conversation": "Could not load conversation",
   "Reload conversation": "Reload conversation",

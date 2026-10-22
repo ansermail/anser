@@ -4,6 +4,7 @@ import {
   useEffect,
   useRef,
   useState,
+  type ComponentProps,
   type RefObject,
 } from "react";
 import {
@@ -22,6 +23,7 @@ import { toast } from "sonner";
 import { Button } from "./ui/button";
 import { Card } from "./ui/card";
 import { Badge } from "./ui/badge";
+import { ScrollArea } from "./ui/scroll-area";
 import { Textarea } from "./ui/textarea";
 import {
   DropdownMenu,
@@ -553,6 +555,8 @@ export function ConversationReader({
   const stream = useRef<HTMLDivElement>(null);
   const pinned = useRef(true);
   const newest = useRef("");
+  const anchoring = useRef(true);
+  const automaticScrollTop = useRef(0);
   const loaded = useCallback(
     (detail: Detail) =>
       setDetails((d) =>
@@ -563,6 +567,8 @@ export function ConversationReader({
   const bottom = useCallback(() => {
     const scroll = scrollRef.current;
     if (scroll) scroll.scrollTo(0, scroll.scrollHeight);
+    anchoring.current = false;
+    automaticScrollTop.current = scroll?.scrollTop || 0;
     pinned.current = true;
     setNewBelow(false);
   }, [scrollRef]);
@@ -597,24 +603,73 @@ export function ConversationReader({
     const scroll = scrollRef.current,
       content = stream.current;
     if (!scroll || !content) return;
+    const root = scroll.closest('[data-slot="scroll-area"]')!;
     const changed = () => {
-      if (pinned.current) scroll.scrollTo(0, scroll.scrollHeight);
+      if (anchoring.current) {
+        const turn = [
+          ...content.querySelectorAll<HTMLElement>("[data-mail-id]"),
+        ].find((element) => element.dataset.mailId === selected.mail.id);
+        if (!turn) return;
+        // Start at the selected message's header, even when a long thread's
+        // earlier bodies finish loading later. Never scroll the outer pane.
+        scroll.scrollTop +=
+          turn.getBoundingClientRect().top - scroll.getBoundingClientRect().top;
+        pinned.current = false;
+      } else if (pinned.current) scroll.scrollTo(0, scroll.scrollHeight);
+      automaticScrollTop.current = scroll.scrollTop;
     };
     const scrolled = () => {
+      // WebKit also emits scroll during iframe/body layout. Only explicit
+      // user input releases the initial selected-message anchor.
+      if (anchoring.current) return;
+      if (Math.abs(scroll.scrollTop - automaticScrollTop.current) < 2) return;
       pinned.current =
         scroll.scrollHeight - scroll.scrollTop - scroll.clientHeight < 96;
       if (pinned.current) setNewBelow(false);
     };
-    const observer = new ResizeObserver(changed);
+    const interact = () => {
+      anchoring.current = false;
+    };
+    const key = (event: Event) => {
+      if (
+        [
+          "ArrowUp",
+          "ArrowDown",
+          "PageUp",
+          "PageDown",
+          "Home",
+          "End",
+          " ",
+        ].includes((event as KeyboardEvent).key)
+      )
+        interact();
+    };
+    let frame = 0;
+    const schedule = () => {
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(changed);
+    };
+    const observer = new ResizeObserver(schedule);
     observer.observe(content);
     scroll.addEventListener("scroll", scrolled);
-    const frame = requestAnimationFrame(changed);
+    root.addEventListener("wheel", interact, { passive: true, capture: true });
+    root.addEventListener("touchstart", interact, {
+      passive: true,
+      capture: true,
+    });
+    root.addEventListener("pointerdown", interact, true);
+    root.addEventListener("keydown", key, true);
+    schedule();
     return () => {
       cancelAnimationFrame(frame);
       observer.disconnect();
       scroll.removeEventListener("scroll", scrolled);
+      root.removeEventListener("wheel", interact, true);
+      root.removeEventListener("touchstart", interact, true);
+      root.removeEventListener("pointerdown", interact, true);
+      root.removeEventListener("keydown", key, true);
     };
-  }, [scrollRef, messages]);
+  }, [scrollRef, messages, selected.mail.id]);
   const own = (mail: Mail) =>
     parseAddresses(mail.sender).some(
       (a) =>
@@ -636,38 +691,52 @@ export function ConversationReader({
       !selected.mail.references?.length)
   ) {
     return (
-      <div
+      <ScrollArea
         className="reader-scroll"
-        data-mail-debug-region=""
-        id="mail-reader-content"
-        ref={scrollRef}
+        type="always"
+        viewportRef={scrollRef}
+        viewportProps={
+          {
+            id: "mail-reader-content",
+            "data-mail-debug-region": "",
+          } as ComponentProps<"div">
+        }
       >
-        <ParseWarnings mail={selected.mail} />
-        <TranslatableMailBody
-          key={`${selected.mail.id}:${selected.mail.hash}`}
-          html={selected.html}
-          body={selected.mail.body}
-          actionsContainer={translationActions}
-          onOpenLink={onLink}
-        />
-        <MailAttachments
-          mailId={selected.mail.id}
-          demo={demo}
-          attachments={selected.attachments}
-          onDownload={(index, name) => onAttachment(selected.mail, index, name)}
-        />
-      </div>
+        <div className="reader-scroll-content">
+          <ParseWarnings mail={selected.mail} />
+          <TranslatableMailBody
+            key={`${selected.mail.id}:${selected.mail.hash}`}
+            html={selected.html}
+            body={selected.mail.body}
+            actionsContainer={translationActions}
+            onOpenLink={onLink}
+          />
+          <MailAttachments
+            mailId={selected.mail.id}
+            demo={demo}
+            attachments={selected.attachments}
+            onDownload={(index, name) =>
+              onAttachment(selected.mail, index, name)
+            }
+          />
+        </div>
+      </ScrollArea>
     );
   }
   return (
     <>
-      <div
+      <ScrollArea
         className="reader-scroll conversation-scroll"
-        data-mail-debug-region=""
-        id="mail-reader-content"
-        ref={scrollRef}
+        type="always"
+        viewportRef={scrollRef}
+        viewportProps={
+          {
+            id: "mail-reader-content",
+            "data-mail-debug-region": "",
+          } as ComponentProps<"div">
+        }
       >
-        <div className="conversation-stream" ref={stream}>
+        <div className="reader-scroll-content conversation-stream" ref={stream}>
           <div className="conversation-start">
             <Badge variant="secondary">
               {messages.length}
@@ -705,7 +774,7 @@ export function ConversationReader({
             />
           ))}
         </div>
-      </div>
+      </ScrollArea>
       {newBelow && (
         <Button
           variant="secondary"
