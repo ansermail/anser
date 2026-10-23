@@ -85,7 +85,7 @@ export function NetworkProxySettings() {
 
   return (
     <>
-      <Card>
+      <Card className="network-proxy-card">
         <CardHeader>
           <CardTitle>{t("Network proxy")}</CardTitle>
           <CardDescription>
@@ -109,25 +109,33 @@ export function NetworkProxySettings() {
             />
           </CardAction>
         </CardHeader>
-        {proxy && (
-          <CardContent className="flex flex-wrap items-center justify-between gap-4">
-            <p className="text-sm">
-              {proxy.name} · {proxy.kind.toUpperCase()} · {proxy.host}:
-              {proxy.port}
+        <CardContent className="flex flex-wrap items-center justify-between gap-4">
+          {proxy ? (
+            <>
+              <p className="text-sm">
+                {proxy.name} · {proxy.kind.toUpperCase()} · {proxy.host}:
+                {proxy.port}
+              </p>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  setDraft(proxy);
+                  setPassword("");
+                  setOpen(true);
+                }}
+              >
+                {t("Edit proxy")}
+              </Button>
+            </>
+          ) : (
+            <p className="text-sm text-muted-foreground leading-relaxed">
+              {t(
+                "Direct connection. Turn on the switch above to configure a SOCKS5, HTTP or HTTPS proxy.",
+              )}
             </p>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => {
-                setDraft(proxy);
-                setPassword("");
-                setOpen(true);
-              }}
-            >
-              {t("Edit proxy")}
-            </Button>
-          </CardContent>
-        )}
+          )}
+        </CardContent>
       </Card>
       <Dialog
         open={open}

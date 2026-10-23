@@ -1,6 +1,13 @@
 import { t } from "@/lib/i18n";
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { Archive, History, Info, Mail, SlidersHorizontal } from "lucide-react";
+import {
+  Archive,
+  History,
+  Info,
+  Mail,
+  SlidersHorizontal,
+  SquarePen,
+} from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "./ui/tabs";
 import { Badge } from "./ui/badge";
 
@@ -25,6 +32,13 @@ const sections = [
       return t("Preferences");
     },
     icon: SlidersHorizontal,
+  },
+  {
+    value: "composing",
+    get label() {
+      return t("Reading & composing");
+    },
+    icon: SquarePen,
   },
   {
     value: "tasks",

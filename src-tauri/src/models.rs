@@ -227,6 +227,8 @@ pub struct Query {
     #[serde(default)]
     pub attachments_only: bool,
     #[serde(default)]
+    pub exclude_sent: bool,
+    #[serde(default)]
     pub search_field: String,
     #[serde(default)]
     pub list_mode: ListMode,

@@ -1,5 +1,9 @@
 # 发布与应用内更新
 
+## 0.1.26 发布准备（2026-10-23）
+
+用户已要求提交设置页布局优化、应用偏好单列整行设计、邮件签名上下结构、导航右键防误选修复与“过滤已发送邮件”筛选选项，并在核查双向 IMAP IDLE 实时收取通过后触发组织仓库远程双架构流水线发布 0.1.26。五处版本已同步为 `0.1.26`，发布说明见 [0.1.26](releases/v0.1.26.md)；本地全量门槛、固定源码提交、远程双架构构建、资源审计与正式发布分别记录于 [0.1.26 发布工作点](RELEASE_0_1_26_WORKING.md)。当前公开 latest 仍为 0.1.25。
+
 ## 当前正式版本：0.1.25（2026-10-22）
 
 0.1.25 Alpha 于 2026-10-22 11:29:39（Asia/Shanghai）正式发布为 latest，固定源码 `6d965c3e1f37a83e130969e726c503572fb6fdc5`。[Release macOS 39715043732](https://github.com/ansermail/anser/actions/runs/39715043732)、[Checks 39715044036](https://github.com/ansermail/anser/actions/runs/39715044036) 与 [Pages 39715044018](https://github.com/ansermail/anser/actions/runs/39715044018) 全部成功，[0.1.25 正式版本](https://github.com/ansermail/anser/releases/tag/v0.1.25) 已公开。

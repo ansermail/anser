@@ -1,6 +1,6 @@
 import { t } from "@/lib/i18n";
 import { useId } from "react";
-import { Paperclip, SlidersHorizontal, Star } from "lucide-react";
+import { Paperclip, Send, SlidersHorizontal, Star } from "lucide-react";
 import type { Query } from "@/lib/types";
 import { Button } from "./ui/button";
 import { Checkbox } from "./ui/checkbox";
@@ -26,7 +26,12 @@ import { MailDateFilter } from "./mail-date-filter";
 
 type Filters = Pick<
   Query,
-  "starredOnly" | "attachmentsOnly" | "searchField" | "dateFrom" | "dateBefore"
+  | "starredOnly"
+  | "attachmentsOnly"
+  | "excludeSent"
+  | "searchField"
+  | "dateFrom"
+  | "dateBefore"
 >;
 
 export function MailFilters({
@@ -37,9 +42,11 @@ export function MailFilters({
   onChange: (filters: Partial<Filters>) => void;
 }) {
   const id = useId();
+  const excludeSent = query.excludeSent !== false;
   const active = !!(
     query.starredOnly ||
     query.attachmentsOnly ||
+    !excludeSent ||
     query.searchField ||
     query.dateFrom ||
     query.dateBefore
@@ -97,6 +104,19 @@ export function MailFilters({
                 <FieldLabel htmlFor={`${id}-attachment`}>
                   <Paperclip className="size-4" />
                   {t("Has attachments")}
+                </FieldLabel>
+              </Field>
+              <Field orientation="horizontal">
+                <Checkbox
+                  id={`${id}-exclude-sent`}
+                  checked={excludeSent}
+                  onCheckedChange={(checked) =>
+                    onChange({ excludeSent: checked === true })
+                  }
+                />
+                <FieldLabel htmlFor={`${id}-exclude-sent`}>
+                  <Send className="size-4" />
+                  {t("Exclude sent mail")}
                 </FieldLabel>
               </Field>
             </FieldGroup>

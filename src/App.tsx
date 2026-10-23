@@ -253,6 +253,7 @@ export default function App() {
       folder: "",
       limit: 200,
       unreadOnly: false,
+      excludeSent: true,
       listMode: savedListMode(),
     }),
     [expandedAccounts, setExpandedAccounts] = useState<string[]>([]),
@@ -402,6 +403,7 @@ export default function App() {
           remoteFolder: mail.savedLocally === false ? mail.sourceFolder : "",
           search: "",
           unreadOnly: false,
+          excludeSent: true,
           limit: 200,
           listMode: queryRef.current.listMode,
         });
@@ -874,6 +876,7 @@ export default function App() {
       search: "",
       limit: 200,
       unreadOnly: false,
+      excludeSent: true,
       listMode: query.listMode,
     });
   }
@@ -1318,6 +1321,7 @@ export default function App() {
       search: "",
       limit: 200,
       unreadOnly: false,
+      excludeSent: true,
       listMode: query.listMode,
     });
     setSearch("");
@@ -2175,17 +2179,32 @@ export default function App() {
                         <h2>{t("Preferences")}</h2>
                         <p>
                           {t(
-                            "Configure notifications, network access, reading and composing.",
+                            "Configure display language, notifications, startup, background checks and network proxy.",
                           )}
                         </p>
                       </div>
                     </div>
-                    <LanguageSettings />
-                    <StorageTools testMailId={selected} />
-                    <NetworkProxySettings />
-                    <Separator className="settings-section-divider" />
-                    <MailTranslationSettings />
+                    <div className="settings-preferences-grid">
+                      <LanguageSettings />
+                      <StorageTools testMailId={selected} />
+                      <NetworkProxySettings />
+                    </div>
+                  </>
+                }
+                composing={
+                  <>
+                    <div className="settings-section-heading">
+                      <div>
+                        <h2>{t("Reading & composing")}</h2>
+                        <p>
+                          {t(
+                            "Configure email signatures and AI translation for reading and writing mail.",
+                          )}
+                        </p>
+                      </div>
+                    </div>
                     <MailSignatures accounts={data.accounts} />
+                    <MailTranslationSettings />
                   </>
                 }
                 tasks={

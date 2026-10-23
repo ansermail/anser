@@ -211,6 +211,7 @@ fn bindings(
         before.into(),
         (q.remote_folder_tree as i64).into(),
         q.remote_folder_delimiter.clone().into(),
+        (q.exclude_sent as i64).into(),
     ]
 }
 fn filtered(indexed: bool) -> String {
@@ -270,11 +271,11 @@ impl Store {
             let mut values=bindings(request,from,before,true);
             values.extend([instant.into(),id.to_string().into(),if request.query.list_mode==ListMode::Conversations {root.unwrap_or_default()}else{String::new()}.into()]);
             let (condition,order)=if direction=="next" {
-                ("CASE WHEN ?15 IS NULL THEN u.instant IS NULL AND u.id>?16 ELSE u.instant<?15 OR u.instant IS NULL OR (u.instant=?15 AND u.id>?16) END","u.instant DESC,u.id ASC")
+                ("CASE WHEN ?16 IS NULL THEN u.instant IS NULL AND u.id>?17 ELSE u.instant<?16 OR u.instant IS NULL OR (u.instant=?16 AND u.id>?17) END","u.instant DESC,u.id ASC")
             }else{
-                ("CASE WHEN ?15 IS NULL THEN u.instant IS NOT NULL OR (u.instant IS NULL AND u.id<?16) ELSE u.instant>?15 OR (u.instant=?15 AND u.id<?16) END","u.instant ASC,u.id DESC")
+                ("CASE WHEN ?16 IS NULL THEN u.instant IS NOT NULL OR (u.instant IS NULL AND u.id<?17) ELSE u.instant>?16 OR (u.instant=?16 AND u.id<?17) END","u.instant ASC,u.id DESC")
             };
-            let sql=format!("{} SELECT listing.data,u.is_read,u.starred,u.has_attachments,u.root,u.count FROM units u JOIN message_listing listing ON listing.id=u.id WHERE ({condition}) AND (?17='' OR u.root!=?17) ORDER BY {order} LIMIT 1",units(request));
+            let sql=format!("{} SELECT listing.data,u.is_read,u.starred,u.has_attachments,u.root,u.count FROM units u JOIN message_listing listing ON listing.id=u.id WHERE ({condition}) AND (?18='' OR u.root!=?18) ORDER BY {order} LIMIT 1",units(request));
             let mut stmt=tx.prepare(&sql).map_err(err)?;let mut rows=stmt.query(params_from_iter(values.iter())).map_err(err)?;
             let mail=if let Some(row)=rows.next().map_err(err)? {
                 let mut mail:Mail=serde_json::from_str(&row.get::<_,String>(0).map_err(err)?).map_err(err)?;
@@ -311,7 +312,7 @@ impl Store {
                 let mut anchor = values.clone();
                 anchor.push(c.id.clone().into());
                 anchor.push(c.instant.into());
-                let exists:bool=tx.query_row(&format!("{cte} SELECT EXISTS(SELECT 1 FROM units WHERE id=?15 AND instant IS ?16)"),params_from_iter(anchor.iter()),|r|r.get(0)).map_err(err)?;
+                let exists:bool=tx.query_row(&format!("{cte} SELECT EXISTS(SELECT 1 FROM units WHERE id=?16 AND instant IS ?17)"),params_from_iter(anchor.iter()),|r|r.get(0)).map_err(err)?;
                 if !exists {
                     return Err("分页位置无效，请重新搜索".into());
                 }
@@ -325,8 +326,8 @@ impl Store {
                 ((size + 1) as i64).into(),
             ]);
             let sql=format!("{cte} SELECT listing.data,u.instant,u.is_read,u.starred,u.has_attachments,u.root,u.count FROM units u JOIN message_listing listing ON listing.id=u.id
-                WHERE ?15=0 OR CASE WHEN ?16 IS NULL THEN u.instant IS NULL AND u.id>?17 ELSE u.instant<?16 OR u.instant IS NULL OR (u.instant=?16 AND u.id>?17) END
-                ORDER BY u.instant DESC,u.id ASC LIMIT ?18");
+                WHERE ?16=0 OR CASE WHEN ?17 IS NULL THEN u.instant IS NULL AND u.id>?18 ELSE u.instant<?17 OR u.instant IS NULL OR (u.instant=?17 AND u.id>?18) END
+                ORDER BY u.instant DESC,u.id ASC LIMIT ?19");
             let mut stmt = tx.prepare(&sql).map_err(err)?;
             let mut rows = stmt
                 .query(params_from_iter(page_values.iter()))
@@ -790,6 +791,34 @@ mod tests {
                 );
             }
         }
+    }
+    #[test]
+    fn exclude_sent_filters_sent_messages_except_in_sent_view_and_remote_folder_scope() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = Store::new(dir.path().into()).unwrap();
+        let a = account();
+        store.save_account(&a).unwrap();
+        let inbox_raw = b"From: alice@example.com\r\nTo: test@example.com\r\nSubject: Inbox message\r\nMessage-ID: <inbox@example.com>\r\nDate: Thu, 1 Oct 2026 08:00:00 +0800\r\n\r\nInbox";
+        let sent_raw = b"From: test@example.com\r\nTo: alice@example.com\r\nSubject: Sent message\r\nMessage-ID: <sent@example.com>\r\nDate: Thu, 1 Oct 2026 09:00:00 +0800\r\n\r\nSent";
+        store.ingest(&a, "INBOX", "1", inbox_raw, false).unwrap();
+        store.ingest(&a, "Sent", "2", sent_raw, true).unwrap();
+        let mut r = request(ListMode::Messages, 20);
+        r.query.view = "all".into();
+        r.query.exclude_sent = true;
+        let filtered_page = store.mail_page(&r).unwrap();
+        assert_eq!(filtered_page.snapshot.matched, 1);
+        assert_eq!(filtered_page.snapshot.messages[0].subject, "Inbox message");
+        assert_eq!(store.snapshot(&r.query).unwrap().matched, 1);
+
+        r.query.exclude_sent = false;
+        let all_page = store.mail_page(&r).unwrap();
+        assert_eq!(all_page.snapshot.matched, 2);
+        assert_eq!(store.snapshot(&r.query).unwrap().matched, 2);
+
+        r.query.exclude_sent = true;
+        r.query.view = "sent".into();
+        assert_eq!(store.mail_page(&r).unwrap().snapshot.matched, 1);
+        assert_eq!(store.snapshot(&r.query).unwrap().matched, 1);
     }
     #[test]
     fn stale_cursor_resets_read_changes_without_rebuilding_topology_and_rejects_wrong_scopes() {

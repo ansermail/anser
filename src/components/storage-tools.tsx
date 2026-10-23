@@ -7,6 +7,7 @@ import { Switch } from "./ui/switch";
 import { Label } from "./ui/label";
 import {
   Card,
+  CardAction,
   CardHeader,
   CardTitle,
   CardDescription,
@@ -96,12 +97,76 @@ export function StorageTools({ testMailId = "" }: { testMailId?: string }) {
   }
   return (
     <div className="storage-tools">
-      <Card>
+      <Card className="storage-checks-card">
+        <CardHeader>
+          <CardTitle>{t("Background checks")}</CardTitle>
+          <CardDescription className="flex flex-col gap-1 leading-relaxed">
+            <span>{t("Choose how often to check for new mail.")}</span>
+            <span>
+              {t(
+                "IMAP prioritizes real-time mail. This interval covers periodic checks and POP3. Checks continue after closing the window and catch up after waking.",
+              )}
+            </span>
+          </CardDescription>
+          <CardAction className="self-center">
+            <div className="settings-tool-row">
+              <SelectField
+                aria-label={t("Background check interval")}
+                value={interval}
+                disabled={!ready || saving}
+                onValueChange={(value) => setInterval(Number(value))}
+              >
+                {[1, 5, 10, 15, 30, 60].map((n) => (
+                  <SelectOption key={n} value={n}>
+                    {t("Every ")}
+                    {n}
+                    {t(" minutes")}
+                  </SelectOption>
+                ))}
+              </SelectField>
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={
+                  !ready ||
+                  saving ||
+                  interval === preferences.syncIntervalMinutes
+                }
+                onClick={() => void save()}
+              >
+                {saving ? t("Saving…") : t("Save")}
+              </Button>
+            </div>
+          </CardAction>
+        </CardHeader>
+      </Card>
+      <Card className="storage-notifications-card">
         <CardHeader>
           <CardTitle>{t("Notifications & startup")}</CardTitle>
           <CardDescription>
             {t("Choose notification and startup behavior.")}
           </CardDescription>
+          <CardAction>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() =>
+                void call("test_notification", { id: testMailId || null })
+                  .then(() =>
+                    toast.success(
+                      isDemo()
+                        ? t("Demo mode does not send system notifications")
+                        : t(
+                            "Test notification submitted. Check Notification Center.",
+                          ),
+                    ),
+                  )
+                  .catch((e) => toast.error(String(e)))
+              }
+            >
+              {t("Test system notification")}
+            </Button>
+          </CardAction>
         </CardHeader>
         <CardContent className="flex flex-col gap-4">
           <div className="settings-tool-row justify-between">
@@ -135,28 +200,25 @@ export function StorageTools({ testMailId = "" }: { testMailId?: string }) {
               "System notifications cover new mail and successful, failed or unconfirmed sends. Initial imports do not notify. Notification banners are controlled by macOS settings.",
             )}
           </p>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() =>
-              void call("test_notification", { id: testMailId || null })
-                .then(() =>
-                  toast.success(
-                    isDemo()
-                      ? t("Demo mode does not send system notifications")
-                      : t(
-                          "Test notification submitted. Check Notification Center.",
-                        ),
-                  ),
-                )
-                .catch((e) => toast.error(String(e)))
-            }
-          >
-            {t("Test system notification")}
-          </Button>
           <Separator />
-          <div className="settings-tool-row justify-between">
-            <Label htmlFor="auto-start">{t("Launch at login")}</Label>
+          <div className="settings-tool-row items-center justify-between gap-4">
+            <div className="flex min-w-0 flex-col gap-1">
+              <Label htmlFor="auto-start">{t("Launch at login")}</Label>
+              <p className="text-sm text-muted-foreground leading-relaxed">
+                {desktop?.autoStartAvailable === false
+                  ? t(
+                      "Development previews require the frontend server. Enable launch at login in the released app.",
+                    )
+                  : t(
+                      "Start in the background after logging into your Mac, then continue checking mail and scheduled sends.",
+                    )}
+              </p>
+              {isDemo() && (
+                <p className="text-sm text-muted-foreground leading-relaxed">
+                  {t("Demo mode does not change system login items.")}
+                </p>
+              )}
+            </div>
             <Switch
               id="auto-start"
               checked={desktop?.autoStart || false}
@@ -168,61 +230,6 @@ export function StorageTools({ testMailId = "" }: { testMailId?: string }) {
               onCheckedChange={(enabled) => void autoStart(enabled)}
             />
           </div>
-          <p className="text-sm text-muted-foreground leading-relaxed">
-            {desktop?.autoStartAvailable === false
-              ? t(
-                  "Development previews require the frontend server. Enable launch at login in the released app.",
-                )
-              : t(
-                  "Start in the background after logging into your Mac, then continue checking mail and scheduled sends.",
-                )}
-          </p>
-          {isDemo() && (
-            <p className="text-sm text-muted-foreground leading-relaxed">
-              {t("Demo mode does not change system login items.")}
-            </p>
-          )}
-        </CardContent>
-      </Card>
-      <Card>
-        <CardHeader>
-          <CardTitle>{t("Background checks")}</CardTitle>
-          <CardDescription>
-            {t("Choose how often to check for new mail.")}
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="flex flex-col gap-4">
-          <div className="settings-tool-row">
-            <SelectField
-              aria-label={t("Background check interval")}
-              value={interval}
-              disabled={!ready || saving}
-              onValueChange={(value) => setInterval(Number(value))}
-            >
-              {[1, 5, 10, 15, 30, 60].map((n) => (
-                <SelectOption key={n} value={n}>
-                  {t("Every ")}
-                  {n}
-                  {t(" minutes")}
-                </SelectOption>
-              ))}
-            </SelectField>
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={
-                !ready || saving || interval === preferences.syncIntervalMinutes
-              }
-              onClick={() => void save()}
-            >
-              {saving ? t("Saving…") : t("Save")}
-            </Button>
-          </div>
-          <p className="text-sm text-muted-foreground leading-relaxed">
-            {t(
-              "IMAP prioritizes real-time mail. This interval covers periodic checks and POP3. Checks continue after closing the window and catch up after waking.",
-            )}
-          </p>
         </CardContent>
       </Card>
     </div>

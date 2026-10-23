@@ -146,6 +146,7 @@
   "Account color indicator": "邮箱颜色标识",
   "Removed account": "已移除账号",
   "Has attachments": "包含附件",
+  "Exclude sent mail": "过滤已发送邮件",
   "Mark as unread": "标记为未读",
   "No messages found": "没有找到邮件",
   "All quiet here": "这里很安静",
@@ -1217,5 +1218,11 @@
   "Set a target folder in the account": "请在账号中设置目标目录",
   "Choose a single target in the account": "请在账号中指定唯一目标",
   "Target folder unavailable": "目标目录不可用",
-  "Already in this folder": "已在此目录"
+  "Already in this folder": "已在此目录",
+  "Reading & composing": "阅读与写信",
+  "Configure email signatures and AI translation for reading and writing mail.": "设置写信签名与阅读时的 AI 邮件翻译。",
+  "Configure display language, notifications, startup, background checks and network proxy.": "设置界面语言、系统通知、开机自启、后台检查与网络代理。",
+  "Direct connection. Turn on the switch above to configure a SOCKS5, HTTP or HTTPS proxy.": "当前直连访问。开启上方开关可配置 SOCKS5、HTTP 或 HTTPS 全局代理。",
+  "Plain text signature appended below the message body.": "纯文本签名附加在邮件正文下方。",
+  "Supports standard HTML tags and inline styles.": "支持标准 HTML 标签与内联样式。"
 }
