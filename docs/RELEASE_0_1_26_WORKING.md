@@ -2,10 +2,12 @@
 
 更新：2026-10-23。用户明确要求“提交代码 触发流水线 发版”，授权同步版本、提交推送、触发组织仓库远程双架构流水线、核验发布资源并正式发布。
 
-## 当前状态：本地全量门槛与远程发布准备中
+## 当前状态：正式发布与 Homebrew 同步完成
 
-- 五处版本已同步为 `0.1.26`（`package.json`、`package-lock.json`、`src-tauri/Cargo.toml`、`src-tauri/Cargo.lock`、`src-tauri/tauri.conf.json`），发布说明见 [v0.1.26](releases/v0.1.26.md)。
-- 当前公开 latest 仍为 `0.1.25`；待本地全量门槛通过、提交推送 `main` 并推送 `v0.1.26` 标签触发 `Release macOS` 双架构构建、完成七资源与签名审计后再正式发布。
+- 0.1.26 Alpha 于 2026-10-23 17:44:15（Asia/Shanghai）正式发布为 latest，[公开版本](https://github.com/ansermail/anser/releases/tag/v0.1.26)。Release ID `421594574`（`RE_kwDOVB755M4ZIQXO`）。
+- 固定源码 `f48904ce35eb3c29cb56a9111c14ac0f6542bbef` 已进入 `main`；唯一注释标签 `v0.1.26` 解引用为同一源码，发布前后未变。五处版本一致，更新公钥和应用标识保持不变。
+- [Release macOS 39921639505](https://github.com/ansermail/anser/actions/runs/39921639505)、[Checks 39921639584](https://github.com/ansermail/anser/actions/runs/39921639584)、[Preview Pages 39921639544](https://github.com/ansermail/anser/actions/runs/39921639544) 全部成功。
+- [Homebrew 39934030738](https://github.com/ansermail/anser/actions/runs/39934030738) 已成功，主仓库 [配方提交 ec205ab](https://github.com/ansermail/anser/commit/ec205ab89a1cdc36fecb78b740df02312e9f1398) 仅更新 `Casks/anser.rb`。两架构 DMG 摘要与公开资源及独立审计一致；重复核验 [39935459365](https://github.com/ansermail/anser/actions/runs/39935459365) 成功并返回 `Cask is already current; no commit needed.`，远端 `main` 未产生多余提交。
 
 ## 本版包含内容
 
@@ -27,3 +29,24 @@
 - `npm run test:rust`：394 通过、3 项既有条件忽略；二进制与 doc-tests 也通过。
 - `cargo test --manifest-path src-tauri/vendor/imap-proto/Cargo.toml`：39 项通过。
 - `npm run build`、`npm run build:preview`（Pages 隔离）、`npm run format:check`、`cargo fmt --manifest-path src-tauri/Cargo.toml -- --check`、`npm run release:check`、`git diff --check` 均通过；双语配置 1226 键。
+- 云端 Checks 与 Release check 均独立通过同样的前端/桌面/Rust/IMAP、格式及生产构建；两架构 build 和 draft job 全部成功。
+- 七资源长度/SHA-256 与 GitHub 元信息一致；说明原文（含末尾换行）、固定源码、Release body、`latest.json` 一致，两架构 URL 与签名文件一致。`minisign` 用既有公钥独立核验两份更新归档通过。
+- 两包版本 `0.1.26`、`arm64` / `x86_64`、标识 `dev.maildesk.desktop`、最低 macOS 12、`zh-Hans` / `en` 声明、EML 关联与许可资源通过。固定代码签名与精确 DR 核验通过：`identifier "dev.maildesk.desktop" and certificate root = H"9bdb640cfd84667d5ea3edeb37859c316abb4109"`。
+- 原生 OAuth 编译参数以本机既有配置在内存核对，不打印值；两架构 DMG 校验有效，只读挂载后的 App 全部文件和符号链接与对应更新归档一致，核验后卸载。
+- 正式发布后七资源匿名公开下载与审计副本逐字节一致；标准 `/releases/latest/download/latest.json`（无查询参数）完全匹配。发布前后 asset ID/长度/摘要和标签源码均未变。
+
+## 七资源公开核验
+
+| 资源 | 字节数 | SHA-256 |
+| --- | ---: | --- |
+| `Anser_0.1.26_aarch64.app.tar.gz` | 12505325 | `195e3d393623cb9e9be6f1deaa1cdf115a308e57a7ff9a10937a964b0f5c8a91` |
+| `Anser_0.1.26_aarch64.app.tar.gz.sig` | 424 | `0ae5dacf50b73080751c4c74dfe0d3fafcdab316db7882edb1acb3b7c2585bd9` |
+| `Anser_0.1.26_aarch64.dmg` | 13073840 | `95a368af5e87b00d1c32575a34f67c1ab39d1682efda76669a77d2125712f73c` |
+| `Anser_0.1.26_x86_64.app.tar.gz` | 13109742 | `cb1ba8e4c9793d777aa8d6474caff73d12de01cf12ff4e73a020b3a5ae149950` |
+| `Anser_0.1.26_x86_64.app.tar.gz.sig` | 424 | `417f33e0c15e61eabbde9757f4f877abb4611c73479e10cdff6ff5acd483e016` |
+| `Anser_0.1.26_x86_64.dmg` | 13754967 | `f32100be97735d3cbac46f227da1371417a48f17615e3102c820580fc447819f` |
+| `latest.json` | 4326 | `3f25e8e7a38a7891994b7d32fcce872b52f56b7a1be2dfaf6476fbab58606f07` |
+
+## 验收边界与后续
+
+正式包实际安装与应用内原位升级、Intel 实机运行、系统通知真实横幅点击仍未复验；项目自签名不等同 Apple Developer ID、公证或 Gatekeeper 认可。本版代码、完整自动检查、双架构云端构建、独立产物审计、公开发布与 Homebrew 同步/幂等均已完成。

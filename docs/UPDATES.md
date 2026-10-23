@@ -1,10 +1,16 @@
 # 发布与应用内更新
 
-## 0.1.26 发布准备（2026-10-23）
+## 当前正式版本：0.1.26（2026-10-23）
 
-用户已要求提交设置页布局优化、应用偏好单列整行设计、邮件签名上下结构、导航右键防误选修复与“过滤已发送邮件”筛选选项，并在核查双向 IMAP IDLE 实时收取通过后触发组织仓库远程双架构流水线发布 0.1.26。五处版本已同步为 `0.1.26`，发布说明见 [0.1.26](releases/v0.1.26.md)；本地全量门槛、固定源码提交、远程双架构构建、资源审计与正式发布分别记录于 [0.1.26 发布工作点](RELEASE_0_1_26_WORKING.md)。当前公开 latest 仍为 0.1.25。
+0.1.26 Alpha 于 2026-10-23 17:44:15（Asia/Shanghai）正式发布为 latest，固定源码 `f48904ce35eb3c29cb56a9111c14ac0f6542bbef`。[Release macOS 39921639505](https://github.com/ansermail/anser/actions/runs/39921639505)、[Checks 39921639584](https://github.com/ansermail/anser/actions/runs/39921639584) 与 [Preview Pages 39921639544](https://github.com/ansermail/anser/actions/runs/39921639544) 全部成功，[0.1.26 正式版本](https://github.com/ansermail/anser/releases/tag/v0.1.26) 已公开。
 
-## 当前正式版本：0.1.25（2026-10-22）
+本版优化设置页整体左对齐网格并扩充为六类导航（新增「阅读与写信」承载邮件签名与大模型翻译），将「应用偏好」改为单列整行卡片，「邮件签名」改为顶部工具栏 + 中部 1:1 等宽等高一致圆角编辑/实时预览 + 底部保存按钮与状态 Badge；在搜索栏旁「邮件筛选」中新增默认勾选的「过滤已发送邮件」；修复左侧导航与按钮右键点击出现黑底字符选中的问题，并在开发预览复验腾讯企业邮箱与 QQ 邮箱双向 IMAP IDLE 实时推送收取（SMTP 确认后 2.95s 与 4.67s 触发「服务器实时通知」）。
+
+七资源长度/SHA-256、既有更新公钥和双架构更新签名、固定代码签名及精确 DR、App 版本/架构/标识/语言/EML/许可/原生 OAuth 编译配置、DMG 与更新归档内容、匿名公开下载与标准 latest 更新端点均核验通过。[Homebrew 39934030738](https://github.com/ansermail/anser/actions/runs/39934030738) 已成功，[配方提交 ec205ab](https://github.com/ansermail/anser/commit/ec205ab89a1cdc36fecb78b740df02312e9f1398) 仅修改主仓库 `Casks/anser.rb`；两架构摘要与公开资源一致，重复运行 [39935459365](https://github.com/ansermail/anser/actions/runs/39935459365) 核验幂等。
+
+本轮本地完整门槛为前端 399（59 文件）、桌面脚本 35、Rust 394 通过/3 项既有忽略、IMAP 39，格式/版本/1226 双语键/生产构建/Pages 隔离均通过。系统通知真实横幅点击、正式安装/原位升级、Intel 实机仍未复验，不以构建和静态产物代替。完整说明见 [0.1.26](releases/v0.1.26.md)，证据见 [发布工作点](RELEASE_0_1_26_WORKING.md)。
+
+## 前一正式版本：0.1.25（2026-10-22）
 
 0.1.25 Alpha 于 2026-10-22 11:29:39（Asia/Shanghai）正式发布为 latest，固定源码 `6d965c3e1f37a83e130969e726c503572fb6fdc5`。[Release macOS 39715043732](https://github.com/ansermail/anser/actions/runs/39715043732)、[Checks 39715044036](https://github.com/ansermail/anser/actions/runs/39715044036) 与 [Pages 39715044018](https://github.com/ansermail/anser/actions/runs/39715044018) 全部成功，[0.1.25 正式版本](https://github.com/ansermail/anser/releases/tag/v0.1.25) 已公开。
 
