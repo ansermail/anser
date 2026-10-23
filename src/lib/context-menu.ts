@@ -4,6 +4,18 @@ export function suppressNativeContextMenu(event: Event) {
   const element =
     node?.nodeType === 1 ? (node as Element) : node?.parentElement;
   if (element?.closest("[data-mail-debug-region]")) return;
+  const nonSelectableControl = element?.closest(
+    '.mail-sidebar, .sidebar, .settings-navigation, [data-slot="tabs-list"], [data-slot="tabs-trigger"], button',
+  );
+  if (nonSelectableControl) {
+    const selection = element?.ownerDocument.getSelection?.();
+    if (
+      selection?.anchorNode &&
+      nonSelectableControl.contains(selection.anchorNode)
+    ) {
+      selection.removeAllRanges();
+    }
+  }
   event.preventDefault();
 }
 export function disableNativeContextMenu(doc: Document) {

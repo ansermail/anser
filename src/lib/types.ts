@@ -107,6 +107,7 @@ export interface Query {
   unreadOnly: boolean;
   starredOnly?: boolean;
   attachmentsOnly?: boolean;
+  excludeSent?: boolean;
   searchField?: string;
   remoteFolder?: string;
   remoteFolderTree?: boolean;

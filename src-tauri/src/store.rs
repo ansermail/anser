@@ -757,7 +757,8 @@ impl Store {
                     Option::<f64>::None,
                     Option::<f64>::None,
                     q.remote_folder_tree,
-                    q.remote_folder_delimiter
+                    q.remote_folder_delimiter,
+                    q.exclude_sent
                 ],
                 |r| r.get::<_, String>(0),
             )

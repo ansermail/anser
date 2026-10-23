@@ -115,6 +115,10 @@ export async function snapshot(query: Query): Promise<Snapshot> {
         (query.view !== "unread" || !m.isRead) &&
         (query.view !== "starred" || m.starred) &&
         (query.view !== "sent" || m.sourceFolder === "Sent") &&
+        (!query.excludeSent ||
+          query.view === "sent" ||
+          !!query.remoteFolder ||
+          m.sourceFolder !== "Sent") &&
         (query.searchField &&
         ["subject", "sender", "recipients", "body"].includes(query.searchField)
           ? m[query.searchField as "subject" | "sender" | "recipients" | "body"]

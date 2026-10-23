@@ -67,12 +67,19 @@ it("persists the header toggle, collapses controls and preserves unsaved edits w
   expect(
     (host.querySelector("#signature-text") as HTMLTextAreaElement).value,
   ).toBe("Unsaved work signature");
+  expect(host.querySelector(".mail-signature-toolbar")).not.toBeNull();
+  expect(host.querySelector(".mail-signature-footer")?.textContent).toContain(
+    "尚未保存",
+  );
   await click(
     [...host.querySelectorAll("button")].find(
       (b) => b.textContent === "保存签名",
     )!,
   );
   expect(configurations.work.text).toBe("Unsaved work signature");
+  expect(host.querySelector(".mail-signature-footer")?.textContent).toContain(
+    "已保存",
+  );
   expect(host.textContent).not.toContain("自动附加邮件签名");
 });
 it("retains the disabled state and shows errors when saving the toggle fails", async () => {

@@ -67,6 +67,15 @@ body {
 button {
   cursor: pointer;
 }
+button,
+.mail-sidebar,
+.sidebar,
+.settings-navigation,
+[data-slot="tabs-list"],
+[data-slot="tabs-trigger"] {
+  -webkit-user-select: none;
+  user-select: none;
+}
 button:disabled {
   cursor: not-allowed;
 }
@@ -3542,16 +3551,40 @@ kbd {
 
 .mail-signature-layout {
   container: signature-settings / inline-size;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
 }
-.mail-signature-columns {
-  display: grid;
-  grid-template-columns: minmax(220px, 260px) minmax(0, 1fr);
-  gap: 28px;
-  align-items: start;
+.mail-signature-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px 20px;
+  padding: 12px 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--secondary) 55%, var(--card));
+}
+.mail-signature-toolbar-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px 16px;
+}
+.mail-signature-toolbar-divider {
+  height: 18px !important;
+}
+.mail-signature-toolbar-hint {
+  margin: 0;
+  font-size: 12px;
 }
 .mail-signature-content {
   min-width: 0;
   container: signature-content / inline-size;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
 }
 .signature-editor-grid {
   display: grid;
@@ -3564,22 +3597,33 @@ kbd {
 }
 .signature-editor-area,
 .signature-preview-frame {
-  height: 320px;
-  min-height: 320px;
-  max-height: 320px;
+  height: 280px;
+  min-height: 280px;
+  max-height: 280px;
+  border-radius: var(--radius-md);
+}
+.signature-preview-frame {
+  overflow: hidden;
 }
 .signature-editor-area {
   resize: none;
   overflow-y: auto;
+}
+.mail-signature-footer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  padding-top: 4px;
 }
 @container signature-content (max-width: 620px) {
   .signature-editor-grid.has-preview {
     grid-template-columns: minmax(0, 1fr);
   }
 }
-@container signature-settings (max-width: 650px) {
-  .mail-signature-columns {
-    grid-template-columns: minmax(0, 1fr);
+@container signature-settings (max-width: 560px) {
+  .mail-signature-toolbar-divider {
+    display: none;
   }
 }
 .mail-print-header,
@@ -3687,7 +3731,8 @@ kbd {
 
 /* Settings keep category navigation in view while each panel scrolls. */
 .settings-workspace {
-  max-width: 1440px;
+  max-width: none;
+  margin: 0;
   overflow: hidden;
 }
 .settings-layout-container {
@@ -3702,7 +3747,7 @@ kbd {
 }
 .settings-navigation {
   flex-shrink: 0;
-  width: 176px;
+  width: 196px;
   align-self: flex-start;
   gap: 6px;
 }
@@ -3724,7 +3769,7 @@ kbd {
   flex-direction: column;
   gap: var(--settings-card-gap);
   max-width: 1040px;
-  margin-inline: auto;
+  margin-inline: 0;
 }
 .settings-section[hidden] {
   display: none;
@@ -3784,9 +3829,29 @@ kbd {
   color: var(--muted);
   overflow-wrap: anywhere;
 }
+.settings-preferences-grid {
+  display: flex;
+  flex-direction: column;
+  gap: var(--settings-card-gap);
+}
+.settings-preferences-grid > .storage-tools {
+  display: contents;
+}
+.settings-preferences-grid [data-slot="card-header"] {
+  column-gap: 24px;
+}
 .settings-section .storage-tools {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: minmax(0, 1fr);
   align-items: start;
+}
+@container card-header (max-width: 560px) {
+  .language-settings-card [data-slot="card-action"],
+  .storage-checks-card [data-slot="card-action"] {
+    grid-column: 1 / -1;
+    grid-row: auto;
+    justify-self: start;
+    padding-top: 8px;
+  }
 }
 .settings-layout[data-orientation="horizontal"] {
   gap: 24px;

@@ -160,7 +160,8 @@ it("keeps unsaved translation input when switching settings categories", async (
   const visiblePanel = () =>
     host.querySelector(".settings-section:not([hidden])");
   expect(visiblePanel()?.textContent).toContain("管理已连接的邮箱");
-  await click(tab("应用偏好"));
+  await click(tab("阅读与写信"));
+  expect(visiblePanel()?.textContent).toContain("邮件签名");
   const input = host.querySelector(
     'input[placeholder="输入模型 ID，或从列表选择"]',
   ) as HTMLInputElement;
@@ -172,6 +173,9 @@ it("keeps unsaved translation input when switching settings categories", async (
     input.dispatchEvent(new Event("input", { bubbles: true }));
   });
   const backend = vi.spyOn(api, "call");
+  await click(tab("应用偏好"));
+  expect(visiblePanel()?.textContent).toContain("系统通知与启动");
+  expect(visiblePanel()?.textContent).not.toContain("邮件签名");
   await click(tab("后台任务"));
   expect(visiblePanel()?.textContent).toContain("最近活动");
   expect(
@@ -179,7 +183,7 @@ it("keeps unsaved translation input when switching settings categories", async (
       ?.querySelector('[aria-label="展开或收起最近活动"]')
       ?.getAttribute("aria-expanded"),
   ).toBe("false");
-  await click(tab("应用偏好"));
+  await click(tab("阅读与写信"));
   expect(visiblePanel()?.contains(input)).toBe(true);
   expect(input.value).toBe("unsaved-model-fixture");
   expect(
@@ -855,6 +859,58 @@ describe("mail filter panel", () => {
         .querySelector('button[aria-label="筛选邮件"]')
         ?.getAttribute("title"),
     ).toBe("筛选邮件");
+  });
+  it("excludes sent mail by default in All Mail and shows it when unchecked", async () => {
+    const seed = await snapshot(localQuery);
+    seed.messages = [
+      {
+        ...seed.messages[0],
+        id: "inbox-item",
+        subject: "Inbox item",
+        sourceFolder: "INBOX",
+        messageId: "<inbox-item@example.com>",
+      },
+      {
+        ...seed.messages[0],
+        id: "sent-item",
+        subject: "Sent item",
+        sourceFolder: "Sent",
+        isRead: true,
+        messageId: "<sent-item@example.com>",
+      },
+    ];
+    localStorage.setItem("mail-desktop-demo-v1", JSON.stringify(seed));
+    api.restoreDemo();
+    await click(nav("全部邮件"));
+    expect(
+      [...host.querySelectorAll(".row-subject-text")].map(
+        (node) => node.textContent,
+      ),
+    ).toEqual(["Inbox item"]);
+    const filterButton = host.querySelector('button[aria-label="筛选邮件"]')!;
+    expect(filterButton.getAttribute("title")).toBe("筛选邮件");
+    await click(filterButton);
+    const panel = document.querySelector('[role="dialog"]')!;
+    const excludeSentCheckbox = [
+      ...panel.querySelectorAll('[role="checkbox"]'),
+    ][2];
+    expect(excludeSentCheckbox?.getAttribute("aria-checked")).toBe("true");
+    await click(excludeSentCheckbox);
+    expect(excludeSentCheckbox?.getAttribute("aria-checked")).toBe("false");
+    expect(filterButton.getAttribute("title")).toBe("筛选邮件（已启用）");
+    expect(
+      [...host.querySelectorAll(".row-subject-text")].map(
+        (node) => node.textContent,
+      ),
+    ).toEqual(["Inbox item", "Sent item"]);
+    await click(excludeSentCheckbox);
+    expect(excludeSentCheckbox?.getAttribute("aria-checked")).toBe("true");
+    expect(filterButton.getAttribute("title")).toBe("筛选邮件");
+    expect(
+      [...host.querySelectorAll(".row-subject-text")].map(
+        (node) => node.textContent,
+      ),
+    ).toEqual(["Inbox item"]);
   });
 });
 describe("message and conversation display modes", () => {
@@ -2545,7 +2601,7 @@ it("switches interface language without remounting settings or altering unsaved 
     [...host.querySelectorAll('[role="tab"]')].find((element) =>
       element.textContent?.includes(name),
     ) || null;
-  await click(tab("应用偏好"));
+  await click(tab("阅读与写信"));
   const input = host.querySelector(
     'input[placeholder="输入模型 ID，或从列表选择"]',
   ) as HTMLInputElement;
@@ -2556,6 +2612,7 @@ it("switches interface language without remounting settings or altering unsaved 
     )!.set!.call(input, "unsaved-i18n-fixture");
     input.dispatchEvent(new Event("input", { bubbles: true }));
   });
+  await click(tab("应用偏好"));
   try {
     await act(async () => setInterfaceLanguage("en"));
     expect(nav("All mail")).not.toBeNull();
@@ -2569,7 +2626,10 @@ it("switches interface language without remounting settings or altering unsaved 
       host.querySelector(".settings-section:not([hidden])")?.textContent,
     ).toContain("Interface language");
     await click(tab("About Anser"));
-    await click(tab("Preferences"));
+    await click(tab("Reading & composing"));
+    expect(
+      host.querySelector(".settings-section:not([hidden])")?.contains(input),
+    ).toBe(true);
     expect(input.value).toBe("unsaved-i18n-fixture");
   } finally {
     await act(async () => setInterfaceLanguage("zh-CN"));

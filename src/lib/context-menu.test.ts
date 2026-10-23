@@ -33,6 +33,29 @@ describe("preview context menu suppression", () => {
     stop();
     expect(event(doc.querySelector("input")!)).toBe(true);
   });
+  it("clears secondary-click text selection inside sidebar and settings navigation controls", () => {
+    document.body.innerHTML =
+      '<div class="mail-sidebar"><button class="nav-item"><span>本地废纸篓</span></button></div><div class="settings-navigation" data-slot="tabs-list"><button data-slot="tabs-trigger">阅读与写信</button></div>';
+    const stop = disableNativeContextMenu(document);
+    try {
+      for (const selector of [".nav-item span", '[data-slot="tabs-trigger"]']) {
+        const target = document.querySelector(selector)!;
+        const range = document.createRange();
+        range.selectNodeContents(target);
+        const selection = document.getSelection()!;
+        selection.removeAllRanges();
+        selection.addRange(range);
+        expect(selection.toString()).not.toBe("");
+        target.dispatchEvent(
+          new MouseEvent("contextmenu", { bubbles: true, cancelable: true }),
+        );
+        expect(selection.rangeCount).toBe(0);
+      }
+    } finally {
+      stop();
+      document.body.innerHTML = "";
+    }
+  });
   it("follows a new iframe document before remote images finish loading and cleans up", () => {
     vi.useFakeTimers();
     const frame = document.createElement("iframe");

@@ -49,6 +49,10 @@ export function filteredMail(all: Mail[], query: Query, searching = true) {
         (query.view !== "unread" || !mail.isRead) &&
         (query.view !== "starred" || mail.starred) &&
         (query.view !== "sent" || mail.sourceFolder === "Sent") &&
+        (!query.excludeSent ||
+          query.view === "sent" ||
+          !!query.remoteFolder ||
+          mail.sourceFolder !== "Sent") &&
         (!query.dateFrom || time >= from) &&
         (!query.dateBefore || time < before) &&
         (!searching || lower(text).includes(lower(query.search)))
@@ -75,6 +79,7 @@ function scope(query: Query) {
     unreadOnly: query.unreadOnly,
     starredOnly: !!query.starredOnly,
     attachmentsOnly: !!query.attachmentsOnly,
+    excludeSent: !!query.excludeSent,
     searchField: query.searchField || "",
     remoteFolder: query.remoteFolder || "",
     remoteFolderTree: !!query.remoteFolderTree,

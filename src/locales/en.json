@@ -146,6 +146,7 @@
   "Account color indicator": "Account color indicator",
   "Removed account": "Removed account",
   "Has attachments": "Has attachments",
+  "Exclude sent mail": "Exclude sent mail",
   "Mark as unread": "Mark as unread",
   "No messages found": "No messages found",
   "All quiet here": "All quiet here",
@@ -1217,5 +1218,11 @@
   "Set a target folder in the account": "Set a target folder in the account",
   "Choose a single target in the account": "Choose a single target in the account",
   "Target folder unavailable": "Target folder unavailable",
-  "Already in this folder": "Already in this folder"
+  "Already in this folder": "Already in this folder",
+  "Reading & composing": "Reading & composing",
+  "Configure email signatures and AI translation for reading and writing mail.": "Configure email signatures and AI translation for reading and writing mail.",
+  "Configure display language, notifications, startup, background checks and network proxy.": "Configure display language, notifications, startup, background checks and network proxy.",
+  "Direct connection. Turn on the switch above to configure a SOCKS5, HTTP or HTTPS proxy.": "Direct connection. Turn on the switch above to configure a SOCKS5, HTTP or HTTPS proxy.",
+  "Plain text signature appended below the message body.": "Plain text signature appended below the message body.",
+  "Supports standard HTML tags and inline styles.": "Supports standard HTML tags and inline styles."
 }

@@ -1,8 +1,30 @@
 # 设置分类布局工作点
 
-更新：2026-10-18。分支 `codex/settings-layout`，本轮未提交或发布。
+更新：2026-10-23。基于 `main`（`0.1.25`），本轮进一步优化设置分类、卡片配平、整体网格左对齐与邮件签名上下结构；尚未提交或发布。
 
-## 目标与实现
+## 2026-10-23 二次布局优化（用户确认方向）
+
+针对用户指出的宽屏下右侧内容脱离左侧分类导航居中漂移、应用偏好堆叠 6 张大小悬殊卡片、以及邮件签名三栏挤压问题，完成以下调整：
+
+- `src/components/settings-layout.tsx`、`src/App.tsx`：设置分类扩充为「邮箱账号 / 本地存档 / 应用偏好 / 阅读与写信 / 后台任务 / 关于雁信」六类；新增「阅读与写信」分类集中承载「邮件签名」与「大模型翻译」。
+- `src/components/mail-signatures.tsx`：邮件签名内部由「左侧 260px 控制栏 + 右侧编辑/预览」改为上下结构：顶部工具栏集中放置「使用 HTML」开关与「签名文件」导入控件；中部占满整卡宽度展示编辑区（启用 HTML 或导入 HTML/图片时左右 1:1 等宽并排展示编辑与实时预览，标题置于框体上方，两框均为 280px 等高、`var(--radius-md)` 圆角及一致内边距对齐，窄容器自动转为上下排列）；底部放置「保存签名」按钮与「已保存 / 尚未保存」状态 Badge。
+- `src/components/storage-tools.tsx`、`src/components/network-proxy-settings.tsx`、`src/components/language-settings.tsx`：「应用偏好」将「界面语言」「后台检查」「系统通知与启动」「网络代理」按从上到下的单列整行卡片排列，每条左侧为标题与说明、右侧为对应交互控件（语言下拉、后台检查间隔选择与保存按钮、系统通知与开机自启开关、代理启用与编辑）；「测试系统通知」按钮置于通知卡片右上角 `CardAction`；网络代理未开启时补充直连说明。
+- `src/index.css`：取消 `.settings-workspace` 的 `max-width: 1440px` 居中漂移与 `.settings-section` 的 `margin-inline: auto`，改为内容区紧贴左侧分类导航（固定 32px 间距左对齐），与顶部「设置与账号」标题网格对齐；左侧分类栏宽度设为 196px 以完整容纳中英文分类名；对 `button`、`.mail-sidebar`、`.sidebar`、`.settings-navigation`、`[data-slot="tabs-list"]`、`[data-slot="tabs-trigger"]` 设置 `user-select: none`，并在 `src/lib/context-menu.ts` 右键拦截中清除落入导航/按钮控件的选区，防止 macOS WebKit 右键触发字符黑底选中。
+- `src/locales/zh-CN.json`、`src/locales/en.json`：补充 6 条中英文文案（共 1225 键）。
+- `src/App.test.tsx`、`src/components/mail-signatures.test.tsx`：同步六分类切换保留未保存输入、中英文切换与邮件签名新工具栏/状态标识测试。
+
+### 2026-10-23 验证记录
+
+- `npm run check:ui`：通过。
+- `npm run check:i18n`：1225 条双语文案及占位符检查通过。
+- `npx vitest run src/components/mail-signatures.test.tsx src/components/storage-tools.test.tsx src/components/language-settings.test.tsx src/components/mail-translation-settings.test.tsx`：4 文件 15 项测试全部通过。
+- `npx vitest run src/App.test.tsx -t "settings categories|recent activity|switches interface language"`：4 项通过。
+- `npm run build`、`npm run build:preview`、`npm run format:check`、`git diff --check`：通过。
+- `npm run desktop`：停止开机自启旧版 `/Applications/雁信.app` 单实例进程后，通过稳定开发启动器完成本地桌面编译、固定项目自签名打包并拉起原生开发应用（`/Volumes/Others/mail/src-tauri/target/debug/bundle/macos/雁信.app`），供用户直接查看设置页六分类、左对齐网格、应用偏好 2×2 卡片配平与邮件签名上下结构效果。
+
+---
+
+## 历史记录（2026-10-18 初版分类布局）
 
 解决设置页所有内容堆在长页面、查找和视觉层级不清的问题。
 

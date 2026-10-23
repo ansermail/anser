@@ -385,6 +385,7 @@ pub(super) fn query() -> Query {
         unread_only: false,
         starred_only: false,
         attachments_only: false,
+        exclude_sent: false,
         search_field: String::new(),
         list_mode: ListMode::Conversations,
     }
