@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   addressTokens,
+  displayAddresses,
   parseAddresses,
   formatAddress,
   replyRecipients,
@@ -93,5 +94,20 @@ describe("reply destinations", () => {
     expect(parseAddresses("bad address; valid@example.com；")).toEqual([
       { name: "", email: "valid@example.com" },
     ]);
+  });
+  it("shows parsed headers and falls back to stored text for older records", () => {
+    expect(
+      displayAddresses(
+        [{ name: "Peer", email: "peer@example.com" }],
+        "old@example.com",
+      ),
+    ).toBe("Peer <peer@example.com>");
+    expect(
+      displayAddresses([{ name: "Support, China", email: "help@example.com" }]),
+    ).toBe('"Support, China" <help@example.com>');
+    expect(displayAddresses(undefined, " old@example.com ")).toBe(
+      "old@example.com",
+    );
+    expect(displayAddresses([], "")).toBe("");
   });
 });

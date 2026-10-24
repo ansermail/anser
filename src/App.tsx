@@ -166,8 +166,12 @@ import {
   replyRecipients,
   parseAddresses,
   formatAddress,
+  displayAddresses,
 } from "./lib/addresses";
+import { MailRecipients } from "./components/mail-recipients";
+import { ContactAddress } from "./components/contact-address";
 import { sanitizeComposeHtml } from "./lib/compose-format";
+import { saveContactAddress } from "./lib/contact-actions";
 import {
   mailPage,
   mailNeighbor,
@@ -712,6 +716,18 @@ export default function App() {
       setDraft(d);
     },
     [data.accounts, detail],
+  );
+  const composeAddress = useCallback(
+    (address: Address) => {
+      if (clearingDraftsNow.current) return;
+      const account = data.accounts.find((item) => item.enabled);
+      if (!account) {
+        setAccountDialog(true);
+        return;
+      }
+      setDraft({ ...newDraft(account.id), to: formatAddress(address) });
+    },
+    [data.accounts],
   );
   const reeditSent = useCallback(
     (source: Detail) => {
@@ -2865,7 +2881,22 @@ export default function App() {
                           </span>
                           <div>
                             <strong>{senderName(detail.mail.sender)}</strong>
-                            <span>{senderAddress(detail.mail.sender)}</span>
+                            {(() => {
+                              const address = parseAddresses(
+                                detail.mail.sender,
+                              )[0];
+                              return address ? (
+                                <ContactAddress
+                                  address={address}
+                                  className="contact-address-start"
+                                  text={address.email}
+                                  onComposeAddress={composeAddress}
+                                  onAddContact={saveContactAddress}
+                                />
+                              ) : (
+                                <span>{senderAddress(detail.mail.sender)}</span>
+                              );
+                            })()}
                           </div>
                         </div>
                         <div className="reader-toolbar">
@@ -3175,24 +3206,16 @@ export default function App() {
                         </div>
                       </div>
                       <div className="recipient-line">
-                        {detail.mail.recipients.trim() && (
-                          <span
-                            className="recipient-address"
-                            title={detail.mail.recipients}
-                          >
-                            {t("To: ")}
-                            {detail.mail.recipients}
-                          </span>
-                        )}
-                        {detail.mail.cc?.trim() && (
-                          <span
-                            className="recipient-address"
-                            title={detail.mail.cc}
-                          >
-                            {t("Cc: ")}
-                            {detail.mail.cc}
-                          </span>
-                        )}
+                        <MailRecipients
+                          to={displayAddresses(
+                            detail.to,
+                            detail.mail.recipients,
+                          )}
+                          cc={displayAddresses(detail.cc, detail.mail.cc)}
+                          bcc={displayAddresses(detail.bcc)}
+                          onComposeAddress={composeAddress}
+                          onAddContact={saveContactAddress}
+                        />
                         <div className="message-metadata">
                           <time dateTime={detail.mail.date}>
                             {formatMailTime(detail.mail.date)}
@@ -3257,6 +3280,8 @@ export default function App() {
                           toast.error(String(e)),
                         )
                       }
+                      onComposeAddress={composeAddress}
+                      onAddContact={saveContactAddress}
                     />
                   </>
                 ) : selected ? (

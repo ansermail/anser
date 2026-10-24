@@ -1,5 +1,19 @@
 # 实施与验收状态
 
+## 联系人地址操作（2026-10-24）
+
+阅读页主发件人、对话气泡发件人、收件人/抄送/密送字段及外部邮件窗口共用 `ContactAddress`。地址先由 `addressTokens` / `parseAddresses` 拆成单个联系人；可解析的地址渲染为使用 shadcn `Button` 与 `ContextMenu` 的焦点可操作项，无法解析的原文保留普通文本。悬停、键盘焦点及菜单打开状态使用现有 `--secondary` 中性底色，不引入第二套视觉组件。
+
+右键菜单只提供“写信”“复制邮件地址”“复制名字和邮件地址”“添加联系人”；姓名复制项仅在有姓名时显示。写信在没有启用账号时进入添加账号流程（主窗口）或提示启用账号（外部窗口）；添加联系人复用本地 `list_contacts` / `save_contact` 并按邮箱去重。复制优先使用 `navigator.clipboard.writeText`，失败时使用有界 `execCommand("copy")` 回退，二者均失败才提示错误。
+
+通讯录列表改为响应式网格：`repeat(auto-fill, minmax(min(100%, 320px), 1fr))`，卡片内边距 10/12px、头像 32px、邮箱单行省略，空态 `grid-column: 1 / -1`。1440×900 浏览器预览的内容区 1119px 下为 3 列、每列约 350px、卡片高 60px；窄窗口自动回到单列，`outbox-list` 等其他列表仍保持原纵向布局。
+
+## 收件人头部行布局（2026-10-24）
+
+阅读页与外部邮件窗口共用 `MailRecipients`，以 `dl` 两列网格分别渲染收件人、抄送和密送：标签列 `auto`、地址列 `minmax(0, 1fr)`，每项各占一行，窄宽度随 `.recipient-line` 换行但不合并字段。对话气泡使用同一结构比例的 `.turn-recipient-fields`。`displayAddresses` 优先使用 mailparse 得到的结构化地址，旧记录回退到已存 `recipients` / `cc` 文本；展示时保留普通姓名原文，仅对含逗号、分号、引号或尖括号的姓名加引号。
+
+`Detail.bcc` 只来自原始邮件头的 `Bcc`，缺失时为空数组，不根据 To/Cc 推断，也不渲染空行。回复与全部回复继续只使用 `replyTo`、`to` 和 `cc`，密送不会进入新草稿的收件目标。内部邮件通过 `Store::detail`、外部 EML 通过 `eml_files` 共用 `archive::reply_addresses`，避免两个入口的头部解析不一致。
+
 ## 单条 INBOX 连接（0.1.24 起，2026-10-20）
 
 每个启用的 IMAP 账号只保留一条收件箱会话，IDLE 监听与收件箱下载共用它：连接后补查、服务器推送触发、每分钟只读 EXAMINE 复核和用户设置的定时补查都在这条连接上完成，不再为新邮件另开短连接。后台全目录收取对被监听账号跳过 INBOX，仅继续其他文件夹；手动“立即检查”仍用独立短连接以复用既有路径，结束时递增该账号的监听代次，由监督线程停止旧监听并重连，使服务端把后续通知交给新会话。
@@ -632,7 +646,6 @@ WebKit原生scripts-disabled正文不绑定子文档load/error/click/auxclick事
 - 不转发邮箱凭据、浏览器 Cookie、Origin 或 Referer；不写图片缓存到数据库/存档，不把源 URL、跟踪地址、代理凭据或响应正文写入失败日志。响应使用 `no-store`、`nosniff` 及 `default-src 'none'; sandbox`，仅在 img-src 追加图片协议，保留正文脚本禁用与 iframe sandbox。
 - 图片状态继续使用父页面检查，不向禁用脚本的 WebKit 子帧绑定事件。重试复用净化后的地址，请求时读取最新代理；旧正文离开后响应不会发布到新正文。打印在父页面等待图片完成/失败，最多 15 秒后进入系统打印，不无限阻塞。
 
-
 ### 原生正文 CSS 与字体通道（0.1.17 起）
 
 `mail_styles.rs` 为主 WebView 注册 `anser-style`/`anser-font`，复用 `mail_images` 的配置快照、无 Cookie/Referer 请求、HTTPS 目标/重定向检查、6 并发与 40 秒总期限。样式限 1 MiB、字体限 10 MiB，分别核对 CSS Content-Type/UTF-8 与字体字节签名，拒绝 HTML 错误页，返回 no-store/nosniff 与匿名字体 CORS。CSS 使用 cssparser token 化：导入映射为 style，font-face src 映射为 font，其余 url 映射为 image；相对地址以 GET 最终 URL 解析，嵌套深度限 32。
@@ -659,7 +672,6 @@ WebKit原生scripts-disabled正文不绑定子文档load/error/click/auxclick事
 - `TranslatableMailBody` 保持每封唯一翻译状态，通过 React Portal 将纯图标按钮放入 App 标题行最右侧；对话中的非选中邮件使用各自头部操作槽。图标复用 shadcn Button/Tooltip，忙碌时点击取消，成功后点击隐藏，错误时重试；正文不保留常驻文字按钮栏，进度条与错误反馈仍保留。配置仅点击时读取，请求只点击后发生。切正文、卸载或配置变化增加代际并取消在途请求，迟到结果不发布。MailContent 通过父页面 ready/dispose 回调提供净化 DOM，不向 scripts-disabled 子文档增加事件监听。打印、回复/转发和 EML 导出继续使用原 Detail/MIME。
 - 演示 API 分支配置只在虚构数据存储，丢弃 API Key，翻译返回明确标识的虚构文字；Pages 继续替换不可调用原生桥，不从浏览器连接真实模型。
 
-
 ### 模型服务选择与发现（0.1.17 起）
 
 设置卡片使用容器查询按 760px 卡片宽度切换左右/上下布局，基础交互仍为 shadcn Select/Input/Command/Popover/Separator/Alert。服务预设仅辅助填地址，不限制模型 ID；未保存字段/密钥变化时禁用连接测试，明确测试已保存的当前配置。获取列表与测试任务独立可取消，迟到结果检查请求身份。
@@ -667,6 +679,7 @@ WebKit原生scripts-disabled正文不绑定子文档load/error/click/auxclick事
 `get_translation_models` 在用户点击时使用输入配置和显式输入 Key；只有完整服务地址与已保存配置一致且未要求清 Key 才能从钥匙串复用旧 Key。发现过程不保存配置，未填模型时使用仅用于本地校验的临时占位，不发送 POST。GET 地址从标准 `/chat/completions` 基址生成 `/models`，沿用全局代理/本机直连、TLS 与禁止重定向；请求 30 秒/任务 40 秒、响应 512 KiB/1000 模型，按 ID 去重并过滤明确不支持文字输出的模型。404/非兼容列表提示手工输入，错误不展示服务器正文。
 
 DeepSeek 官方域名/443/标准路径才附加 `thinking.disabled`、JSON 输出和输出上限；其他兼容服务保持标准请求。使用 HTTP/1.1、180 秒请求/200 秒任务期限，区分连接/等待/读取超时、截断与 HTTP 认证/额度/限流等错误。连接测试始终使用固定文本并绕过缓存；新一轮真实 DeepSeek 固定文本返回成功，不将模拟服务或无认证 HEAD 当作认证验收。
+
 ## Issue #1 本地增强工作点（2026-10-16，开发分支）
 
 完整写信及对话简短回复的八秒撤回期由 `scheduling.rs` 的持久待发状态管理，`queue_send` 入队而不阻塞编辑界面，`send_queued_now` 只提前到期时间；调度器仍单次领取并执行，领取后不能撤回。`send_kind` 区分撤回发送和指定时间发送；恢复、失败与结果不明沿用既有出站状态保护。已发送记录的“重新编辑”只复制冻结草稿为新草稿，保留原记录。
@@ -681,7 +694,7 @@ DeepSeek 官方域名/443/标准路径才附加 `thinking.disabled`、JSON 输�
 
 ## 多格式邮件本地导入（特性分支）
 
-`eml_input.rs` 在共享有界文件快照入口限制普通文件、64 MiB、结构深度/部件/头部/解码预算；先迭代检查结构，再调用递归 MIME 解析。文件读取前后核对文件指纹，Unix 使用 NOFOLLOW/NONBLOCK 防止被替换为链接或特殊文件。外部只读 EML 查看器使用同一校验，不写邮件库。
+`eml_input.rs` 在共享有界文件快照入口限制普通文件、64 MiB、结构深度/部件/头部/解码预算；先迭代检查结构，再调用递归 MIME 解析。文件读取前后核对设备、inode、大小与 mtime 组成的指纹，Unix 使用 NOFOLLOW/NONBLOCK 防止被替换为链接或特殊文件；指纹不含 ctime，因为 macOS 在打开文档时写入 `com.apple.lastuseddate#PS` 扩展属性会单独推进 ctime，纳入后会把未改动内容误判为 `fileChanged`。外部只读 EML 查看器使用同一校验，不写邮件库。
 
 `eml_imports.rs` 管理 `eml_import_jobs`、`eml_import_items` 与独立来源 `message_imports`。预检只记录元数据估算，固定账号和本地分类；后台单文件快照解析后，在存档迁移/删除保护下准备原件，再通过短 IMMEDIATE 事务重验 revision、账号和唯一 hash，发布原件及索引、来源、逐项结果。不会调用普通收取入口或执行规则。文件发布与数据库不是跨介质原子事务；数据库失败可能留下未引用原件，但不能报告成功或直接删除共享 hash 文件。
 

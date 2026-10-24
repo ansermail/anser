@@ -100,7 +100,7 @@ export function ContactsPanel({
             </span>
             <div>
               <strong>{c.name || c.email}</strong>
-              <p>{c.email}</p>
+              <p title={c.email}>{c.email}</p>
             </div>
             <Button
               variant="ghost"

@@ -300,6 +300,9 @@ pub struct Detail {
     pub reply_to: Vec<Address>,
     pub to: Vec<Address>,
     pub cc: Vec<Address>,
+    /// Only what the original headers contain. Never inferred from To/Cc.
+    #[serde(default)]
+    pub bcc: Vec<Address>,
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]

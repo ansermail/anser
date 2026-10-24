@@ -1127,13 +1127,14 @@ fn quoted_delivery_keeps_html_and_embedded_images_in_mime() {
     assert!(!String::from_utf8_lossy(&raw).contains("Original text"));
 }
 #[test]
-fn reply_headers_parse_groups_and_reply_to_without_bcc() {
+fn reply_headers_parse_groups_reply_to_and_bcc_separately() {
     let raw=b"From: original@example.com\r\nReply-To: \"Service, China\" <reply@example.com>\r\nTo: Team: me@example.com, peer@example.com;\r\nCc: other@example.com\r\nBcc: hidden@example.com\r\n\r\nHello";
-    let (reply, to, cc) = archive::reply_addresses(raw).unwrap();
+    let (reply, to, cc, bcc) = archive::reply_addresses(raw).unwrap();
     assert_eq!(reply[0].email, "reply@example.com");
     assert_eq!(reply[0].name, "Service, China");
     assert_eq!(to.len(), 2);
     assert_eq!(cc[0].email, "other@example.com");
+    assert_eq!(bcc[0].email, "hidden@example.com");
     assert!(!to
         .iter()
         .chain(cc.iter())

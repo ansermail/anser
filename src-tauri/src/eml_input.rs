@@ -14,19 +14,23 @@ const MAX_DEPTH: usize = 32;
 const MAX_DECODED: usize = 256 * 1024 * 1024;
 pub const TIME_LIMIT: Duration = Duration::from_secs(15);
 
+/// Identity of the file contents for bounded snapshots.
+///
+/// ctime is deliberately excluded: macOS writes extended attributes such as
+/// `com.apple.lastuseddate#PS` when LaunchServices opens a document, which
+/// bumps ctime without changing any bytes. Reading a file while that happens
+/// used to fail with a spurious `fileChanged` error.
 pub fn fingerprint(m: &Metadata) -> String {
     #[cfg(unix)]
     {
         use std::os::unix::fs::MetadataExt;
         format!(
-            "{}:{}:{}:{}:{}:{}:{}",
+            "{}:{}:{}:{}:{}",
             m.dev(),
             m.ino(),
             m.len(),
             m.mtime(),
-            m.mtime_nsec(),
-            m.ctime(),
-            m.ctime_nsec()
+            m.mtime_nsec()
         )
     }
     #[cfg(not(unix))]
@@ -228,6 +232,43 @@ pub fn validate(raw: &[u8], started: Instant) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn extended_attribute_metadata_changes_do_not_invalidate_a_snapshot() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("attribute.eml");
+        fs::write(&path, b"Subject: attributes\r\n\r\nBody").unwrap();
+        let stamp = fingerprint(&metadata(&path).unwrap());
+        #[cfg(target_os = "macos")]
+        {
+            use std::ffi::CString;
+            let file = CString::new(path.as_os_str().as_encoded_bytes()).unwrap();
+            let name = CString::new("com.apple.lastuseddate#PS").unwrap();
+            let value = [0u8; 8];
+            let result = unsafe {
+                libc::setxattr(
+                    file.as_ptr(),
+                    name.as_ptr(),
+                    value.as_ptr().cast(),
+                    value.len(),
+                    0,
+                    0,
+                )
+            };
+            assert_eq!(result, 0);
+        }
+        // macOS updated ctime above; the content identity must remain stable.
+        assert_eq!(fingerprint(&metadata(&path).unwrap()), stamp);
+        assert_eq!(
+            read(&path, Some(&stamp)).unwrap(),
+            b"Subject: attributes\r\n\r\nBody"
+        );
+        // A same-size rewrite must still be rejected.
+        let original_len = fs::metadata(&path).unwrap().len();
+        std::thread::sleep(Duration::from_millis(2));
+        fs::write(&path, b"Subject: attributes\r\n\r\nNext").unwrap();
+        assert_eq!(metadata(&path).unwrap().len(), original_len);
+        assert_eq!(read(&path, Some(&stamp)).unwrap_err(), "fileChanged");
+    }
     #[test]
     fn eml_input_limits_nesting_parts_headers_and_elapsed_time_before_recursive_parse() {
         let mut nested = "Subject: leaf\r\n\r\nLeaf".to_string();

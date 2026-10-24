@@ -905,7 +905,7 @@ impl Store {
             archive::parse(&raw, &self.account_for_mail(&mail), &mail.source_folder)?;
         mail.body = parsed.body;
         mail.has_attachments = parsed.has_attachments;
-        let (reply_to, to, cc) = archive::reply_addresses(&raw)?;
+        let (reply_to, to, cc, bcc) = archive::reply_addresses(&raw)?;
         Ok(Detail {
             original_hash: archive::digest(&raw),
             mail,
@@ -914,6 +914,7 @@ impl Store {
             reply_to,
             to,
             cc,
+            bcc,
         })
     }
     fn reparse(&self, mail: &Mail) -> Result<(Mail, String, Vec<AttachmentInfo>)> {

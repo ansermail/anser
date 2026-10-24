@@ -37,11 +37,17 @@ import { MailBodySkeleton } from "./mail-skeleton";
 import { Alert, AlertTitle, AlertDescription } from "./ui/alert";
 import { TranslatableMailBody } from "./translatable-mail-body";
 import { MailAttachments } from "./mail-attachments";
+import { ContactAddress } from "./contact-address";
+import { RecipientAddresses } from "./mail-recipients";
 import { call, newDraft } from "../lib/api";
-import { parseAddresses, replyRecipients } from "../lib/addresses";
+import {
+  displayAddresses,
+  parseAddresses,
+  replyRecipients,
+} from "../lib/addresses";
 import { mailTime, replyHeaders } from "../lib/conversations";
 import { senderName, senderAddress } from "../lib/providers";
-import type { Account, Compose, Detail, Mail } from "../lib/types";
+import type { Account, Address, Compose, Detail, Mail } from "../lib/types";
 
 function ParseWarnings({ mail }: { mail: Mail }) {
   if (!mail.parseWarnings?.length) return null;
@@ -66,6 +72,62 @@ function ParseWarnings({ mail }: { mail: Mail }) {
   );
 }
 
+function TurnRecipients({
+  to,
+  cc,
+  bcc,
+  onComposeAddress,
+  onAddContact,
+}: {
+  to: string;
+  cc: string;
+  bcc: string;
+  onComposeAddress?: (address: Address) => void;
+  onAddContact?: (address: Address) => void;
+}) {
+  if (!to && !cc && !bcc) return null;
+  return (
+    <dl className="turn-recipient-fields">
+      {to && (
+        <>
+          <dt>{t("To: ")}</dt>
+          <dd title={to}>
+            <RecipientAddresses
+              value={to}
+              onComposeAddress={onComposeAddress}
+              onAddContact={onAddContact}
+            />
+          </dd>
+        </>
+      )}
+      {cc && (
+        <>
+          <dt>{t("Cc: ")}</dt>
+          <dd title={cc}>
+            <RecipientAddresses
+              value={cc}
+              onComposeAddress={onComposeAddress}
+              onAddContact={onAddContact}
+            />
+          </dd>
+        </>
+      )}
+      {bcc && (
+        <>
+          <dt>{t("Bcc: ")}</dt>
+          <dd title={bcc}>
+            <RecipientAddresses
+              value={bcc}
+              onComposeAddress={onComposeAddress}
+              onAddContact={onAddContact}
+            />
+          </dd>
+        </>
+      )}
+    </dl>
+  );
+}
+
 function Turn({
   mail,
   selected,
@@ -78,6 +140,8 @@ function Turn({
   onAttachmentPreview,
   onAction,
   onLink,
+  onComposeAddress,
+  onAddContact,
   onLoaded,
   translationActions,
 }: {
@@ -96,6 +160,8 @@ function Turn({
   ) => Promise<void>;
   onAction: (mail: Mail, action: string, value: string) => void;
   onLink: (href: string) => void;
+  onComposeAddress?: (address: Address) => void;
+  onAddContact?: (address: Address) => void;
   onLoaded: (detail: Detail) => void;
   translationActions: HTMLElement | null;
 }) {
@@ -143,7 +209,19 @@ function Turn({
         </span>
         <div className="turn-sender">
           <strong>{own ? t("Me") : senderName(mail.sender)}</strong>
-          <span title={mail.sender}>{senderAddress(mail.sender)}</span>
+          {(() => {
+            const address = parseAddresses(mail.sender)[0];
+            return address ? (
+              <ContactAddress
+                address={address}
+                text={address.email}
+                onComposeAddress={onComposeAddress}
+                onAddContact={onAddContact}
+              />
+            ) : (
+              <span title={mail.sender}>{senderAddress(mail.sender)}</span>
+            );
+          })()}
         </div>
         <time dateTime={mail.date}>{mailTime(mail.date)}</time>
         <DropdownMenu>
@@ -220,18 +298,13 @@ function Turn({
         {!selected && <div className="shrink-0" ref={setLocalActions} />}
       </div>
       <Card className={`conversation-bubble ${detail?.html ? "has-html" : ""}`}>
-        {mail.recipients.trim() && (
-          <div className="turn-recipients" title={mail.recipients}>
-            {t("To: ")}
-            {mail.recipients}
-          </div>
-        )}
-        {mail.cc?.trim() && (
-          <div className="turn-recipients" title={mail.cc}>
-            {t("Cc: ")}
-            {mail.cc}
-          </div>
-        )}
+        <TurnRecipients
+          to={displayAddresses(detail?.to, mail.recipients)}
+          cc={displayAddresses(detail?.cc, mail.cc)}
+          bcc={displayAddresses(detail?.bcc)}
+          onComposeAddress={onComposeAddress}
+          onAddContact={onAddContact}
+        />
         {detail && <ParseWarnings mail={detail.mail} />}
         {!detail ? (
           error ? (
@@ -537,6 +610,8 @@ export function ConversationReader({
   onAttachmentPreview,
   onAction,
   onLink,
+  onComposeAddress,
+  onAddContact,
 }: {
   selected: Detail;
   singleMessage?: boolean;
@@ -559,6 +634,8 @@ export function ConversationReader({
   ) => Promise<void>;
   onAction: (mail: Mail, action: string, value: string) => void;
   onLink: (href: string) => void;
+  onComposeAddress?: (address: Address) => void;
+  onAddContact?: (address: Address) => void;
 }) {
   const [messages, setMessages] = useState<Mail[]>([selected.mail]);
   const [details, setDetails] = useState<Record<string, Detail>>({
@@ -793,6 +870,8 @@ export function ConversationReader({
               onAttachmentPreview={onAttachmentPreview}
               onAction={onAction}
               onLink={onLink}
+              onComposeAddress={onComposeAddress}
+              onAddContact={onAddContact}
               onLoaded={loaded}
               translationActions={translationActions}
             />

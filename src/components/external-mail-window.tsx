@@ -13,7 +13,13 @@ import {
 import { useEffect, useRef, useState } from "react";
 import { Toaster, toast } from "sonner";
 import { call, native, newDraft } from "../lib/api";
-import { formatAddress, replyRecipients } from "../lib/addresses";
+import {
+  displayAddresses,
+  formatAddress,
+  parseAddresses,
+  replyRecipients,
+} from "../lib/addresses";
+import { saveContactAddress } from "../lib/contact-actions";
 import { disableNativeContextMenu } from "../lib/context-menu";
 import { replyHeaders } from "../lib/conversations";
 import { mailFileError } from "../lib/mail-file-errors";
@@ -22,6 +28,8 @@ import { senderAddress, senderName } from "../lib/providers";
 import { useTheme } from "../lib/theme";
 import type { Account, Compose, Detail } from "../lib/types";
 import { Alert, AlertDescription } from "./ui/alert";
+import { MailRecipients } from "./mail-recipients";
+import { ContactAddress } from "./contact-address";
 import { Button } from "./ui/button";
 import {
   DropdownMenu,
@@ -158,6 +166,14 @@ export function ExternalMailWindow() {
       value.externalForwardToken = document.token;
     setDraft(value);
   }
+  function composeTo(address: { name: string; email: string }) {
+    const account = accounts.find((item) => item.enabled);
+    if (!account) {
+      toast.error(t("Enable a mailbox account to write mail"));
+      return;
+    }
+    setDraft({ ...newDraft(account.id), to: formatAddress(address) });
+  }
   async function downloadAttachment(index: number, name: string) {
     if (!document) return;
     const filename = name.split(/[\\/]/).pop() || t("Attachments");
@@ -203,7 +219,24 @@ export function ExternalMailWindow() {
                   </span>
                   <div>
                     <strong>{senderName(document.detail.mail.sender)}</strong>
-                    <span>{senderAddress(document.detail.mail.sender)}</span>
+                    {(() => {
+                      const address = parseAddresses(
+                        document.detail.mail.sender,
+                      )[0];
+                      return address ? (
+                        <ContactAddress
+                          address={address}
+                          className="contact-address-start"
+                          text={address.email}
+                          onComposeAddress={composeTo}
+                          onAddContact={saveContactAddress}
+                        />
+                      ) : (
+                        <span>
+                          {senderAddress(document.detail.mail.sender)}
+                        </span>
+                      );
+                    })()}
                   </div>
                 </div>
                 <div className="reader-toolbar">
@@ -301,24 +334,19 @@ export function ExternalMailWindow() {
                 </div>
               </div>
               <div className="recipient-line">
-                {document.detail.mail.recipients.trim() && (
-                  <span
-                    className="recipient-address"
-                    title={document.detail.mail.recipients}
-                  >
-                    {t("To: ")}
-                    {document.detail.mail.recipients}
-                  </span>
-                )}
-                {document.detail.mail.cc?.trim() && (
-                  <span
-                    className="recipient-address"
-                    title={document.detail.mail.cc}
-                  >
-                    {t("Cc: ")}
-                    {document.detail.mail.cc}
-                  </span>
-                )}
+                <MailRecipients
+                  to={displayAddresses(
+                    document.detail.to,
+                    document.detail.mail.recipients,
+                  )}
+                  cc={displayAddresses(
+                    document.detail.cc,
+                    document.detail.mail.cc,
+                  )}
+                  bcc={displayAddresses(document.detail.bcc)}
+                  onComposeAddress={composeTo}
+                  onAddContact={saveContactAddress}
+                />
                 <div className="message-metadata">
                   <time dateTime={document.detail.mail.date}>
                     {formatMailTime(document.detail.mail.date)}
@@ -355,6 +383,8 @@ export function ExternalMailWindow() {
                   toast.error(String(cause)),
                 )
               }
+              onComposeAddress={composeTo}
+              onAddContact={saveContactAddress}
             />
           </section>
         ) : (

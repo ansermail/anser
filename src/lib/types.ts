@@ -153,6 +153,7 @@ export interface Detail {
   replyTo?: Address[];
   to?: Address[];
   cc?: Address[];
+  bcc?: Address[];
 }
 export interface MailPage extends Snapshot {
   nextCursor: string | null;

@@ -54,8 +54,12 @@ vi.mock("./compose-dialog", () => ({
   ComposeDialog: ({
     draft,
   }: {
-    draft: { externalForwardToken?: string } | null;
-  }) => <div>compose:{draft?.externalForwardToken || "none"}</div>,
+    draft: { externalForwardToken?: string; to: string } | null;
+  }) => (
+    <div>
+      compose:{draft?.externalForwardToken || "none"}|to:{draft?.to || ""}
+    </div>
+  ),
 }));
 
 const documentResult = {
@@ -93,9 +97,10 @@ const documentResult = {
         mime: "application/octet-stream",
       },
     ],
-    replyTo: [],
-    to: [],
-    cc: [],
+    replyTo: [{ name: "Sender", email: "sender@example.com" }],
+    to: [{ name: "", email: "reader@example.com" }],
+    cc: [{ name: "Copy", email: "copy@example.com" }],
+    bcc: [{ name: "", email: "hidden@example.com" }],
   },
 };
 
@@ -130,7 +135,20 @@ it("renders the external document in the normal reader window with disabled navi
   expect(host.textContent).toContain("External sample");
   expect(host.textContent).toContain("reader@example.com");
   expect(host.textContent).toContain("sample.eml");
-  expect(host.querySelectorAll("button:disabled")).toHaveLength(2);
+  expect(
+    [...host.querySelectorAll(".recipient-fields dt")].map(
+      (n) => n.textContent,
+    ),
+  ).toEqual(["收件人：", "抄送：", "密送："]);
+  expect(
+    [...host.querySelectorAll(".recipient-fields dd")].map(
+      (n) => n.textContent,
+    ),
+  ).toEqual([
+    "reader@example.com",
+    "Copy <copy@example.com>",
+    "hidden@example.com",
+  ]);
   expect(host.querySelectorAll("button:disabled")).toHaveLength(2);
   expect(mocks.invoke).toHaveBeenCalledWith("current_external_mail");
 });
@@ -145,6 +163,26 @@ it("prepares mailbox replies and forwards from the external document", async () 
     buttons.find((button) => button.textContent === "forward")!.click(),
   );
   expect(host.textContent).toContain("compose:document-token");
+});
+
+it("opens the external composer for an individual recipient", async () => {
+  const recipient = host.querySelector<HTMLElement>(
+    '[aria-label="邮箱地址操作：reader@example.com"]',
+  )!;
+  await act(async () => {
+    recipient.dispatchEvent(
+      new MouseEvent("contextmenu", {
+        bubbles: true,
+        cancelable: true,
+        button: 2,
+      }),
+    );
+  });
+  const compose = [
+    ...document.querySelectorAll<HTMLElement>('[role="menuitem"]'),
+  ].find((item) => item.textContent === "写邮件")!;
+  await act(async () => compose.click());
+  expect(host.textContent).toContain("compose:none|to:reader@example.com");
 });
 
 it("routes attachment save and preview to the external document token", async () => {

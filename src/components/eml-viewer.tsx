@@ -1,9 +1,9 @@
-import { t } from "@/lib/i18n";
 import { useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { toast } from "sonner";
 import { native } from "../lib/api";
+import { mailFileError } from "../lib/mail-file-errors";
 export function EmlViewer() {
   useEffect(() => {
     if (!native) return;
@@ -27,10 +27,7 @@ export function EmlViewer() {
           if (last) await invoke("open_external_mail_window", { path: last });
         } while (again);
       } catch (cause) {
-        if (!disposed)
-          toast.error(
-            t("Could not open email file: {value0}", { value0: String(cause) }),
-          );
+        if (!disposed) toast.error(mailFileError(cause, true));
       } finally {
         draining = false;
       }

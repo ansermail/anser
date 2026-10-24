@@ -47,6 +47,17 @@ export function parseAddresses(value: string): Address[] {
 export function formatAddress(a: Address) {
   return a.name ? `${JSON.stringify(a.name)} <${a.email}>` : a.email;
 }
+export function displayAddress(a: Address) {
+  if (!a.name) return a.email;
+  // Quote only names that would read as multiple addresses or break the angle.
+  const name = /[",;<>]/.test(a.name) ? JSON.stringify(a.name) : a.name;
+  return `${name} <${a.email}>`;
+}
+/** Prefer parsed headers; fall back to the stored text for older records. */
+export function displayAddresses(items?: Address[], fallback = "") {
+  if (items?.length) return items.map(displayAddress).join(", ");
+  return fallback.trim();
+}
 export function replyRecipients(
   detail: Detail,
   ownEmails: string[],

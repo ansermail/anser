@@ -223,7 +223,9 @@ pub fn addresses(value: &str) -> Result<Vec<Address>> {
     }
     Ok(out)
 }
-pub fn reply_addresses(raw: &[u8]) -> Result<(Vec<Address>, Vec<Address>, Vec<Address>)> {
+pub fn reply_addresses(
+    raw: &[u8],
+) -> Result<(Vec<Address>, Vec<Address>, Vec<Address>, Vec<Address>)> {
     let projection = crate::mail_formats::mime(raw)?;
     let parsed = mailparse::parse_mail(&projection).map_err(err)?;
     let mut parts = Vec::new();
@@ -234,7 +236,9 @@ pub fn reply_addresses(raw: &[u8]) -> Result<(Vec<Address>, Vec<Address>, Vec<Ad
     if reply.is_empty() {
         reply = get("From");
     }
-    Ok((reply, get("To"), get("Cc")))
+    // Bcc stays separate from reply routing but remains visible when the
+    // original headers contain it.
+    Ok((reply, get("To"), get("Cc"), get("Bcc")))
 }
 
 // Use only bracketed, printable IDs; never turn malformed header text into

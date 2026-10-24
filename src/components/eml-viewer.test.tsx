@@ -6,15 +6,18 @@ import { EmlViewer } from "./eml-viewer";
 const mocks = vi.hoisted(() => ({
   invoke: vi.fn(),
   listen: vi.fn(async (_event: string, _handler: () => void) => () => {}),
+  toastError: vi.fn(),
 }));
 vi.mock("@tauri-apps/api/core", () => ({ invoke: mocks.invoke }));
 vi.mock("@tauri-apps/api/event", () => ({ listen: mocks.listen }));
 vi.mock("../lib/api", () => ({ native: true }));
+vi.mock("sonner", () => ({ toast: { error: mocks.toastError } }));
 let root: Root, host: HTMLDivElement;
 beforeEach(async () => {
   Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
   mocks.invoke.mockReset();
   mocks.listen.mockClear();
+  mocks.toastError.mockClear();
   mocks.invoke.mockImplementation(async (command: string) =>
     command === "take_eml_paths" ? [] : undefined,
   );
@@ -70,11 +73,23 @@ it("opens only the last queued path to avoid duplicate windows", async () => {
     ),
   ).toHaveLength(1);
 });
-it("reports a window creation error without rendering a modal", async () => {
+it("reports a localized window creation error without rendering a modal", async () => {
   mocks.invoke.mockImplementation(async (command: string) => {
     if (command === "open_external_mail_window") throw new Error("unreadable");
     return ["/tmp/sample.eml"];
   });
   await openFromSystem();
   expect(document.querySelector('[role="dialog"]')).toBeNull();
+  expect(mocks.toastError).toHaveBeenCalledWith("无法读取源文件。");
+});
+it("explains a changed file without exposing the backend error code", async () => {
+  mocks.invoke.mockImplementation(async (command: string) => {
+    if (command === "open_external_mail_window") throw new Error("fileChanged");
+    return ["/tmp/sample.eml"];
+  });
+  await openFromSystem();
+  expect(mocks.toastError).toHaveBeenCalledWith("源文件已变化，请重新选择。");
+  expect(mocks.toastError).not.toHaveBeenCalledWith(
+    expect.stringContaining("fileChanged"),
+  );
 });

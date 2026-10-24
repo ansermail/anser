@@ -107,7 +107,7 @@ impl EmlFiles {
         };
         let (mut mail, html, attachments) = archive::parse(&raw, &account(), "")?;
         mail.saved_locally = false;
-        let (reply_to, to, cc) = archive::reply_addresses(&raw)?;
+        let (reply_to, to, cc, bcc) = archive::reply_addresses(&raw)?;
         Ok(EmlDocument {
             token,
             filename: source
@@ -123,6 +123,7 @@ impl EmlFiles {
                 reply_to,
                 to,
                 cc,
+                bcc,
             },
         })
     }
@@ -145,7 +146,7 @@ impl EmlFiles {
         let raw = crate::eml_input::read(path, None)?;
         let (mut mail, html, attachments) = archive::parse(&raw, &account(), "")?;
         mail.saved_locally = false;
-        let (reply_to, to, cc) = archive::reply_addresses(&raw)?;
+        let (reply_to, to, cc, bcc) = archive::reply_addresses(&raw)?;
         let token = uuid::Uuid::new_v4().to_string();
         let original_hash = archive::digest(&raw);
         let source = path.canonicalize().map_err(err)?;
@@ -168,6 +169,7 @@ impl EmlFiles {
                 reply_to,
                 to,
                 cc,
+                bcc,
             },
         })
     }
