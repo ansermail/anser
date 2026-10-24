@@ -1,8 +1,14 @@
 # 发布与应用内更新
 
-## 0.1.28 发布准备（2026-10-24）
+## 当前版本：0.1.28（2026-10-24）
 
-本轮合并独立工作区已完成的外部邮件 `fileChanged` 修复、收件人信息分行、地址右键操作和紧凑通讯录网格，保留新版产品官网及共用 Web 演示。五处版本同步为 0.1.28；完整发布门槛、双架构构建、草稿资源审计、正式发布与 Homebrew 分别记录在 [发布工作点](RELEASE_0_1_28_WORKING.md)。未完成正式发布前，公开 latest 仍为 0.1.27。说明见 [v0.1.28](releases/v0.1.28.md)。
+0.1.28 Alpha 于 2026-10-24 14:14:49（Asia/Shanghai）正式发布为 latest，固定源码 `dd2fe9be5357942a82794f2acc543d901f075d1c`。[Checks 40068379904](https://github.com/ansermail/anser/actions/runs/40068379904)、[Pages 40068379953](https://github.com/ansermail/anser/actions/runs/40068379953) 与 [Release macOS 40068386396](https://github.com/ansermail/anser/actions/runs/40068386396) 全部成功，[正式版本](https://github.com/ansermail/anser/releases/tag/v0.1.28) 已公开。
+
+本版修复 macOS 打开外部邮件时扩展属性变动引发的 `fileChanged` 误判；收件人、抄送、原始 Bcc 分行对齐，地址支持右键写信/复制/添加本地联系人，通讯录改为紧凑自适应网格。保留新版官网、宣传片与独立虚构数据 Web 演示。
+
+本地与云端全量门槛通过：前端 64 文件 432 项、Rust 422 通过/3 既有条件忽略、桌面脚本 36 项、IMAP 39 项。七资源大小/SHA-256、双架构更新签名、固定代码签名及精确 DR、包内版本/架构/标识/语言/格式关联/许可、DMG 与更新归档应用一致性、说明原文及匿名公开 latest 端点均通过。[Homebrew 40069438215](https://github.com/ansermail/anser/actions/runs/40069438215) 成功，[78bf04c](https://github.com/ansermail/anser/commit/78bf04c3515966adb99359704ee6077e3ead9a0f) 仅更新主仓库配方，两架构摘要与公开 DMG 一致；重复运行 [40069519888](https://github.com/ansermail/anser/actions/runs/40069519888) 成功且无多余提交。
+
+正式安装后的默认打开/冷启动、应用内原位升级、系统剪贴板和 Intel 实机仍未在本轮验收；不将 CI 和资源审计视为真实场景验收。完整说明见 [v0.1.28](releases/v0.1.28.md)，证据见 [发布工作点](RELEASE_0_1_28_WORKING.md)。
 
 ## 前一正式版本：0.1.27（2026-10-24）
 

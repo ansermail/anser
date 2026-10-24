@@ -10,7 +10,7 @@
 
 ## 当前未完成事项总览（2026-10-24 核对）
 
-**2026-10-24 当前入口：0.1.28 发布准备**。本轮从 `38fe9b7` 基线的 `codex/eml-filechanged` 工作区复制已完成改动，在含新版官网的 `cdb357c` 上无冲突合并，原工作区未改动；主工作区原有文档 WIP 保留。发布工作区 `/Users/zhangxiaojun/Desktop/mail_video/source`、分支 `codex/release-0128`，执行完整发布门槛后提交推送，构建并审计双架构包后正式发布、同步 Homebrew。下方“未提交/未发布”为此前开发阶段记录，最新状态以 [0.1.28 发布工作点](RELEASE_0_1_28_WORKING.md) 为准。
+**2026-10-24 当前入口：0.1.28 已正式发布**。本轮将 `codex/eml-filechanged` 已完成改动合入含官网的最新主线，固定源码 `dd2fe9be5357942a82794f2acc543d901f075d1c`，注释标签 `v0.1.28` 指向同一提交；14:14:49（Asia/Shanghai）公开为 latest。[Checks 40068379904](https://github.com/ansermail/anser/actions/runs/40068379904)、[Pages 40068379953](https://github.com/ansermail/anser/actions/runs/40068379953) 和 [Release macOS 40068386396](https://github.com/ansermail/anser/actions/runs/40068386396) 全部成功。前端 432、Rust 422（3 既有忽略）、脚本 36、IMAP 39 全量门槛通过；两架构七资源、更新签名、固定签名/DR、包内元信息、DMG/更新应用一致性及匿名标准更新端点通过。Homebrew [40069438215](https://github.com/ansermail/anser/actions/runs/40069438215) 成功，配方提交 `78bf04c`。原开发工作区逐文件内容未改，主工作区既有文档 WIP 保留。下方“未提交/未发布”为此前开发阶段记录；本轮正式安装/原位升级/系统剪贴板/Intel 实机仍未验收。详情以 [0.1.28 发布工作点](RELEASE_0_1_28_WORKING.md) 为准。
 
 **2026-10-24 修复：外部邮件随机提示 `fileChanged`（代码完成，未发布）**。用户报告从 Finder/打开方式打开已有邮件时偶发“无法打开邮件文件：fileChanged”，再次点击又可能正常。核查确认不是文件内容变化：`eml_input::fingerprint` 把 ctime 纳入内容指纹，而 macOS LaunchServices 每次打开文档会写入 `com.apple.lastuseddate#PS` 扩展属性；实测该写入只改变 ctime（约 110–235 ms 内发生），大小、mtime 与字节均不变，读取期间只要跨过这次写入即被误判。修复为指纹只使用设备、inode、大小与 mtime（含纳秒），保留同大小真实改写的拒绝；打开失败改用既有 `mailFileError` 本地化提示，不再暴露后端错误码。分支 `codex/eml-filechanged`（基线 `38fe9b7`）：新增 xattr 不改指纹、同大小改写仍返回 `fileChanged` 的 Rust 回归；Rust `eml` 相关 25 项、前端 EML 三文件 15 项、`check:ui`、`check:i18n`、生产构建、`cargo fmt`、Prettier 与 diff 检查通过。未在原生窗口反复双击复验，未提交、合并或发布。
 
