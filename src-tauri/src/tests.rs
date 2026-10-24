@@ -2730,7 +2730,7 @@ fn parser_reads_cc_and_normalizes_priority_headers() {
     assert_eq!(mail.priority, "high");
     assert_eq!(
         archive::header_metadata(raw).unwrap(),
-        (mail.cc.clone(), mail.priority.clone())
+        (mail.cc.clone(), mail.priority.clone(), String::new())
     );
     let legacy = b"From: a@example.com\r\nTo: b@example.com\r\nImportance: Low\r\nSubject: plain\r\nDate: Tue, 29 Sep 2026 10:00:00 +0800\r\nContent-Type: text/plain; charset=utf-8\r\n\r\nbody\r\n";
     let (mail, _, _) = archive::parse(legacy, &account, "INBOX").unwrap();
@@ -2741,8 +2741,26 @@ fn parser_reads_cc_and_normalizes_priority_headers() {
     assert_eq!(mail.priority, "normal");
     assert_eq!(
         archive::header_metadata(plain).unwrap(),
-        (String::new(), "normal".into())
+        (String::new(), "normal".into(), String::new())
     );
+}
+
+#[test]
+fn parser_keeps_the_delegating_sender_only_when_it_differs_from_from() {
+    let account = account();
+    let delegated = b"From: Apple <news@insideapple.apple.com>\r\nSender: bounce@mail.example.com\r\nTo: me@example.com\r\nSubject: delegated\r\nDate: Sat, 24 Oct 2026 08:33:11 +0800\r\nContent-Type: text/plain; charset=utf-8\r\n\r\nbody\r\n";
+    let (mail, _, _) = archive::parse(delegated, &account, "INBOX").unwrap();
+    assert_eq!(mail.sender_on_behalf_of, "bounce@mail.example.com");
+    assert_eq!(
+        archive::header_metadata(delegated).unwrap().2,
+        "bounce@mail.example.com"
+    );
+    let same = b"From: Apple <news@insideapple.apple.com>\r\nSender: News <NEWS@insideapple.apple.com>\r\nTo: me@example.com\r\nSubject: same\r\nDate: Sat, 24 Oct 2026 08:33:11 +0800\r\nContent-Type: text/plain; charset=utf-8\r\n\r\nbody\r\n";
+    let (mail, _, _) = archive::parse(same, &account, "INBOX").unwrap();
+    assert!(mail.sender_on_behalf_of.is_empty());
+    let missing = b"From: Apple <news@insideapple.apple.com>\r\nTo: me@example.com\r\nSubject: none\r\nDate: Sat, 24 Oct 2026 08:33:11 +0800\r\nContent-Type: text/plain; charset=utf-8\r\n\r\nbody\r\n";
+    let (mail, _, _) = archive::parse(missing, &account, "INBOX").unwrap();
+    assert!(mail.sender_on_behalf_of.is_empty());
 }
 
 #[test]
@@ -2751,13 +2769,13 @@ fn parser_upgrade_backfills_cc_and_priority_without_reparsing_bodies() {
     let store = Store::new(dir.path().into()).unwrap();
     let a = account();
     store.save_account(&a).unwrap();
-    let raw = b"From: Alice <alice@example.com>\r\nTo: test@example.com\r\nCc: Team <team@example.com>\r\nX-Priority: 2\r\nSubject: Priority fixture\r\nDate: Tue, 29 Sep 2026 10:00:00 +0800\r\nContent-Type: text/plain; charset=utf-8\r\n\r\nBody stays untouched.\r\n";
+    let raw = b"From: Alice <alice@example.com>\r\nSender: Mailer <mailer@example.com>\r\nTo: test@example.com\r\nCc: Team <team@example.com>\r\nX-Priority: 2\r\nSubject: Priority fixture\r\nDate: Tue, 29 Sep 2026 10:00:00 +0800\r\nContent-Type: text/plain; charset=utf-8\r\n\r\nBody stays untouched.\r\n";
     store.ingest(&a, "INBOX", "1", raw, false).unwrap();
     store
         .db()
         .unwrap()
         .execute(
-            "UPDATE messages SET parser_version=3,data=json_remove(data,'$.cc','$.priority')",
+            "UPDATE messages SET parser_version=3,data=json_remove(data,'$.cc','$.priority','$.senderOnBehalfOf')",
             [],
         )
         .unwrap();
@@ -2767,6 +2785,7 @@ fn parser_upgrade_backfills_cc_and_priority_without_reparsing_bodies() {
     let mail = &snapshot.messages[0];
     assert_eq!(mail.cc, "Team <team@example.com>");
     assert_eq!(mail.priority, "high");
+    assert_eq!(mail.sender_on_behalf_of, "Mailer <mailer@example.com>");
     assert_eq!(store.mail(&mail.id).unwrap().body, "Body stays untouched.");
     let version: i64 = store
         .db()

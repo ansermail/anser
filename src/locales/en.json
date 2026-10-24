@@ -395,6 +395,8 @@
   "Discard empty message": "Discard empty message",
   "Messages with content are saved as drafts automatically. Empty messages are discarded on close.": "Messages with content are saved as drafts automatically. Empty messages are discarded on close.",
   "From": "From",
+  "Sender": "Sender",
+  "Sent on behalf of {value0}": "Sent on behalf of {value0}",
   "Select sending account": "Select sending account",
   "Cc / Bcc": "Cc / Bcc",
   "Subject": "Subject",

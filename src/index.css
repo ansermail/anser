@@ -986,6 +986,8 @@ kbd {
   align-self: flex-start;
   font-size: 11px;
   line-height: 16px;
+}
+.sender-block > div > .sender-on-behalf-of {
   color: var(--muted);
 }
 .recipient-line {
@@ -3468,6 +3470,10 @@ kbd {
 .turn-sender .contact-address:focus-visible,
 .turn-sender .contact-address[data-state="open"] {
   color: var(--foreground);
+}
+.turn-sender .turn-sender-via {
+  flex-basis: 100%;
+  min-width: 0;
 }
 .turn-byline time {
   color: var(--muted);

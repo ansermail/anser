@@ -21,10 +21,14 @@ afterEach(() => {
 
 describe("mail printing", () => {
   it("prepares only the selected message with safe body and attachment names", () => {
-    const sheet = printableMail(detail);
+    const sheet = printableMail({
+      ...detail,
+      mail: { ...mail, senderOnBehalfOf: "bounce@mail.example.com" },
+    });
     expect(sheet.querySelector("h1")?.textContent).toBe(mail.subject);
     expect(sheet.textContent).toContain("打印正文");
     expect(sheet.textContent).toContain("收据.pdf");
+    expect(sheet.textContent).toContain("代发人：bounce@mail.example.com");
     expect(sheet.querySelector("script,style,link,[onerror]")).toBeNull();
     expect(sheet.querySelector("img")?.getAttribute("referrerpolicy")).toBe(
       "no-referrer",

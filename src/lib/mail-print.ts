@@ -47,6 +47,7 @@ export function printableMail(detail: Detail, doc: Document = document) {
   const date = new Date(detail.mail.date);
   for (const [label, value] of [
     [t("From"), detail.mail.sender],
+    [t("Sender"), detail.mail.senderOnBehalfOf || ""],
     [t("To"), detail.mail.recipients],
     [
       t("Date"),

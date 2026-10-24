@@ -237,6 +237,16 @@ export function ExternalMailWindow() {
                         </span>
                       );
                     })()}
+                    {document.detail.mail.senderOnBehalfOf && (
+                      <span
+                        className="sender-on-behalf-of"
+                        title={document.detail.mail.senderOnBehalfOf}
+                      >
+                        {t("Sent on behalf of {value0}", {
+                          value0: document.detail.mail.senderOnBehalfOf,
+                        })}
+                      </span>
+                    )}
                   </div>
                 </div>
                 <div className="reader-toolbar">

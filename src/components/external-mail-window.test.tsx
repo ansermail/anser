@@ -87,6 +87,7 @@ const documentResult = {
       savedAt: "",
       sourceFolder: "",
       savedLocally: false,
+      senderOnBehalfOf: "bounce@mail.example.com",
     },
     html: "<p>Body</p>",
     attachments: [
@@ -135,6 +136,7 @@ it("renders the external document in the normal reader window with disabled navi
   expect(host.textContent).toContain("External sample");
   expect(host.textContent).toContain("reader@example.com");
   expect(host.textContent).toContain("sample.eml");
+  expect(host.textContent).toContain("由 bounce@mail.example.com 代发");
   expect(
     [...host.querySelectorAll(".recipient-fields dt")].map(
       (n) => n.textContent,

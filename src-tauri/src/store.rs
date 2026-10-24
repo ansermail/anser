@@ -905,6 +905,7 @@ impl Store {
             archive::parse(&raw, &self.account_for_mail(&mail), &mail.source_folder)?;
         mail.body = parsed.body;
         mail.has_attachments = parsed.has_attachments;
+        mail.sender_on_behalf_of = parsed.sender_on_behalf_of;
         let (reply_to, to, cc, bcc) = archive::reply_addresses(&raw)?;
         Ok(Detail {
             original_hash: archive::digest(&raw),
@@ -982,12 +983,13 @@ impl Store {
                     failed += 1;
                     continue;
                 };
-                let Ok((cc, priority)) = archive::header_metadata(&raw) else {
+                let Ok((cc, priority, sender_on_behalf_of)) = archive::header_metadata(&raw) else {
                     failed += 1;
                     continue;
                 };
                 mail.cc = cc;
                 mail.priority = priority;
+                mail.sender_on_behalf_of = sender_on_behalf_of;
                 mail.header_metadata_known = true;
             } else {
                 let Ok((parsed, _, _)) = self.reparse(&mail) else {
@@ -1001,6 +1003,7 @@ impl Store {
                     parsed.date
                 };
                 mail.sender = parsed.sender;
+                mail.sender_on_behalf_of = parsed.sender_on_behalf_of;
                 mail.recipients = parsed.recipients;
                 mail.cc = parsed.cc;
                 mail.priority = parsed.priority;

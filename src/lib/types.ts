@@ -48,6 +48,7 @@ export interface Mail {
   accountId: string;
   accountEmail: string;
   sender: string;
+  senderOnBehalfOf?: string;
   recipients: string;
   cc?: string;
   priority?: string;

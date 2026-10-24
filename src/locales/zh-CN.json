@@ -395,6 +395,8 @@
   "Discard empty message": "舍弃空白邮件",
   "Messages with content are saved as drafts automatically. Empty messages are discarded on close.": "有内容的邮件会自动保存草稿，空白邮件关闭时直接舍弃。",
   "From": "发件人",
+  "Sender": "代发人",
+  "Sent on behalf of {value0}": "由 {value0} 代发",
   "Select sending account": "选择发件账号",
   "Cc / Bcc": "抄送 / 密送",
   "Subject": "主题",

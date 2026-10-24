@@ -223,6 +223,30 @@ pub fn addresses(value: &str) -> Result<Vec<Address>> {
     }
     Ok(out)
 }
+// `Sender` names the mailbox that submitted the message. Only surface it when
+// it differs from `From`; matching values are redundant and would claim a
+// delegation that did not happen.
+pub fn sender_on_behalf_of(from: &str, sender: &str) -> String {
+    let sender = sender.trim();
+    if sender.is_empty() || from.trim().is_empty() {
+        return String::new();
+    }
+    let address = |value: &str| {
+        addresses(value)
+            .ok()
+            .and_then(|list| list.into_iter().next())
+            .map(|item| item.email)
+    };
+    let different = match (address(from), address(sender)) {
+        (Some(from), Some(sender)) => !from.eq_ignore_ascii_case(&sender),
+        _ => !from.trim().eq_ignore_ascii_case(sender),
+    };
+    if different {
+        sender.into()
+    } else {
+        String::new()
+    }
+}
 pub fn reply_addresses(
     raw: &[u8],
 ) -> Result<(Vec<Address>, Vec<Address>, Vec<Address>, Vec<Address>)> {
@@ -360,12 +384,17 @@ pub fn parse(
     }
     let now = chrono::Utc::now().to_rfc3339();
     let date = message_date(&parsed).unwrap_or_default();
+    let sender = header(&parsed, &parts, "From").unwrap_or_default();
     let mail = Mail {
         parse_warnings: warnings,
         id: uuid::Uuid::new_v4().to_string(),
         account_id: account.id.clone(),
         account_email: account.email.clone(),
-        sender: header(&parsed, &parts, "From").unwrap_or_default(),
+        sender_on_behalf_of: sender_on_behalf_of(
+            &sender,
+            &header(&parsed, &parts, "Sender").unwrap_or_default(),
+        ),
+        sender,
         recipients: header(&parsed, &parts, "To").unwrap_or_default(),
         cc: header(&parsed, &parts, "Cc").unwrap_or_default(),
         priority: priority_of(&parsed.headers),
@@ -484,7 +513,7 @@ fn message_date(mail: &ParsedMail<'_>) -> Option<String> {
 /// Version of the derived mail record written by [`parse`]. Bump it when the
 /// parser starts filling a new field so stored archives are updated once on
 /// the next launch instead of silently keeping the old shape.
-pub const PARSER_VERSION: i64 = 5;
+pub const PARSER_VERSION: i64 = 6;
 /// Normalized importance of a message: `high`, `normal` or `low`. Mail clients
 /// disagree on the header and values, so `X-Priority`, `Priority` and
 /// `Importance` are all accepted and reduced to these three buckets.
@@ -513,11 +542,15 @@ fn priority_value(value: &str) -> Option<&'static str> {
 /// Read only the header block of an archived original. Used to backfill
 /// fields for records written by an older parser without decoding bodies or
 /// attachments again.
-pub fn header_metadata(raw: &[u8]) -> Result<(String, String)> {
+pub fn header_metadata(raw: &[u8]) -> Result<(String, String, String)> {
     let projection = crate::mail_formats::mime(raw)?;
     let (headers, _) = mailparse::parse_headers(&projection).map_err(err)?;
     Ok((
         headers.get_first_value("Cc").unwrap_or_default(),
         priority_of(&headers),
+        sender_on_behalf_of(
+            &headers.get_first_value("From").unwrap_or_default(),
+            &headers.get_first_value("Sender").unwrap_or_default(),
+        ),
     ))
 }

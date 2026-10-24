@@ -127,6 +127,9 @@ pub struct Mail {
     pub account_id: String,
     pub account_email: String,
     pub sender: String,
+    /// RFC 5322 `Sender` when it names a different mailbox than `From`.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub sender_on_behalf_of: String,
     pub recipients: String,
     #[serde(default)]
     pub cc: String,

@@ -159,3 +159,72 @@ it("keeps the selected header in view as a 41-message conversation loads, then r
     scrollRef.current?.contains(host.querySelector(".conversation-reply")),
   ).toBe(false);
 });
+
+it("shows the delegating sender only when the message carries one", async () => {
+  const delegated = {
+    ...selected.mail,
+    conversationCount: 2,
+    senderOnBehalfOf: "bounce@mail.example.com",
+  };
+  backend.call.mockImplementation((command: string) =>
+    Promise.resolve(
+      command === "mail_conversation"
+        ? [delegated]
+        : { ...selected, mail: delegated },
+    ),
+  );
+  const noop = vi.fn();
+  await act(async () =>
+    root.render(
+      <ConversationReader
+        selected={{ ...selected, mail: delegated }}
+        revision={[]}
+        accounts={[]}
+        demo
+        editorOpen={false}
+        scrollRef={scrollRef}
+        translationActions={null}
+        onReply={noop}
+        onReedit={noop}
+        onEdit={noop}
+        onSent={noop}
+        onExport={noop}
+        onAttachment={async () => {}}
+        onAction={noop}
+        onLink={noop}
+      />,
+    ),
+  );
+  const via = host.querySelector(".turn-sender-via");
+  expect(via?.textContent).toBe("由 bounce@mail.example.com 代发");
+  const plain = { ...selected.mail, conversationCount: 2 };
+  backend.call.mockImplementation((command: string) =>
+    Promise.resolve(
+      command === "mail_conversation" ? [plain] : { ...selected, mail: plain },
+    ),
+  );
+  await act(async () => root.unmount());
+  root = createRoot(host);
+  await act(async () =>
+    root.render(
+      <ConversationReader
+        selected={{ ...selected, mail: plain }}
+        revision={[]}
+        accounts={[]}
+        demo
+        editorOpen={false}
+        scrollRef={scrollRef}
+        translationActions={null}
+        onReply={noop}
+        onReedit={noop}
+        onEdit={noop}
+        onSent={noop}
+        onExport={noop}
+        onAttachment={async () => {}}
+        onAction={noop}
+        onLink={noop}
+      />,
+    ),
+  );
+  expect(host.querySelector(".turn-sender-via")).toBeNull();
+});

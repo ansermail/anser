@@ -169,6 +169,8 @@ function Turn({
   const [detail, setDetail] = useState<Detail | null>(selected);
   const [error, setError] = useState("");
   const [retry, setRetry] = useState(0);
+  const senderOnBehalfOf =
+    detail?.mail.senderOnBehalfOf || mail.senderOnBehalfOf;
   useEffect(() => {
     let live = true;
     setError("");
@@ -222,6 +224,13 @@ function Turn({
               <span title={mail.sender}>{senderAddress(mail.sender)}</span>
             );
           })()}
+          {senderOnBehalfOf && (
+            <span className="turn-sender-via" title={senderOnBehalfOf}>
+              {t("Sent on behalf of {value0}", {
+                value0: senderOnBehalfOf,
+              })}
+            </span>
+          )}
         </div>
         <time dateTime={mail.date}>{mailTime(mail.date)}</time>
         <DropdownMenu>

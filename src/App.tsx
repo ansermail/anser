@@ -2897,6 +2897,16 @@ export default function App() {
                                 <span>{senderAddress(detail.mail.sender)}</span>
                               );
                             })()}
+                            {detail.mail.senderOnBehalfOf && (
+                              <span
+                                className="sender-on-behalf-of"
+                                title={detail.mail.senderOnBehalfOf}
+                              >
+                                {t("Sent on behalf of {value0}", {
+                                  value0: detail.mail.senderOnBehalfOf,
+                                })}
+                              </span>
+                            )}
                           </div>
                         </div>
                         <div className="reader-toolbar">
