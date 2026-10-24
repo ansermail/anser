@@ -1,10 +1,16 @@
 # 发布与应用内更新
 
-## 当前版本：0.1.27（发布准备中）
+## 当前版本：0.1.27（2026-10-24）
 
 0.1.27 新增 EML、EMLX、Outlook MSG 与 MBOX 本地导入，完整保留原始字节并支持账号/文件夹归档、后台任务、去重、补全、取消与中断记录；本地导入文件夹支持右键重命名和永久删除，删除会连同其中邮件、分类与不再共享的本地原件移除，不发送服务器删除命令。设置新增 EML、EMLX、MSG 的系统格式关联，外部单封邮件使用带 macOS 原生窗口按钮的独立阅读窗口，并提供打印、回复、全部回复、转发与附件操作。
 
-本版增加浅色、深色、跟随系统三态主题，图标分别使用太阳、月亮、显示器表示当前模式，系统外观变化时跟随模式即时更新；邮件正文和写信源码预览同步适配明暗主题，深色正文使用与邮件信息栏一致的应用背景，同时保留作者品牌色、背景图与正文图片。正式发布、双架构云端构建、资源审计及 Homebrew 同步完成后将在此补记固定源码、工作流和公开资源证据。
+本版增加浅色、深色、跟随系统三态主题，图标分别使用太阳、月亮、显示器表示当前模式，系统外观变化时跟随模式即时更新；邮件正文和写信源码预览同步适配明暗主题，深色正文使用与邮件信息栏一致的应用背景，同时保留作者品牌色、背景图与正文图片。
+
+0.1.27 Alpha 于 2026-10-24 10:36:00（Asia/Shanghai）正式发布为 latest，固定源码 `f176bfe4fab0a64380fc1b54ea94c9670e4277b6`。[Release macOS 40053508877](https://github.com/ansermail/anser/actions/runs/40053508877)、[Checks 40053489470](https://github.com/ansermail/anser/actions/runs/40053489470) 与 [Preview Pages 40053489611](https://github.com/ansermail/anser/actions/runs/40053489611) 全部成功，[0.1.27 正式版本](https://github.com/ansermail/anser/releases/tag/v0.1.27) 已公开。
+
+七资源大小/SHA-256、既有更新公钥与双架构更新签名、固定代码签名及精确 DR、App 版本/架构/标识/最低系统版本/语言/邮件格式关联/许可、DMG 与更新归档内容、匿名公开下载及标准 latest 更新端点均核验通过。[Homebrew 40054843111](https://github.com/ansermail/anser/actions/runs/40054843111) 成功，[配方提交 4590879](https://github.com/ansermail/anser/commit/4590879646fbde33fa87db931263a311b49d2b81) 仅更新 `Casks/anser.rb`；两架构摘要与公开 DMG 一致，重复运行 [40054930237](https://github.com/ansermail/anser/actions/runs/40054930237) 返回 `Cask is already current; no commit needed.`。
+
+本轮本地完整门槛为前端 63 文件 425 项、Rust 421 通过/3 项既有条件忽略、桌面脚本 36 项、IMAP 39 项，TypeScript、UI、1,338 条双语键、Prettier、Rust fmt、生产构建、Pages 构建、发布资源检查及 diff 检查均通过。正式安装后的默认双击/冷启动、应用内原位升级与 Intel 实机运行仍未验证，不以构建和产物审计代替。完整说明见 [0.1.27](releases/v0.1.27.md)，证据见 [发布工作点](RELEASE_0_1_27_WORKING.md)。
 
 ## 前一正式版本：0.1.26（2026-10-23）
 

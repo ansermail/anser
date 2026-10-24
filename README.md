@@ -8,9 +8,9 @@
 
 [下载最新版本](https://github.com/ansermail/anser/releases/latest) · [界面预览](https://ansermail.github.io/anser/) · [使用说明](docs/USAGE.md) · [开发进度](docs/DEVELOPMENT_STATUS.md) · [反馈问题](https://github.com/ansermail/anser/issues)
 
-> **0.1.27 Alpha** 正在准备发布，支持 Apple Silicon 与 Intel Mac。长期稳定性、部分服务商兼容性及真实场景验收仍在持续完善。
+> **0.1.27 Alpha** 已于 2026-10-24 正式发布，支持 Apple Silicon 与 Intel Mac。长期稳定性、部分服务商兼容性及真实场景验收仍在持续完善。
 
-0.1.27 增加本地邮件导入，可把 EML、EMLX、Outlook MSG 与 MBOX 完整保存到本地存档并按账号和文件夹管理；支持导入文件夹重命名与连同邮件永久删除，以及 EML/EMLX/MSG 的 macOS 格式关联。外部邮件改为具备原生窗口按钮的独立阅读窗口，并提供浅色、深色、跟随系统三态主题及同步适配的邮件正文。说明见 [0.1.27 发布说明](docs/releases/v0.1.27.md)，验证证据见 [发布工作点](docs/RELEASE_0_1_27_WORKING.md)。
+0.1.27 增加本地邮件导入，可把 EML、EMLX、Outlook MSG 与 MBOX 完整保存到本地存档并按账号和文件夹管理；支持导入文件夹重命名与连同邮件永久删除，以及 EML/EMLX/MSG 的 macOS 格式关联。外部邮件改为具备原生窗口按钮的独立阅读窗口，并提供浅色、深色、跟随系统三态主题及同步适配的邮件正文。[下载 0.1.27](https://github.com/ansermail/anser/releases/tag/v0.1.27)，说明见 [发布说明](docs/releases/v0.1.27.md)，验证证据见 [发布工作点](docs/RELEASE_0_1_27_WORKING.md)。
 
 ![雁信的多账号收件箱与邮件阅读界面](docs/screenshots/inbox-demo.png)
 
@@ -35,7 +35,7 @@ _所有展示截图均来自浏览器演示模式，使用项目内置的虚构�
 | 多账号管理 | 统一收件箱、账号独立视图与服务器文件夹树，支持自定义收发服务器。                                        |
 | 邮件收取   | IMAP / POP3 收件、SMTP 发件；IMAP IDLE 监听收件箱，定时补查作为补充。                                   |
 | 阅读与对话 | 单封邮件独立阅读，有回复引用关系的邮件按往来对话展示；支持搜索、未读、星标及附件筛选。                  |
-| 双语翻译 | 点击后在原段落下方显示译文，支持 OpenAI 兼容服务、本机模型、缓存与活动记录；自 0.1.17 提供。 |
+| 双语翻译   | 点击后在原段落下方显示译文，支持 OpenAI 兼容服务、本机模型、缓存与活动记录；自 0.1.17 提供。            |
 | 写信与回复 | 纯文本、富文本、Markdown 与 HTML 正文，草稿自动保存、回复、全部回复、转发及发送预览。                   |
 | 附件处理   | 调用 macOS 默认应用预览附件，也可另存到指定位置。                                                       |
 | 本地留存   | 按账号选择完整存档或在线阅读；完整原始邮件独立保存，支持备份、恢复与完整性校验。                        |
