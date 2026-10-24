@@ -12,6 +12,16 @@ export default defineConfig(({ mode }) => ({
       mode === "preview" ? "dist-preview" : "dist",
     ),
     emptyOutDir: true,
+    ...(mode === "preview"
+      ? {
+          rollupOptions: {
+            input: {
+              home: path.resolve(__dirname, "preview/index.html"),
+              demo: path.resolve(__dirname, "preview/demo/index.html"),
+            },
+          },
+        }
+      : {}),
   },
   plugins: [react(), tailwindcss()],
   resolve: {

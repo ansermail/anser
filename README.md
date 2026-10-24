@@ -6,7 +6,7 @@
 
 网页预览与桌面共用界面，相关代码推送到 `main` 后自动部署；只展示虚构邮箱，不能实际连接或收发邮件。
 
-[下载最新版本](https://github.com/ansermail/anser/releases/latest) · [界面预览](https://ansermail.github.io/anser/) · [使用说明](docs/USAGE.md) · [开发进度](docs/DEVELOPMENT_STATUS.md) · [反馈问题](https://github.com/ansermail/anser/issues)
+[下载最新版本](https://github.com/ansermail/anser/releases/latest) · [产品官网](https://ansermail.github.io/anser/) · [Web 演示](https://ansermail.github.io/anser/demo/) · [使用说明](docs/USAGE.md) · [开发进度](docs/DEVELOPMENT_STATUS.md) · [反馈问题](https://github.com/ansermail/anser/issues)
 
 > **0.1.27 Alpha** 已于 2026-10-24 正式发布，支持 Apple Silicon 与 Intel Mac。长期稳定性、部分服务商兼容性及真实场景验收仍在持续完善。
 
@@ -16,7 +16,7 @@
 
 _所有展示截图均来自浏览器演示模式，使用项目内置的虚构账号和示例邮件，不包含真实邮箱信息。_
 
-[在线界面预览](https://ansermail.github.io/anser/)使用虚构邮件，可阅读、搜索、切换主题和调整分栏；不连接真实邮箱、不保存邮件或发送消息。正式桌面包隐藏示例邮箱入口。
+[在线界面预览](https://ansermail.github.io/anser/demo/)使用虚构邮件，可阅读、搜索、切换主题和调整分栏；不连接真实邮箱、不保存邮件或发送消息。正式桌面包隐藏示例邮箱入口。
 
 0.1.6 已包含按账号设置的邮件签名、可选择的存档保存位置、EML 文件查看和设置页整理，并保留“按对话 / 逐封邮件”切换、连续阅读及服务器已发送副本核对。具体完成项与待办见[开发进度](docs/DEVELOPMENT_STATUS.md)。
 

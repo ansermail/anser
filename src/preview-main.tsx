@@ -4,6 +4,15 @@ import App from "./App";
 import "./index.css";
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
-    <App />
+    <>
+      <a
+        className="demo-home-link"
+        href={import.meta.env.BASE_URL}
+        aria-label="Anser home"
+      >
+        ← Anser
+      </a>
+      <App />
+    </>
   </React.StrictMode>,
 );
