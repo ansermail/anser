@@ -8,6 +8,12 @@
 
 已通过最终 Pages 构建/隔离/双入口/双语键/Retina 素材检查、桌面生产构建、格式及 diff 检查、主题与演示隐私专项 3 项；官网四功能切换、中英文切换、390px 中英文无横向溢出、演示往返导航、80.149 秒视频实际 readyState=4 播放及关闭后焦点恢复均实测通过。视频 3840×2160/1920×1080、30fps、H.264/AAC，最终响度 -16.0 LUFS、真峰值 -1.5dBFS；完整解码无错误，抽帧检查通过。桌面构建不包含网站媒体。官网实现提交 `a8d3ae25876ea2ef691cc4d6805ed9bad0462593` 已推送 main；[Pages 40066887631](https://github.com/ansermail/anser/actions/runs/40066887631) 与 [Checks 40066887628](https://github.com/ansermail/anser/actions/runs/40066887628) 均成功。公开 [官网](https://ansermail.github.io/anser/) → [演示](https://ansermail.github.io/anser/demo/) → 返回官网往返验证通过，线上视频实际时长 80.149 秒、readyState=4、无媒体错误，关闭弹窗后焦点恢复。该节点仅交付官网与宣传片，没有新发桌面包。下一入口：docs/WEBSITE_FILM_WORKING.md。
 
+## 本机维护记录：EML 打开方式旧版本清理（2026-10-23）
+
+用户授权删除多余雁信，仅保留最新本机安装版。当前 `/Applications/雁信.app` 实际为 0.1.25；本轮未执行 0.1.26 安装升级，不变更上方/下方云端发布结论。将 `yanxin-local-backups` 下六个旧应用备份（0.1.14/0.1.15/0.1.16，含 original-from-Applications）和主工作区 `target/release/bundle/macos` 下两个旧应用产物（0.1.23 雁信、0.1.0 Mail Desktop）移至用户废纸篓，并注销上述副本、已消失的测试/DMG 路径及开发预览的 LaunchServices 记录。核对八个原路径均不存在、废纸篓八个应用包完整保留，`lsregister -dump` 中 `dev.maildesk.desktop` 仅剩 `/Applications/雁信.app`。恢复映射见 `/Users/zhangxiaojun/.Trash/Anser-old-apps-20261023-202105/cleanup-report.json`。
+
+正在运行的开发预览文件保留；其他开发进程重启该预览时可能再次注册 EML，本轮观察到一次并已再次注销。未修改默认打开应用、账号、邮件存档、钥匙串、业务源码或签名；未执行应用构建/自动测试/云端发布，未实际重开 Finder 菜单验收。后续如重复出现，先核对是否为开发预览重新注册，不清空全局 LaunchServices 数据库。
+
 ## 当前未完成事项总览（2026-10-24 核对）
 
 **2026-10-24 当前入口：0.1.28 已正式发布**。本轮将 `codex/eml-filechanged` 已完成改动合入含官网的最新主线，固定源码 `dd2fe9be5357942a82794f2acc543d901f075d1c`，注释标签 `v0.1.28` 指向同一提交；14:14:49（Asia/Shanghai）公开为 latest。[Checks 40068379904](https://github.com/ansermail/anser/actions/runs/40068379904)、[Pages 40068379953](https://github.com/ansermail/anser/actions/runs/40068379953) 和 [Release macOS 40068386396](https://github.com/ansermail/anser/actions/runs/40068386396) 全部成功。前端 432、Rust 422（3 既有忽略）、脚本 36、IMAP 39 全量门槛通过；两架构七资源、更新签名、固定签名/DR、包内元信息、DMG/更新应用一致性及匿名标准更新端点通过。Homebrew [40069438215](https://github.com/ansermail/anser/actions/runs/40069438215) 成功，配方提交 `78bf04c`。原开发工作区逐文件内容未改，主工作区既有文档 WIP 保留。下方“未提交/未发布”为此前开发阶段记录；本轮正式安装/原位升级/系统剪贴板/Intel 实机仍未验收。详情以 [0.1.28 发布工作点](RELEASE_0_1_28_WORKING.md) 为准。
