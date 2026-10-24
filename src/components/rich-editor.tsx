@@ -48,6 +48,7 @@ export function RichEditor({
   readImages,
   ref,
   dark = false,
+  themeMode = "light",
   onToggleTheme,
 }: {
   body: string;
@@ -58,6 +59,7 @@ export function RichEditor({
   readImages: (paths: string[]) => Promise<BodyImage[]>;
   ref?: Ref<RichEditorHandle>;
   dark?: boolean;
+  themeMode?: "light" | "dark" | "system";
   onToggleTheme?: () => void;
 }) {
   const [imageBusy, setImageBusy] = useState(false);
@@ -244,6 +246,7 @@ export function RichEditor({
       <div className="rich-editor">
         <RichToolbar
           dark={dark}
+          themeMode={themeMode}
           onToggleTheme={onToggleTheme}
           editor={editor}
           disabled={disabled}

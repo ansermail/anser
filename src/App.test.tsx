@@ -8,6 +8,7 @@ import { enterDemo, leaveDemo, snapshot } from "./lib/api";
 import * as api from "./lib/api";
 import type { Detail, Query, RemoteFolder } from "./lib/types";
 import { toast } from "sonner";
+import { resetThemeForTest } from "./lib/theme";
 const notificationFixture = vi.hoisted(() => ({
   open: (_token: string) => {},
 }));
@@ -131,6 +132,7 @@ beforeEach(async () => {
   HTMLElement.prototype.scrollTo = vi.fn();
   HTMLElement.prototype.scrollIntoView = vi.fn();
   localStorage.clear();
+  resetThemeForTest();
   enterDemo();
   host = document.createElement("div");
   document.body.append(host);
@@ -2446,6 +2448,104 @@ it("opens saving guidance after a new account connects without submitting folder
     ) || null,
   );
   expect(document.querySelector('[role="dialog"]')).toBeNull();
+});
+
+it("cycles light, dark and system appearance and persists system mode", async () => {
+  const toggle = host.querySelector<HTMLButtonElement>(
+    'button[title="浅色模式 · 切换到深色模式"]',
+  )!;
+  expect(toggle.querySelector(".lucide-sun")).not.toBeNull();
+  await click(toggle);
+  await act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  });
+  expect(document.documentElement.classList.contains("dark")).toBe(true);
+  expect(localStorage.getItem("mail-theme")).toBe("dark");
+  expect(toggle.getAttribute("title")).toBe("深色模式 · 切换为跟随系统外观");
+  expect(toggle.querySelector(".lucide-moon")).not.toBeNull();
+  await click(toggle);
+  await act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  });
+  expect(localStorage.getItem("mail-theme")).toBe("system");
+  expect(document.documentElement.classList.contains("dark")).toBe(false);
+  expect(toggle.getAttribute("title")).toBe(
+    "正在跟随系统外观 · 切换到浅色模式",
+  );
+  expect(toggle.querySelector(".lucide-monitor")).not.toBeNull();
+});
+
+it("renames and removes an imported local folder from its context menu", async () => {
+  await click(nav("项目协作"));
+  const folder = nav("项目协作")!;
+  const openMenu = async () =>
+    act(async () => {
+      folder.dispatchEvent(
+        new MouseEvent("contextmenu", {
+          bubbles: true,
+          cancelable: true,
+          button: 2,
+          clientX: 20,
+          clientY: 20,
+        }),
+      );
+    });
+  const menuItem = (text: string) =>
+    [...document.querySelectorAll('[data-slot="context-menu-item"]')].find(
+      (item) => item.textContent?.trim() === text,
+    ) ?? null;
+
+  await openMenu();
+  await click(menuItem("重命名"));
+  const input = document.querySelector(
+    '[role="dialog"] input[aria-label="本地文件夹名称"]',
+  ) as HTMLInputElement;
+  await act(async () => {
+    Object.getOwnPropertyDescriptor(
+      HTMLInputElement.prototype,
+      "value",
+    )!.set!.call(input, "改名后的项目");
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+  await click(
+    [...document.querySelectorAll('[role="dialog"] button')].find(
+      (button) => button.textContent === "重命名",
+    ) ?? null,
+  );
+  expect(nav("改名后的项目")).not.toBeNull();
+  expect(nav("项目协作")).toBeNull();
+  expect(host.querySelector(".list-heading h1")?.textContent).toBe(
+    "改名后的项目",
+  );
+
+  const renamed = nav("改名后的项目")!;
+  await act(async () => {
+    renamed.dispatchEvent(
+      new MouseEvent("contextmenu", {
+        bubbles: true,
+        cancelable: true,
+        button: 2,
+        clientX: 20,
+        clientY: 20,
+      }),
+    );
+  });
+  await click(menuItem("删除文件夹"));
+  await click(
+    [...document.querySelectorAll('[role="alertdialog"] button')].find(
+      (button) => button.textContent === "删除文件夹",
+    ) ?? null,
+  );
+  expect(nav("改名后的项目")).toBeNull();
+  expect(host.querySelector(".list-heading h1")?.textContent).toBe("本地存档");
+  expect(
+    (await snapshot({ ...localQuery, folder: "改名后的项目" })).messages,
+  ).toHaveLength(0);
+  expect(
+    (await snapshot(localQuery)).messages.filter(
+      (mail) => mail.localFolder === "改名后的项目",
+    ).length,
+  ).toBe(0);
 });
 
 describe("notification mail opening", () => {

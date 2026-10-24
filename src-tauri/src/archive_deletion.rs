@@ -213,6 +213,114 @@ fn review_token(mails: &[(Mail, bool)]) -> String {
     crate::archive::digest(&serde_json::to_vec(&scope).expect("serializable archive scope"))
 }
 impl Store {
+    /// Permanently remove every mail in a local filing folder. The folder is a
+    /// user-facing collection, so deleting it also removes records from local
+    /// storage and from this application. It never issues an IMAP deletion.
+    pub fn delete_local_folder(&self, current: &str) -> Result<u64> {
+        let current = current.trim();
+        if current.is_empty() || current == "全部存档" {
+            return Err("本地文件夹不存在".into());
+        }
+        let _archive = self.archive_gate.write().map_err(err)?;
+        self.recover_archive_deletion()?;
+        let mut db = self.db()?;
+        let tx = db
+            .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
+            .map_err(err)?;
+        let mails = {
+            let mut query = tx
+                .prepare("SELECT data FROM messages WHERE json_extract(data,'$.localFolder')=?1")
+                .map_err(err)?;
+            let mails = query
+                .query_map([current], |r| r.get::<_, String>(0))
+                .map_err(err)?
+                .map(|row| serde_json::from_str::<Mail>(&row.map_err(err)?).map_err(err))
+                .collect::<Result<Vec<_>>>()?;
+            mails
+        };
+        if mails.is_empty() {
+            return Err("本地文件夹不存在".into());
+        }
+        let mut hashes = std::collections::BTreeSet::new();
+        for mail in &mails {
+            if !valid_hash(&mail.hash) {
+                return Err("存档标识无效，请先校验存档".into());
+            }
+            hashes.insert(mail.hash.clone());
+            crate::rule_runs::cancel_mail_in(&tx, &mail.id)?;
+            tx.execute(
+                "UPDATE archive_jobs SET status='cancelled',revision=revision+1,error='本地文件夹已删除' WHERE mail_id=?1 AND status NOT IN ('completed','cancelled')",
+                [&mail.id],
+            )
+            .map_err(err)?;
+            tx.execute(
+                "DELETE FROM server_operations WHERE json_extract(data,'$.mailId')=?1",
+                [&mail.id],
+            )
+            .map_err(err)?;
+            tx.execute(
+                "DELETE FROM directory_operations WHERE json_extract(data,'$.mailId')=?1 AND status NOT IN ('completed','cancelled')",
+                [&mail.id],
+            )
+            .map_err(err)?;
+            tx.execute(
+                "DELETE FROM notification_targets WHERE mail_id=?1",
+                [&mail.id],
+            )
+            .map_err(err)?;
+            tx.execute("DELETE FROM sources WHERE mail_id=?1", [&mail.id])
+                .map_err(err)?;
+            tx.execute("DELETE FROM messages WHERE id=?1", [&mail.id])
+                .map_err(err)?;
+        }
+        let stage = crate::archive_location::physical_root(&self.root)?
+            .join(".archive-deletion")
+            .join(uuid::Uuid::new_v4().to_string());
+        fs::create_dir_all(&stage).map_err(err)?;
+        let result = (|| -> Result<()> {
+            for hash in hashes {
+                let used: bool = tx
+                    .query_row(
+                        "SELECT EXISTS(SELECT 1 FROM messages WHERE hash=?1 AND COALESCE(json_extract(data,'$.savedLocally'),1)=1)",
+                        [&hash],
+                        |r| r.get(0),
+                    )
+                    .map_err(err)?;
+                if used {
+                    continue;
+                }
+                let from = crate::archive_location::physical_root(&self.root)?
+                    .join("archive")
+                    .join(format!("{hash}.eml"));
+                match fs::symlink_metadata(&from) {
+                    Ok(metadata) if metadata.is_file() => {
+                        fs::rename(&from, stage.join(format!("{hash}.eml"))).map_err(err)?;
+                    }
+                    Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+                    Ok(_) => return Err("存档路径不是普通文件，已取消删除".into()),
+                    Err(e) => return Err(err(e)),
+                }
+            }
+            tx.execute(
+                "INSERT INTO logs(time,message) VALUES(?1,?2)",
+                params![
+                    chrono::Local::now().format("%m-%d %H:%M").to_string(),
+                    format!("删除本地文件夹“{current}”及其中 {} 封邮件", mails.len())
+                ],
+            )
+            .map_err(err)?;
+            tx.commit().map_err(err)
+        })();
+        let cleanup = self.recover_archive_deletion();
+        result.map_err(|error| match &cleanup {
+            Ok(_) => error,
+            Err(cleanup_error) => format!("{error}；存档清理待完成：{cleanup_error}"),
+        })?;
+        if let Err(error) = cleanup {
+            self.log(&format!("删除本地文件夹后存档清理待完成：{error}"))?;
+        }
+        Ok(mails.len() as u64)
+    }
     pub fn archive_deletion_preview(&self, account: &str) -> Result<DeletionPreview> {
         let db = self.db()?;
         let mails = targets(&db, account)?;
@@ -264,6 +372,8 @@ impl Store {
         if mails.is_empty() {
             return Err("所选范围没有本地存档".into());
         }
+        tx.execute("UPDATE eml_import_jobs SET status='cancelled',revision=revision+1,error='archiveCleared' WHERE (?1='' OR account_id=?1) AND status IN ('prepared','queued','running')",[account]).map_err(err)?;
+        tx.execute("UPDATE eml_import_items SET path='',fingerprint='' WHERE job_id IN (SELECT id FROM eml_import_jobs WHERE (?1='' OR account_id=?1) AND status='cancelled')",[account]).map_err(err)?;
         let mut offline_removed = 0;
         let mut hashes = std::collections::BTreeSet::new();
         for (mail, online) in &mails {

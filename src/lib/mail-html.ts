@@ -1,11 +1,30 @@
 import DOMPurify from "dompurify";
 import { routeNativeMailResources } from "./mail-image-resources";
 import { normalizeMailSpacers } from "./mail-image-decorations";
+
+export type MailColorScheme = "light" | "dark";
+
+const darkMailColors = {
+  background: "rgb(28, 28, 30)",
+  foreground: "rgb(237, 237, 237)",
+  muted: "rgb(174, 174, 178)",
+  link: "rgb(137, 180, 250)",
+};
+
+function mailThemeCss(colorScheme: MailColorScheme, background?: string) {
+  const mailBackground = background?.trim() || darkMailColors.background;
+  return colorScheme === "dark"
+    ? `:root{color-scheme:dark}html,body{background-color:${mailBackground}!important;color:${darkMailColors.foreground}!important}a{color:${darkMailColors.link}}::selection{background:${darkMailColors.link};color:#111}`
+    : "html,body{background-color:#fff}";
+}
+
 export function safeMailHtml(
   html: string,
   documentId = "anser-mail",
   nativeNavigation = false,
   nativeImages = nativeNavigation,
+  colorScheme: MailColorScheme = "light",
+  background?: string,
 ) {
   const content = DOMPurify.sanitize(html, {
     WHOLE_DOCUMENT: true,
@@ -94,15 +113,129 @@ export function safeMailHtml(
   marker.name = "anser-mail-document";
   marker.content = documentId;
   doc.head.prepend(marker);
+  const colorSchemeMarker = doc.createElement("meta");
+  colorSchemeMarker.name = "color-scheme";
+  colorSchemeMarker.content = colorScheme;
+  doc.head.prepend(colorSchemeMarker);
   // break-word wraps long prose/URLs without reducing table cells' min-content
   // width to one character (anywhere squeezes narrow status/header columns).
   // Keep original head styles and body classes; insert our policy before them.
   // A body-only sanitizer otherwise drops leading styles in HTML email fragments.
   doc.head.insertAdjacentHTML(
     "afterbegin",
-    `<meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data: https:${nativeImages ? " anser-image:" : ""}; style-src 'unsafe-inline' ${nativeImages ? "anser-style:" : "https:"}; font-src data: ${nativeImages ? "anser-font:" : "https:"}; upgrade-insecure-requests; base-uri 'none'; form-action 'none'"><style>body{font-family:-apple-system,BlinkMacSystemFont,sans-serif;font-size:14px;line-height:1.6;color:#242424;margin:0;padding:0;overflow-wrap:break-word}img{max-width:100%;height:auto}table{max-width:100%}pre{white-space:pre-wrap}</style>`,
+    `<meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data: https:${nativeImages ? " anser-image:" : ""}; style-src 'unsafe-inline' ${nativeImages ? "anser-style:" : "https:"}; font-src data: ${nativeImages ? "anser-font:" : "https:"}; upgrade-insecure-requests; base-uri 'none'; form-action 'none'"><style>body{font-family:-apple-system,BlinkMacSystemFont,sans-serif;font-size:14px;line-height:1.6;color:#242424;margin:0;padding:0;overflow-wrap:break-word}img{max-width:100%;height:auto}table{max-width:100%}pre{white-space:pre-wrap}</style><style id="anser-mail-theme">${mailThemeCss(colorScheme, background)}</style>`,
   );
   return `<!doctype html>${doc.documentElement.outerHTML}`;
+}
+
+function rgb(value: string) {
+  const match =
+    /^rgba?\(\s*([\d.]+)[,\s]+([\d.]+)[,\s]+([\d.]+)(?:\s*[,/]\s*([\d.]+))?\s*\)$/i.exec(
+      value.trim(),
+    );
+  if (!match) return null;
+  return {
+    red: Number(match[1]),
+    green: Number(match[2]),
+    blue: Number(match[3]),
+    alpha: match[4] === undefined ? 1 : Number(match[4]),
+  };
+}
+
+function neutral(color: NonNullable<ReturnType<typeof rgb>>) {
+  return (
+    Math.max(color.red, color.green, color.blue) -
+      Math.min(color.red, color.green, color.blue) <=
+    18
+  );
+}
+
+function luminance(color: NonNullable<ReturnType<typeof rgb>>) {
+  return (
+    (color.red * 0.2126 + color.green * 0.7152 + color.blue * 0.0722) / 255
+  );
+}
+
+function hasBackgroundImage(element: Element, view: Window) {
+  let current: Element | null = element;
+  while (current) {
+    const image = view.getComputedStyle(current).backgroundImage;
+    if (image && image !== "none") return true;
+    current = current.parentElement;
+  }
+  return false;
+}
+
+/** Adapt neutral author colors in the isolated reading document. */
+export function applyMailColorScheme(
+  doc: Document,
+  colorScheme: MailColorScheme,
+  background?: string,
+) {
+  const view = doc.defaultView;
+  if (!view || !doc.body) return;
+  const mailBackground = background?.trim() || darkMailColors.background;
+  let style = doc.querySelector<HTMLStyleElement>("#anser-mail-theme");
+  if (!style) {
+    style = doc.createElement("style");
+    style.id = "anser-mail-theme";
+    doc.head.prepend(style);
+  }
+  style.textContent = mailThemeCss(colorScheme, background);
+  doc.documentElement.dataset.mailColorScheme = colorScheme;
+  if (colorScheme === "light") return;
+
+  doc.body.style.setProperty("background-color", mailBackground, "important");
+  doc.body.style.setProperty("color", darkMailColors.foreground, "important");
+  for (const element of doc.body.querySelectorAll<HTMLElement>("*")) {
+    if (
+      [
+        "IMG",
+        "PICTURE",
+        "SOURCE",
+        "VIDEO",
+        "AUDIO",
+        "CANVAS",
+        "OBJECT",
+        "EMBED",
+        "SCRIPT",
+        "STYLE",
+        "LINK",
+      ].includes(element.tagName)
+    )
+      continue;
+    const computed = view.getComputedStyle(element);
+    if (computed.display === "none") continue;
+    const background = rgb(computed.backgroundColor);
+    if (
+      background &&
+      background.alpha > 0.05 &&
+      neutral(background) &&
+      luminance(background) > 0.78 &&
+      computed.backgroundImage === "none"
+    )
+      element.style.setProperty(
+        "background-color",
+        mailBackground,
+        "important",
+      );
+    const foreground = rgb(computed.color);
+    if (
+      foreground &&
+      neutral(foreground) &&
+      luminance(foreground) < 0.42 &&
+      !hasBackgroundImage(element, view)
+    )
+      element.style.setProperty(
+        "color",
+        element.tagName === "A"
+          ? darkMailColors.link
+          : luminance(foreground) < 0.24
+            ? darkMailColors.foreground
+            : darkMailColors.muted,
+        "important",
+      );
+  }
 }
 
 function secureResources(value: string) {

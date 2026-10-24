@@ -1,75 +1,10 @@
 import { t } from "@/lib/i18n";
-import { useEffect, useRef, useState } from "react";
+import { useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
-import { save } from "@tauri-apps/plugin-dialog";
-import { Download, Loader2, Paperclip } from "lucide-react";
 import { toast } from "sonner";
 import { native } from "../lib/api";
-import type { Detail } from "../lib/types";
-import { Button } from "./ui/button";
-import { Badge } from "./ui/badge";
-import { Alert, AlertDescription } from "./ui/alert";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from "./ui/dialog";
-import { MailContent } from "./mail-content";
-interface EmlDocument {
-  token: string;
-  filename: string;
-  detail: Detail;
-}
 export function EmlViewer() {
-  const [visible, setVisible] = useState(false);
-  const [document, setDocument] = useState<EmlDocument | null>(null);
-  const [error, setError] = useState("");
-  const [loading, setLoading] = useState(false);
-  const [busy, setBusy] = useState(false);
-  const [remaining, setRemaining] = useState<string[]>([]);
-  const generation = useRef(0);
-  const active = useRef<EmlDocument | null>(null);
-  const queued = useRef<string[]>([]);
-  const viewing = useRef(false);
-  const loadQueue = useRef(Promise.resolve());
-  async function load(path: string) {
-    const request = ++generation.current;
-    viewing.current = true;
-    setVisible(true);
-    setLoading(true);
-    setError("");
-    setDocument(null);
-    const task = loadQueue.current.then(async () => {
-      if (request !== generation.current) return;
-      const previous = active.current;
-      active.current = null;
-      if (previous) await invoke("close_eml_file", { token: previous.token });
-      try {
-        const result = await invoke<EmlDocument>("open_eml_file", { path });
-        if (request !== generation.current) {
-          await invoke("close_eml_file", { token: result.token });
-          return;
-        }
-        active.current = result;
-        setDocument(result);
-      } catch (cause) {
-        if (request === generation.current) setError(String(cause));
-      } finally {
-        if (request === generation.current) setLoading(false);
-      }
-    });
-    loadQueue.current = task.catch((cause) => {
-      if (request === generation.current) {
-        setError(String(cause));
-        setLoading(false);
-      }
-    });
-    await loadQueue.current;
-  }
-
   useEffect(() => {
     if (!native) return;
     let disposed = false;
@@ -87,10 +22,9 @@ export function EmlViewer() {
           again = false;
           const paths = await invoke<string[]>("take_eml_paths");
           if (disposed) return;
-          queued.current = [...new Set([...queued.current, ...paths])];
-          if (!viewing.current && queued.current.length)
-            void load(queued.current.shift()!);
-          setRemaining([...queued.current]);
+          let last: string | null = null;
+          for (const path of paths) last = path;
+          if (last) await invoke("open_external_mail_window", { path: last });
         } while (again);
       } catch (cause) {
         if (!disposed)
@@ -117,165 +51,5 @@ export function EmlViewer() {
       unlisten?.();
     };
   }, []);
-  function close() {
-    ++generation.current;
-    viewing.current = false;
-    setVisible(false);
-    setDocument(null);
-    setError("");
-    const previous = active.current;
-    active.current = null;
-    if (previous)
-      void invoke("close_eml_file", { token: previous.token }).catch(() => {});
-    if (queued.current.length) {
-      const next = queued.current.shift()!;
-      setRemaining([...queued.current]);
-      void load(next);
-    }
-  }
-  async function attachment(index: number, name: string, download: boolean) {
-    if (!document || busy || loading) return;
-    const token = document.token;
-    setBusy(true);
-    try {
-      if (download) {
-        // Never use attachment-provided directories as the save dialog's path.
-        const filename = name.split(/[\\/]/).pop() || t("Attachments");
-        const path = await save({ defaultPath: filename });
-        if (path) await invoke("save_eml_attachment", { token, index, path });
-      } else await invoke("preview_eml_attachment", { token, index });
-    } catch (cause) {
-      toast.error(String(cause));
-    } finally {
-      setBusy(false);
-    }
-  }
-  if (!native) return null;
-  const detail = document?.detail;
-  return (
-    <Dialog
-      open={visible}
-      onOpenChange={(next) => {
-        if (!next) close();
-      }}
-    >
-      <DialogContent className="flex max-h-[88vh] flex-col sm:max-w-5xl">
-        <DialogHeader>
-          <DialogTitle>
-            {detail?.mail.subject || t("Open email file")}
-          </DialogTitle>
-          <DialogDescription>
-            {document?.filename || t("Local EML file")}{" "}
-            {t(" · Read-only; not imported into a mailbox or archive")}
-          </DialogDescription>
-        </DialogHeader>
-        {loading && (
-          <div className="flex items-center gap-2" role="status">
-            <Loader2 className="animate-spin" />
-            {t("Reading email file…")}
-          </div>
-        )}
-        {error && (
-          <Alert variant="destructive">
-            <AlertDescription>{error}</AlertDescription>
-          </Alert>
-        )}
-        {detail && (
-          <div className="flex min-h-0 flex-col gap-4 overflow-y-auto">
-            <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 text-sm break-words">
-              <dt className="text-muted-foreground">{t("From")}</dt>
-              <dd>{detail.mail.sender || t("Not provided")}</dd>
-              <dt className="text-muted-foreground">{t("To")}</dt>
-              <dd>{detail.mail.recipients || t("Not provided")}</dd>
-              {(detail.cc?.length ?? 0) > 0 && (
-                <>
-                  <dt className="text-muted-foreground">{t("Cc")}</dt>
-                  <dd>
-                    {detail.cc
-                      ?.map((x) =>
-                        x.name ? `${x.name} <${x.email}>` : x.email,
-                      )
-                      .join(", ")}
-                  </dd>
-                </>
-              )}
-              <dt className="text-muted-foreground">{t("Date")}</dt>
-              <dd>
-                {detail.mail.date || t("No date in the original message")}
-              </dd>
-            </dl>
-            {detail.mail.parseWarnings?.length ? (
-              <Alert>
-                <AlertDescription>
-                  {detail.mail.parseWarnings.join("；")}
-                </AlertDescription>
-              </Alert>
-            ) : null}
-            <MailContent
-              inspectable
-              html={detail.html}
-              onOpenLink={(href) => {
-                void invoke("open_mail_link", { url: href }).catch((cause) =>
-                  toast.error(String(cause)),
-                );
-              }}
-            />
-            {detail.attachments.map((item) => (
-              <div
-                key={item.index}
-                className="flex flex-wrap items-center gap-2"
-              >
-                <Paperclip className="size-4" />
-                <span className="min-w-0 flex-1 break-all">{item.name}</span>
-                <Badge variant="secondary">
-                  {(item.size / 1024).toFixed(1)} KB
-                </Badge>
-                {item.error ? (
-                  <span className="text-sm text-destructive">{item.error}</span>
-                ) : (
-                  <>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      disabled={busy || loading}
-                      onClick={() =>
-                        void attachment(item.index, item.name, false)
-                      }
-                    >
-                      {t("Preview")}
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      disabled={busy || loading}
-                      onClick={() =>
-                        void attachment(item.index, item.name, true)
-                      }
-                    >
-                      <Download data-icon="inline-start" />
-                      {t("Save as")}
-                    </Button>
-                  </>
-                )}
-              </div>
-            ))}
-          </div>
-        )}
-        {remaining.length > 0 && (
-          <Button
-            variant="outline"
-            disabled={busy || loading}
-            onClick={() => {
-              const path = queued.current.shift();
-              setRemaining([...queued.current]);
-              if (path) void load(path);
-            }}
-          >
-            {t("Next email file (remaining:")}
-            {remaining.length}）
-          </Button>
-        )}
-      </DialogContent>
-    </Dialog>
-  );
+  return null;
 }

@@ -190,6 +190,7 @@ export interface ComposeSignature {
 }
 export interface Compose {
   forwardSource?: { id: string; hash: string };
+  externalForwardToken?: string;
   forwardFiles?: ForwardFile[];
   signature?: ComposeSignature | null;
   id: string;

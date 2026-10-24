@@ -212,6 +212,9 @@ export async function call<T = void>(
       "preview_attachment",
       "backup_archive",
       "restore_archive",
+      "set_file_association",
+      "prepare_eml_import",
+      "eml_import_action",
       "open_data_folder",
       "move_archive_location",
       "cleanup_archive_migration",
@@ -225,6 +228,20 @@ export async function call<T = void>(
   if (demo) {
     let result: unknown;
     switch (command) {
+      case "get_file_associations":
+        result = { supported: false, busy: false, items: [] };
+        break;
+      case "set_file_association":
+        throw new Error(
+          t("Sample mode does not read or change system file associations."),
+        );
+      case "eml_import_jobs":
+        result = [];
+        break;
+      case "prepare_eml_import":
+      case "eml_import_action":
+      case "eml_import_job":
+        throw new Error(t("Sample mode does not read or import local files."));
       case "archive_location":
         result = {
           path: demo.dataDir,
@@ -329,6 +346,46 @@ export async function call<T = void>(
           if (args.action === "trash") m.trashed = args.value === "true";
           if (args.action === "folder") m.localFolder = String(args.value);
         }
+        break;
+      }
+      case "rename_local_folder": {
+        const current = String(args.current);
+        const replacement = String(args.replacement).trim();
+        if (
+          !current.trim() ||
+          current === "全部存档" ||
+          !replacement ||
+          replacement.length > 120 ||
+          current === replacement
+        )
+          throw new Error(t("Enter a local folder name of 1–120 characters."));
+        if (
+          demo.folders.some(
+            (folder) => folder === replacement && folder !== current,
+          )
+        )
+          throw new Error("已有同名本地文件夹");
+        if (!demo.messages.some((mail) => mail.localFolder === current))
+          throw new Error("本地文件夹不存在");
+        for (const mail of demo.messages)
+          if (mail.localFolder === current) mail.localFolder = replacement;
+        demo.folders = demo.folders.map((folder) =>
+          folder === current ? replacement : folder,
+        );
+        break;
+      }
+      case "delete_local_folder": {
+        const folder = String(args.folder);
+        if (!folder || folder === "全部存档")
+          throw new Error("本地文件夹不存在");
+        const affected = demo.messages.filter(
+          (mail) => mail.localFolder === folder,
+        );
+        if (!affected.length) throw new Error("本地文件夹不存在");
+        const ids = new Set(affected.map((mail) => mail.id));
+        demo.messages = demo.messages.filter((mail) => !ids.has(mail.id));
+        demo.folders = demo.folders.filter((value) => value !== folder);
+        result = affected.length;
         break;
       }
       case "mark_folder_read": {
@@ -1012,6 +1069,8 @@ export async function call<T = void>(
         "folder_settings",
         "retention_settings",
         "archive_jobs",
+        "eml_import_jobs",
+        "get_file_associations",
         "copy_sources",
       ].includes(command)
     )
@@ -1019,6 +1078,8 @@ export async function call<T = void>(
     if (
       [
         "update_mail",
+        "rename_local_folder",
+        "delete_local_folder",
         "run_rules",
         "account_action",
         "edit_account",

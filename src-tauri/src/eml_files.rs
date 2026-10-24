@@ -3,13 +3,10 @@ use crate::{archive, models::*};
 use serde::Serialize;
 use std::{
     collections::VecDeque,
-    fs::File,
-    io::Read,
     path::{Path, PathBuf},
     sync::{Arc, Mutex},
 };
 
-const MAX_BYTES: u64 = 64 * 1024 * 1024;
 #[derive(Clone, Default)]
 pub struct EmlFiles(Arc<Mutex<Documents>>);
 #[derive(Default)]
@@ -25,10 +22,13 @@ pub struct EmlDocument {
     pub filename: String,
     pub detail: Detail,
 }
+pub fn window_label(token: &str) -> String {
+    format!("external-mail-{token}")
+}
 pub fn account() -> Account {
     Account {
         id: "external-eml".into(),
-        name: "EML 文件".into(),
+        name: "邮件文件".into(),
         email: String::new(),
         provider: String::new(),
         protocol: "imap".into(),
@@ -50,8 +50,7 @@ pub fn account() -> Account {
     }
 }
 pub fn is_eml(path: &Path) -> bool {
-    path.extension()
-        .is_some_and(|ext| ext.eq_ignore_ascii_case("eml"))
+    crate::mail_formats::single(path)
 }
 fn argument_path(value: &str, cwd: &Path) -> Option<PathBuf> {
     if value.starts_with('-') {
@@ -73,12 +72,15 @@ fn argument_path(value: &str, cwd: &Path) -> Option<PathBuf> {
     is_eml(&path).then_some(path)
 }
 impl EmlFiles {
-    pub fn queue_args(&self, args: impl IntoIterator<Item = String>, cwd: &Path) {
+    pub fn queue_args(&self, args: impl IntoIterator<Item = String>, cwd: &Path) -> bool {
+        let mut accepted = false;
         for arg in args {
             if let Some(path) = argument_path(&arg, cwd) {
                 self.queue(path);
+                accepted = true;
             }
         }
+        accepted
     }
     pub fn queue(&self, path: PathBuf) {
         if !is_eml(&path) {
@@ -94,40 +96,53 @@ impl EmlFiles {
     pub fn take_pending(&self) -> Result<Vec<String>> {
         Ok(self.0.lock().map_err(err)?.pending.drain(..).collect())
     }
+    pub fn document_for_label(&self, label: &str) -> Result<EmlDocument> {
+        let (token, raw, source) = {
+            let docs = self.0.lock().map_err(err)?;
+            let (token, raw) = docs.current.clone().ok_or("邮件文件已关闭，请重新打开")?;
+            if window_label(&token) != label {
+                return Err("邮件文件不属于当前窗口".into());
+            }
+            (token, raw, docs.source.clone().ok_or("邮件文件来源已关闭")?)
+        };
+        let (mut mail, html, attachments) = archive::parse(&raw, &account(), "")?;
+        mail.saved_locally = false;
+        let (reply_to, to, cc) = archive::reply_addresses(&raw)?;
+        Ok(EmlDocument {
+            token,
+            filename: source
+                .file_name()
+                .unwrap_or_default()
+                .to_string_lossy()
+                .into_owned(),
+            detail: Detail {
+                original_hash: archive::digest(&raw),
+                mail,
+                html,
+                attachments,
+                reply_to,
+                to,
+                cc,
+            },
+        })
+    }
+    pub fn close_label(&self, label: &str) -> Result<()> {
+        let mut docs = self.0.lock().map_err(err)?;
+        if docs
+            .current
+            .as_ref()
+            .is_some_and(|(token, _)| window_label(token) == label)
+        {
+            docs.current = None;
+            docs.source = None;
+        }
+        Ok(())
+    }
     pub fn open(&self, path: &Path) -> Result<EmlDocument> {
         if !is_eml(path) {
-            return Err("请选择 .eml 邮件文件".into());
+            return Err("invalidFile".into());
         }
-        let file = File::open(path).map_err(|e| format!("无法读取 EML 文件：{e}"))?;
-        let info = file.metadata().map_err(err)?;
-        if !info.is_file() {
-            return Err("请选择邮件文件，不能打开目录".into());
-        }
-        if info.len() > MAX_BYTES {
-            return Err("EML 文件超过 64 MB，目前无法预览".into());
-        }
-        let mut raw = Vec::new();
-        file.take(MAX_BYTES + 1)
-            .read_to_end(&mut raw)
-            .map_err(err)?;
-        if raw.len() as u64 > MAX_BYTES {
-            return Err("EML 文件超过 64 MB，目前无法预览".into());
-        }
-        let parsed = mailparse::parse_mail(&raw).map_err(|e| format!("邮件文件无法解析：{e}"))?;
-        if !parsed.headers.iter().any(|header| {
-            [
-                "from",
-                "to",
-                "subject",
-                "date",
-                "message-id",
-                "mime-version",
-                "content-type",
-            ]
-            .contains(&header.get_key().to_ascii_lowercase().as_str())
-        }) {
-            return Err("文件没有邮件头，无法识别为 EML 邮件".into());
-        }
+        let raw = crate::eml_input::read(path, None)?;
         let (mut mail, html, attachments) = archive::parse(&raw, &account(), "")?;
         mail.saved_locally = false;
         let (reply_to, to, cc) = archive::reply_addresses(&raw)?;
@@ -177,7 +192,7 @@ impl EmlFiles {
             .zip(path.file_name())
             .map(|(parent, name)| parent.join(name));
         if source.is_some() && (path.canonicalize().ok() == source || normalized == source) {
-            return Err("附件不能覆盖正在查看的原始 EML 文件，请选择其他位置".into());
+            return Err("附件不能覆盖正在查看的原始邮件文件，请选择其他位置".into());
         }
         archive::atomic_write(path, &archive::attachment(&raw, index)?)
     }
@@ -197,6 +212,8 @@ impl EmlFiles {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::eml_input::MAX_BYTES;
+    use std::fs::File;
     fn fixture(name: &str, raw: &[u8]) -> (PathBuf, PathBuf) {
         let dir = std::env::temp_dir().join(format!("anser-eml-test-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&dir).unwrap();
@@ -262,13 +279,13 @@ mod tests {
             .unwrap()
             .set_len(MAX_BYTES + 1)
             .unwrap();
-        assert!(docs.open(&path).unwrap_err().contains("64 MB"));
+        assert_eq!(docs.open(&path).unwrap_err(), "tooLarge");
         std::fs::remove_dir_all(dir).unwrap();
     }
     #[test]
     fn startup_and_url_arguments_are_queued_once_and_drained() {
         let docs = EmlFiles::default();
-        docs.queue_args(
+        assert!(docs.queue_args(
             [
                 "--autostart".into(),
                 "test.EML".into(),
@@ -276,8 +293,9 @@ mod tests {
                 "file:///tmp/test.EML".into(),
             ],
             Path::new("/tmp"),
-        );
+        ));
         assert_eq!(docs.take_pending().unwrap(), ["/tmp/test.EML"]);
         assert!(docs.take_pending().unwrap().is_empty());
+        assert!(!docs.queue_args(["--autostart".into()], Path::new("/tmp")));
     }
 }

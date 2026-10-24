@@ -217,14 +217,23 @@ impl Store {
             {
                 return Err("已发送和草稿邮件不能标记为未读".into());
             }
+            let local_import:bool=tx.query_row("SELECT EXISTS(SELECT 1 FROM message_imports WHERE mail_id=?1) AND NOT EXISTS(SELECT 1 FROM trusted_sources WHERE mail_id=?1 AND active=1)",[&mail.id],|r|r.get(0)).map_err(err)?;
             match action {
                 "read" => {
                     mail.is_read = value == "true";
-                    mail.local_read_override = None;
+                    mail.local_read_override = if local_import {
+                        Some(mail.is_read)
+                    } else {
+                        None
+                    };
                 }
                 "star" => {
                     mail.starred = value == "true";
-                    mail.local_star_override = None;
+                    mail.local_star_override = if local_import {
+                        Some(mail.starred)
+                    } else {
+                        None
+                    };
                 }
                 "trash" => mail.trashed = value == "true",
                 "folder" if !value.trim().is_empty() => mail.local_folder = value.into(),
@@ -239,6 +248,62 @@ impl Store {
         }
         tx.commit().map_err(err)
     }
+
+    /// Rename a local filing label without changing message identity, MIME or
+    /// provenance. The replacement must not collide with another local label.
+    pub fn rename_local_folder(&self, current: &str, replacement: &str) -> Result<()> {
+        let current = local_folder_name(current)?;
+        let replacement = local_folder_name(replacement)?;
+        if current == replacement {
+            return Ok(());
+        }
+        let mut db = self.db()?;
+        let tx = db
+            .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
+            .map_err(err)?;
+        let exists: bool = tx
+            .query_row(
+                "SELECT EXISTS(SELECT 1 FROM search_documents WHERE local_folder=?1)",
+                [current],
+                |r| r.get(0),
+            )
+            .map_err(err)?;
+        if !exists {
+            return Err("本地文件夹不存在".into());
+        }
+        let collision: bool = tx
+            .query_row(
+                "SELECT EXISTS(SELECT 1 FROM search_documents WHERE local_folder=?1)",
+                [replacement],
+                |r| r.get(0),
+            )
+            .map_err(err)?;
+        if collision {
+            return Err("已有同名本地文件夹".into());
+        }
+        let rows = {
+            let mut query = tx
+                .prepare("SELECT data FROM messages WHERE json_extract(data,'$.localFolder')=?1")
+                .map_err(err)?;
+            let values = query
+                .query_map([current], |r| r.get::<_, String>(0))
+                .map_err(err)?
+                .collect::<std::result::Result<Vec<_>, _>>()
+                .map_err(err)?;
+            values
+        };
+        for data in rows {
+            let mut mail: Mail = serde_json::from_str(&data).map_err(err)?;
+            mail.local_folder = replacement.into();
+            tx.execute(
+                "UPDATE messages SET data=?2 WHERE id=?1",
+                rusqlite::params![mail.id, serde_json::to_string(&mail).map_err(err)?],
+            )
+            .map_err(err)?;
+        }
+        tx.commit().map_err(err)
+    }
+
     pub fn conversation_index(&self, _account: &str) -> Result<Arc<Index>> {
         let mut cached = self.conversation_cache.lock().map_err(err)?;
         let mut db = self.db()?;
@@ -321,6 +386,17 @@ impl Store {
         out.sort_by(chronological);
         Ok(out)
     }
+}
+
+fn local_folder_name(value: &str) -> Result<&str> {
+    let value = value.trim();
+    if value.is_empty() || value.chars().count() > 120 || value.chars().any(char::is_control) {
+        return Err("请输入 1–120 个字符的本地文件夹名称".into());
+    }
+    if value == "全部存档" {
+        return Err("不能修改或删除全部存档".into());
+    }
+    Ok(value)
 }
 
 #[cfg(test)]

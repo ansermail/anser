@@ -4,12 +4,23 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { MailContent } from "./mail-content";
 import { MAIL_IMAGE_TIMEOUT_MS } from "../lib/mail-images";
+import { resetThemeForTest, setThemeMode } from "../lib/theme";
 const platform = vi.hoisted(() => ({ native: false }));
 vi.mock("@tauri-apps/api/core", () => ({ isTauri: () => platform.native }));
 let host: HTMLDivElement, root: Root;
 beforeEach(() => {
   platform.native = false;
   Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
+  vi.stubGlobal(
+    "matchMedia",
+    vi.fn(() => ({
+      matches: false,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+    })),
+  );
+  localStorage.clear();
+  resetThemeForTest();
   vi.useFakeTimers();
   vi.stubGlobal(
     "ResizeObserver",
@@ -25,9 +36,12 @@ beforeEach(() => {
 afterEach(async () => {
   await act(async () => root.unmount());
   host.remove();
+  document.documentElement.style.removeProperty("--background");
   vi.useRealTimers();
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
+  localStorage.clear();
+  resetThemeForTest();
 });
 async function load(
   inspectable = true,
@@ -81,6 +95,17 @@ it("native spacer strips do not produce a loading/error banner or remote resourc
   await act(async () => vi.advanceTimersByTime(MAIL_IMAGE_TIMEOUT_MS + 1000));
   expect(host.querySelector('[role="alert"]')).toBeNull();
   expect(host.querySelector('[aria-label="正在加载图片"]')).toBeNull();
+});
+it("updates the isolated body when the application theme changes", async () => {
+  const { frame } = await load();
+  expect(frame.className).toContain("mail-html-light");
+  expect(frame.srcdoc).not.toContain("color-scheme:dark");
+  document.documentElement.style.setProperty("--background", "oklch(0.2 0 0)");
+  await act(async () => setThemeMode("dark"));
+  const themed = host.querySelector("iframe")!;
+  expect(themed.className).toContain("mail-html-dark");
+  expect(themed.srcdoc).toContain("color-scheme:dark");
+  expect(themed.srcdoc).toContain("background-color:oklch(0.2 0 0)!important");
 });
 it("does not keep a loaded native mail busy or show a timeout for a hidden analytics image", async () => {
   platform.native = true;

@@ -30,3 +30,12 @@ export function documentTypes(associations = []) {
     )
     .join("")}</array>`;
 }
+
+// Preserve the exact formal-package UTI declarations in development too.
+export function importedTypes(plist) {
+  const match = plist.match(
+    /<key>UTImportedTypeDeclarations<\/key>\s*(<array>[\s\S]*?<\/array>)\s*<\/dict>\s*<\/plist>/,
+  );
+  if (!match) throw new Error("Missing imported mail type declarations");
+  return `<key>UTImportedTypeDeclarations</key>${match[1]}`;
+}

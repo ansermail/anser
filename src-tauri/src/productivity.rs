@@ -99,7 +99,8 @@ impl Store {
             let mail: Mail = serde_json::from_str(&row.map_err(err)?).map_err(err)?;
             checked += 1;
             match archive::read_raw(&self.root, &mail.hash).and_then(|raw| {
-                let parsed = mailparse::parse_mail(&raw).map_err(err)?;
+                let projection = crate::mail_formats::mime(&raw)?;
+                let parsed = mailparse::parse_mail(&projection).map_err(err)?;
                 let mut parts = Vec::new();
                 archive::leaves(&parsed, &mut parts);
                 for part in parts {

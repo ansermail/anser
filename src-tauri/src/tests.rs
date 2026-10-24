@@ -972,6 +972,7 @@ fn older_snapshot_queries_default_to_all_read_states() {
 pub(super) fn draft() -> Compose {
     Compose {
         forward_source: None,
+        external_forward_token: None,
         forward_files: vec![],
         signature: None,
         id: "draft-1".into(),
@@ -2550,6 +2551,130 @@ fn server_flag_batch_rolls_back_on_database_failure_and_initial_star_is_preserve
         .is_err());
     let m = s.mail(&initial.id).unwrap();
     assert!(!m.is_read && m.starred);
+}
+
+#[test]
+fn local_folder_rename_keeps_message_and_delete_removes_mail_and_original() {
+    let temp = tempfile::tempdir().unwrap();
+    let store = Store::new(temp.path().into()).unwrap();
+    let mut a = account();
+    a.save_locally = true;
+    store.save_account(&a).unwrap();
+    store.ingest(&a, "INBOX", "7:12", &raw(), false).unwrap();
+    let first = store.snapshot(&query()).unwrap().messages[0].clone();
+    store.change_mail(&first.id, "folder", "Projects").unwrap();
+    let other = String::from_utf8(raw())
+        .unwrap()
+        .replace("Project invoice", "Second invoice");
+    store
+        .ingest(&a, "INBOX", "7:13", other.as_bytes(), false)
+        .unwrap();
+    let second = store
+        .snapshot(&query())
+        .unwrap()
+        .messages
+        .into_iter()
+        .find(|mail| mail.id != first.id)
+        .unwrap();
+    store
+        .change_mail(&second.id, "folder", "Archive old")
+        .unwrap();
+    let before = store.mail(&second.id).unwrap();
+
+    store
+        .rename_local_folder("Archive old", "Renamed archive")
+        .unwrap();
+    let renamed = store.mail(&second.id).unwrap();
+    assert_eq!(renamed.local_folder, "Renamed archive");
+    assert_eq!(renamed.hash, before.hash);
+    assert_eq!(renamed.body, before.body);
+    assert_eq!(
+        archive::read_raw(&store.root, &renamed.hash).unwrap().len(),
+        archive::read_raw(&store.root, &before.hash).unwrap().len()
+    );
+    assert!(store
+        .rename_local_folder("Renamed archive", "Projects")
+        .is_err());
+    assert!(store.rename_local_folder("全部存档", "Other").is_err());
+
+    let count = store.delete_local_folder("Renamed archive").unwrap();
+    assert_eq!(count, 1);
+    assert!(store.mail(&second.id).is_err());
+    assert!(archive::read_raw(&store.root, &before.hash).is_err());
+    assert!(store.mail(&first.id).is_ok());
+    assert!(store
+        .snapshot(&query())
+        .unwrap()
+        .folders
+        .iter()
+        .all(|folder| folder != "Renamed archive"));
+    assert!(store.delete_local_folder("Renamed archive").is_err());
+}
+
+#[test]
+fn deleting_a_local_folder_keeps_a_shared_original_used_by_another_folder() {
+    let temp = tempfile::tempdir().unwrap();
+    let store = Store::new(temp.path().into()).unwrap();
+    let mut a = account();
+    a.save_locally = true;
+    store.save_account(&a).unwrap();
+    store.ingest(&a, "INBOX", "7:12", &raw(), false).unwrap();
+    let original = store.snapshot(&query()).unwrap().messages[0].clone();
+    store.change_mail(&original.id, "folder", "Keep").unwrap();
+
+    let mut other = a.clone();
+    other.id = "other-account".into();
+    other.email = "other@example.com".into();
+    store.save_account(&other).unwrap();
+    store
+        .ingest(&other, "INBOX", "8:12", &raw(), false)
+        .unwrap();
+    let shared = store
+        .snapshot(&query())
+        .unwrap()
+        .messages
+        .into_iter()
+        .find(|mail| mail.id != original.id)
+        .unwrap();
+    store.change_mail(&shared.id, "folder", "Delete").unwrap();
+    let hash = shared.hash.clone();
+
+    assert_eq!(store.delete_local_folder("Delete").unwrap(), 1);
+    assert!(store.mail(&shared.id).is_err());
+    assert_eq!(archive::read_raw(&store.root, &hash).unwrap(), raw());
+    assert!(store.mail(&original.id).is_ok());
+}
+
+#[test]
+fn deleting_a_local_folder_rolls_back_when_mail_deletion_fails() {
+    let temp = tempfile::tempdir().unwrap();
+    let store = Store::new(temp.path().into()).unwrap();
+    let mut a = account();
+    a.save_locally = true;
+    store.save_account(&a).unwrap();
+    store.ingest(&a, "INBOX", "7:12", &raw(), false).unwrap();
+    let mail = store.snapshot(&query()).unwrap().messages[0].clone();
+    store
+        .change_mail(&mail.id, "folder", "Cannot delete")
+        .unwrap();
+    let hash = mail.hash.clone();
+    store
+        .db()
+        .unwrap()
+        .execute_batch(
+            "CREATE TRIGGER reject_folder_mail_delete BEFORE DELETE ON messages BEGIN SELECT RAISE(ABORT,'fixture failure'); END;",
+        )
+        .unwrap();
+
+    assert!(store.delete_local_folder("Cannot delete").is_err());
+    assert_eq!(store.mail(&mail.id).unwrap().local_folder, "Cannot delete");
+    assert_eq!(archive::read_raw(&store.root, &hash).unwrap(), raw());
+    assert!(store
+        .snapshot(&query())
+        .unwrap()
+        .folders
+        .iter()
+        .any(|folder| folder == "Cannot delete"));
 }
 
 #[test]

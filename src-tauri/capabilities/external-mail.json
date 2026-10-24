@@ -1,0 +1,14 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "external-mail",
+  "description": "Read-only external mail window",
+  "windows": ["external-mail-*"],
+  "permissions": [
+    "core:default",
+    "core:window:allow-start-dragging",
+    "core:webview:allow-print",
+    "dialog:default",
+    "dialog:allow-open",
+    "dialog:allow-save"
+  ]
+}

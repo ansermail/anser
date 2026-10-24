@@ -26,6 +26,13 @@ export const interfaceLanguage = () => language;
 export const dateLocale = () =>
   config.languages.find((item) => item.code === language)!.dateLocale;
 export const calendarLocale = () => (language === "en" ? enUS : zhCN);
+export function formatMailTime(value: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return t("Unknown date");
+  if (dateLocale() === "en-US") return date.toLocaleString(dateLocale());
+  const pad = (number: number) => String(number).padStart(2, "0");
+  return `${date.getFullYear()}/${pad(date.getMonth() + 1)}/${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
+}
 
 export function setInterfaceLanguage(next: InterfaceLanguage) {
   if (next !== "en" && next !== "zh-CN") throw new Error("Invalid language");

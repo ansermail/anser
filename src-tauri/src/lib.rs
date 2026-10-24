@@ -9,12 +9,17 @@ mod conversation;
 mod credentials;
 mod directory_operations;
 mod eml_files;
+mod eml_imports;
+mod eml_input;
+mod file_associations;
 mod folder_health;
 mod idle;
 mod interface_language;
+mod mail_formats;
 mod mail_images;
 mod mail_styles;
 mod models;
+mod msg_format;
 mod network;
 mod notification_open;
 mod notifications;
@@ -40,7 +45,10 @@ mod update_history;
 use models::*;
 use std::{
     path::Path,
-    sync::{Arc, Mutex},
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc, Mutex,
+    },
 };
 use store::Store;
 use tauri::{Emitter, Manager};
@@ -50,6 +58,7 @@ struct AppState {
     gate: Arc<Mutex<()>>,
     send_gate: Arc<Mutex<()>>,
     realtime: Arc<realtime::RealtimeControl>,
+    opening_mail: Arc<AtomicBool>,
 }
 #[tauri::command]
 async fn restart_for_update(
@@ -145,6 +154,24 @@ async fn update_mail(
 ) -> Result<()> {
     let store = state.store.clone();
     tauri::async_runtime::spawn_blocking(move || store.change_mail(&id, &action, &value))
+        .await
+        .map_err(err)?
+}
+#[tauri::command]
+async fn rename_local_folder(
+    state: tauri::State<'_, AppState>,
+    current: String,
+    replacement: String,
+) -> Result<()> {
+    let store = state.store.clone();
+    tauri::async_runtime::spawn_blocking(move || store.rename_local_folder(&current, &replacement))
+        .await
+        .map_err(err)?
+}
+#[tauri::command]
+async fn delete_local_folder(state: tauri::State<'_, AppState>, folder: String) -> Result<u64> {
+    let store = state.store.clone();
+    tauri::async_runtime::spawn_blocking(move || store.delete_local_folder(&folder))
         .await
         .map_err(err)?
 }
@@ -1152,6 +1179,28 @@ async fn sync_remote_folder(
     .map_err(err)?
 }
 #[tauri::command]
+async fn mail_original_format(state: tauri::State<'_, AppState>, id: String) -> Result<String> {
+    let store = state.store.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let raw = store.message_raw(&store.mail(&id)?)?;
+        Ok(crate::mail_formats::original_extension(&raw).to_string())
+    })
+    .await
+    .map_err(err)?
+}
+#[tauri::command]
+async fn get_file_associations() -> Result<file_associations::Associations> {
+    tauri::async_runtime::spawn_blocking(file_associations::read)
+        .await
+        .map_err(err)?
+}
+#[tauri::command]
+async fn set_file_association(extension: String, application: String) -> Result<()> {
+    tauri::async_runtime::spawn_blocking(move || file_associations::set(&extension, &application))
+        .await
+        .map_err(err)?
+}
+#[tauri::command]
 async fn export_mail(state: tauri::State<'_, AppState>, id: String, path: String) -> Result<()> {
     let store = state.store.clone();
     tauri::async_runtime::spawn_blocking(move || {
@@ -1341,6 +1390,48 @@ async fn notification_mail(state: tauri::State<'_, AppState>, token: String) -> 
         .map_err(err)?
 }
 #[tauri::command]
+async fn prepare_eml_import(
+    state: tauri::State<'_, AppState>,
+    paths: Vec<String>,
+    account_id: String,
+    folder: String,
+) -> Result<eml_imports::ImportJob> {
+    let store = state.store.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        store.prepare_eml_import(&paths, &account_id, &folder)
+    })
+    .await
+    .map_err(err)?
+}
+#[tauri::command]
+async fn eml_import_jobs(state: tauri::State<'_, AppState>) -> Result<Vec<eml_imports::ImportJob>> {
+    let store = state.store.clone();
+    tauri::async_runtime::spawn_blocking(move || store.eml_import_jobs())
+        .await
+        .map_err(err)?
+}
+#[tauri::command]
+async fn eml_import_job(
+    state: tauri::State<'_, AppState>,
+    id: String,
+) -> Result<eml_imports::ImportJob> {
+    let store = state.store.clone();
+    tauri::async_runtime::spawn_blocking(move || store.eml_import_job(&id, true))
+        .await
+        .map_err(err)?
+}
+#[tauri::command]
+async fn eml_import_action(
+    state: tauri::State<'_, AppState>,
+    id: String,
+    action: String,
+) -> Result<()> {
+    let store = state.store.clone();
+    tauri::async_runtime::spawn_blocking(move || store.eml_import_action(&id, &action))
+        .await
+        .map_err(err)?
+}
+#[tauri::command]
 async fn open_eml_file(
     state: tauri::State<'_, eml_files::EmlFiles>,
     path: String,
@@ -1388,30 +1479,110 @@ async fn save_eml_attachment(
     .await
     .map_err(err)?
 }
-
-fn queue_eml_arguments(app: &tauri::AppHandle, args: Vec<String>, cwd: &Path) {
-    if let Some(docs) = app.try_state::<eml_files::EmlFiles>() {
-        docs.queue_args(args, cwd);
-        let _ = app.emit("eml-files-available", ());
+#[tauri::command]
+async fn prepare_external_forward_files(
+    state: tauri::State<'_, AppState>,
+    documents: tauri::State<'_, eml_files::EmlFiles>,
+    id: String,
+    token: String,
+    document_token: String,
+) -> Result<Vec<ForwardFile>> {
+    let store = state.store.clone();
+    let documents = documents.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let raw = documents.raw(&document_token)?;
+        store.prepare_external_forward_files(&id, &token, &raw)
+    })
+    .await
+    .map_err(err)?
+}
+#[tauri::command]
+async fn open_external_mail_window(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, eml_files::EmlFiles>,
+    path: String,
+) -> Result<()> {
+    #[cfg(not(target_os = "macos"))]
+    return Err("邮件文件窗口仅支持 macOS".into());
+    #[cfg(target_os = "macos")]
+    {
+        let docs = state.inner().clone();
+        let opened_docs = docs.clone();
+        let document =
+            tauri::async_runtime::spawn_blocking(move || opened_docs.open(Path::new(&path)))
+                .await
+                .map_err(err)??;
+        let label = eml_files::window_label(&document.token);
+        if let Some(window) = app.get_webview_window(&label) {
+            let _ = window.show();
+            let _ = window.set_focus();
+            return Ok(());
+        }
+        if let Some(previous) = app
+            .webview_windows()
+            .keys()
+            .find(|label| label.starts_with("external-mail-"))
+            .cloned()
+        {
+            if let Some(window) = app.get_webview_window(&previous) {
+                let _ = window.destroy();
+            }
+        }
+        tauri::WebviewWindowBuilder::new(
+            &app,
+            label.clone(),
+            tauri::WebviewUrl::App("index.html".into()),
+        )
+        .title("雁信")
+        .inner_size(1100.0, 820.0)
+        .min_inner_size(700.0, 560.0)
+        .hidden_title(true)
+        .title_bar_style(tauri::TitleBarStyle::Overlay)
+        .build()
+        .map_err(|cause| {
+            let _ = docs.close_label(&label);
+            err(cause)
+        })?;
+        Ok(())
     }
+}
+#[tauri::command]
+fn current_external_mail(
+    window: tauri::WebviewWindow,
+    state: tauri::State<eml_files::EmlFiles>,
+) -> Result<eml_files::EmlDocument> {
+    state.document_for_label(window.label())
+}
+
+fn queue_eml_arguments(app: &tauri::AppHandle, args: Vec<String>, cwd: &Path) -> bool {
+    if let Some(docs) = app.try_state::<eml_files::EmlFiles>() {
+        if docs.queue_args(args, cwd) {
+            let _ = app.emit("eml-files-available", ());
+            return true;
+        }
+    }
+    false
 }
 
 pub fn run() {
     tauri::Builder::default()
         .register_asynchronous_uri_scheme_protocol("anser-image", |context, request, responder| {
-            let allowed = context.webview_label() == "main";
+            let label = context.webview_label();
+            let allowed = label == "main" || label.starts_with("external-mail-");
             tauri::async_runtime::spawn(async move {
                 responder.respond(mail_images::respond(request, allowed).await);
             });
         })
         .register_asynchronous_uri_scheme_protocol("anser-style", |context, request, responder| {
-            let allowed = context.webview_label() == "main";
+            let label = context.webview_label();
+            let allowed = label == "main" || label.starts_with("external-mail-");
             tauri::async_runtime::spawn(async move {
                 responder.respond(mail_styles::respond(request, allowed, true).await);
             });
         })
         .register_asynchronous_uri_scheme_protocol("anser-font", |context, request, responder| {
-            let allowed = context.webview_label() == "main";
+            let label = context.webview_label();
+            let allowed = label == "main" || label.starts_with("external-mail-");
             tauri::async_runtime::spawn(async move {
                 responder.respond(mail_styles::respond(request, allowed, false).await);
             });
@@ -1433,8 +1604,9 @@ pub fn run() {
                 .build(),
         )
         .plugin(tauri_plugin_single_instance::init(|app, args, cwd| {
-            queue_eml_arguments(app, args, Path::new(&cwd));
-            show_main_window(app)
+            if !queue_eml_arguments(app, args, Path::new(&cwd)) {
+                show_main_window(app);
+            }
         }))
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
@@ -1452,12 +1624,12 @@ pub fn run() {
                 .build(),
         )
         .setup(|app| {
-            queue_eml_arguments(
+            let opening_mail = queue_eml_arguments(
                 app.handle(),
                 std::env::args().skip(1).collect(),
                 &std::env::current_dir()?,
             );
-            if std::env::args().any(|arg| arg == "--autostart") {
+            if opening_mail || std::env::args().any(|arg| arg == "--autostart") {
                 if let Some(window) = app.get_webview_window("main") {
                     let _ = window.hide();
                 }
@@ -1473,6 +1645,7 @@ pub fn run() {
                 gate: gate.clone(),
                 send_gate: send_gate.clone(),
                 realtime: realtime.clone(),
+                opening_mail: Arc::new(AtomicBool::new(opening_mail)),
             });
             #[cfg(target_os = "macos")]
             notification_open::setup(app.handle());
@@ -1481,6 +1654,7 @@ pub fn run() {
             directory_operations::start(store.clone(), app.handle().clone());
             sent_uploads::start(store.clone(), app.handle().clone());
             archive_jobs::start(store.clone(), app.handle().clone());
+            eml_imports::start(store.clone(), app.handle().clone());
             rule_runs::start(store.clone(), app.handle().clone());
             let menu = tauri::menu::Menu::default(app.handle())?;
             app.set_menu(menu)?;
@@ -1662,6 +1836,12 @@ pub fn run() {
                     let _ = window.app_handle().save_window_state(window_state_flags());
                     let _ = window.hide();
                 }
+            } else if window.label().starts_with("external-mail-")
+                && matches!(event, tauri::WindowEvent::Destroyed)
+            {
+                if let Some(documents) = window.app_handle().try_state::<eml_files::EmlFiles>() {
+                    let _ = documents.close_label(window.label());
+                }
             }
         })
         .invoke_handler(tauri::generate_handler![
@@ -1670,10 +1850,17 @@ pub fn run() {
             take_eml_paths,
             take_notification_mail,
             notification_mail,
+            prepare_eml_import,
+            eml_import_jobs,
+            eml_import_job,
+            eml_import_action,
             open_eml_file,
             close_eml_file,
             preview_eml_attachment,
             save_eml_attachment,
+            prepare_external_forward_files,
+            open_external_mail_window,
+            current_external_mail,
             snapshot,
             mail_page,
             mail_neighbor,
@@ -1694,6 +1881,8 @@ pub fn run() {
             mail_metadata,
             mail_conversation,
             update_mail,
+            rename_local_folder,
+            delete_local_folder,
             mark_folder_read,
             folder_health,
             copy_sources,
@@ -1755,6 +1944,9 @@ pub fn run() {
             cancel_schedule,
             reschedule_mail,
             export_mail,
+            mail_original_format,
+            get_file_associations,
+            set_file_association,
             save_attachment,
             preview_attachment,
             backup_archive,
@@ -1770,10 +1962,13 @@ pub fn run() {
         .build(tauri::generate_context!())
         .expect("failed to build Anser")
         .run(|app, event| {
-            if matches!(event, tauri::RunEvent::Ready)
-                && !std::env::args().any(|arg| arg == "--autostart")
-            {
-                show_main_window(app);
+            if matches!(event, tauri::RunEvent::Ready) {
+                let opening_mail = app
+                    .try_state::<AppState>()
+                    .is_some_and(|state| state.opening_mail.swap(false, Ordering::AcqRel));
+                if !opening_mail && !std::env::args().any(|arg| arg == "--autostart") {
+                    show_main_window(app);
+                }
                 if let Some(state) = app.try_state::<AppState>() {
                     let visible = app
                         .get_webview_window("main")
@@ -1789,13 +1984,20 @@ pub fn run() {
             #[cfg(target_os = "macos")]
             if let tauri::RunEvent::Opened { ref urls } = event {
                 if let Some(docs) = app.try_state::<eml_files::EmlFiles>() {
+                    let mut accepted = false;
                     for url in urls {
                         if let Ok(path) = url.to_file_path() {
-                            docs.queue(path);
+                            if eml_files::is_eml(&path) {
+                                docs.queue(path);
+                                accepted = true;
+                            }
                         }
                     }
-                    let _ = app.emit("eml-files-available", ());
-                    show_main_window(app);
+                    if accepted {
+                        let _ = app.emit("eml-files-available", ());
+                    } else {
+                        show_main_window(app);
+                    }
                 }
             }
             #[cfg(target_os = "macos")]

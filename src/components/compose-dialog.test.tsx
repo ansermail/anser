@@ -86,6 +86,7 @@ beforeEach(async () => {
     const [draft, setDraft] = useState<Compose | null>(seed);
     return (
       <ComposeDialog
+        dark
         draft={draft}
         accounts={data.accounts}
         onClose={() => setDraft(null)}
@@ -201,6 +202,11 @@ describe("compose formats and scheduling", () => {
         .querySelector('iframe[title="写信正文预览"]')
         ?.getAttribute("srcdoc"),
     ).toContain("<strong>bold</strong>");
+    expect(
+      document
+        .querySelector('iframe[title="写信正文预览"]')
+        ?.getAttribute("srcdoc"),
+    ).toContain("color-scheme:dark");
     await click("保存草稿并关闭");
     const drafts = await call<Compose[]>("list_drafts");
     expect(drafts[0].format).toBe("markdown");

@@ -197,7 +197,8 @@ fn write_file(
 }
 fn prepare(root: &Path, raw: &[u8], account: &Account) -> Result<Vec<Prepared>> {
     let (_, _, infos) = archive::parse(raw, account, "")?;
-    let parsed = mailparse::parse_mail(raw).map_err(err)?;
+    let projection = crate::mail_formats::mime(raw)?;
+    let parsed = mailparse::parse_mail(&projection).map_err(err)?;
     let mut parts = Vec::new();
     archive::leaves(&parsed, &mut parts);
     let mut files = Vec::new();
@@ -419,6 +420,52 @@ impl Store {
                 .map_err(err)?;
             if current != Some((initial.account_id.clone(), initial.hash.clone())) {
                 return Err("原邮件身份已变化，附件准备已取消".into());
+            }
+            insert(&tx, owner, &files)?;
+            tx.commit().map_err(err)
+        })();
+        if let Err(error) = publish {
+            for p in &files {
+                let _ = delete_payload(&self.root, &p.file.id);
+            }
+            return Err(error);
+        }
+        Ok(files.into_iter().map(|p| p.file).collect())
+    }
+    pub fn prepare_external_forward_files(
+        &self,
+        owner: &str,
+        token: &str,
+        raw: &[u8],
+    ) -> Result<Vec<ForwardFile>> {
+        let g = gate(&self.root)?;
+        let _guard = g.lock().map_err(err)?;
+        let db = self.db()?;
+        let live: bool = db
+            .query_row(
+                "SELECT EXISTS(SELECT 1 FROM compose_sessions WHERE draft_id=?1 AND token=?2)",
+                params![owner, token],
+                |r| r.get(0),
+            )
+            .map_err(err)?;
+        if !live {
+            return Err("写信窗口已关闭或切换，附件准备已取消".into());
+        }
+        let files = prepare(&self.root, raw, &crate::eml_files::account())?;
+        let publish = (|| -> Result<()> {
+            let mut db = self.db()?;
+            let tx = db
+                .transaction_with_behavior(TransactionBehavior::Immediate)
+                .map_err(err)?;
+            let live: bool = tx
+                .query_row(
+                    "SELECT EXISTS(SELECT 1 FROM compose_sessions WHERE draft_id=?1 AND token=?2)",
+                    params![owner, token],
+                    |r| r.get(0),
+                )
+                .map_err(err)?;
+            if !live {
+                return Err("写信窗口已关闭或切换，附件准备已取消".into());
             }
             insert(&tx, owner, &files)?;
             tx.commit().map_err(err)
@@ -833,6 +880,26 @@ mod tests {
             },
             token,
         )
+    }
+    #[test]
+    fn external_forward_uses_read_only_snapshot_without_mailbox_record() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = Store::new(dir.path().into()).unwrap();
+        let mut d = draft();
+        let token = store.open_compose_session(&d.id).unwrap();
+        let original = raw();
+        d.forward_files = store
+            .prepare_external_forward_files(&d.id, &token, &original)
+            .unwrap();
+        assert_eq!(d.forward_files.len(), 2);
+        assert_eq!(d.forward_files[0].name, "report.pdf");
+        assert_eq!(d.forward_files[0].size, 4);
+        assert_eq!(d.forward_files[1].size, 5);
+        assert_eq!(raw(), original);
+        store.close_compose_session(&d.id, &token).unwrap();
+        assert!(store
+            .prepare_external_forward_files(&d.id, &token, &original)
+            .is_err());
     }
     #[test]
     fn bulk_draft_clear_only_removes_confirmed_drafts_and_owned_files() {

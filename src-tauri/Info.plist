@@ -13,5 +13,15 @@
     <string>zh-Hans</string>
     <string>en</string>
   </array>
+  <key>UTImportedTypeDeclarations</key>
+  <array><dict>
+    <key>UTTypeIdentifier</key><string>org.ansermail.outlook-message</string>
+    <key>UTTypeDescription</key><string>Outlook mail message</string>
+    <key>UTTypeConformsTo</key><array><string>public.data</string><string>public.content</string></array>
+    <key>UTTypeTagSpecification</key><dict>
+      <key>public.filename-extension</key><array><string>msg</string></array>
+      <key>public.mime-type</key><string>application/vnd.ms-outlook</string>
+    </dict>
+  </dict></array>
 </dict>
 </plist>

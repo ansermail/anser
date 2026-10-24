@@ -39,10 +39,22 @@ it("public preview ignores persisted mailbox data and blocks real operations", a
     "move_archive_location",
     "delete_local_archives",
     "test_notification",
+    "set_file_association",
+    "prepare_eml_import",
+    "eml_import_action",
   ]) {
     await expect(api.call(command, {})).rejects.toThrow("页面预览不连接邮箱");
   }
+  expect(await api.call("get_file_associations")).toEqual({
+    supported: false,
+    busy: false,
+    items: [],
+  });
   api.leaveDemo();
+  expect(await api.call("eml_import_jobs")).toEqual([]);
+  await expect(api.call("eml_import_job", { id: "fake" })).rejects.toThrow(
+    "示例模式不读取或导入本地文件",
+  );
   expect(api.isDemo()).toBe(true);
   expect(localStorage.getItem("mail-desktop-demo-v1")).toContain(
     "private@example.com",

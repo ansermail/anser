@@ -1,5 +1,6 @@
 import {
   dateLocale,
+  formatMailTime,
   interfaceLanguageRevision,
   setInterfaceLanguage,
   t,
@@ -47,6 +48,8 @@ import { ServerDirectoryMenu } from "./components/server-directory-menu";
 import { FolderMappingDialog } from "./components/folder-mapping-dialog";
 import { RetentionDialog } from "./components/retention-dialog";
 import { ArchiveJobsPanel } from "./components/archive-jobs";
+import { FileAssociations } from "./components/file-associations";
+import { EmlImports } from "./components/eml-imports";
 import { RemoteFolderList } from "./components/remote-folder-list";
 import { remoteFolderLabel, sidebarAccountError } from "./lib/remote-folders";
 import { printMail } from "./lib/mail-print";
@@ -54,6 +57,7 @@ import { coalesceRefresh } from "./lib/refresh-queue";
 import { ConversationReader } from "./components/conversation-reader";
 import { replyHeaders } from "./lib/conversations";
 import { FolderInput } from "./components/folder-input";
+import { useTheme } from "./lib/theme";
 import { Tabs, TabsList, TabsTrigger } from "./components/ui/tabs";
 import { disableNativeContextMenu } from "./lib/context-menu";
 import { NavigationLayout, MailLayout } from "./components/resizable-layout";
@@ -68,7 +72,6 @@ import {
   HardDriveDownload,
   ArrowLeft,
   ArrowRight,
-  Check,
   CheckCheck,
   ChevronDown,
   ChevronRight,
@@ -102,12 +105,15 @@ import {
   Star,
   Sun,
   Moon,
+  Monitor,
   Trash2,
   X,
   LogOut,
   ExternalLink,
   AlertCircle,
   Undo2,
+  Check,
+  PenLine,
 } from "lucide-react";
 import { Button } from "./components/ui/button";
 import {
@@ -215,13 +221,6 @@ const viewNames: Record<string, string> = {
     return t("Local archive");
   },
 };
-function time(s: string) {
-  const d = new Date(s);
-  if (Number.isNaN(d.getTime())) return t("Unknown date");
-  if (dateLocale() === "en-US") return d.toLocaleString(dateLocale());
-  const pad = (n: number) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}/${pad(d.getMonth() + 1)}/${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
-}
 function savedListMode(): "conversations" | "messages" {
   try {
     return localStorage.getItem("mail-list-mode") === "messages"
@@ -293,7 +292,11 @@ export default function App() {
     [moveIds, setMoveIds] = useState<string[]>([]),
     [moveFolder, setMoveFolder] = useState(""),
     [moveThreads, setMoveThreads] = useState(false),
-    [dark, setDark] = useState(localStorage.getItem("mail-theme") === "dark");
+    [renameFolder, setRenameFolder] = useState(""),
+    [renameValue, setRenameValue] = useState(""),
+    [renamingFolder, setRenamingFolder] = useState(false);
+  const theme = useTheme();
+  const dark = theme.dark;
   useEffect(() => {
     let live = true;
     const revision = interfaceLanguageRevision();
@@ -569,9 +572,8 @@ export default function App() {
     return () => clearTimeout(timer);
   }, [search]);
   useEffect(() => {
-    document.documentElement.classList.toggle("dark", dark);
-    localStorage.setItem("mail-theme", dark ? "dark" : "light");
-  }, [dark]);
+    document.documentElement.classList.toggle("dark", theme.dark);
+  }, [theme.dark]);
   useEffect(() => {
     let live = true;
     // A read message may leave an unread list while it remains open.
@@ -1336,6 +1338,58 @@ export default function App() {
       if (ticket === draftRequest.current) toast.error(String(e));
     }
   }
+  async function renameLocalFolder() {
+    const current = renameFolder;
+    const replacement = renameValue.trim();
+    if (
+      !current ||
+      !replacement ||
+      replacement.length > 120 ||
+      replacement === current
+    )
+      return;
+    setRenamingFolder(true);
+    try {
+      await call("rename_local_folder", { current, replacement });
+      setRenameFolder("");
+      if (query.folder === current)
+        setQuery((value) => ({ ...value, folder: replacement }));
+      await refresh();
+      toast.success(t("Local folder renamed"));
+    } catch (error) {
+      toast.error(String(error));
+    } finally {
+      setRenamingFolder(false);
+    }
+  }
+  async function deleteLocalFolder(folderName: string) {
+    if (
+      !(await askConfirmation({
+        title: t("Delete local folder?"),
+        description: t(
+          "Permanently delete “{value0}” and every message in it from this app. Server mailbox copies are not deleted.",
+          { value0: folderName },
+        ),
+        action: t("Delete folder"),
+        destructive: true,
+      }))
+    )
+      return;
+    try {
+      const deleted = await call<number>("delete_local_folder", {
+        folder: folderName,
+      });
+      if (query.folder === folderName) navigate("local");
+      await refresh();
+      toast.success(
+        t("Deleted folder and {value0} messages.", {
+          value0: deleted,
+        }),
+      );
+    } catch (error) {
+      toast.error(String(error));
+    }
+  }
   async function showDrafts() {
     setPage("drafts");
     await reloadDrafts();
@@ -1418,21 +1472,27 @@ export default function App() {
   }
   async function exportMail(m: Mail) {
     if (!native || demo) {
-      toast.info(t("Export real messages as EML in the desktop app"));
+      toast.info(t("Export original mail files in the desktop app"));
       return;
     }
-    const { save } = await import("@tauri-apps/plugin-dialog");
-    const path = await save({
-      defaultPath: `${m.subject.replace(/[\\/:*?"<>|]/g, "-").slice(0, 80)}.eml`,
-      filters: [{ name: t("Original message"), extensions: ["eml"] }],
-    });
-    if (path)
-      try {
+    try {
+      const extension = await call<string>("mail_original_format", {
+        id: m.id,
+      });
+      if (!["eml", "emlx", "msg", "mbox"].includes(extension))
+        throw new Error(t("Could not determine the original mail format."));
+      const { save } = await import("@tauri-apps/plugin-dialog");
+      const path = await save({
+        defaultPath: `${m.subject.replace(/[\\/:*?"<>|]/g, "-").slice(0, 80)}.${extension}`,
+        filters: [{ name: t("Original message"), extensions: [extension] }],
+      });
+      if (path) {
         await call("export_mail", { id: m.id, path });
         toast.success(t("Full message exported"));
-      } catch (e) {
-        toast.error(String(e));
       }
+    } catch (e) {
+      toast.error(String(e));
+    }
   }
   async function attachment(index: number, name: string, mail = detail?.mail) {
     if (!mail || !native || demo) {
@@ -1596,7 +1656,7 @@ export default function App() {
       <div className="desktop-titlebar" data-tauri-drag-region />
       <Toaster
         position="bottom-center"
-        theme={dark ? "dark" : "light"}
+        theme={theme.mode}
         richColors
         closeButton
       />
@@ -1625,10 +1685,29 @@ export default function App() {
         <Button
           variant="ghost"
           size="icon-sm"
-          title={dark ? t("Light mode") : t("Dark mode")}
-          onClick={() => setDark(!dark)}
+          title={
+            theme.mode === "light"
+              ? t("Light mode · Switch to dark mode")
+              : theme.mode === "dark"
+                ? t("Dark mode · Switch to follow system appearance")
+                : t("Following system appearance · Switch to light mode")
+          }
+          aria-label={
+            theme.mode === "light"
+              ? t("Light mode · Switch to dark mode")
+              : theme.mode === "dark"
+                ? t("Dark mode · Switch to follow system appearance")
+                : t("Following system appearance · Switch to light mode")
+          }
+          onClick={theme.cycleMode}
         >
-          {dark ? <Sun size={16} /> : <Moon size={16} />}
+          {theme.mode === "light" ? (
+            <Sun size={16} />
+          ) : theme.mode === "dark" ? (
+            <Moon size={16} />
+          ) : (
+            <Monitor size={16} />
+          )}
         </Button>
       </div>
       <NavigationLayout
@@ -1854,15 +1933,36 @@ export default function App() {
               </div>
               {nav("local", Archive, data.stats.saved)}
               {data.folders.map((f) => (
-                <Button
-                  variant="ghost"
-                  key={f}
-                  className={`nav-item folder-item ${query.folder === f && page === "mail" ? "active" : ""}`}
-                  onClick={() => navigate("local", "", f)}
-                >
-                  <Folder size={16} />
-                  <span>{f}</span>
-                </Button>
+                <ContextMenu key={f}>
+                  <ContextMenuTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      className={`nav-item folder-item ${query.folder === f && page === "mail" ? "active" : ""}`}
+                      onClick={() => navigate("local", "", f)}
+                    >
+                      <Folder size={16} />
+                      <span>{f}</span>
+                    </Button>
+                  </ContextMenuTrigger>
+                  <ContextMenuContent>
+                    <ContextMenuItem
+                      onSelect={() => {
+                        setRenameFolder(f);
+                        setRenameValue(f);
+                      }}
+                    >
+                      <PenLine />
+                      {t("Rename")}
+                    </ContextMenuItem>
+                    <ContextMenuItem
+                      variant="destructive"
+                      onSelect={() => void deleteLocalFolder(f)}
+                    >
+                      <Trash2 />
+                      {t("Delete folder")}
+                    </ContextMenuItem>
+                  </ContextMenuContent>
+                </ContextMenu>
               ))}
               {nav("trash", Trash2)}
             </SidebarContent>
@@ -2161,6 +2261,14 @@ export default function App() {
                           <Archive size={15} />
                           {t("Restore backup")}
                         </Button>
+                        <EmlImports
+                          accounts={data.accounts}
+                          folders={data.folders}
+                          onChanged={refresh}
+                          onView={(accountId, folder) =>
+                            navigate("local", accountId, folder)
+                          }
+                        />
                         <DeleteArchiveDialog
                           onDeleted={() => {
                             setSelected("");
@@ -2188,6 +2296,7 @@ export default function App() {
                       <LanguageSettings />
                       <StorageTools testMailId={selected} />
                       <NetworkProxySettings />
+                      <FileAssociations />
                     </div>
                   </>
                 }
@@ -2220,6 +2329,15 @@ export default function App() {
                       </div>
                     </div>
                     <ArchiveJobsPanel defaultCollapsed />
+                    <EmlImports
+                      taskPanel
+                      accounts={data.accounts}
+                      folders={data.folders}
+                      onChanged={refresh}
+                      onView={(accountId, folder) =>
+                        navigate("local", accountId, folder)
+                      }
+                    />
                     <div className="flex flex-col gap-6">
                       <ServerOperations defaultCollapsed />
                       <FolderHealthPanel defaultCollapsed />
@@ -2622,7 +2740,9 @@ export default function App() {
                                   <span className="sender-name">
                                     {senderName(m.sender)}
                                   </span>
-                                  <time dateTime={m.date}>{time(m.date)}</time>
+                                  <time dateTime={m.date}>
+                                    {formatMailTime(m.date)}
+                                  </time>
                                 </div>
                                 <div className="row-subject">
                                   {!m.isRead && !isNonUnreadMail(m) && (
@@ -3075,7 +3195,7 @@ export default function App() {
                         )}
                         <div className="message-metadata">
                           <time dateTime={detail.mail.date}>
-                            {time(detail.mail.date)}
+                            {formatMailTime(detail.mail.date)}
                           </time>
                           <span className="saved-chip">
                             <ShieldCheck size={13} />
@@ -3262,7 +3382,8 @@ export default function App() {
       />
       <ComposeDialog
         dark={dark}
-        onToggleTheme={() => setDark((value) => !value)}
+        themeMode={theme.mode}
+        onToggleTheme={theme.cycleMode}
         draft={draft}
         onClose={() => {
           setDraft(null);
@@ -3302,6 +3423,58 @@ export default function App() {
           >
             {t("Confirm filing")}
           </Button>
+        </DialogContent>
+      </Dialog>
+      <Dialog
+        open={!!renameFolder}
+        onOpenChange={(open) => {
+          if (!open) setRenameFolder("");
+        }}
+      >
+        <DialogContent className="sm:max-w-[430px]">
+          <DialogHeader>
+            <DialogTitle>{t("Rename local folder")}</DialogTitle>
+            <DialogDescription>
+              {t("Message originals and flags remain unchanged.")}
+            </DialogDescription>
+          </DialogHeader>
+          <Input
+            autoFocus
+            aria-label={t("Local folder name")}
+            value={renameValue}
+            maxLength={120}
+            onChange={(event) => setRenameValue(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") {
+                event.preventDefault();
+                void renameLocalFolder();
+              }
+            }}
+          />
+          {renameValue.trim() &&
+            renameValue.trim() !== renameFolder &&
+            data.folders.includes(renameValue.trim()) && (
+              <p role="alert" className="folder-name-error">
+                {t("A local folder with this name already exists")}
+              </p>
+            )}
+          <div className="flex justify-end gap-2">
+            <Button variant="outline" onClick={() => setRenameFolder("")}>
+              {t("Cancel")}
+            </Button>
+            <Button
+              disabled={
+                renamingFolder ||
+                !renameValue.trim() ||
+                renameValue.trim().length > 120 ||
+                renameValue.trim() === renameFolder ||
+                data.folders.includes(renameValue.trim())
+              }
+              onClick={() => void renameLocalFolder()}
+            >
+              {renamingFolder ? t("Renaming…") : t("Rename")}
+            </Button>
+          </div>
         </DialogContent>
       </Dialog>
       {confirmationDialog}

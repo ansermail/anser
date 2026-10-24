@@ -6,7 +6,7 @@ import {
   signDevelopmentBundle,
 } from "./mac-dev-signing.mjs";
 
-import { documentTypes } from "./mac-document-types.mjs";
+import { documentTypes, importedTypes } from "./mac-document-types.mjs";
 
 const [binary, ...args] = process.argv.slice(2);
 if (!binary) throw new Error("缺少开发版可执行文件");
@@ -46,6 +46,7 @@ await writeFile(
 <key>CFBundleLocalizations</key><array><string>zh-Hans</string><string>en</string></array>
 <key>NSHighResolutionCapable</key><true/>
 ${documentTypes(config.bundle.fileAssociations)}
+${importedTypes(await readFile(join(root, "src-tauri/Info.plist"), "utf8"))}
 </dict></plist>`,
 );
 await signDevelopmentBundle(bundle, signingIdentity);

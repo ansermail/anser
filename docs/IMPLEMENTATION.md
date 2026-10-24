@@ -523,7 +523,7 @@ GitHub CI 和两架构发布工作流已推送；首次 Checks 已成功，Relea
 
 原预览以 `preview/` 为 Vite 根目录，Tailwind 自动扫描未覆盖 `src/` 业务组件，公开 CSS 缺少 flex/grid/gap 等布局工具类。`src/index.css` 明确声明 `@source "./"`，预览入口改为渲染共用 App，删除重复 PreviewApp。Vite 预览构建将 Tauri core/app/event/updater/dialog 导入替换为静态禁用桥；API 使用内存示例存储，无法退出到真实模式，连接/收发及本机操作明确报错。`scripts/check-preview.mjs` 在每次预览构建检查共享布局 CSS、基路径与无原生 IPC 实现；Preview Pages 自动跟随 main 相关修改。
 
-`eml_files` 是独立内存状态，接收 macOS Opened、启动/单实例路径参数及选择器请求；订阅后排空待打开队列，防止启动事件丢失。读取限制为 64 MiB，正文/日期/附件复用 archive MIME 解析，原始字节只保留于当前文件快照，不走 Store、收取、规则或凭据接口。前端串行解析与代际检查防止切换/关闭后的迟到结果，附件用当前令牌提取，预览复用私有缓存与可执行文件保护，另存禁止覆盖源文件。bundle.fileAssociations 声明 EML Viewer/Alternate；稳定开发包从同一配置生成 CFBundleDocumentTypes，不改变应用/钥匙串标识或默认打开方式。
+`eml_files` 是独立内存状态，接收 macOS Opened、启动/单实例路径参数及选择器请求；订阅后排空待打开队列，防止启动事件丢失。读取限制为 64 MiB，正文/日期/附件复用 archive MIME 解析，原始字节只保留于当前文件快照，不走 Store、收取、规则或凭据接口。外部文件现由主窗口创建 `external-mail-<token>` 独立 Tauri WebviewWindow，使用 macOS 原生窗口控件和 Overlay 标题栏；`main.tsx` 按窗口标签渲染普通主界面或外部邮件阅读页。窗口按令牌读取同一只读快照，上一封/下一封禁用，回复/转发/打印/附件沿用普通阅读能力。附件用当前令牌提取，预览复用私有缓存与可执行文件保护，另存禁止覆盖源文件。图片/CSS/字体 URI 协议仅允许 `main` 与受控外部窗口；外部窗口使用独立最小 capability。窗口销毁清理令牌；打开另一份文件先销毁上一外部窗口。bundle.fileAssociations 声明单封邮件 Viewer/Alternate；稳定开发包从同一配置生成 CFBundleDocumentTypes，不改变应用/钥匙串标识或默认打开方式。
 
 ## RULES-03：持久规则链与完整保存（2026-10-10）
 
@@ -626,6 +626,7 @@ WebKit原生scripts-disabled正文不绑定子文档load/error/click/auxclick事
 ## 原生正文图片网络入口（2026-10-15，本地修复）
 
 - `safeMailHtml` 在原生模式下将净化后的 img/srcset、HTML 背景及 CSS 图片 URL 映射到 `anser-image://localhost/fetch`；保持 data/CID 派生图片、字体与外链各自入口。网页/Pages 不生成此协议，继续使用隔离示例。原始 MIME 不变。
+- `MailContent` 把应用解析后的 `light` / `dark` 状态传入净化文档，并以独立的 `#anser-mail-theme` 样式隔离正文主题。深色只转换中性白底、深灰文字和链接；品牌色、图片背景及绝对视觉内容保持不变。切换主题重建同内容 iframe，脚本、CSP、安全链接路由和 MIME 均不改变；打印入口显式继续使用浅色。
 - Tauri 异步协议在主 WebView 注册，接收 GET 图片请求。Rust `mail_images` 读取 `proxy::current` 的短时配置快照，reqwest 使用显式全局代理（含 SOCKS5 远端 DNS）或无代理直连，不依赖终端代理环境或系统代理。沿用代理握手失败可选直连，保持 TLS 校验。
 - 初始地址及最多 5 次跳转仅接受无 URL 用户凭据的 HTTPS，拒绝 localhost/本地域名及私有、回环、链路本地 IP 字面量。最多 6 个活动请求、20 MiB/图片、40 秒总期限（包括排队）；按 GET 实际字节识别常见位图，SVG 以图片类型及响应 CSP 隔离，HTML/WAF 验证页不能充当图片返回。
 - 不转发邮箱凭据、浏览器 Cookie、Origin 或 Referer；不写图片缓存到数据库/存档，不把源 URL、跟踪地址、代理凭据或响应正文写入失败日志。响应使用 `no-store`、`nosniff` 及 `default-src 'none'; sandbox`，仅在 img-src 追加图片协议，保留正文脚本禁用与 iframe sandbox。
@@ -677,3 +678,19 @@ DeepSeek 官方域名/443/标准路径才附加 `thinking.disabled`、JSON 输�
 2026-10-17 新增抄送/优先级/已接收天数条件。`Mail` 增加 `cc`、`priority` 与 `header_metadata_known`：`Cc` 只保存原始头里的抄送地址（服务器从不返回密送，密送不猜测）；优先级读取 `X-Priority`、`Priority`、`Importance`，把 1/2、high、urgent 归为 `high`，4/5、low、non-urgent 归为 `low`，其余为 `normal`。规则条件 `cc` 与 `recipientsOrCc` 使用文字比较（“不包含”要求收件人和抄送都不含），`priority` 只比较归一后的等值，`ageDays` 按 RFC3339 日期计算整天数后比较大于/小于/等于。解析版本升到 `archive::PARSER_VERSION = 5`：启动迁移只读取已验证原件的邮件头块回填 `cc`/`priority`（不重新解码正文和附件），未保存过原件的在线记录直接升版并保留 `header_metadata_known=false`，不把缺失抄送当成空地址；这类邮件命中抄送/优先级条件时进入 `NeedsBody`，由既有规则任务先补存完整邮件再核对，延迟任务恢复时把重新解析出的抄送与优先级带入评估对象。`message_listing` 投影随 messages.data 触发器同步，阅读页在收件人后显示抄送地址（有值时）。
 
 托盘菜单复用现有手动收件入口，未读数从本机搜索投影读取；同一周期通过 Tauri macOS 主窗口的 `set_badge_count` 更新应用级 Dock 数字，计数为零时传入 `None` 清除。桌面免打扰标志持久保存在偏好配置中，通知发送前核对。此功能的 Dock/原生菜单绘制、系统通知权限和实际邮箱收取仍待开发预览验收。
+
+## 多格式邮件本地导入（特性分支）
+
+`eml_input.rs` 在共享有界文件快照入口限制普通文件、64 MiB、结构深度/部件/头部/解码预算；先迭代检查结构，再调用递归 MIME 解析。文件读取前后核对文件指纹，Unix 使用 NOFOLLOW/NONBLOCK 防止被替换为链接或特殊文件。外部只读 EML 查看器使用同一校验，不写邮件库。
+
+`eml_imports.rs` 管理 `eml_import_jobs`、`eml_import_items` 与独立来源 `message_imports`。预检只记录元数据估算，固定账号和本地分类；后台单文件快照解析后，在存档迁移/删除保护下准备原件，再通过短 IMMEDIATE 事务重验 revision、账号和唯一 hash，发布原件及索引、来源、逐项结果。不会调用普通收取入口或执行规则。文件发布与数据库不是跨介质原子事务；数据库失败可能留下未引用原件，但不能报告成功或直接删除共享 hash 文件。
+
+删除本地导入文件夹使用存档写锁与短 IMMEDIATE 事务。范围按分类重读，逐封取消规则/补存任务、清除待执行本地标记、通知定位、服务器来源和导入关系，再删除邮件索引；只被该范围引用的 hash 原件先移入 `.archive-deletion` 暂存，数据库提交后清理。数据库失败会回滚并恢复暂存文件，进程中断由现有存档恢复流程按当前引用决定保留或清理。共享原件仍被其他邮件使用时保留；不发送任何服务器删除、MOVE 或 EXPUNGE 命令。服务器来源仍存在时，后续主动收取可能按服务器规则重新出现邮件。
+
+运行中的任务退出后标为 interrupted 并清除源路径，不自动继续。取消/账号移除与提交由数据库写事务确定顺序；本地用户标记在尚无服务器来源时保留独立覆盖意图。后续真实来源建立后才允许远端操作。备份只保留持久导入来源，恢复显式加载来源表，不恢复任务；删除邮件通过触发器清理来源，已有存档清理机制区分可在线恢复与纯本地记录。
+
+`mail_formats.rs` 将 EMLX 的长度段、MBOX 记录与 MSG CFB 容器投影为派生 MIME，正文、邮件头、附件、转发与完整性读取共用投影；archive hash 与保存字节始终来自原件，导出根据内容识别真实格式。内部 hash blob 的 `.eml` 存储名不是格式声明。MBOX 用固定缓冲流式预检，记录指纹、偏移和长度，逐封处理；Content-Length 变体明确拒绝。
+
+MSG 使用固定版 msg_parser 与严格 cfb；先核对容器深度、目录与流数量及声明总长度，再重建规范 CFB 给属性解析器。PT_STRING8 依 MAPI 代码页转 Unicode，二进制 HTML 依 MIME charset/MAPI internet codepage 解码；派生 MIME 与附件使用有界输出，RTF 解压前核对声明容量。不支持的嵌入邮件、OLE、纯 RTF 变体明确失败。
+
+macOS 格式关联通过 NSWorkspace/UTType 在主队列读取和异步更改，只允许 EML/EMLX/MSG，开启前在 NSUserDefaults 记录当前其他应用 ID，关闭时恢复该记录并核对系统仍已注册；只接受 self/previous 两种操作，不提供其他应用选择器。按 LaunchServices 的 bundle ID 核对是否为雁信（系统可能选择同标识的已安装副本）；更改完成后重新读取系统状态。45 秒超时返回 pending，不自动重复写入；处理期间不允许第二次更改。开发与正式包共用类型声明，保持 Viewer/Alternate。网页与示例模式不调用系统关联读写。

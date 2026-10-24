@@ -76,6 +76,11 @@ function item(text: string) {
   )!;
 }
 describe("direct server directory menu", () => {
+  it("disables server operations for a local import without a server source", async () => {
+    await render({ mail: { ...mail, sourceFolder: "" } });
+    expect(host.querySelector("button")!.disabled).toBe(true);
+    expect(api.call).not.toHaveBeenCalled();
+  });
   it("discovers folders only when the account has no cached directory", async () => {
     const fallback = vi.mocked(api.call).getMockImplementation()!;
     vi.mocked(api.call).mockImplementation(async (command, args) =>

@@ -75,6 +75,7 @@ export function ComposeDialog({
   onSent,
   onQueued,
   dark = false,
+  themeMode = "light",
   onToggleTheme,
 }: {
   draft: Compose | null;
@@ -83,6 +84,7 @@ export function ComposeDialog({
   onSent: () => void;
   onQueued?: () => void;
   dark?: boolean;
+  themeMode?: "light" | "dark" | "system";
   onToggleTheme?: () => void;
 }) {
   const { askConfirmation, cancelConfirmation, confirmationDialog } =
@@ -143,9 +145,15 @@ export function ComposeDialog({
     };
   }, [draft?.id, sessionReload]);
   useEffect(() => {
-    if (!value?.forwardSource || value.id !== draft?.id || !native || isDemo())
+    if (
+      (!value?.forwardSource && !value?.externalForwardToken) ||
+      value.id !== draft?.id ||
+      !native ||
+      isDemo()
+    )
       return;
     const source = value.forwardSource,
+      externalToken = value.externalForwardToken,
       id = value.id,
       lease = session.current;
     if (!lease || lease.id !== id) return;
@@ -153,19 +161,33 @@ export function ComposeDialog({
     setForwardLoading(true);
     setForwardError("");
     void lease.promise
-      .then((token) =>
-        call<ForwardFile[]>("prepare_forward_files", { id, token, source }),
-      )
+      .then((token) => {
+        if (externalToken)
+          return call<ForwardFile[]>("prepare_external_forward_files", {
+            id,
+            token,
+            documentToken: externalToken,
+          });
+        if (!source) throw new Error(t("Forward source is unavailable"));
+        return call<ForwardFile[]>("prepare_forward_files", {
+          id,
+          token,
+          source,
+        });
+      })
       .then((files) => {
         if (!live || closingNow.current || latest.current?.id !== id) return;
         setForwardLoading(false);
         setValue((current) =>
           current?.id === id &&
-          current.forwardSource?.hash === source.hash &&
-          current.forwardSource.id === source.id
+          (externalToken
+            ? current.externalForwardToken === externalToken
+            : current.forwardSource?.hash === source?.hash &&
+              current.forwardSource?.id === source?.id)
             ? {
                 ...current,
                 forwardSource: undefined,
+                externalForwardToken: undefined,
                 forwardFiles: [...(current.forwardFiles || []), ...files],
               }
             : current,
@@ -184,6 +206,7 @@ export function ComposeDialog({
     value?.id,
     value?.forwardSource?.id,
     value?.forwardSource?.hash,
+    value?.externalForwardToken,
     forwardReload,
     sessionReload,
     draft?.id,
@@ -396,7 +419,7 @@ export function ComposeDialog({
       toast.error(t("Body images are loading. Wait before sending."));
       return false;
     }
-    if (forwardLoading || value?.forwardSource) {
+    if (forwardLoading || value?.forwardSource || value?.externalForwardToken) {
       toast.error(
         t(
           "Original attachments are not ready. Retry or choose not to include them.",
@@ -787,6 +810,7 @@ export function ComposeDialog({
                       <RichEditor
                         ref={richEditor}
                         dark={dark}
+                        themeMode={themeMode}
                         onToggleTheme={onToggleTheme}
                         key={`${value.id}-${format}`}
                         body={value.body}
@@ -874,7 +898,16 @@ export function ComposeDialog({
                           referrerPolicy="no-referrer"
                           srcDoc={safeMailHtml(
                             value.html || textToHtml(value.body),
+                            "anser-compose-preview",
+                            false,
+                            false,
+                            dark ? "dark" : "light",
                           )}
+                          className={
+                            dark
+                              ? "compose-preview-frame compose-preview-frame-dark"
+                              : "compose-preview-frame compose-preview-frame-light"
+                          }
                         />
                       </div>
                     )}
@@ -956,7 +989,7 @@ export function ComposeDialog({
                   />
                 </section>
               )}
-              {value.forwardSource && (
+              {(value.forwardSource || value.externalForwardToken) && (
                 <Alert className="mx-4 w-auto">
                   <FileUp />
                   <AlertDescription>
@@ -983,7 +1016,10 @@ export function ComposeDialog({
                         size="sm"
                         disabled={sending || closing}
                         onClick={() => {
-                          update({ forwardSource: undefined });
+                          update({
+                            forwardSource: undefined,
+                            externalForwardToken: undefined,
+                          });
                           setForwardError("");
                           setForwardLoading(false);
                         }}
@@ -1069,6 +1105,7 @@ export function ComposeDialog({
                   forwardLoading ||
                   imageLoading ||
                   !!value.forwardSource ||
+                  !!value.externalForwardToken ||
                   isDemo() ||
                   !native
                 }
@@ -1089,6 +1126,7 @@ export function ComposeDialog({
                   forwardLoading ||
                   imageLoading ||
                   !!value.forwardSource ||
+                  !!value.externalForwardToken ||
                   (!native && !isDemo())
                 }
                 onClick={() => setPlanning(!planning)}

@@ -1,5 +1,5 @@
 import { t } from "@/lib/i18n";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { isTauri } from "@tauri-apps/api/core";
 import { MailBodySkeleton } from "./mail-skeleton";
 import { disableNativeContextMenu } from "../lib/context-menu";
@@ -7,11 +7,14 @@ import { Button } from "./ui/button";
 import { Alert, AlertDescription } from "./ui/alert";
 import { watchMailImages, type MailImageStatus } from "../lib/mail-images";
 import {
+  applyMailColorScheme,
   interceptMailLinks,
   isMailDocument,
   safeMailHtml,
+  type MailColorScheme,
 } from "../lib/mail-html";
 import { mailDocumentHeight } from "../lib/mail-layout";
+import { useTheme } from "../lib/theme";
 
 export function MailContent({
   html,
@@ -26,6 +29,24 @@ export function MailContent({
   onDocumentReady?: (doc: Document | null) => void;
   onOpenLink: (href: string) => void;
 }) {
+  const { dark } = useTheme();
+  const colorScheme: MailColorScheme = dark ? "dark" : "light";
+  const [themeBackground, setThemeBackground] = useState<{
+    colorScheme: MailColorScheme;
+    value: string;
+  }>();
+  useLayoutEffect(() => {
+    setThemeBackground({
+      colorScheme,
+      value: getComputedStyle(document.documentElement)
+        .getPropertyValue("--background")
+        .trim(),
+    });
+  }, [colorScheme, dark]);
+  const background =
+    themeBackground?.colorScheme === colorScheme
+      ? themeBackground.value
+      : undefined;
   const notifyDocument = useRef(onDocumentReady);
   notifyDocument.current = onDocumentReady;
   const frame = useRef<HTMLIFrameElement>(null);
@@ -40,8 +61,18 @@ export function MailContent({
   const retryImages = useRef(() => {});
   const content = useMemo(() => {
     const id = crypto.randomUUID();
-    return { id, srcDoc: safeMailHtml(html, id, isTauri()) };
-  }, [html]);
+    return {
+      id,
+      srcDoc: safeMailHtml(
+        html,
+        id,
+        isTauri(),
+        isTauri(),
+        colorScheme,
+        background,
+      ),
+    };
+  }, [background, colorScheme, html]);
   const srcDoc = content.srcDoc;
   const open = useRef(onOpenLink);
   open.current = onOpenLink;
@@ -93,6 +124,7 @@ export function MailContent({
     // floats in the measured body. Preserve templates with custom flex/grid.
     if (doc.defaultView?.getComputedStyle(doc.body).display === "block")
       doc.body.style.setProperty("display", "flow-root", "important");
+    applyMailColorScheme(doc, colorScheme, background);
     const resize = () => {
       const height = `${mailDocumentHeight(doc)}px`;
       if (iframe.style.height !== height) iframe.style.height = height;
@@ -205,7 +237,7 @@ export function MailContent({
       )}
       <iframe
         ref={frame}
-        className="mail-html"
+        className={`mail-html mail-html-${colorScheme}`}
         title={title}
         sandbox="allow-same-origin allow-top-navigation-by-user-activation"
         referrerPolicy="no-referrer"

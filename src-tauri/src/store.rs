@@ -102,6 +102,7 @@ impl Store {
         crate::rule_operations::initialize(&db)?;
         crate::retention::initialize(&db)?;
         crate::archive_jobs::initialize(&db)?;
+        crate::eml_imports::initialize(&db)?;
         crate::rule_runs::initialize(&db)?;
         crate::search::initialize(&db)?;
         crate::paging::initialize(&db)?;
@@ -287,6 +288,8 @@ impl Store {
             .map_err(err)?;
         tx.execute("UPDATE archive_jobs SET status='cancelled',revision=revision+1,error='账号已移除，本地存档保留' WHERE json_extract(data,'$.accountId')=?1 AND status!='completed'",[id]).map_err(err)?;
         crate::rule_runs::cancel_account_in(&tx, id)?;
+        tx.execute("UPDATE eml_import_jobs SET status='cancelled',revision=revision+1,error='accountRemoved' WHERE account_id=?1 AND status IN ('prepared','queued','running')",[id]).map_err(err)?;
+        tx.execute("UPDATE eml_import_items SET path='',fingerprint='' WHERE job_id IN (SELECT id FROM eml_import_jobs WHERE account_id=?1)",[id]).map_err(err)?;
         tx.execute("UPDATE server_operations SET status='blocked',revision=revision+1,error='账号已移除，本地存档保留' WHERE account_id=?1 AND status!='completed'", [id]).map_err(err)?;
         tx.execute("DELETE FROM accounts WHERE id=?1", [id])
             .map_err(err)?;
@@ -892,6 +895,11 @@ impl Store {
             .counts
             .get(&(mail.conversation_id.clone(), mail.trashed))
             .unwrap_or(&1);
+        if mail.source_folder.is_empty() {
+            if let Ok((folder, _)) = self.source(&mail.id) {
+                mail.source_folder = folder;
+            }
+        }
         let raw = self.message_raw(&mail)?;
         let (parsed, html, attachments) =
             archive::parse(&raw, &self.account_for_mail(&mail), &mail.source_folder)?;
@@ -1072,7 +1080,7 @@ impl Store {
             )?;
         }
         drop(stmt);
-        snap.execute_batch("DELETE FROM accounts; DELETE FROM folder_retention; DELETE FROM archive_jobs; DELETE FROM rule_runs; DELETE FROM drafts; DELETE FROM compose_files; DELETE FROM compose_sessions; DELETE FROM outbox; DELETE FROM sent_uploads; DELETE FROM logs; DELETE FROM server_operations; DELETE FROM folder_health; DELETE FROM directory_operations; DELETE FROM rule_executions; VACUUM;").map_err(err)?;
+        snap.execute_batch("DELETE FROM eml_import_items; DELETE FROM eml_import_jobs; DELETE FROM accounts; DELETE FROM folder_retention; DELETE FROM archive_jobs; DELETE FROM rule_runs; DELETE FROM drafts; DELETE FROM compose_files; DELETE FROM compose_sessions; DELETE FROM outbox; DELETE FROM sent_uploads; DELETE FROM logs; DELETE FROM server_operations; DELETE FROM folder_health; DELETE FROM directory_operations; DELETE FROM rule_executions; VACUUM;").map_err(err)?;
         archive::atomic_write(
             &folder.join("manifest.json"),
             br#"{"format":"mail-desktop-archive","version":1}"#,
@@ -1168,6 +1176,24 @@ impl Store {
                     ],
                 )
                 .map_err(err)?;
+        }
+        if has_table("message_imports")? {
+            let mut q = source
+                .prepare("SELECT mail_id,hash,imported_at FROM message_imports")
+                .map_err(err)?;
+            let rows = q
+                .query_map([], |r| {
+                    Ok((
+                        r.get::<_, String>(0)?,
+                        r.get::<_, String>(1)?,
+                        r.get::<_, String>(2)?,
+                    ))
+                })
+                .map_err(err)?;
+            for row in rows {
+                let (id, hash, time) = row.map_err(err)?;
+                tx.execute("INSERT OR IGNORE INTO message_imports(mail_id,hash,imported_at) SELECT ?1,?2,?3 WHERE EXISTS(SELECT 1 FROM messages WHERE id=?1 AND hash=?2 AND COALESCE(json_extract(data,'$.savedLocally'),1)=1)",params![id,hash,time]).map_err(err)?;
+            }
         }
         let mut position: i64 = tx
             .query_row("SELECT COALESCE(MAX(position),-1)+1 FROM rules", [], |r| {

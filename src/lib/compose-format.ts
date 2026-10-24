@@ -20,6 +20,7 @@ export function hasDraftContent(draft: Compose): boolean {
     ].some((text) => !!text?.trim()) ||
     draft.attachments.length ||
     draft.forwardSource ||
+    draft.externalForwardToken ||
     draft.forwardFiles?.length ||
     draft.quote ||
     draft.replyAnchorId ||

@@ -19,11 +19,13 @@ export function MailAttachments({
   demo = false,
   attachments,
   onDownload,
+  onPreview,
 }: {
   mailId: string;
   demo?: boolean;
   attachments: Detail["attachments"];
   onDownload: (index: number, name: string) => Promise<void>;
+  onPreview?: (index: number, name: string) => Promise<void>;
 }) {
   const [pending, setPending] = useState<
     Record<number, "preview" | "download">
@@ -34,7 +36,7 @@ export function MailAttachments({
     action: "preview" | "download",
   ) {
     if (pending[index]) return;
-    if (action === "preview" && (!native || demo)) {
+    if (action === "preview" && ((!native && !onPreview) || demo)) {
       toast.info(
         t(
           "Preview real attachments in a local application from the desktop app",
@@ -44,9 +46,10 @@ export function MailAttachments({
     }
     setPending((p) => ({ ...p, [index]: action }));
     try {
-      if (action === "preview")
-        await call("preview_attachment", { id: mailId, index });
-      else await onDownload(index, name);
+      if (action === "preview") {
+        if (onPreview) await onPreview(index, name);
+        else await call("preview_attachment", { id: mailId, index });
+      } else await onDownload(index, name);
     } catch (error) {
       toast.error(String(error));
     } finally {

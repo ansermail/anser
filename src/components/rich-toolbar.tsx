@@ -29,6 +29,7 @@ import {
   Highlighter,
   RemoveFormatting,
   Minus,
+  Monitor,
   Moon,
   Sun,
 } from "lucide-react";
@@ -143,6 +144,7 @@ export function RichToolbar({
   searchOpen,
   onSearchOpen,
   dark,
+  themeMode,
   onToggleTheme,
 }: {
   editor: Editor;
@@ -153,6 +155,7 @@ export function RichToolbar({
   searchOpen: boolean;
   onSearchOpen: (open: boolean) => void;
   dark: boolean;
+  themeMode: "light" | "dark" | "system";
   onToggleTheme?: () => void;
 }) {
   const state = useEditorState({
@@ -676,14 +679,32 @@ export function RichToolbar({
               type="button"
               variant="ghost"
               size="icon-sm"
-              aria-label={t("Toggle compose theme")}
+              aria-label={
+                themeMode === "light"
+                  ? t("Light mode · Switch to dark mode")
+                  : themeMode === "dark"
+                    ? t("Dark mode · Switch to follow system appearance")
+                    : t("Following system appearance · Switch to light mode")
+              }
               disabled={disabled}
               onClick={onToggleTheme}
             >
-              {dark ? <Sun /> : <Moon />}
+              {themeMode === "light" ? (
+                <Sun />
+              ) : themeMode === "dark" ? (
+                <Moon />
+              ) : (
+                <Monitor />
+              )}
             </Button>
           </TooltipTrigger>
-          <TooltipContent>{t("Toggle application theme")}</TooltipContent>
+          <TooltipContent>
+            {themeMode === "light"
+              ? t("Light mode · Switch to dark mode")
+              : themeMode === "dark"
+                ? t("Dark mode · Switch to follow system appearance")
+                : t("Following system appearance · Switch to light mode")}
+          </TooltipContent>
         </Tooltip>
       )}
     </div>

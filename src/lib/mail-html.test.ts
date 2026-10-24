@@ -1,12 +1,123 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi } from "vitest";
 import {
+  applyMailColorScheme,
   safeMailHtml,
   mailLink,
   isMailDocument,
   interceptMailLinks,
 } from "./mail-html";
 describe("untrusted email rendering", () => {
+  it("marks the isolated document with the requested reader color scheme", () => {
+    const light = new DOMParser().parseFromString(
+      safeMailHtml("<p>light</p>"),
+      "text/html",
+    );
+    expect(
+      light.querySelector('meta[name="color-scheme"]')?.getAttribute("content"),
+    ).toBe("light");
+    expect(light.querySelector("#anser-mail-theme")?.textContent).not.toContain(
+      "color-scheme:dark",
+    );
+
+    const dark = new DOMParser().parseFromString(
+      safeMailHtml("<p>dark</p>", "dark-mail", false, false, "dark"),
+      "text/html",
+    );
+    expect(
+      dark.querySelector('meta[name="color-scheme"]')?.getAttribute("content"),
+    ).toBe("dark");
+    expect(dark.querySelector("#anser-mail-theme")?.textContent).toContain(
+      "color-scheme:dark",
+    );
+    expect(dark.querySelector("#anser-mail-theme")?.textContent).toContain(
+      "color:rgb(237, 237, 237)!important",
+    );
+  });
+  it("adapts neutral colors in dark mode without changing brand colors or image-backed layouts", () => {
+    const doc = new DOMParser().parseFromString(
+      safeMailHtml(
+        '<div id="neutral" style="background:#fff;color:#242424"><p id="text">Body</p><a id="link" href="https://example.com">Link</a></div><div id="brand" style="background:#b72025;color:#fff">Bank</div><div id="image" style="background:url(https://images.example/banner.png);color:#222">Banner</div>',
+        "dark",
+        false,
+        false,
+        "dark",
+      ),
+      "text/html",
+    );
+    Object.defineProperty(doc, "defaultView", {
+      value: {
+        getComputedStyle: (element: Element) => {
+          const inline = (element as HTMLElement).style;
+          return {
+            backgroundColor: inline.backgroundColor || "rgba(0, 0, 0, 0)",
+            backgroundImage: inline.backgroundImage || "none",
+            color: inline.color || "rgb(0, 0, 0)",
+            display: "block",
+          };
+        },
+      },
+    });
+    applyMailColorScheme(doc, "dark");
+    expect(doc.documentElement.dataset.mailColorScheme).toBe("dark");
+    expect(doc.body.style.backgroundColor).toBe("rgb(28, 28, 30)");
+    expect(doc.body.style.color).toBe("rgb(237, 237, 237)");
+    expect(
+      doc.querySelector<HTMLElement>("#neutral")!.style.backgroundColor,
+    ).toBe("rgb(28, 28, 30)");
+    expect(doc.querySelector<HTMLElement>("#text")!.style.color).toBe(
+      "rgb(237, 237, 237)",
+    );
+    expect(doc.querySelector<HTMLElement>("#link")!.style.color).toBe(
+      "rgb(137, 180, 250)",
+    );
+    expect(
+      doc.querySelector<HTMLElement>("#brand")!.style.backgroundColor,
+    ).toBe("rgb(183, 32, 37)");
+    expect(doc.querySelector<HTMLElement>("#image")!.style.color).toBe(
+      "rgb(34, 34, 34)",
+    );
+  });
+  it("uses the application background for neutral dark-mode surfaces", () => {
+    const background = "oklch(0.145 0 0)";
+    const doc = new DOMParser().parseFromString(
+      safeMailHtml(
+        '<div id="neutral" style="background:#fff;color:#242424">Body</div><div id="brand" style="background:#b72025;color:#fff">Bank</div>',
+        "dark",
+        false,
+        false,
+        "dark",
+        background,
+      ),
+      "text/html",
+    );
+    Object.defineProperty(doc, "defaultView", {
+      value: {
+        getComputedStyle: (element: Element) => {
+          const inline = (element as HTMLElement).style;
+          return {
+            backgroundColor: inline.backgroundColor || "rgba(0, 0, 0, 0)",
+            backgroundImage: inline.backgroundImage || "none",
+            color: inline.color || "rgb(0, 0, 0)",
+            display: "block",
+          };
+        },
+      },
+    });
+
+    applyMailColorScheme(doc, "dark", background);
+
+    expect(doc.querySelector("#anser-mail-theme")?.textContent).toContain(
+      `background-color:${background}!important`,
+    );
+    expect(doc.body.style.backgroundColor).toBe(background);
+    expect(
+      doc.querySelector<HTMLElement>("#neutral")!.style.backgroundColor,
+    ).toBe(background);
+    expect(
+      doc.querySelector<HTMLElement>("#brand")!.style.backgroundColor,
+    ).toBe("rgb(183, 32, 37)");
+  });
   it("preserves authored table sizing without making every letter a min-content break", () => {
     const doc = new DOMParser().parseFromString(
       safeMailHtml(
@@ -18,12 +129,8 @@ describe("untrusted email rendering", () => {
     expect(doc.querySelector("th")?.textContent).toBe("Status");
     expect(doc.querySelectorAll("th")[1].style.width).toBe("100%");
     expect(doc.querySelectorAll("th")[2].style.whiteSpace).toBe("nowrap");
-    expect(doc.head.querySelector("style")?.textContent).toContain(
-      "overflow-wrap:break-word",
-    );
-    expect(doc.head.querySelector("style")?.textContent).not.toContain(
-      "overflow-wrap:anywhere",
-    );
+    expect(doc.head.textContent).toContain("overflow-wrap:break-word");
+    expect(doc.head.textContent).not.toContain("overflow-wrap:anywhere");
   });
   it("keeps leading styles in email fragments and classes on full documents", () => {
     for (const html of [

@@ -75,6 +75,7 @@ function Turn({
   onReedit,
   onExport,
   onAttachment,
+  onAttachmentPreview,
   onAction,
   onLink,
   onLoaded,
@@ -88,6 +89,11 @@ function Turn({
   onReedit: (detail: Detail) => void;
   onExport: (mail: Mail) => void;
   onAttachment: (mail: Mail, index: number, name: string) => Promise<void>;
+  onAttachmentPreview?: (
+    mail: Mail,
+    index: number,
+    name: string,
+  ) => Promise<void>;
   onAction: (mail: Mail, action: string, value: string) => void;
   onLink: (href: string) => void;
   onLoaded: (detail: Detail) => void;
@@ -256,6 +262,11 @@ function Turn({
           mailId={mail.id}
           demo={demo}
           attachments={detail?.attachments || []}
+          onPreview={
+            onAttachmentPreview
+              ? (index, name) => onAttachmentPreview(mail, index, name)
+              : undefined
+          }
           onDownload={(index, name) => onAttachment(mail, index, name)}
         />
         <div className="turn-footer">
@@ -523,6 +534,7 @@ export function ConversationReader({
   onSent,
   onExport,
   onAttachment,
+  onAttachmentPreview,
   onAction,
   onLink,
 }: {
@@ -540,6 +552,11 @@ export function ConversationReader({
   onSent: () => void;
   onExport: (mail: Mail) => void;
   onAttachment: (mail: Mail, index: number, name: string) => Promise<void>;
+  onAttachmentPreview?: (
+    mail: Mail,
+    index: number,
+    name: string,
+  ) => Promise<void>;
   onAction: (mail: Mail, action: string, value: string) => void;
   onLink: (href: string) => void;
 }) {
@@ -715,6 +732,12 @@ export function ConversationReader({
             mailId={selected.mail.id}
             demo={demo}
             attachments={selected.attachments}
+            onPreview={
+              onAttachmentPreview
+                ? (index, name) =>
+                    onAttachmentPreview(selected.mail, index, name)
+                : undefined
+            }
             onDownload={(index, name) =>
               onAttachment(selected.mail, index, name)
             }
@@ -767,6 +790,7 @@ export function ConversationReader({
               onReedit={onReedit}
               onExport={onExport}
               onAttachment={onAttachment}
+              onAttachmentPreview={onAttachmentPreview}
               onAction={onAction}
               onLink={onLink}
               onLoaded={loaded}

@@ -224,7 +224,8 @@ pub fn addresses(value: &str) -> Result<Vec<Address>> {
     Ok(out)
 }
 pub fn reply_addresses(raw: &[u8]) -> Result<(Vec<Address>, Vec<Address>, Vec<Address>)> {
-    let parsed = mailparse::parse_mail(raw).map_err(err)?;
+    let projection = crate::mail_formats::mime(raw)?;
+    let parsed = mailparse::parse_mail(&projection).map_err(err)?;
     let mut parts = Vec::new();
     leaves(&parsed, &mut parts);
     let get =
@@ -287,7 +288,8 @@ pub fn parse(
     account: &Account,
     folder: &str,
 ) -> Result<(Mail, String, Vec<AttachmentInfo>)> {
-    let parsed = mailparse::parse_mail(raw).map_err(err)?;
+    let projection = crate::mail_formats::mime(raw)?;
+    let parsed = mailparse::parse_mail(&projection).map_err(err)?;
     let mut parts = Vec::new();
     leaves(&parsed, &mut parts);
     let mut text = String::new();
@@ -381,7 +383,7 @@ pub fn parse(
         trashed: false,
         has_attachments: !attachments.is_empty(),
         attachment_metadata_known: account.save_locally
-            || raw
+            || projection
                 .windows(4)
                 .position(|p| p == b"\r\n\r\n")
                 .is_some_and(|p| p + 4 < raw.len()),
@@ -420,7 +422,8 @@ pub fn parse(
     Ok((mail, html, attachments))
 }
 pub fn attachment(raw: &[u8], index: usize) -> Result<Vec<u8>> {
-    let p = mailparse::parse_mail(raw).map_err(err)?;
+    let projection = crate::mail_formats::mime(raw)?;
+    let p = mailparse::parse_mail(&projection).map_err(err)?;
     let mut parts = Vec::new();
     leaves(&p, &mut parts);
     decoded_bytes(parts.get(index).ok_or("附件不存在")?)
@@ -507,7 +510,8 @@ fn priority_value(value: &str) -> Option<&'static str> {
 /// fields for records written by an older parser without decoding bodies or
 /// attachments again.
 pub fn header_metadata(raw: &[u8]) -> Result<(String, String)> {
-    let (headers, _) = mailparse::parse_headers(raw).map_err(err)?;
+    let projection = crate::mail_formats::mime(raw)?;
+    let (headers, _) = mailparse::parse_headers(&projection).map_err(err)?;
     Ok((
         headers.get_first_value("Cc").unwrap_or_default(),
         priority_of(&headers),

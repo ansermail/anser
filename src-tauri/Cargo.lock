@@ -55,10 +55,11 @@ dependencies = [
 
 [[package]]
 name = "anser"
-version = "0.1.26"
+version = "0.1.27"
 dependencies = [
  "base64 0.22.1",
  "cc",
+ "cfb",
  "chrono",
  "cssparser 0.37.0",
  "encoding_rs",
@@ -67,7 +68,9 @@ dependencies = [
  "imap-proto",
  "keyring",
  "lettre",
+ "libc",
  "mailparse",
+ "msg_parser",
  "native-tls",
  "open",
  "reqwest 0.12.28",
@@ -1756,6 +1759,9 @@ name = "hex"
 version = "0.4.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7f24254aa9a54b5c858eaee2f5bccdb46aaf0e486a595ed5fd8f86ba55232a70"
+dependencies = [
+ "serde",
+]
 
 [[package]]
 name = "hostname"
@@ -2607,6 +2613,19 @@ dependencies = [
  "libc",
  "wasi",
  "windows-sys 0.61.2",
+]
+
+[[package]]
+name = "msg_parser"
+version = "0.3.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5a0453ec98f292962f9972032a09211daaf7482dfbcaed7f9dfa12f0f6a750fb"
+dependencies = [
+ "hex",
+ "regex",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.21",
 ]
 
 [[package]]

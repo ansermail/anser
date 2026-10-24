@@ -155,7 +155,7 @@ export function ServerDirectoryMenu({
         <Button
           variant="ghost"
           size="icon-sm"
-          disabled={disabled || busy}
+          disabled={disabled || busy || mail.sourceFolder === ""}
           title={t("{value0} to server folder", { value0: verb })}
           aria-label={t("{value0} to server folder", { value0: verb })}
         >

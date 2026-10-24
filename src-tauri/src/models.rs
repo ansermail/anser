@@ -319,6 +319,8 @@ pub struct Compose {
     #[serde(default)]
     pub forward_source: Option<ForwardSource>,
     #[serde(default)]
+    pub external_forward_token: Option<String>,
+    #[serde(default)]
     pub forward_files: Vec<ForwardFile>,
     #[serde(default)]
     pub signature: Option<crate::signatures::ComposeSignature>,
