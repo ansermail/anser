@@ -1377,6 +1377,49 @@ describe("reading across loaded page boundaries", { timeout: 15_000 }, () => {
   );
 });
 describe("reading unread mail within its current category", () => {
+  it("shows a detail-only delegating sender and the complete sender address", async () => {
+    await chooseListMode("逐封邮件");
+    const original = api.call;
+    vi.spyOn(api, "call").mockImplementation(
+      async <T,>(command: string, args?: Record<string, unknown>) => {
+        const result = await original<T>(command, args);
+        if (command !== "mail_detail" && command !== "mail_metadata")
+          return result;
+        const detail = result as Detail;
+        const mail =
+          command === "mail_metadata"
+            ? (result as unknown as Detail["mail"])
+            : detail.mail;
+        return {
+          ...(command === "mail_detail"
+            ? {
+                ...detail,
+                mail: {
+                  ...mail,
+                  sender: "Apple News <news@insideapple.apple.com>",
+                  senderOnBehalfOf: "bounce@mail.example.com",
+                },
+              }
+            : {
+                ...mail,
+                sender: "Apple News <news@insideapple.apple.com>",
+                senderOnBehalfOf: "bounce@mail.example.com",
+              }),
+        } as T;
+      },
+    );
+    await click(host.querySelector("button.mail-row-main"));
+    for (let i = 0; i < 20 && !host.querySelector(".sender-on-behalf-of"); i++)
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 10));
+      });
+    expect(host.querySelector(".sender-on-behalf-of")?.textContent).toBe(
+      "由 bounce@mail.example.com 代发",
+    );
+    expect(
+      host.querySelector(".sender-block .contact-address-label")?.textContent,
+    ).toBe("news@insideapple.apple.com");
+  });
   it("navigates adjacent messages in the current list and protects its boundary", async () => {
     const seed = await snapshot({ ...localQuery, view: "all" });
     await click(host.querySelector("button.mail-row-main"));

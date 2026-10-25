@@ -2764,6 +2764,49 @@ fn parser_keeps_the_delegating_sender_only_when_it_differs_from_from() {
 }
 
 #[test]
+fn online_header_refresh_backfills_delegating_sender_and_header_metadata() {
+    let dir = tempfile::tempdir().unwrap();
+    let store = Store::new(dir.path().into()).unwrap();
+    let mut a = account();
+    a.save_locally = false;
+    store.save_account(&a).unwrap();
+    let raw = b"From: Apple <news@example.com>\r\nSender: bounce@mail.example.com\r\nTo: test@example.com\r\nCc: Team <team@example.com>\r\nX-Priority: 2\r\nSubject: Online delegated fixture\r\nDate: Sat, 24 Oct 2026 08:33:11 +0800\r\nContent-Type: text/plain; charset=utf-8\r\n\r\nbody\r\n";
+    store.ingest(&a, "INBOX", "7:12", raw, false).unwrap();
+    store
+        .db()
+        .unwrap()
+        .execute(
+            "UPDATE messages SET data=json_remove(data,'$.cc','$.priority','$.senderOnBehalfOf','$.headerMetadataKnown')",
+            [],
+        )
+        .unwrap();
+    let all = Query {
+        view: "all".into(),
+        ..query()
+    };
+    let mail = store.snapshot(&all).unwrap().messages.remove(0);
+    assert!(!mail.header_metadata_known);
+    let (cc, priority, sender_on_behalf_of) = archive::header_metadata(raw).unwrap();
+    store
+        .set_remote_metadata(
+            &a.id,
+            "INBOX",
+            "7:12",
+            Some(raw.len() as u32),
+            Some(false),
+            &cc,
+            &priority,
+            &sender_on_behalf_of,
+        )
+        .unwrap();
+    let refreshed = store.mail(&mail.id).unwrap();
+    assert_eq!(refreshed.cc, "Team <team@example.com>");
+    assert_eq!(refreshed.priority, "high");
+    assert_eq!(refreshed.sender_on_behalf_of, "bounce@mail.example.com");
+    assert!(refreshed.header_metadata_known);
+}
+
+#[test]
 fn parser_upgrade_backfills_cc_and_priority_without_reparsing_bodies() {
     let dir = tempfile::tempdir().unwrap();
     let store = Store::new(dir.path().into()).unwrap();

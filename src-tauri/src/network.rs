@@ -1117,7 +1117,18 @@ fn sync_imap_scope_controlled<T: std::io::Read + Write>(
                 }
                 if !full {
                     let attachments = header_attachments(&fetched, uid)?;
-                    store.set_remote_metadata(&a.id, &folder, &remote, size, attachments)?;
+                    let (cc, priority, sender_on_behalf_of) =
+                        archive::header_metadata(raw).map_err(err)?;
+                    store.set_remote_metadata(
+                        &a.id,
+                        &folder,
+                        &remote,
+                        size,
+                        attachments,
+                        &cc,
+                        &priority,
+                        &sender_on_behalf_of,
+                    )?;
                 }
                 for (_, date) in internal_dates(&fetched)? {
                     store.set_server_date(&a.id, &folder, &remote, &date)?;

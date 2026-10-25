@@ -340,8 +340,11 @@ impl Store {
         remote: &str,
         size: Option<u32>,
         attachments: Option<bool>,
+        cc: &str,
+        priority: &str,
+        sender_on_behalf_of: &str,
     ) -> Result<()> {
-        self.db()?.execute("UPDATE messages SET data=json_set(data,'$.size',COALESCE(?4,json_extract(data,'$.size')),'$.hasAttachments',json(CASE COALESCE(?5,json_extract(data,'$.hasAttachments')) WHEN 1 THEN 'true' ELSE 'false' END),'$.attachmentMetadataKnown',json(CASE WHEN ?5 IS NOT NULL OR json_extract(data,'$.attachmentMetadataKnown')=1 THEN 'true' ELSE 'false' END)) WHERE id IN (SELECT mail_id FROM sources WHERE account_id=?1 AND folder=?2 AND remote_id=?3)",params![account,folder,remote,size,attachments]).map_err(err)?;
+        self.db()?.execute("UPDATE messages SET data=json_set(data,'$.size',COALESCE(?4,json_extract(data,'$.size')),'$.hasAttachments',json(CASE COALESCE(?5,json_extract(data,'$.hasAttachments')) WHEN 1 THEN 'true' ELSE 'false' END),'$.attachmentMetadataKnown',json(CASE WHEN ?5 IS NOT NULL OR json_extract(data,'$.attachmentMetadataKnown')=1 THEN 'true' ELSE 'false' END),'$.cc',?6,'$.priority',?7,'$.senderOnBehalfOf',?8,'$.headerMetadataKnown',json('true')) WHERE id IN (SELECT mail_id FROM sources WHERE account_id=?1 AND folder=?2 AND remote_id=?3)",params![account,folder,remote,size,attachments,cc,priority,sender_on_behalf_of]).map_err(err)?;
         Ok(())
     }
     pub fn mail_metadata(&self, id: &str) -> Result<Mail> {

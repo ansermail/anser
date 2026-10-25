@@ -945,7 +945,7 @@ kbd {
   min-width: 0;
   display: flex;
   gap: 10px;
-  align-items: center;
+  align-items: flex-start;
 }
 .sender-avatar {
   background: var(--secondary);
@@ -963,32 +963,40 @@ kbd {
   display: flex;
   flex-direction: column;
   gap: 1px;
+  flex: 1;
   min-width: 0;
 }
 .sender-block strong {
   font-size: 13px;
   font-weight: 600;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
   line-height: 18px;
+  overflow-wrap: anywhere;
 }
 .sender-block > div > span {
   font-size: 11px;
   line-height: 16px;
   color: var(--muted);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
   max-width: 100%;
+  overflow-wrap: anywhere;
 }
 .sender-block .contact-address {
   align-self: flex-start;
   font-size: 11px;
   line-height: 16px;
+  max-width: 100%;
+  height: auto;
+  white-space: normal;
+}
+.sender-block .contact-address .contact-address-label {
+  overflow: visible;
+  text-overflow: clip;
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 .sender-block > div > .sender-on-behalf-of {
+  display: block;
   color: var(--muted);
+  overflow-wrap: anywhere;
 }
 .recipient-line {
   display: flex;
@@ -3451,20 +3459,26 @@ kbd {
 .turn-sender strong {
   font-size: 12px;
   font-weight: 600;
+  overflow-wrap: anywhere;
 }
 .turn-sender span {
   color: var(--muted);
   font-size: 11px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
 }
 .turn-sender .contact-address {
   color: var(--muted);
   font-size: 11px;
+  max-width: 100%;
+  height: auto;
+  white-space: normal;
 }
 .turn-sender .contact-address .contact-address-label {
   color: inherit;
+  overflow: visible;
+  text-overflow: clip;
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 .turn-sender .contact-address:hover,
 .turn-sender .contact-address:focus-visible,
@@ -3474,6 +3488,8 @@ kbd {
 .turn-sender .turn-sender-via {
   flex-basis: 100%;
   min-width: 0;
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 .turn-byline time {
   color: var(--muted);
