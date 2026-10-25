@@ -1,4 +1,4 @@
-# 开发计划与继续检查点（更新：2026-10-24）
+# 开发计划与继续检查点（更新：2026-10-25）
 
 依据 PRD 第 5、8、9 节、实施记录和当前代码核查。当前仍为 Alpha；功能代码已存在与真实场景验收通过分别记录。早期回归使用临时存储/演示数据；2026-10-05 用户授权后增加当前腾讯企业邮箱与 QQ 邮箱互发测试，未向其他地址发送，未删除真实邮件。
 
@@ -16,7 +16,9 @@
 
 ## 当前未完成事项总览（2026-10-24 核对）
 
-**2026-10-24 当前入口：0.1.28 已正式发布**。本轮将 `codex/eml-filechanged` 已完成改动合入含官网的最新主线，固定源码 `dd2fe9be5357942a82794f2acc543d901f075d1c`，注释标签 `v0.1.28` 指向同一提交；14:14:49（Asia/Shanghai）公开为 latest。[Checks 40068379904](https://github.com/ansermail/anser/actions/runs/40068379904)、[Pages 40068379953](https://github.com/ansermail/anser/actions/runs/40068379953) 和 [Release macOS 40068386396](https://github.com/ansermail/anser/actions/runs/40068386396) 全部成功。前端 432、Rust 422（3 既有忽略）、脚本 36、IMAP 39 全量门槛通过；两架构七资源、更新签名、固定签名/DR、包内元信息、DMG/更新应用一致性及匿名标准更新端点通过。Homebrew [40069438215](https://github.com/ansermail/anser/actions/runs/40069438215) 成功，配方提交 `78bf04c`。原开发工作区逐文件内容未改，主工作区既有文档 WIP 保留。下方“未提交/未发布”为此前开发阶段记录；本轮正式安装/原位升级/系统剪贴板/Intel 实机仍未验收。详情以 [0.1.28 发布工作点](RELEASE_0_1_28_WORKING.md) 为准。
+**2026-10-25 当前入口：0.1.29 发布准备中**。`main` 在 0.1.28 之后包含代发发件人展示提交 `8e8fffa`：解析 RFC 5322 `Sender`，仅当其与 `From` 不同时在阅读页、对话、外部邮件窗口和打印页展示；解析版本升至 6，已保存原件的归档邮件启动迁移时只读邮件头回填，不重新解码正文与附件。五处版本已同步为 0.1.29，应用标识、存储和更新公钥不变；发布说明见 [v0.1.29](releases/v0.1.29.md)，本地门槛、云端构建、正式资源审计及 Homebrew 同步分别记录于 [0.1.29 发布工作点](RELEASE_0_1_29_WORKING.md)。正式安装、原位升级、系统剪贴板与 Intel 实机仍未验收。
+
+**前一发布入口：0.1.28 已正式发布（2026-10-24）**。0.1.28 将 `codex/eml-filechanged` 已完成改动合入含官网的最新主线，固定源码 `dd2fe9be5357942a82794f2acc543d901f075d1c`，注释标签 `v0.1.28` 指向同一提交；14:14:49（Asia/Shanghai）公开为 latest。[Checks 40068379904](https://github.com/ansermail/anser/actions/runs/40068379904)、[Pages 40068379953](https://github.com/ansermail/anser/actions/runs/40068379953) 和 [Release macOS 40068386396](https://github.com/ansermail/anser/actions/runs/40068386396) 全部成功。前端 432、Rust 422（3 既有忽略）、脚本 36、IMAP 39 全量门槛通过；两架构七资源、更新签名、固定签名/DR、包内元信息、DMG/更新应用一致性及匿名标准更新端点通过。Homebrew [40069438215](https://github.com/ansermail/anser/actions/runs/40069438215) 成功，配方提交 `78bf04c`。原开发工作区逐文件内容未改，主工作区既有文档 WIP 保留。正式安装/原位升级/系统剪贴板/Intel 实机仍未验收。详情以 [0.1.28 发布工作点](RELEASE_0_1_28_WORKING.md) 为准。
 
 **2026-10-24 修复：外部邮件随机提示 `fileChanged`（代码完成，未发布）**。用户报告从 Finder/打开方式打开已有邮件时偶发“无法打开邮件文件：fileChanged”，再次点击又可能正常。核查确认不是文件内容变化：`eml_input::fingerprint` 把 ctime 纳入内容指纹，而 macOS LaunchServices 每次打开文档会写入 `com.apple.lastuseddate#PS` 扩展属性；实测该写入只改变 ctime（约 110–235 ms 内发生），大小、mtime 与字节均不变，读取期间只要跨过这次写入即被误判。修复为指纹只使用设备、inode、大小与 mtime（含纳秒），保留同大小真实改写的拒绝；打开失败改用既有 `mailFileError` 本地化提示，不再暴露后端错误码。分支 `codex/eml-filechanged`（基线 `38fe9b7`）：新增 xattr 不改指纹、同大小改写仍返回 `fileChanged` 的 Rust 回归；Rust `eml` 相关 25 项、前端 EML 三文件 15 项、`check:ui`、`check:i18n`、生产构建、`cargo fmt`、Prettier 与 diff 检查通过。未在原生窗口反复双击复验，未提交、合并或发布。
 

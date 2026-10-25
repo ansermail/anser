@@ -1,6 +1,12 @@
 # 发布与应用内更新
 
-## 当前版本：0.1.28（2026-10-24）
+## 当前版本：0.1.29（发布准备中，2026-10-25）
+
+0.1.29 新增代发发件人展示：当邮件的 RFC 5322 `Sender` 与 `From` 表示不同邮箱时，阅读页、对话、外部邮件窗口和打印页显示“由 xxx 代发”；相同或缺失 `Sender` 时不显示。已保存原件的归档邮件在启动迁移时只读取邮件头回填，不重新解码正文与附件。
+
+本版沿用既有应用标识、数据存储和更新公钥。完整说明见 [v0.1.29](releases/v0.1.29.md)，构建、正式发布资源与 Homebrew 同步结果见 [发布工作点](RELEASE_0_1_29_WORKING.md)。
+
+## 前一正式版本：0.1.28（2026-10-24）
 
 0.1.28 Alpha 于 2026-10-24 14:14:49（Asia/Shanghai）正式发布为 latest，固定源码 `dd2fe9be5357942a82794f2acc543d901f075d1c`。[Checks 40068379904](https://github.com/ansermail/anser/actions/runs/40068379904)、[Pages 40068379953](https://github.com/ansermail/anser/actions/runs/40068379953) 与 [Release macOS 40068386396](https://github.com/ansermail/anser/actions/runs/40068386396) 全部成功，[正式版本](https://github.com/ansermail/anser/releases/tag/v0.1.28) 已公开。
 

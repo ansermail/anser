@@ -8,9 +8,9 @@
 
 [下载最新版本](https://github.com/ansermail/anser/releases/latest) · [产品官网](https://ansermail.github.io/anser/) · [Web 演示](https://ansermail.github.io/anser/demo/) · [使用说明](docs/USAGE.md) · [开发进度](docs/DEVELOPMENT_STATUS.md) · [反馈问题](https://github.com/ansermail/anser/issues)
 
-> **0.1.28 Alpha** 已于 2026-10-24 正式发布，支持 Apple Silicon 与 Intel Mac。长期稳定性、部分服务商兼容性及真实场景验收仍在持续完善。
+> **0.1.29 Alpha 发布准备中**，支持 Apple Silicon 与 Intel Mac。长期稳定性、部分服务商兼容性及真实场景验收仍在持续完善。
 
-0.1.28 修复 macOS 外部邮件偶发被误判为文件变化而无法打开的问题；增加收件人/抄送/密送分行、地址右键操作和紧凑通讯录网格，并更新产品官网与 Web 演示入口。[下载 0.1.28](https://github.com/ansermail/anser/releases/tag/v0.1.28)，说明见 [0.1.28 发布说明](docs/releases/v0.1.28.md)，验证进度见 [发布工作点](docs/RELEASE_0_1_28_WORKING.md)。
+0.1.29 在阅读页、对话、外部邮件窗口和打印页显示 RFC 5322 `Sender` 与 `From` 不同时的代发发件人，并为已保存原件的归档邮件回填该头部信息。说明见 [0.1.29 发布说明](docs/releases/v0.1.29.md)，验证进度见 [发布工作点](docs/RELEASE_0_1_29_WORKING.md)。
 
 ![雁信的多账号收件箱与邮件阅读界面](docs/screenshots/inbox-demo.png)
 
