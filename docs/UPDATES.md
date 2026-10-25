@@ -8,7 +8,7 @@
 
 本地与云端门槛通过：前端 64 文件 434 项、Rust 424 通过/3 项既有条件忽略、桌面脚本 36 项、IMAP 39 项；UI、1,348 条双语键、生产构建与 Pages 构建通过。七资源大小/SHA-256、双架构更新签名、固定代码签名及精确 DR、包内版本/架构/标识/语言/格式关联/许可、DMG 与更新归档应用一致性、说明原文及匿名公开 latest 端点均通过。[Homebrew 40158423490](https://github.com/ansermail/anser/actions/runs/40158423490) 成功，[cbd7774](https://github.com/ansermail/anser/commit/cbd7774d40765ef0b844b88c84215fe255e64ecd) 仅更新主仓库配方；重复运行 [40158762056](https://github.com/ansermail/anser/actions/runs/40158762056) 返回 `Cask is already current; no commit needed.`。
 
-正式 0.1.30 DMG 已替换本机 `/Applications/雁信.app`，可执行文件与 arm64 更新归档逐字节一致。实际 Apple 邮件在下一次来源重抓后的代发行界面核对、正式安装后的默认打开/冷启动、应用内原位升级和 Intel 实机仍未在本轮完整验收。完整说明见 [v0.1.30](releases/v0.1.30.md)，证据见 [发布工作点](RELEASE_0_1_30_WORKING.md)。
+正式 0.1.30 DMG 已替换本机 `/Applications/雁信.app`，可执行文件与 arm64 更新归档逐字节一致。真实邮件在下一次来源重抓后已写入 `senderOnBehalfOf`，阅读页实际核对发件人地址完整显示且“由 xxx 代发”持续展示。正式安装后的默认打开/冷启动、应用内原位升级和 Intel 实机仍未在本轮完整验收。完整说明见 [v0.1.30](releases/v0.1.30.md)，证据见 [发布工作点](RELEASE_0_1_30_WORKING.md)。
 
 ## 前一正式版本：0.1.29（2026-10-25）
 

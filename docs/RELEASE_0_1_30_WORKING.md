@@ -20,7 +20,7 @@
 - [x] 正式发布为 latest，Release ID `423123805`，2026-10-25 11:29:54（Asia/Shanghai）；发布后七个资源经匿名端点重新下载，大小与 SHA-256 逐项一致，标准 latest 更新端点与审核清单逐字节相同。
 - [x] [Homebrew 40158423490](https://github.com/ansermail/anser/actions/runs/40158423490) 成功，生成仅修改 `Casks/anser.rb` 的提交 [cbd7774](https://github.com/ansermail/anser/commit/cbd7774d40765ef0b844b88c84215fe255e64ecd)；本机 style/audit/Apple Silicon fetch 通过；重复运行 [40158762056](https://github.com/ansermail/anser/actions/runs/40158762056) 返回 `Cask is already current; no commit needed.`。
 - [x] 用正式 0.1.30 DMG 替换 `/Applications/雁信.app`，包内可执行文件与正式 arm64 更新归档逐字节一致，启动日志显示 `雁信 0.1.30 启动完成`；旧 0.1.29 移入废纸篓 `Anser-old-apps-20261025`。
-- [x] 启动迁移已把仅在线旧记录改为头信息未知（解析版本 7），同步后会重新读取邮件头并补写；这封实际 Apple 邮件在本机索引中的 `Sender` 尚未等到下一次来源重抓，因此界面显示代发行的最终实邮核对仍待完成。
+- [x] 启动迁移已把仅在线旧记录改为头信息未知（解析版本 7）；下一次同步重新读取邮件头后，目标邮件索引已写入 `senderOnBehalfOf` 且 `headerMetadataKnown=1`。真实阅读页核对通过：发件人完整地址始终显示，下一行持续显示“由 xxx 代发”，没有省略或隐藏。
 
 ## 验收边界
 
