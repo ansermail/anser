@@ -1,10 +1,14 @@
 # 发布与应用内更新
 
-## 当前版本：0.1.29（发布准备中，2026-10-25）
+## 当前版本：0.1.29（2026-10-25）
 
-0.1.29 新增代发发件人展示：当邮件的 RFC 5322 `Sender` 与 `From` 表示不同邮箱时，阅读页、对话、外部邮件窗口和打印页显示“由 xxx 代发”；相同或缺失 `Sender` 时不显示。已保存原件的归档邮件在启动迁移时只读取邮件头回填，不重新解码正文与附件。
+0.1.29 Alpha 于 2026-10-25 09:48:35（Asia/Shanghai）正式发布为 latest，固定源码 `6057866ae69c9ef0ea4949342227b1d824c1c205`。[Checks 40150985392](https://github.com/ansermail/anser/actions/runs/40150985392)、[Preview Pages 40150985389](https://github.com/ansermail/anser/actions/runs/40150985389) 与 [Release macOS 40150990500](https://github.com/ansermail/anser/actions/runs/40150990500) 全部成功，[正式版本](https://github.com/ansermail/anser/releases/tag/v0.1.29) 已公开。
 
-本版沿用既有应用标识、数据存储和更新公钥。完整说明见 [v0.1.29](releases/v0.1.29.md)，构建、正式发布资源与 Homebrew 同步结果见 [发布工作点](RELEASE_0_1_29_WORKING.md)。
+本版新增代发发件人展示：当邮件的 RFC 5322 `Sender` 与 `From` 表示不同邮箱时，阅读页、对话、外部邮件窗口和打印页显示“由 xxx 代发”；相同或缺失 `Sender` 时不显示。已保存原件的归档邮件在启动迁移时只读取邮件头回填，不重新解码正文与附件。
+
+本地与云端门槛通过：前端 64 文件 433 项、Rust 423 通过/3 项既有条件忽略、桌面脚本 36 项、IMAP 39 项；UI、1,348 条双语键、生产构建与 Pages 构建通过。七资源大小/SHA-256、双架构更新签名、固定代码签名及精确 DR、包内版本/架构/标识/语言/格式关联/许可、DMG 与更新归档应用一致性、说明原文及匿名公开 latest 端点均通过。[Homebrew 40152064882](https://github.com/ansermail/anser/actions/runs/40152064882) 成功，[95b963c](https://github.com/ansermail/anser/commit/95b963c5a302f511ff1473c4a15355fe6d70210d) 仅更新主仓库配方；重复运行 [40152099354](https://github.com/ansermail/anser/actions/runs/40152099354) 返回 `Cask is already current; no commit needed.`。
+
+本版沿用既有应用标识、数据存储和更新公钥。正式安装后的默认打开/冷启动、应用内原位升级、系统剪贴板和 Intel 实机仍未在本轮验收。完整说明见 [v0.1.29](releases/v0.1.29.md)，证据见 [发布工作点](RELEASE_0_1_29_WORKING.md)。
 
 ## 前一正式版本：0.1.28（2026-10-24）
 
