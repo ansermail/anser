@@ -1,6 +1,16 @@
 # 发布与应用内更新
 
-## 当前版本：0.1.29（2026-10-25）
+## 当前版本：0.1.30（2026-10-25）
+
+0.1.30 Alpha 于 2026-10-25 11:29:54（Asia/Shanghai）正式发布为 latest，固定源码 `4c79b891d3827daf2023e0a31ccb2f97e70845de`。[Checks 40157210690](https://github.com/ansermail/anser/actions/runs/40157210690)、[Preview Pages 40157210657](https://github.com/ansermail/anser/actions/runs/40157210657) 与 [Release macOS 40157276511](https://github.com/ansermail/anser/actions/runs/40157276511) 全部成功，[正式版本](https://github.com/ansermail/anser/releases/tag/v0.1.30) 已公开。
+
+本版修复 0.1.29 安装实测发现的缺口：仅在线保存的旧索引会被判定为已可用，同步时直接跳过，导致 `Sender`、抄送和优先级等邮件头元数据无法补写。现在在线索引若头信息未知就重新读取邮件头；启动迁移也不再把这些记录误标为已同步。发件人姓名、邮箱地址和“由 xxx 代发”可完整换行展示，不再省略。
+
+本地与云端门槛通过：前端 64 文件 434 项、Rust 424 通过/3 项既有条件忽略、桌面脚本 36 项、IMAP 39 项；UI、1,348 条双语键、生产构建与 Pages 构建通过。七资源大小/SHA-256、双架构更新签名、固定代码签名及精确 DR、包内版本/架构/标识/语言/格式关联/许可、DMG 与更新归档应用一致性、说明原文及匿名公开 latest 端点均通过。[Homebrew 40158423490](https://github.com/ansermail/anser/actions/runs/40158423490) 成功，[cbd7774](https://github.com/ansermail/anser/commit/cbd7774d40765ef0b844b88c84215fe255e64ecd) 仅更新主仓库配方；重复运行 [40158762056](https://github.com/ansermail/anser/actions/runs/40158762056) 返回 `Cask is already current; no commit needed.`。
+
+正式 0.1.30 DMG 已替换本机 `/Applications/雁信.app`，可执行文件与 arm64 更新归档逐字节一致。实际 Apple 邮件在下一次来源重抓后的代发行界面核对、正式安装后的默认打开/冷启动、应用内原位升级和 Intel 实机仍未在本轮完整验收。完整说明见 [v0.1.30](releases/v0.1.30.md)，证据见 [发布工作点](RELEASE_0_1_30_WORKING.md)。
+
+## 前一正式版本：0.1.29（2026-10-25）
 
 0.1.29 Alpha 于 2026-10-25 09:48:35（Asia/Shanghai）正式发布为 latest，固定源码 `6057866ae69c9ef0ea4949342227b1d824c1c205`。[Checks 40150985392](https://github.com/ansermail/anser/actions/runs/40150985392)、[Preview Pages 40150985389](https://github.com/ansermail/anser/actions/runs/40150985389) 与 [Release macOS 40150990500](https://github.com/ansermail/anser/actions/runs/40150990500) 全部成功，[正式版本](https://github.com/ansermail/anser/releases/tag/v0.1.29) 已公开。
 
