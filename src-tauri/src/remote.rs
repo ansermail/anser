@@ -26,7 +26,7 @@ impl ReceiveLookup {
             .query_row(params![account.id, folder, remote], |r| r.get(0)).optional().map_err(err)?;
         Ok(data
             .and_then(|s| serde_json::from_str::<Mail>(&s).ok())
-            .is_some_and(|m| !save || m.saved_locally))
+            .is_some_and(|m| m.saved_locally || (!save && m.header_metadata_known)))
     }
 }
 impl Store {

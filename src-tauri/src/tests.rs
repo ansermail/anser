@@ -2786,6 +2786,7 @@ fn online_header_refresh_backfills_delegating_sender_and_header_metadata() {
     };
     let mail = store.snapshot(&all).unwrap().messages.remove(0);
     assert!(!mail.header_metadata_known);
+    assert!(!store.source_available(&a, "INBOX", "7:12").unwrap());
     let (cc, priority, sender_on_behalf_of) = archive::header_metadata(raw).unwrap();
     store
         .set_remote_metadata(
@@ -2804,6 +2805,7 @@ fn online_header_refresh_backfills_delegating_sender_and_header_metadata() {
     assert_eq!(refreshed.priority, "high");
     assert_eq!(refreshed.sender_on_behalf_of, "bounce@mail.example.com");
     assert!(refreshed.header_metadata_known);
+    assert!(store.source_available(&a, "INBOX", "7:12").unwrap());
 }
 
 #[test]

@@ -513,7 +513,7 @@ fn message_date(mail: &ParsedMail<'_>) -> Option<String> {
 /// Version of the derived mail record written by [`parse`]. Bump it when the
 /// parser starts filling a new field so stored archives are updated once on
 /// the next launch instead of silently keeping the old shape.
-pub const PARSER_VERSION: i64 = 6;
+pub const PARSER_VERSION: i64 = 7;
 /// Normalized importance of a message: `high`, `normal` or `low`. Mail clients
 /// disagree on the header and values, so `X-Priority`, `Priority` and
 /// `Importance` are all accepted and reduced to these three buckets.

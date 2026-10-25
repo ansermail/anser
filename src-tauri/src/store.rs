@@ -971,11 +971,17 @@ impl Store {
                 let Ok(raw) = archive::read_raw(&self.root, &mail.hash) else {
                     if !mail.saved_locally {
                         // Online-only records never had an archived original.
-                        // Leave the headers unknown so Cc/priority rules wait
-                        // for a real download instead of retrying every launch.
+                        // Their stored headers may predate Sender/Cc support and
+                        // cannot be re-read locally. Mark them unknown so the next
+                        // sync fetches and persists the live header block.
+                        mail.header_metadata_known = false;
                         tx.execute(
-                            "UPDATE messages SET parser_version=?2 WHERE id=?1",
-                            params![mail.id, archive::PARSER_VERSION],
+                            "UPDATE messages SET data=?2,parser_version=?3 WHERE id=?1",
+                            params![
+                                mail.id,
+                                serde_json::to_string(&mail).map_err(err)?,
+                                archive::PARSER_VERSION
+                            ],
                         )
                         .map_err(err)?;
                         continue;
