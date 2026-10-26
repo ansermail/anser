@@ -1235,7 +1235,9 @@ describe("fixed cursor list loading", () => {
   });
 });
 // These integration cases render 205 mails and navigate across the 200-row page.
-// Shared macOS runners need the same bounded budget for every case in this suite.
+// The rest of this suite keeps the shared 15s budget; the two seven-navigation
+// cases below need their own bound: shared macOS runners measured 13-17s for
+// them while the same commit passed the rest of the suite.
 describe("reading across loaded page boundaries", { timeout: 15_000 }, () => {
   it.each(["按对话分组", "逐封邮件"])(
     "loads the next page and keeps previous navigation in %s mode",
@@ -1263,6 +1265,7 @@ describe("reading across loaded page boundaries", { timeout: 15_000 }, () => {
           .disabled,
       ).toBe(true);
     },
+    30_000,
   );
   it("extends an unread boundary when the opened mail disappears from its filter", async () => {
     await seedLargeMailbox();
