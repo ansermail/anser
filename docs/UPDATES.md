@@ -2,7 +2,7 @@
 
 ## 当前版本：0.1.33（2026-10-26）
 
-0.1.33 Alpha 于 2026-10-26 正式发布为 latest，固定源码与构建结果以本文件后续补充的发布记录为准。0.1.32 的标签在检查阶段因大列表用例超时未产出任何资源，该版本未发布。
+0.1.33 Alpha 于 2026-10-27 00:24:05（Asia/Shanghai）正式发布为 latest，固定源码 `4ae06793364525d548df96c3971ca9f29be02308`。[Checks 40349698910](https://github.com/ansermail/anser/actions/runs/40349698910)、[Preview Pages 40349698920](https://github.com/ansermail/anser/actions/runs/40349698920) 与 [Release macOS 40349710839](https://github.com/ansermail/anser/actions/runs/40349710839) 全部成功，[正式版本](https://github.com/ansermail/anser/releases/tag/v0.1.33) 已公开。0.1.32 的标签在检查阶段因大列表用例超时未产出任何资源，该版本未发布。
 
 本版修复两个阅读问题：部分邮件正文下半部分会反复上下跳动（正文框初始测量时短暂出现内部滚动条，占用宽度触发重新折行，拉高后又折回）；右上角切换明暗主题后正文不跟随变色、需要重新打开邮件才生效（正文读取背景色早于根元素应用深色类）。同时为加载失败的正文图片增加控制台诊断，地址、`srcset` 与替代文字全部 URL 编码，每张图只打印一次，内联图片只记录长度。
 
@@ -10,7 +10,7 @@
 
 两条需要 7 次跨页导航的 205 封用例单独使用 30 秒期限，其余用例保持 15 秒；共享 runner 上同一提交实测在 13–17 秒波动。
 
-本地门槛通过：前端 64 文件 439 项、Rust 429 通过/4 项既有条件忽略、桌面脚本 36 项、IMAP 39 项；UI、1,348 条双语键、生产构建与 Pages 构建通过。正文跳动以真实邮件 HTML 在 WebKit 中逐宽度复现并修复，开发预览连续抓帧与主题双向切换实测通过。完整说明见 [v0.1.33](releases/v0.1.33.md)，证据见 [发布工作点](RELEASE_0_1_33_WORKING.md)。
+本地门槛通过：前端 64 文件 439 项、Rust 429 通过/4 项既有条件忽略、桌面脚本 36 项、IMAP 39 项；UI、1,348 条双语键、生产构建与 Pages 构建通过。正文跳动以真实邮件 HTML 在 WebKit 中逐宽度复现并修复，开发预览连续抓帧与主题双向切换实测通过。七资源大小/SHA-256、双架构更新签名、固定代码签名及精确 DR、包内版本/架构/标识/语言/格式关联/许可、DMG 与更新归档应用一致性、说明原文、匿名公开下载与标准 latest 端点全部通过。[Homebrew 40358757447](https://github.com/ansermail/anser/actions/runs/40358757447) 成功并生成配方提交 `d7afe95`，重复运行 [40361022536](https://github.com/ansermail/anser/actions/runs/40361022536) 返回 `Cask is already current; no commit needed.`。正式 0.1.33 DMG 已替换本机 `/Applications/雁信.app`，启动无钥匙串弹窗，三个账号从凭据库完成 IMAP IDLE 连接。应用内原位升级与 Intel 实机仍未验收。完整说明见 [v0.1.33](releases/v0.1.33.md)，证据见 [发布工作点](RELEASE_0_1_33_WORKING.md)。
 
 ## 前一正式版本：0.1.31（2026-10-26）
 
