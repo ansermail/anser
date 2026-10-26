@@ -1,6 +1,6 @@
 //! Optional one-time bridge, run only after quitting all Anser instances.
 //! Sign with the exact previous stable app identity, never ship its private key.
-//! Prints counts only. Credentials stay exclusively in Keychain.
+//! Prints counts only; the local vault is encrypted and only its key is in Keychain.
 #[path = "../src/credentials.rs"]
 #[allow(dead_code)]
 mod credentials;
@@ -10,6 +10,9 @@ mod models {
 fn main() {
     let result = (|| -> models::Result<()> {
         let path = std::env::args().nth(1).ok_or("需要指定已有本机索引路径")?;
+        if let Some(root) = std::path::Path::new(&path).parent() {
+            credentials::initialize(root);
+        }
         let db =
             rusqlite::Connection::open_with_flags(path, rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY)
                 .map_err(|_| "无法只读打开索引")?;

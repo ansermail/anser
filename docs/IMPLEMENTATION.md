@@ -52,11 +52,11 @@ Pages 语言选择仍只使用隔离的虚构数据/内存偏好，不调用真�
 
 ## 统一凭据库与稳定签名（0.1.19 起）
 
-`credentials.rs` 统一 Keychain 读写、会话缓存/拒绝缓存、无交互迁移、删除墓碑和持久化后发布；邮箱、代理、模型复用该入口。单实例内串行修改，模型设置用可回滚检查点。固定公开证书指纹与 DR 供本地及 GitHub 共用；私钥只在本机和 Secrets。详见 [设计与维护说明](KEYCHAIN.md)。
+`credentials.rs` 统一凭据库读写、会话缓存/拒绝缓存、旧条目迁移、删除墓碑和持久化后发布；邮箱、代理、模型复用该入口。单实例内串行修改，模型设置用可回滚检查点。固定公开证书指纹与 DR 供本地及 GitHub 共用；私钥只在本机和 Secrets。详见 [设计与维护说明](KEYCHAIN.md)。
 
 ## 全局网络代理（2026-10-14）
 
-`Preferences.proxy` 保存 SOCKS5/HTTP/HTTPS 类型、主机、端口、可选用户名及预握手失败时直连选项，默认关闭；密码以 `network-proxy` 逻辑键保存在 `dev.maildesk.desktop` 的统一钥匙串凭据库中（0.1.19 起）。设置页独立 `save_network_proxy` 更新配置，普通通知/检查间隔保存保留当前代理，避免旧前端快照覆盖。进程启动时从 Store 恢复配置，运行中修改只影响新连接。
+`Preferences.proxy` 保存 SOCKS5/HTTP/HTTPS 类型、主机、端口、可选用户名及预握手失败时直连选项，默认关闭；密码以 `network-proxy` 逻辑键保存在本地加密凭据库中（0.1.19 起）。设置页独立 `save_network_proxy` 更新配置，普通通知/检查间隔保存保留当前代理，避免旧前端快照覆盖。进程启动时从 Store 恢复配置，运行中修改只影响新连接。
 
 `proxy::route` 先连接代理并完成 SOCKS5 或 HTTP CONNECT（HTTPS 代理先验证代理 TLS），再建立仅供当前连接使用的回环隧道；IMAP/POP3 在其上继续以真实邮件服务器名验证 TLS，SMTP 的 lettre 传输也显式使用真实服务器名作为 TLS 参数。代理握手失败且用户开启直连回退时才建立直接连接；SMTP 协议数据开始传输后不换路线重发。OAuth 令牌交换由 reqwest 使用同一代理配置，系统浏览器的授权页面不在此范围。代理密码不写入 SQLite、前端持久数据或日志。
 
@@ -707,3 +707,11 @@ DeepSeek 官方域名/443/标准路径才附加 `thinking.disabled`、JSON 输�
 MSG 使用固定版 msg_parser 与严格 cfb；先核对容器深度、目录与流数量及声明总长度，再重建规范 CFB 给属性解析器。PT_STRING8 依 MAPI 代码页转 Unicode，二进制 HTML 依 MIME charset/MAPI internet codepage 解码；派生 MIME 与附件使用有界输出，RTF 解压前核对声明容量。不支持的嵌入邮件、OLE、纯 RTF 变体明确失败。
 
 macOS 格式关联通过 NSWorkspace/UTType 在主队列读取和异步更改，只允许 EML/EMLX/MSG，开启前在 NSUserDefaults 记录当前其他应用 ID，关闭时恢复该记录并核对系统仍已注册；只接受 self/previous 两种操作，不提供其他应用选择器。按 LaunchServices 的 bundle ID 核对是否为雁信（系统可能选择同标识的已安装副本）；更改完成后重新读取系统状态。45 秒超时返回 pending，不自动重复写入；处理期间不允许第二次更改。开发与正式包共用类型声明，保持 Viewer/Alternate。网页与示例模式不调用系统关联读写。
+
+## 本地加密凭据库替代进程内钥匙串读取（2026-10-26）
+
+用户在每次升级或重启后都被要求输入登录钥匙串密码。排查结论：macOS 将钥匙串条目的访问控制与分区绑定到创建条目的二进制 CDHash；用同一固定自签证书重新构建后，即使把条目全部 ACL 的应用列表设为“任意应用”、关闭交互标志，进程内读取仍返回 `errSecAuthFailed (-25293)`，修改已有条目 ACL 需要登录密码，`security -A` 创建的条目同样不可被应用直接读取。因此“始终允许”无法跨自签应用重建持久化，这不是 ACL 配置问题。Data Protection 钥匙串需要描述文件授权，自声明 entitlement 会导致调用挂起，未采用。`/usr/bin/security` 创建和读取的条目由稳定的系统程序身份持有，重建后仍可无弹窗读取；命令行写入在通过标准输入提供密码时只保留前 128 字节，因此不能直接用它承载完整凭据库。
+
+新结构：`credentials.rs` 用 AES-256-GCM 把统一凭据文档加密为应用数据根目录的 `credentials.vault`（magic + 版本 + 12 字节随机 nonce + 密文，AAD 固定；总上限 2 MiB）。临时文件以 0600 创建、写入并 fsync 后原子重命名，再 fsync 父目录，失败清理临时文件。32 字节密钥以 64 位十六进制保存在登录钥匙串 `dev.maildesk.desktop` / `anser-credentials-key-v2`，只通过 `/usr/bin/security` 的 `find-generic-password` / `add-generic-password` 读写，密钥不经命令行参数。读取前用 `SecKeychainGetStatus` 核对默认钥匙串已解锁，锁定时报错而不触发交互；无法解密、版本未知或超限时报错并保留原文件。`Session` 的串行缓存、墓碑、旧条目无交互迁移和持久化后发布语义保持不变；`load` 首次创建时尝试读取旧 `anser-credentials-v1` 一次，失败或损坏时创建空库并保留旧条目，避免升级后整个凭据入口被旧条目授权阻塞。`credentials::initialize` 在 `lib.rs` 启动时以 `Store.root` 设置文件位置，迁移示例以数据库路径的上级目录初始化。
+
+验证：`cargo test --lib credentials::` 的 16 项单元测试通过（含密文不含明文、篡改/错误密钥/截断/版本拒绝、密钥十六进制往返、0600 与原子替换、旧库读取失败不阻塞）；原生探针用固定证书签名测试二进制，`seed` 创建密文与密钥条目，重新编译并重新签名（CDHash 变化）后 `read` 阶段无授权读取并写回成功，`cleanup` 删除探针条目与文件，探针服务前缀隔离，未触碰生产凭据。完整 `cargo test --lib` 428 项通过。真实开发预览升级时的首次旧库读取与升级后重启免授权仍需实际应用启动验收。

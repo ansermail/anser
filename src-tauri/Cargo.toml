@@ -43,6 +43,8 @@ fs2 = "0.4.3"
 libc = "0.2"
 msg_parser = "=0.3.6"
 cfb = "0.14"
+aes-gcm = "0.10"
+getrandom = "0.2"
 [dev-dependencies]
 tempfile = "3"
 

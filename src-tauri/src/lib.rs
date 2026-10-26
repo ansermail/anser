@@ -1635,6 +1635,7 @@ pub fn run() {
                 }
             }
             let store = Store::new(app.path().app_data_dir()?).map_err(std::io::Error::other)?;
+            credentials::initialize(&store.root);
             proxy::initialize(store.preferences().map_err(std::io::Error::other)?.proxy)
                 .map_err(std::io::Error::other)?;
             let gate = Arc::new(Mutex::new(()));
