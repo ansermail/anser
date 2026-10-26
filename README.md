@@ -8,9 +8,9 @@
 
 [下载最新版本](https://github.com/ansermail/anser/releases/latest) · [产品官网](https://ansermail.github.io/anser/) · [Web 演示](https://ansermail.github.io/anser/demo/) · [使用说明](docs/USAGE.md) · [开发进度](docs/DEVELOPMENT_STATUS.md) · [反馈问题](https://github.com/ansermail/anser/issues)
 
-> **0.1.30 Alpha** 已于 2026-10-25 正式发布，支持 Apple Silicon 与 Intel Mac。长期稳定性、部分服务商兼容性及真实场景验收仍在持续完善。
+> **0.1.31 Alpha** 正在发布，支持 Apple Silicon 与 Intel Mac。长期稳定性、部分服务商兼容性及真实场景验收仍在持续完善。
 
-0.1.30 在阅读页、对话、外部邮件窗口和打印页显示 RFC 5322 `Sender` 与 `From` 不同时的代发发件人，并对仅在线保存的旧索引重新读取邮件头回填；发件人姓名、地址与代发行完整换行展示。[下载 0.1.30](https://github.com/ansermail/anser/releases/tag/v0.1.30)，说明见 [0.1.30 发布说明](docs/releases/v0.1.30.md)，验证进度见 [发布工作点](docs/RELEASE_0_1_30_WORKING.md)。
+0.1.31 把邮箱、代理和模型凭据改为 AES-256-GCM 加密的本地凭据库，密钥由登录钥匙串中的稳定系统条目保护；应用升级、重新构建或电脑重启后不再反复要求输入登录钥匙串密码，旧凭据在首次启动时迁移一次。[下载 0.1.31](https://github.com/ansermail/anser/releases/tag/v0.1.31)，说明见 [0.1.31 发布说明](docs/releases/v0.1.31.md)，验证进度见 [发布工作点](docs/RELEASE_0_1_31_WORKING.md)。
 
 ![雁信的多账号收件箱与邮件阅读界面](docs/screenshots/inbox-demo.png)
 
