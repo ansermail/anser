@@ -2778,3 +2778,58 @@ it("switches interface language without remounting settings or altering unsaved 
     await act(async () => setInterfaceLanguage("zh-CN"));
   }
 });
+
+describe("message row context menu", () => {
+  const openMenu = async (row: Element) => {
+    await act(async () => {
+      row.dispatchEvent(
+        new MouseEvent("contextmenu", {
+          bubbles: true,
+          cancelable: true,
+          button: 2,
+          clientX: 20,
+          clientY: 20,
+        }),
+      );
+    });
+  };
+  const item = (label: string) =>
+    [...document.querySelectorAll('[data-slot="context-menu-item"]')].find(
+      (element) => element.textContent?.includes(label),
+    ) ?? null;
+  it("offers the reader actions with state-aware labels", async () => {
+    const seed = await snapshot(localQuery);
+    const mail = { ...seed.messages[0], starred: true, isRead: true };
+    seed.messages = [mail, ...seed.messages.slice(1)];
+    await act(async () => root.unmount());
+    localStorage.setItem("mail-desktop-demo-v1", JSON.stringify(seed));
+    api.restoreDemo();
+    root = createRoot(host);
+    await act(async () => root.render(<App />));
+    await click(nav("本地存档"));
+    const commands = vi.spyOn(api, "call");
+    await openMenu(host.querySelector(".mail-row-main")!);
+    for (const label of [
+      "取消星标",
+      "标记为未读",
+      "导出完整原始邮件",
+      "打印这封邮件",
+      "归入本地文件夹",
+      "移到本地废纸篓",
+      "回复",
+      "全部回复",
+      "转发",
+    ])
+      expect(item(label)).not.toBeNull();
+    await click(item("取消星标"));
+    expect(
+      commands.mock.calls.some(
+        ([command, args]) =>
+          command === "update_mail" &&
+          args?.id === mail.id &&
+          args?.action === "star" &&
+          args?.value === "false",
+      ),
+    ).toBe(true);
+  });
+});

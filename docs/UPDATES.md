@@ -1,6 +1,22 @@
 # 发布与应用内更新
 
-## 当前版本：0.1.30（2026-10-25）
+## 当前版本：0.1.32（2026-10-26）
+
+0.1.32 Alpha 于 2026-10-26 正式发布为 latest，固定源码与构建结果以本文件后续补充的发布记录为准。
+
+本版修复两个阅读问题：部分邮件正文下半部分会反复上下跳动（正文框初始测量时短暂出现内部滚动条，占用宽度触发重新折行，拉高后又折回）；右上角切换明暗主题后正文不跟随变色、需要重新打开邮件才生效（正文读取背景色早于根元素应用深色类）。同时为加载失败的正文图片增加控制台诊断，地址、`srcset` 与替代文字全部 URL 编码，每张图只打印一次，内联图片只记录长度。
+
+邮件列表右键菜单扩展为与阅读面板一致的操作：标记已读/未读、星标/取消星标、完整保存到本地、导出完整原始邮件、打印、归入本地文件夹、移到本地废纸篓或恢复、回复、全部回复、转发，并按当前状态显示文案与快捷键。
+
+本地门槛通过：前端 64 文件 439 项、Rust 429 通过/4 项既有条件忽略、桌面脚本 36 项、IMAP 39 项；UI、1,348 条双语键、生产构建与 Pages 构建通过。正文跳动以真实邮件 HTML 在 WebKit 中逐宽度复现并修复，开发预览连续抓帧与主题双向切换实测通过。完整说明见 [v0.1.32](releases/v0.1.32.md)，证据见 [发布工作点](RELEASE_0_1_32_WORKING.md)。
+
+## 前一正式版本：0.1.31（2026-10-26）
+
+0.1.31 Alpha 于 2026-10-26 16:45:34（Asia/Shanghai）正式发布为 latest，固定源码 `96528aebae343116dfb4794dff1ce2f888f3fb2f`。[Checks 40283009916](https://github.com/ansermail/anser/actions/runs/40283009916)、[Preview Pages 40283009865](https://github.com/ansermail/anser/actions/runs/40283009865) 与 [Release macOS 40283017684](https://github.com/ansermail/anser/actions/runs/40283017684)（重跑失败作业后）成功，[正式版本](https://github.com/ansermail/anser/releases/tag/v0.1.31) 已公开。
+
+本版把邮箱密码、OAuth 令牌、代理密码与模型 API Key 统一保存到 AES-256-GCM 加密的本地凭据库 `credentials.vault`，32 字节密钥只存登录钥匙串并由稳定的系统程序读取，应用重新构建、升级或电脑重启后不再反复要求输入登录钥匙串密码；旧凭据在首次启动时迁移一次，读取被拒绝或不可用时不阻塞启动。完整说明见 [v0.1.31](releases/v0.1.31.md)，证据见 [发布工作点](RELEASE_0_1_31_WORKING.md)。
+
+## 更早正式版本：0.1.30（2026-10-25）
 
 0.1.30 Alpha 于 2026-10-25 11:29:54（Asia/Shanghai）正式发布为 latest，固定源码 `4c79b891d3827daf2023e0a31ccb2f97e70845de`。[Checks 40157210690](https://github.com/ansermail/anser/actions/runs/40157210690)、[Preview Pages 40157210657](https://github.com/ansermail/anser/actions/runs/40157210657) 与 [Release macOS 40157276511](https://github.com/ansermail/anser/actions/runs/40157276511) 全部成功，[正式版本](https://github.com/ansermail/anser/releases/tag/v0.1.30) 已公开。
 

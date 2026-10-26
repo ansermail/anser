@@ -57,3 +57,18 @@ it("resolves system mode through the native appearance and follows live changes"
   expect(themeSnapshot()).toBe("system:dark");
   stop();
 });
+
+it("applies the resolved appearance before subscribers render", () => {
+  document.documentElement.classList.remove("dark");
+  let observed = "";
+  const stop = subscribeToTheme(() => {
+    observed = document.documentElement.className;
+  });
+  setThemeMode("dark");
+  // A layout effect reading --background during the same pass must already see
+  // the dark root class, not wait for a later parent effect.
+  expect(observed).toContain("dark");
+  setThemeMode("light");
+  expect(observed).not.toContain("dark");
+  stop();
+});

@@ -23,6 +23,12 @@ export function resolvesToDark(mode: ThemeMode, systemDark: boolean) {
   return mode === "dark" || (mode === "system" && systemDark);
 }
 
+/** Apply the resolved appearance before anything reads theme CSS variables. */
+export function applyThemeClass(dark: boolean) {
+  if (typeof document === "undefined") return;
+  document.documentElement.classList.toggle("dark", dark);
+}
+
 function readTheme(): ThemeMode {
   if (memoryMode) return memoryMode;
   try {
@@ -86,6 +92,11 @@ export function setThemeMode(mode: ThemeMode) {
   } catch {
     // The in-memory preference still works when storage is unavailable.
   }
+  // The body iframe reads --background in a layout effect, which runs before a
+  // parent effect would add the class; apply it here so the same render pass
+  // already sees the new colors instead of keeping the previous scheme until
+  // the mail is reopened.
+  applyThemeClass(resolvesToDark(mode, systemTheme() === "dark"));
   publish();
 }
 
