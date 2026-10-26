@@ -83,13 +83,37 @@ export function watchMailImages(
 ) {
   const images = new Map<
     HTMLImageElement,
-    { source: string; expired: boolean; timer?: ReturnType<typeof setTimeout> }
+    {
+      source: string;
+      expired: boolean;
+      timer?: ReturnType<typeof setTimeout>;
+      reported?: "failed" | "timeout";
+    }
   >();
   let disposed = false;
   let previous = "";
   let poll: ReturnType<typeof setInterval> | undefined;
   const source = (image: HTMLImageElement) =>
     JSON.stringify([image.getAttribute("src"), image.getAttribute("srcset")]);
+  // Only the failing resource is printed, and every character is URL-encoded so
+  // the line can be pasted into a browser or issue without being re-interpreted.
+  const report = (image: HTMLImageElement, reason: "failed" | "timeout") => {
+    const raw = image.getAttribute("src") || image.getAttribute("srcset") || "";
+    const url = raw.startsWith("data:")
+      ? `data-url(length=${raw.length})`
+      : encodeURIComponent(raw);
+    const srcset = image.getAttribute("srcset");
+    const alt = image.getAttribute("alt");
+    const details = [
+      `reason=${reason}`,
+      `url=${url}`,
+      srcset && !raw.startsWith("data:")
+        ? `srcset=${encodeURIComponent(srcset)}`
+        : "",
+      alt ? `alt=${encodeURIComponent(alt)}` : "",
+    ].filter(Boolean);
+    console.warn(`[anser:mail-image] ${details.join(" ")}`);
+  };
   function refresh() {
     if (disposed) return;
     const styles = new Map<Element, CSSStyleDeclaration>();
@@ -116,9 +140,20 @@ export function watchMailImages(
       if (image.complete) {
         clearTimeout(entry.timer);
         entry.timer = undefined;
-        if (image.naturalWidth === 0) status.failed++;
-      } else if (entry.expired) status.timedOut++;
-      else {
+        if (image.naturalWidth === 0) {
+          status.failed++;
+          if (entry.reported !== "failed") {
+            entry.reported = "failed";
+            report(image, "failed");
+          }
+        }
+      } else if (entry.expired) {
+        status.timedOut++;
+        if (entry.reported !== "timeout") {
+          entry.reported = "timeout";
+          report(image, "timeout");
+        }
+      } else {
         status.waiting++;
         if (!entry.timer) {
           const waiting = entry;

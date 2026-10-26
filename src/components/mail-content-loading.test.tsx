@@ -107,6 +107,15 @@ it("updates the isolated body when the application theme changes", async () => {
   expect(themed.srcdoc).toContain("color-scheme:dark");
   expect(themed.srcdoc).toContain("background-color:oklch(0.2 0 0)!important");
 });
+it("measures the body without an internal vertical scrollbar narrowing the text", async () => {
+  const { doc } = await load();
+  // A short frame with its own vertical scrollbar would narrow the body by the
+  // bar width and re-wrap the lower half each time the frame grew.
+  expect(doc.documentElement.style.getPropertyValue("overflow-y")).toBe(
+    "hidden",
+  );
+  expect(doc.documentElement.style.getPropertyValue("overflow-x")).toBe("auto");
+});
 it("does not keep a loaded native mail busy or show a timeout for a hidden analytics image", async () => {
   platform.native = true;
   const { doc } = await load(true, true);

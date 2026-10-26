@@ -37,6 +37,8 @@ import {
   ContextMenu,
   ContextMenuContent,
   ContextMenuItem,
+  ContextMenuSeparator,
+  ContextMenuShortcut,
   ContextMenuTrigger,
 } from "./components/ui/context-menu";
 import { Separator } from "./components/ui/separator";
@@ -57,7 +59,7 @@ import { coalesceRefresh } from "./lib/refresh-queue";
 import { ConversationReader } from "./components/conversation-reader";
 import { replyHeaders } from "./lib/conversations";
 import { FolderInput } from "./components/folder-input";
-import { useTheme } from "./lib/theme";
+import { applyThemeClass, useTheme } from "./lib/theme";
 import { Tabs, TabsList, TabsTrigger } from "./components/ui/tabs";
 import { disableNativeContextMenu } from "./lib/context-menu";
 import { NavigationLayout, MailLayout } from "./components/resizable-layout";
@@ -576,7 +578,7 @@ export default function App() {
     return () => clearTimeout(timer);
   }, [search]);
   useEffect(() => {
-    document.documentElement.classList.toggle("dark", theme.dark);
+    applyThemeClass(theme.dark);
   }, [theme.dark]);
   useEffect(() => {
     let live = true;
@@ -1484,6 +1486,18 @@ export default function App() {
       toast.error(String(e));
     } finally {
       setArchiving(false);
+    }
+  }
+  async function printListed(m: Mail) {
+    try {
+      // Printing needs the sanitized body, which the list row does not carry.
+      const loaded =
+        detail?.mail.id === m.id
+          ? detail
+          : await call<Detail>("mail_detail", { id: m.id });
+      await printMail(loaded);
+    } catch (error) {
+      toast.error(t("Printing failed: {value0}", { value0: String(error) }));
     }
   }
   async function exportMail(m: Mail) {
@@ -2813,8 +2827,8 @@ export default function App() {
                               </Button>
                             </div>
                           </ContextMenuTrigger>
-                          {!isNonUnreadMail(m) && (
-                            <ContextMenuContent>
+                          <ContextMenuContent>
+                            {!isNonUnreadMail(m) && (
                               <ContextMenuItem
                                 onSelect={() =>
                                   void mutate([m.id], "read", String(!m.isRead))
@@ -2824,9 +2838,91 @@ export default function App() {
                                 {m.isRead
                                   ? t("Mark as unread")
                                   : t("Mark as read")}
+                                <ContextMenuShortcut>
+                                  {mailShortcutKeys.read}
+                                </ContextMenuShortcut>
                               </ContextMenuItem>
-                            </ContextMenuContent>
-                          )}
+                            )}
+                            <ContextMenuItem
+                              onSelect={() =>
+                                void mutate([m.id], "star", String(!m.starred))
+                              }
+                            >
+                              <Star className={m.starred ? "star-on" : ""} />
+                              {m.starred ? t("Unstar") : t("Star")}
+                              <ContextMenuShortcut>
+                                {mailShortcutKeys.star}
+                              </ContextMenuShortcut>
+                            </ContextMenuItem>
+                            <ContextMenuSeparator />
+                            {m.savedLocally === false && (
+                              <ContextMenuItem
+                                disabled={archiving}
+                                onSelect={() => void queueArchives([m.id])}
+                              >
+                                <HardDriveDownload />
+                                {t("Save complete message locally")}
+                              </ContextMenuItem>
+                            )}
+                            <ContextMenuItem
+                              onSelect={() => void exportMail(m)}
+                            >
+                              <ArrowDownToLine />
+                              {t("Export complete original message")}
+                            </ContextMenuItem>
+                            <ContextMenuItem
+                              onSelect={() => void printListed(m)}
+                            >
+                              <Printer />
+                              {t("Print this message")}
+                            </ContextMenuItem>
+                            <ContextMenuSeparator />
+                            <ContextMenuItem
+                              onSelect={() => {
+                                setMoveIds([m.id]);
+                                setMoveThreads(false);
+                                setMoveFolder(m.localFolder);
+                              }}
+                            >
+                              <Folder />
+                              {t("Move to local folder")}
+                            </ContextMenuItem>
+                            <ContextMenuItem
+                              variant="destructive"
+                              onSelect={() =>
+                                void mutate([m.id], "trash", String(!m.trashed))
+                              }
+                            >
+                              {m.trashed ? <Undo2 /> : <Trash2 />}
+                              {m.trashed
+                                ? t("Restore local message")
+                                : t("Move to local trash")}
+                            </ContextMenuItem>
+                            <ContextMenuSeparator />
+                            <ContextMenuItem onSelect={() => compose(m)}>
+                              <Reply />
+                              {t("Reply")}
+                              <ContextMenuShortcut>
+                                {mailShortcutKeys.reply}
+                              </ContextMenuShortcut>
+                            </ContextMenuItem>
+                            <ContextMenuItem
+                              onSelect={() => compose(m, false, true)}
+                            >
+                              <ReplyAll />
+                              {t("Reply all")}
+                              <ContextMenuShortcut>
+                                {mailShortcutKeys.replyAll}
+                              </ContextMenuShortcut>
+                            </ContextMenuItem>
+                            <ContextMenuItem onSelect={() => compose(m, true)}>
+                              <ArrowRight />
+                              {t("Forward")}
+                              <ContextMenuShortcut>
+                                {mailShortcutKeys.forward}
+                              </ContextMenuShortcut>
+                            </ContextMenuItem>
+                          </ContextMenuContent>
                         </ContextMenu>
                       ))
                     ) : (

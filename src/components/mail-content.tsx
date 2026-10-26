@@ -14,7 +14,7 @@ import {
   type MailColorScheme,
 } from "../lib/mail-html";
 import { mailDocumentHeight } from "../lib/mail-layout";
-import { useTheme } from "../lib/theme";
+import { applyThemeClass, useTheme } from "../lib/theme";
 
 export function MailContent({
   html,
@@ -36,6 +36,10 @@ export function MailContent({
     value: string;
   }>();
   useLayoutEffect(() => {
+    // Read the variable only after the resolved appearance is on the root:
+    // the parent's effect runs later than this layout effect, so a theme
+    // switch would otherwise pick up the previous scheme's background.
+    applyThemeClass(dark);
     setThemeBackground({
       colorScheme,
       value: getComputedStyle(document.documentElement)
@@ -120,6 +124,14 @@ export function MailContent({
       element.style.setProperty("max-height", "none", "important");
       element.style.setProperty("overflow", "visible", "important");
     }
+    // The frame grows to the measured content height, so it never needs its own
+    // vertical scrollbar. Letting one appear while the frame is still short
+    // narrows the body by the scrollbar width and re-wraps the text; when the
+    // frame then grows the bar disappears and the text wraps back, which keeps
+    // the lower half oscillating on widths near a wrap boundary. Horizontal
+    // overflow still scrolls and is compensated in the measured height.
+    doc.documentElement.style.setProperty("overflow-x", "auto", "important");
+    doc.documentElement.style.setProperty("overflow-y", "hidden", "important");
     // Keep the usual block layout, while containing collapsed margins and
     // floats in the measured body. Preserve templates with custom flex/grid.
     if (doc.defaultView?.getComputedStyle(doc.body).display === "block")

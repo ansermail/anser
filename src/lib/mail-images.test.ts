@@ -405,3 +405,44 @@ describe("mail image deadline", () => {
     expect(vi.getTimerCount()).toBe(0);
   });
 });
+describe("mail image console diagnostics", () => {
+  it("prints each failing image once with a URL-encoded address", () => {
+    const f = fixture(),
+      changed = vi.fn(),
+      warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    f.slow.setAttribute("alt", "价格 图表");
+    f.finish(false);
+    const tracker = watchMailImages(f.doc, changed, false);
+    tracker.refresh();
+    expect(warn).toHaveBeenCalledTimes(1);
+    const line = String(warn.mock.calls[0][0]);
+    expect(line).toContain("reason=failed");
+    expect(line).toContain("url=https%3A%2F%2Fexample.com%2Fstall.png");
+    expect(line).toContain(
+      "srcset=https%3A%2F%2Fexample.com%2Fstall%402.png%202x",
+    );
+    expect(line).toContain("alt=%E4%BB%B7%E6%A0%BC%20%E5%9B%BE%E8%A1%A8");
+    expect(line).not.toContain("data:image");
+    tracker.refresh();
+    expect(warn).toHaveBeenCalledTimes(1);
+    tracker.dispose();
+    warn.mockRestore();
+  });
+  it("prints a timed-out image once and stays quiet for loaded images", () => {
+    const f = fixture(),
+      changed = vi.fn(),
+      warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const tracker = watchMailImages(f.doc, changed, false);
+    vi.advanceTimersByTime(MAIL_IMAGE_TIMEOUT_MS);
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(String(warn.mock.calls[0][0])).toContain("reason=timeout");
+    vi.advanceTimersByTime(MAIL_IMAGE_TIMEOUT_MS);
+    tracker.refresh();
+    expect(warn).toHaveBeenCalledTimes(1);
+    f.finish();
+    tracker.refresh();
+    expect(warn).toHaveBeenCalledTimes(1);
+    tracker.dispose();
+    warn.mockRestore();
+  });
+});
