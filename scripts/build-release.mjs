@@ -11,8 +11,13 @@ import {
 const config = JSON.parse(fs.readFileSync("src-tauri/tauri.conf.json", "utf8"));
 const key = path.join(os.homedir(), ".config/yanxin-release/updater.key");
 const env = await loadOAuthEnvironment(process.cwd());
-const identity = await getDevelopmentSigningIdentity(env);
-env.APPLE_SIGNING_IDENTITY = identity.hash;
+if (!["darwin", "win32"].includes(process.platform))
+  throw new Error("Desktop packaging supports macOS and Windows.");
+const identity =
+  process.platform === "darwin"
+    ? await getDevelopmentSigningIdentity(env)
+    : null;
+if (identity) env.APPLE_SIGNING_IDENTITY = identity.hash;
 if (!env.TAURI_SIGNING_PRIVATE_KEY) {
   if (!fs.existsSync(key))
     throw new Error(
@@ -27,13 +32,13 @@ if (!env.TAURI_SIGNING_PRIVATE_KEY) {
   env.TAURI_SIGNING_PRIVATE_KEY_PASSWORD = "";
 }
 const child = spawn(
-  path.resolve("node_modules/.bin/tauri"),
+  process.execPath,
   [
+    path.resolve("node_modules/@tauri-apps/cli/tauri.js"),
     "build",
     "--bundles",
-    "app",
-    "--config",
-    localBuildSigningConfig(identity),
+    identity ? "app" : "nsis",
+    ...(identity ? ["--config", localBuildSigningConfig(identity)] : []),
     ...process.argv.slice(2),
   ],
   { env, stdio: "inherit" },
@@ -44,7 +49,7 @@ child.on("error", (e) => {
 });
 child.on("exit", async (code) => {
   process.exitCode = code ?? 1;
-  if (code === 0) {
+  if (code === 0 && identity) {
     const args = process.argv.slice(2);
     const targetIndex = args.indexOf("--target");
     const target = targetIndex >= 0 ? args[targetIndex + 1] : "";

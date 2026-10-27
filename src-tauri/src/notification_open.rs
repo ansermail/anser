@@ -123,9 +123,143 @@ mod macos {
 #[cfg(target_os = "macos")]
 pub use macos::{setup, show};
 
+// Protocol activations carry only the same opaque, expiring token used by the
+// macOS bridge. Never accept a mail id, server UID, file path or arbitrary URL.
+#[cfg(any(target_os = "windows", test))]
+fn protocol_target(raw: &str) -> Option<Option<String>> {
+    let url = url::Url::parse(raw).ok()?;
+    if url.scheme() != "anser"
+        || !url.username().is_empty()
+        || url.password().is_some()
+        || url.port().is_some()
+        || url.query().is_some()
+        || url.fragment().is_some()
+    {
+        return None;
+    }
+    match url.host_str()? {
+        "open" if url.path().is_empty() || url.path() == "/" => Some(None),
+        "notification" => {
+            let token = url.path().strip_prefix('/')?;
+            let parsed = uuid::Uuid::parse_str(token).ok()?;
+            (parsed.to_string() == token).then(|| Some(token.to_string()))
+        }
+        _ => None,
+    }
+}
+
+#[cfg(target_os = "windows")]
+pub fn queue_arguments(app: &tauri::AppHandle, args: &[String]) -> bool {
+    if let Some(target) = args.iter().filter_map(|arg| protocol_target(arg)).last() {
+        activate(app, target.as_deref().unwrap_or(""));
+        true
+    } else {
+        false
+    }
+}
+
+#[cfg(any(target_os = "windows", test))]
+fn toast_xml(title: &str, body: &str, token: &str) -> Result<String> {
+    let launch = if token.is_empty() {
+        "anser://open".to_string()
+    } else {
+        if uuid::Uuid::parse_str(token).is_err() {
+            return Err("通知邮件定位信息无效".into());
+        }
+        format!("anser://notification/{token}")
+    };
+    let escape = |text: &str| {
+        text.chars()
+            .filter(|c| {
+                (*c >= ' ' || matches!(c, '\t' | '\r' | '\n'))
+                    && !matches!(c, '\u{fffe}' | '\u{ffff}')
+            })
+            .take(4000)
+            .collect::<String>()
+            .replace('&', "&amp;")
+            .replace('<', "&lt;")
+            .replace('>', "&gt;")
+            .replace('"', "&quot;")
+            .replace('\'', "&apos;")
+    };
+    Ok(format!("<toast activationType=\"protocol\" launch=\"{launch}\"><visual><binding template=\"ToastGeneric\"><text>{}</text><text>{}</text></binding></visual></toast>", escape(title), escape(body)))
+}
+
+#[cfg(target_os = "windows")]
+pub fn show(title: &str, body: &str, token: &str) -> Result<()> {
+    use windows::{
+        core::HSTRING,
+        Data::Xml::Dom::XmlDocument,
+        Win32::{
+            Foundation::RPC_E_CHANGED_MODE,
+            System::WinRT::{RoInitialize, RoUninitialize, RO_INIT_MULTITHREADED},
+        },
+        UI::Notifications::{ToastNotification, ToastNotificationManager},
+    };
+    struct Apartment(bool);
+    impl Drop for Apartment {
+        fn drop(&mut self) {
+            if self.0 {
+                unsafe {
+                    RoUninitialize();
+                }
+            }
+        }
+    }
+    let initialized = unsafe { RoInitialize(RO_INIT_MULTITHREADED) };
+    let apartment = Apartment(initialized.is_ok());
+    if initialized.is_err_and(|error| error.code() != RPC_E_CHANGED_MODE) {
+        return Err("无法初始化 Windows 系统通知".into());
+    }
+    let xml = toast_xml(title, body, token)?;
+    let result = (|| -> windows::core::Result<()> {
+        let document = XmlDocument::new()?;
+        document.LoadXml(&HSTRING::from(xml))?;
+        let toast = ToastNotification::CreateToastNotification(&document)?;
+        let notifier = ToastNotificationManager::CreateToastNotifierWithId(&HSTRING::from(
+            "dev.maildesk.desktop",
+        ))?;
+        notifier.Show(&toast)
+    })();
+    drop(apartment);
+    result.map_err(|_| "无法显示 Windows 系统通知".into())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn windows_activation_keeps_only_valid_opaque_tokens() {
+        let token = uuid::Uuid::new_v4().to_string();
+        assert_eq!(
+            protocol_target(&format!("anser://notification/{token}")),
+            Some(Some(token.clone()))
+        );
+        assert_eq!(protocol_target("anser://open"), Some(None));
+        for value in [
+            "https://example.com",
+            "anser://notification/INBOX/42",
+            "anser://user@open",
+            "anser://open?mail=1",
+            "anser://open/#x",
+            "anser://open:80",
+        ] {
+            assert_eq!(protocol_target(value), None, "{value}");
+        }
+        assert_eq!(
+            protocol_target(&format!("anser://notification/{token}/extra")),
+            None
+        );
+    }
+    #[test]
+    fn windows_toast_treats_mail_headers_as_text_and_rejects_invalid_tokens() {
+        let xml = toast_xml("<title>&", "\"body\"\0<actions/>", "").unwrap();
+        assert!(xml.contains("&lt;title&gt;&amp;"));
+        assert!(xml.contains("&quot;body&quot;&lt;actions/&gt;"));
+        assert!(!xml.contains('\0'));
+        assert!(xml.contains("launch=\"anser://open\""));
+        assert!(toast_xml("", "", "mail-id").is_err());
+    }
     #[test]
     fn pending_before_listener_keeps_last_click_and_rejects_bad_payload() {
         let queue = NotificationOpen::default();

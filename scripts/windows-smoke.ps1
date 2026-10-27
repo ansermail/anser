@@ -1,0 +1,43 @@
+$ErrorActionPreference = 'Stop'
+$installer = @(Get-ChildItem 'src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/*-setup.exe')
+if ($installer.Count -ne 1) { throw 'Expected one Windows installer.' }
+$installPath = Join-Path $env:RUNNER_TEMP 'anser-windows-smoke'
+$userChoicePath = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\FileExts\.eml\UserChoice'
+$userChoiceBefore = (Get-ItemProperty $userChoicePath -ErrorAction SilentlyContinue).ProgId
+$setup = Start-Process $installer[0].FullName -ArgumentList @('/S', "/D=$installPath") -PassThru
+if (-not $setup.WaitForExit(240000)) { Stop-Process $setup.Id -Force; throw 'Installer timed out.' }
+if ($setup.ExitCode -ne 0) { throw "Installer failed: $($setup.ExitCode)" }
+$exe = Join-Path $installPath 'anser.exe'
+if (-not (Test-Path $exe)) { throw 'Installed app is missing.' }
+$protocol = (Get-ItemProperty 'HKCU:\Software\Classes\anser\shell\open\command' -ErrorAction Stop).'(default)'
+if ($protocol -notlike "*$exe*") { throw 'Notification protocol does not point to the installed app.' }
+$userChoiceAfter = (Get-ItemProperty $userChoicePath -ErrorAction SilentlyContinue).ProgId
+if ($userChoiceBefore -ne $userChoiceAfter) { throw 'Installer changed the protected file association.' }
+$env:WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS = '--force-renderer-accessibility'
+$app = $null
+try {
+  $app = Start-Process $exe -PassThru
+  Add-Type -AssemblyName UIAutomationClient
+  Add-Type -AssemblyName UIAutomationTypes
+  $ready = $false
+  for ($i = 0; $i -lt 90; $i++) {
+    Start-Sleep -Milliseconds 1000
+    $app.Refresh()
+    if ($app.HasExited) { throw "App exited during startup: $($app.ExitCode)" }
+    if ($app.MainWindowHandle -eq 0) { continue }
+    $root = [System.Windows.Automation.AutomationElement]::FromHandle($app.MainWindowHandle)
+    $zh = [System.Windows.Automation.PropertyCondition]::new([System.Windows.Automation.AutomationElement]::NameProperty, '连接我的邮箱')
+    $en = [System.Windows.Automation.PropertyCondition]::new([System.Windows.Automation.AutomationElement]::NameProperty, 'Connect my mailbox')
+    $condition = [System.Windows.Automation.OrCondition]::new($zh, $en)
+    if ($null -ne $root.FindFirst([System.Windows.Automation.TreeScope]::Descendants, $condition)) { $ready = $true; break }
+  }
+  if (-not $ready) { throw 'The installed WebView2 app did not render its mailbox setup screen.' }
+  @{ installer = 'passed'; frontendReady = $true; protocolRegistered = $true; protectedAssociationUnchanged = $true } | ConvertTo-Json | Set-Content 'windows-smoke.json'
+} finally {
+  if ($null -ne $app -and -not $app.HasExited) { Stop-Process $app.Id -Force }
+  $uninstaller = Join-Path $installPath 'uninstall.exe'
+  if (Test-Path $uninstaller) {
+    $uninstall = Start-Process $uninstaller -ArgumentList '/S' -PassThru
+    if (-not $uninstall.WaitForExit(120000)) { Stop-Process $uninstall.Id -Force }
+  }
+}

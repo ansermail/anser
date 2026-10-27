@@ -8,6 +8,7 @@ mod compose_files;
 mod conversation;
 mod credentials;
 mod directory_operations;
+mod durable_file;
 mod eml_files;
 mod eml_imports;
 mod eml_input;
@@ -632,7 +633,7 @@ fn test_notification(
     state: tauri::State<AppState>,
     id: Option<String>,
 ) -> Result<()> {
-    #[cfg(target_os = "macos")]
+    #[cfg(any(target_os = "macos", target_os = "windows"))]
     if let Some(id) = id.filter(|id| !id.is_empty()) {
         let mail = state.store.mail_metadata(&id)?;
         let token = notification_open::bind(&state.store, &mail)?;
@@ -643,7 +644,7 @@ fn test_notification(
             &token,
         );
     }
-    #[cfg(not(target_os = "macos"))]
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
     let _ = (state, id);
     notifications::show(
         &app,
@@ -1195,6 +1196,11 @@ async fn get_file_associations() -> Result<file_associations::Associations> {
         .await
         .map_err(err)?
 }
+
+#[tauri::command]
+fn open_file_association_settings() -> Result<()> {
+    file_associations::open_settings()
+}
 #[tauri::command]
 async fn set_file_association(extension: String, application: String) -> Result<()> {
     tauri::async_runtime::spawn_blocking(move || file_associations::set(&extension, &application))
@@ -1503,9 +1509,6 @@ async fn open_external_mail_window(
     state: tauri::State<'_, eml_files::EmlFiles>,
     path: String,
 ) -> Result<()> {
-    #[cfg(not(target_os = "macos"))]
-    return Err("邮件文件窗口仅支持 macOS".into());
-    #[cfg(target_os = "macos")]
     {
         let docs = state.inner().clone();
         let opened_docs = docs.clone();
@@ -1529,18 +1532,21 @@ async fn open_external_mail_window(
                 let _ = window.destroy();
             }
         }
-        tauri::WebviewWindowBuilder::new(
+        let builder = tauri::WebviewWindowBuilder::new(
             &app,
             label.clone(),
             tauri::WebviewUrl::App("index.html".into()),
         )
         .title("雁信")
         .inner_size(1100.0, 820.0)
-        .min_inner_size(700.0, 560.0)
-        .hidden_title(true)
-        .title_bar_style(tauri::TitleBarStyle::Overlay)
-        .build()
-        .map_err(|cause| {
+        .min_inner_size(700.0, 560.0);
+        #[cfg(target_os = "macos")]
+        let builder = builder
+            .hidden_title(true)
+            .title_bar_style(tauri::TitleBarStyle::Overlay);
+        #[cfg(target_os = "windows")]
+        let builder = builder.use_https_scheme(true);
+        builder.build().map_err(|cause| {
             let _ = docs.close_label(&label);
             err(cause)
         })?;
@@ -1566,7 +1572,10 @@ fn queue_eml_arguments(app: &tauri::AppHandle, args: Vec<String>, cwd: &Path) ->
 }
 
 pub fn run() {
-    tauri::Builder::default()
+    let builder = tauri::Builder::default();
+    #[cfg(target_os = "windows")]
+    let builder = builder.plugin(tauri_plugin_deep_link::init());
+    builder
         .register_asynchronous_uri_scheme_protocol("anser-image", |context, request, responder| {
             let label = context.webview_label();
             let allowed = label == "main" || label.starts_with("external-mail-");
@@ -1605,6 +1614,10 @@ pub fn run() {
                 .build(),
         )
         .plugin(tauri_plugin_single_instance::init(|app, args, cwd| {
+            #[cfg(target_os = "windows")]
+            if notification_open::queue_arguments(app, &args) {
+                return;
+            }
             if !queue_eml_arguments(app, args, Path::new(&cwd)) {
                 show_main_window(app);
             }
@@ -1649,6 +1662,11 @@ pub fn run() {
                 realtime: realtime.clone(),
                 opening_mail: Arc::new(AtomicBool::new(opening_mail)),
             });
+            #[cfg(target_os = "windows")]
+            notification_open::queue_arguments(
+                app.handle(),
+                &std::env::args().skip(1).collect::<Vec<_>>(),
+            );
             #[cfg(target_os = "macos")]
             notification_open::setup(app.handle());
             realtime::start(store.clone(), app.handle().clone(), realtime);
@@ -1949,6 +1967,7 @@ pub fn run() {
             export_mail,
             mail_original_format,
             get_file_associations,
+            open_file_association_settings,
             set_file_association,
             save_attachment,
             preview_attachment,

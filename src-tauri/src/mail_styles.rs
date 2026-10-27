@@ -21,7 +21,11 @@ fn resource_url(source: &str, base: &Url, kind: &str) -> String {
         return "\"\"".into();
     }
     let encoded: String = url::form_urlencoded::byte_serialize(url.as_str().as_bytes()).collect();
-    format!("\"anser-{kind}://localhost/fetch?url={encoded}\"")
+    #[cfg(target_os = "windows")]
+    let origin = format!("https://anser-{kind}.localhost");
+    #[cfg(not(target_os = "windows"))]
+    let origin = format!("anser-{kind}://localhost");
+    format!("\"{origin}/fetch?url={encoded}\"")
 }
 
 // Tokenize instead of matching CSS with regex: escaped URLs, comments, quoted
@@ -203,10 +207,11 @@ mod tests {
             ("font", "https://fonts.example/font.woff"),
         ] {
             let encoded: String = url::form_urlencoded::byte_serialize(target.as_bytes()).collect();
-            assert!(
-                result.contains(&format!("anser-{kind}://localhost/fetch?url={encoded}")),
-                "{result}"
-            );
+            #[cfg(target_os = "windows")]
+            let expected = format!("https://anser-{kind}.localhost/fetch?url={encoded}");
+            #[cfg(not(target_os = "windows"))]
+            let expected = format!("anser-{kind}://localhost/fetch?url={encoded}");
+            assert!(result.contains(&expected), "{result}");
         }
         assert!(result.contains("local(\"Mail\")"));
     }

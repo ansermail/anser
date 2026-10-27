@@ -4,6 +4,8 @@
 
 ## 项目与代码仓库
 
+- 客户端支持方向为 macOS 与 Windows，共用现有界面、邮件协议与存档格式；平台原生行为分别适配。Windows 首阶段为 Windows 10/11 x64 + WebView2，保留系统窗口控件、Ctrl 快捷键和每用户安装；编译、安装包、启动冒烟与真实桌面验收分别记录。Windows 系统默认应用只能由用户在系统设置中选择，不能改写受保护的 UserChoice 来绕过确认。
+
 - 中文名：雁信；英文名：Anser。技术栈为 React / TypeScript / shadcn/ui / Tauri 2 / Rust / SQLite。
 - 后续代码、Issues、Actions、Release 和应用内仓库链接统一使用 **https://github.com/ansermail/anser**；origin 为 `git@github.com:ansermail/anser.git`。个人旧仓库已放弃作为开发和发布目标。
 - 开工先检查 `git status`、当前分支及 origin；保留已有未提交工作。阶段提交应对应实际完成范围，未验收的工作分支不能作为完成代码混入正式发布。

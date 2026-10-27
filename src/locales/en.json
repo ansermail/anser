@@ -1346,5 +1346,19 @@
   "Default application": "Default application",
   "No other application is registered. Use Open With in Finder to choose another application.": "No other application is registered. Use Open With in Finder to choose another application.",
   "No previous default application is recorded. Change it with Open With in Finder.": "No previous default application is recorded. Change it with Open With in Finder.",
-  "Turn on to use Anser. Turn off to restore the previous default application.": "Turn on to use Anser. Turn off to restore the previous default application."
+  "Turn on to use Anser. Turn off to restore the previous default application.": "Turn on to use Anser. Turn off to restore the previous default application.",
+  "Saved on this device": "Saved on this device",
+  "Saved on this device, available for address autocomplete.": "Saved on this device, available for address autocomplete.",
+  "No need to keep webmail open. Anser processes new mail automatically while running on this computer.": "No need to keep webmail open. Anser processes new mail automatically while running on this computer.",
+  "Browser preview · Use the desktop app for real mail": "Browser preview · Use the desktop app for real mail",
+  "Use this feature in the desktop app.": "Use this feature in the desktop app.",
+  "Passwords and tokens are encrypted locally; the key is protected by the system credential store.": "Passwords and tokens are encrypted locally; the key is protected by the system credential store.",
+  "System notifications cover new mail and successful, failed or unconfirmed sends. Initial imports do not notify. Notification banners are controlled by system settings.": "System notifications cover new mail and successful, failed or unconfirmed sends. Initial imports do not notify. Notification banners are controlled by system settings.",
+  "Start in the background after signing into your computer, then continue checking mail and scheduled sends.": "Start in the background after signing into your computer, then continue checking mail and scheduled sends.",
+  "Scheduled on this computer: Anser must be running and the computer awake. Reschedule if missed by more than 5 minutes.": "Scheduled on this computer: Anser must be running and the computer awake. Reschedule if missed by more than 5 minutes.",
+  "Original messages and attachments will move to {value0}. After verification, the location switches and migrated files at the old location are cleaned up. Accounts, indexes and settings stay on this computer. Keep external disks connected.": "Original messages and attachments will move to {value0}. After verification, the location switches and migrated files at the old location are cleaned up. Accounts, indexes and settings stay on this computer. Keep external disks connected.",
+  "Keep the archive disk connected. The message list remains available when disconnected; original access, backups and saving pause without falling back to this computer.": "Keep the archive disk connected. The message list remains available when disconnected; original access, backups and saving pause without falling back to this computer.",
+  "Choose Anser in Windows default app settings or Open with. Windows controls the default file association.": "Choose Anser in Windows default app settings or Open with. Windows controls the default file association.",
+  "Open Windows default apps": "Open Windows default apps",
+  "Could not open system settings: {value0}": "Could not open system settings: {value0}"
 }

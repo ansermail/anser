@@ -2,6 +2,10 @@
 
 依据 PRD 第 5、8、9 节、实施记录和当前代码核查。当前仍为 Alpha；功能代码已存在与真实场景验收通过分别记录。早期回归使用临时存储/演示数据；2026-10-05 用户授权后增加当前腾讯企业邮箱与 QQ 邮箱互发测试，未向其他地址发送，未删除真实邮件。
 
+## 当前执行检查点：Windows 客户端（2026-10-27，进行中）
+
+用户要求增加 Windows 客户端。已从 05f40f1 切换到 codex/windows-support，保留两处既有图片诊断 WIP；按 Windows 10/11 x64、WebView2、每用户 NSIS 安装推进。初查发现凭据后端、文件目录同步、外部邮件窗口、正文自有协议与发布清单需要平台适配。当前开始实现，Windows 构建和测试由 CI 验证，真实 Windows 桌面/收发/升级仍未验证。入口见 [Windows 工作点](WINDOWS_SUPPORT_WORKING.md)。
+
 ## 当前执行检查点：0.1.34 已正式发布并完成清理（2026-10-27）
 
 用户要求原格式/A4 打印、恢复本机原正式版并清理预览、提交发版。固定源码 `c1e827e0b908c73307cb23e106c4a4368a7a40b2` 与新标签 `v0.1.34` 已推送，2026-10-27 16:35:01（Asia/Shanghai）正式发布为 latest。[Checks 40472389821](https://github.com/ansermail/anser/actions/runs/40472389821)、[Pages 40472389775](https://github.com/ansermail/anser/actions/runs/40472389775) 和 [Release macOS 40472397842](https://github.com/ansermail/anser/actions/runs/40472397842) 全部成功。本地前端 445、Rust 429/4 既有忽略、桌面 36、IMAP 39，UI/i18n/生产/Pages/格式/版本检查通过；七资源、更新签名、两架构固定签名/DR/包元信息/许可、DMG 一致性和匿名公开下载/标准 latest 均通过。

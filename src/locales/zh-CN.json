@@ -1346,5 +1346,19 @@
   "Default application": "默认打开应用",
   "No other application is registered. Use Open With in Finder to choose another application.": "系统未注册其他应用，请在访达的“打开方式”中选择其他应用。",
   "No previous default application is recorded. Change it with Open With in Finder.": "没有记录此前的默认应用，请在访达的“打开方式”中更改。",
-  "Turn on to use Anser. Turn off to restore the previous default application.": "开启后使用雁信打开，关闭后恢复开启前的默认应用。"
+  "Turn on to use Anser. Turn off to restore the previous default application.": "开启后使用雁信打开，关闭后恢复开启前的默认应用。",
+  "Saved on this device": "保存在这台设备",
+  "Saved on this device, available for address autocomplete.": "保存在这台设备，可用于地址自动补全。",
+  "No need to keep webmail open. Anser processes new mail automatically while running on this computer.": "无需一直打开网页版邮箱。雁信在这台电脑运行时会自动处理新邮件。",
+  "Browser preview · Use the desktop app for real mail": "浏览器预览 · 真实邮件请使用桌面客户端",
+  "Use this feature in the desktop app.": "请在桌面客户端中使用此功能。",
+  "Passwords and tokens are encrypted locally; the key is protected by the system credential store.": "密码和令牌在本机加密保存，密钥由系统凭据存储保护。",
+  "System notifications cover new mail and successful, failed or unconfirmed sends. Initial imports do not notify. Notification banners are controlled by system settings.": "系统通知覆盖新邮件及发送成功、失败或结果未确认。首次导入不通知，通知横幅由系统设置控制。",
+  "Start in the background after signing into your computer, then continue checking mail and scheduled sends.": "登录电脑后在后台启动，继续检查邮件和定时发送。",
+  "Scheduled on this computer: Anser must be running and the computer awake. Reschedule if missed by more than 5 minutes.": "由这台电脑定时发送：雁信须保持运行，电脑不能休眠。超过计划时间 5 分钟未发出时须重新设置。",
+  "Original messages and attachments will move to {value0}. After verification, the location switches and migrated files at the old location are cleaned up. Accounts, indexes and settings stay on this computer. Keep external disks connected.": "原始邮件和附件将移至 {value0}。校验完成后切换位置并清理旧位置的已迁移文件。账号、索引和设置仍保存在这台电脑，请保持外置磁盘连接。",
+  "Keep the archive disk connected. The message list remains available when disconnected; original access, backups and saving pause without falling back to this computer.": "请保持存档磁盘连接。断开时仍可查看邮件列表，原件读取、备份及保存将暂停，不会自动改存这台电脑。",
+  "Choose Anser in Windows default app settings or Open with. Windows controls the default file association.": "请在 Windows 默认应用设置或“打开方式”中选择雁信，默认文件关联由 Windows 管理。",
+  "Open Windows default apps": "打开 Windows 默认应用",
+  "Could not open system settings: {value0}": "无法打开系统设置：{value0}"
 }

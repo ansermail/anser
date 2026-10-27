@@ -12,9 +12,20 @@ export function mailShortcut(event: KeyboardEvent): MailShortcut | undefined {
 }
 
 export const mailShortcutKeys = {
-  reply: "⌘R",
-  replyAll: "⌘⇧R",
-  forward: "⌘⇧F",
-  read: "⌘⇧U",
-  star: "⌘⇧L",
+  get reply() {
+    return shortcut("⌘R");
+  },
+  get replyAll() {
+    return shortcut("⌘⇧R");
+  },
+  get forward() {
+    return shortcut("⌘⇧F");
+  },
+  get read() {
+    return shortcut("⌘⇧U");
+  },
+  get star() {
+    return shortcut("⌘⇧L");
+  },
 } as const;
+import { shortcut } from "./platform";

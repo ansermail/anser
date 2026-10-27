@@ -473,7 +473,7 @@ export function RulesPanel({
       </div>
       <div className="quiet-note">
         {t(
-          "No need to keep webmail open. Anser processes new mail automatically while running on this Mac.",
+          "No need to keep webmail open. Anser processes new mail automatically while running on this computer.",
         )}
       </div>
       <RuleExecutions onShowTasks={onShowTasks} />

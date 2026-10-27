@@ -8,7 +8,7 @@ use aes_gcm::{
 use serde::{Deserialize, Serialize};
 use std::{
     collections::{BTreeMap, HashMap},
-    fs::{self, File, OpenOptions},
+    fs::{self, OpenOptions},
     io::{ErrorKind, Write},
     path::{Path, PathBuf},
     sync::{Mutex, OnceLock},
@@ -31,7 +31,10 @@ const VAULT_VERSION: u8 = 1;
 const NONCE_LEN: usize = 12;
 const KEY_LEN: usize = 32;
 const MAX_BYTES: usize = 2 * 1024 * 1024;
+#[cfg(target_os = "macos")]
 const LOCKED: &str = "无法解锁雁信凭据库；已停止重复授权，请解锁系统钥匙串后退出并重新打开雁信";
+#[cfg(not(target_os = "macos"))]
+const LOCKED: &str = "无法访问系统凭据存储；已停止重复请求，请登录系统后重新打开雁信";
 const KEYCHAIN_UNAVAILABLE: &str =
     "无法访问系统登录钥匙串；未读取或改动雁信凭据库，请解锁后退出并重新打开雁信";
 const LEGACY: &str = "旧版凭据未获当前应用授权；原记录已保留，请重新连接该账号或重新填写对应密钥，不会逐项弹出钥匙串授权";
@@ -167,10 +170,9 @@ fn write_vault(path: &Path, sealed: &[u8]) -> Result<()> {
         let mut file = options.open(&temp).map_err(|_| WRITE_FAILED)?;
         file.write_all(sealed).map_err(|_| WRITE_FAILED)?;
         file.sync_all().map_err(|_| WRITE_FAILED)?;
+        drop(file);
         fs::rename(&temp, path).map_err(|_| WRITE_FAILED)?;
-        File::open(parent)
-            .and_then(|folder| folder.sync_all())
-            .map_err(|_| WRITE_FAILED)?;
+        crate::durable_file::sync_directory(parent).map_err(|_| WRITE_FAILED)?;
         Ok(())
     })();
     if result.is_err() {
@@ -607,6 +609,23 @@ impl Entry {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn windows_master_key_persists_in_credential_manager() {
+        let service = format!("dev.maildesk.desktop.test-{}", uuid::Uuid::new_v4());
+        assert_eq!(key_item::read(&service).unwrap(), None);
+        key_item::create(&service, "first-key").unwrap();
+        assert_eq!(
+            key_item::read(&service).unwrap().as_deref(),
+            Some("first-key")
+        );
+        key_item::create(&service, "replacement-key").unwrap();
+        let value = key_item::read(&service);
+        let cleanup = key_item::delete(&service);
+        assert_eq!(value.unwrap().as_deref(), Some("replacement-key"));
+        cleanup.unwrap();
+        assert_eq!(key_item::read(&service).unwrap(), None);
+    }
     use std::sync::{
         atomic::{AtomicBool, Ordering},
         Arc,

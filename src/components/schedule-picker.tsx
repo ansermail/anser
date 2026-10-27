@@ -129,7 +129,7 @@ export function SchedulePicker({
       </div>
       <p>
         {t(
-          "Scheduled on this Mac: Anser must be running and the Mac awake. Reschedule if missed by more than 5 minutes.",
+          "Scheduled on this computer: Anser must be running and the computer awake. Reschedule if missed by more than 5 minutes.",
         )}
       </p>
     </div>

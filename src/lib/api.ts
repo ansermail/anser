@@ -1047,7 +1047,7 @@ export async function call<T = void>(
         throw new Error(
           command === "send_mail"
             ? "演示模式不会发送真实邮件，请连接你的邮箱后使用。"
-            : "此功能需要退出演示，在 macOS 桌面客户端中使用。",
+            : t("Use this feature in the desktop app."),
         );
     }
     if (
@@ -1092,7 +1092,7 @@ export async function call<T = void>(
     notifyTranslationActivity(command);
     return result as T;
   }
-  if (!native) throw new Error(t("Use this feature in the macOS desktop app."));
+  if (!native) throw new Error(t("Use this feature in the desktop app."));
   try {
     return await invoke<T>(command, args);
   } finally {

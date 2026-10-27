@@ -1,0 +1,53 @@
+name: Windows validation
+on:
+  push:
+    branches: [main, codex/windows-support]
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: windows-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  windows:
+    runs-on: windows-2022
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+      - uses: dtolnay/rust-toolchain@1.91.1
+        with:
+          components: rustfmt
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+          key: windows-x64
+      - run: npm ci
+      - run: npm run format:check
+      - run: cargo fmt --manifest-path src-tauri/Cargo.toml --check
+      - run: npm test
+      - run: npm run test:desktop
+      - run: npm run build
+      - run: cargo test --manifest-path src-tauri/Cargo.toml
+      - run: cargo test --manifest-path src-tauri/vendor/imap-proto/Cargo.toml
+      - name: Build Windows validation installer
+        env:
+          MAIL_GOOGLE_CLIENT_ID: ${{ github.event_name != 'pull_request' && secrets.MAIL_GOOGLE_CLIENT_ID || '' }}
+          MAIL_GOOGLE_CLIENT_SECRET: ${{ github.event_name != 'pull_request' && secrets.MAIL_GOOGLE_CLIENT_SECRET || '' }}
+          MAIL_MICROSOFT_CLIENT_ID: ${{ github.event_name != 'pull_request' && secrets.MAIL_MICROSOFT_CLIENT_ID || '' }}
+        run: node scripts/windows-build.mjs
+      - name: Install and start the WebView2 client
+        run: ./scripts/windows-smoke.ps1
+      - uses: actions/upload-artifact@v6
+        if: github.event_name != 'pull_request'
+        with:
+          name: Anser-Windows-x64-validation
+          path: |
+            src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/*-setup.exe
+            windows-smoke.json
+          if-no-files-found: error
+          retention-days: 14

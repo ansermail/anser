@@ -67,7 +67,9 @@ export function RichSearch({
             </Button>
           </PopoverTrigger>
         </TooltipTrigger>
-        <TooltipContent>{t("Find & replace in body · ⌘F")}</TooltipContent>
+        <TooltipContent>
+          {shortcut(t("Find & replace in body · ⌘F"))}
+        </TooltipContent>
       </Tooltip>
       <PopoverContent
         className="rich-search-panel w-64 max-h-[var(--radix-popover-content-available-height)] overflow-y-auto p-3"
@@ -199,3 +201,4 @@ export function RichSearch({
     </Popover>
   );
 }
+import { shortcut } from "@/lib/platform";

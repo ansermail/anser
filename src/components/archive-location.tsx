@@ -63,7 +63,7 @@ export function ArchiveLocation({
       !(await askConfirmation({
         title: t("Move local archives?"),
         description: t(
-          "Original messages and attachments will move to {value0}. After verification, the location switches and migrated files at the old location are cleaned up. Accounts, indexes and settings stay on this Mac. Keep external disks connected.",
+          "Original messages and attachments will move to {value0}. After verification, the location switches and migrated files at the old location are cleaned up. Accounts, indexes and settings stay on this computer. Keep external disks connected.",
           {
             value0: parent
               ? `${parent}/Anser-Archive/archive`
@@ -189,7 +189,7 @@ export function ArchiveLocation({
         {status?.external && (
           <p className="text-sm text-muted-foreground">
             {t(
-              "Keep the archive disk connected. The message list remains available when disconnected; original access, backups and saving pause without falling back to this Mac.",
+              "Keep the archive disk connected. The message list remains available when disconnected; original access, backups and saving pause without falling back to this computer.",
             )}
           </p>
         )}

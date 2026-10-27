@@ -1,6 +1,7 @@
 import DOMPurify from "dompurify";
 import { routeNativeMailResources } from "./mail-image-resources";
 import { normalizeMailSpacers } from "./mail-image-decorations";
+import { nativeResourceSource } from "./platform";
 
 export type MailColorScheme = "light" | "dark";
 
@@ -123,7 +124,7 @@ export function safeMailHtml(
   // A body-only sanitizer otherwise drops leading styles in HTML email fragments.
   doc.head.insertAdjacentHTML(
     "afterbegin",
-    `<meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data: https:${nativeImages ? " anser-image:" : ""}; style-src 'unsafe-inline' ${nativeImages ? "anser-style:" : "https:"}; font-src data: ${nativeImages ? "anser-font:" : "https:"}; upgrade-insecure-requests; base-uri 'none'; form-action 'none'"><style>body{font-family:-apple-system,BlinkMacSystemFont,sans-serif;font-size:14px;line-height:1.6;color:#242424;margin:0;padding:0;overflow-wrap:break-word}img{max-width:100%;height:auto}table{max-width:100%}pre{white-space:pre-wrap}</style><style id="anser-mail-theme">${mailThemeCss(colorScheme, background)}</style>`,
+    `<meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data: https:${nativeImages ? ` ${nativeResourceSource("anser-image")}` : ""}; style-src 'unsafe-inline' ${nativeImages ? nativeResourceSource("anser-style") : "https:"}; font-src data: ${nativeImages ? nativeResourceSource("anser-font") : "https:"}; upgrade-insecure-requests; base-uri 'none'; form-action 'none'"><style>body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','Microsoft YaHei',sans-serif;font-size:14px;line-height:1.6;color:#242424;margin:0;padding:0;overflow-wrap:break-word}img{max-width:100%;height:auto}table{max-width:100%}pre{white-space:pre-wrap}</style><style id="anser-mail-theme">${mailThemeCss(colorScheme, background)}</style>`,
   );
   return `<!doctype html>${doc.documentElement.outerHTML}`;
 }

@@ -167,7 +167,7 @@ export function ContactsPanel({
           <DialogHeader>
             <DialogTitle>{t("Contact details")}</DialogTitle>
             <DialogDescription>
-              {t("Saved on this Mac, available for address autocomplete.")}
+              {t("Saved on this device, available for address autocomplete.")}
             </DialogDescription>
           </DialogHeader>
           {editing && (

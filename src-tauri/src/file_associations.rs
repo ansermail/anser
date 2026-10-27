@@ -100,6 +100,17 @@ pub fn set(extension: &str, application: &str) -> Result<()> {
         Err("unsupportedAssociation".into())
     }
 }
+
+pub fn open_settings() -> Result<()> {
+    #[cfg(target_os = "windows")]
+    {
+        open::that("ms-settings:defaultapps").map_err(|_| "associationSettingsFailed".into())
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        Err("unsupportedAssociation".into())
+    }
+}
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -1768,7 +1768,7 @@ export default function App() {
               >
                 <SquarePen size={17} />
                 {t("Compose")}
-                <kbd>⌘ N</kbd>
+                <kbd>{shortcut("⌘ N")}</kbd>
               </Button>
             </SidebarHeader>
             <SidebarContent className="sidebar">
@@ -1958,7 +1958,7 @@ export default function App() {
                 )}
               </div>
               <div className="nav-section-heading">
-                <span>{t("Saved on this Mac")}</span>
+                <span>{t("Saved on this device")}</span>
                 <HardDrive size={13} />
               </div>
               {nav("local", Archive, data.stats.saved)}
@@ -2579,7 +2579,7 @@ export default function App() {
                           <X size={14} />
                         </Button>
                       ) : (
-                        <kbd>⌘ K</kbd>
+                        <kbd>{shortcut("⌘ K")}</kbd>
                       )}
                     </div>
                     <MailFilters
@@ -3473,7 +3473,7 @@ export default function App() {
                     {!native && (
                       <small className="browser-note">
                         {t(
-                          "Browser preview · Use the macOS desktop app for real mail",
+                          "Browser preview · Use the desktop app for real mail",
                         )}
                       </small>
                     )}
@@ -3613,3 +3613,4 @@ export default function App() {
     </SidebarProvider>
   );
 }
+import { shortcut } from "./lib/platform";

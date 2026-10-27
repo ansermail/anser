@@ -27,7 +27,7 @@ imap = "2.4"
 imap-proto = "0.10.2"
 native-tls = "0.2"
 lettre = "0.11"
-keyring = { version = "3", features = ["apple-native"] }
+keyring = { version = "3", features = ["apple-native", "windows-native"] }
 reqwest = { version = "0.12", features = ["blocking", "json", "socks"] }
 tokio = { version = "1", features = ["rt", "net", "io-util", "time", "sync", "macros"] }
 tokio-native-tls = "0.3"
@@ -47,6 +47,10 @@ aes-gcm = "0.10"
 getrandom = "0.2"
 [dev-dependencies]
 tempfile = "3"
+
+[target.'cfg(target_os = "windows")'.dependencies]
+tauri-plugin-deep-link = "2"
+windows = { version = "0.62", features = ["Data_Xml_Dom", "UI_Notifications", "Win32_Foundation", "Win32_System_WinRT"] }
 
 # Avoid LLVM's Mach-O strip misalignment on macOS 27.
 # https://github.com/rust-lang/rust/issues/157750

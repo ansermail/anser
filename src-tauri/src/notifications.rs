@@ -5,7 +5,7 @@ use std::{
     sync::{Mutex, OnceLock},
 };
 use tauri::Emitter;
-#[cfg(not(target_os = "macos"))]
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
 use tauri_plugin_notification::NotificationExt;
 
 #[derive(Clone, Debug, serde::Serialize)]
@@ -61,12 +61,12 @@ pub fn incoming(
     Ok(mails)
 }
 pub fn show(app: &tauri::AppHandle, title: &str, body: &str) -> Result<()> {
-    #[cfg(target_os = "macos")]
+    #[cfg(any(target_os = "macos", target_os = "windows"))]
     {
         let _ = app;
         crate::notification_open::show(title, body, "")
     }
-    #[cfg(not(target_os = "macos"))]
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
     app.notification()
         .builder()
         .title(title)
@@ -78,7 +78,7 @@ pub fn received(store: &Store, app: &tauri::AppHandle, account: &Account, after:
     let language = store
         .interface_language()
         .unwrap_or_else(|_| "zh-CN".into());
-    #[cfg(target_os = "macos")]
+    #[cfg(any(target_os = "macos", target_os = "windows"))]
     let _ = app;
     let preferences = store.preferences().unwrap_or_default();
     if !preferences.new_mail_notifications || preferences.do_not_disturb {
@@ -89,11 +89,11 @@ pub fn received(store: &Store, app: &tauri::AppHandle, account: &Account, after:
     {
         for mail in mails {
             let body = format!("{}\n{}", mail.sender, mail.subject);
-            #[cfg(target_os = "macos")]
+            #[cfg(any(target_os = "macos", target_os = "windows"))]
             let result = crate::notification_open::bind(store, &mail).and_then(|token| {
                 crate::notification_open::show(text(&language, "Anser · New mail"), &body, &token)
             });
-            #[cfg(not(target_os = "macos"))]
+            #[cfg(not(any(target_os = "macos", target_os = "windows")))]
             let result = show(app, text(&language, "Anser · New mail"), &body);
             if let Err(error) = result {
                 let _ = store.log(&format!("系统通知失败：{error}"));

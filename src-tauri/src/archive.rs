@@ -3,7 +3,7 @@ use base64::{engine::general_purpose::STANDARD, Engine};
 use mailparse::{MailHeaderMap, ParsedMail};
 use sha2::{Digest, Sha256};
 use std::{
-    fs::{self, File, OpenOptions},
+    fs::{self, OpenOptions},
     io::Write,
     path::Path,
 };
@@ -22,8 +22,9 @@ pub fn atomic_write(path: &Path, data: &[u8]) -> Result<()> {
             .map_err(err)?;
         f.write_all(data).map_err(err)?;
         f.sync_all().map_err(err)?;
+        drop(f);
         fs::rename(&temp, path).map_err(err)?;
-        File::open(parent).and_then(|f| f.sync_all()).map_err(err)?;
+        crate::durable_file::sync_directory(parent).map_err(err)?;
         Ok(())
     };
     let result = write();
@@ -66,8 +67,7 @@ impl StagedRaw {
                 return Err("原件已由其他任务保存，请重新核对后重试".into());
             }
             fs::rename(temporary, &self.destination).map_err(err)?;
-            File::open(self.destination.parent().ok_or("无效存档路径")?)
-                .and_then(|file| file.sync_all())
+            crate::durable_file::sync_directory(self.destination.parent().ok_or("无效存档路径")?)
                 .map_err(err)?;
         }
         Ok(())

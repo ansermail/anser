@@ -197,7 +197,7 @@ export function StorageTools({ testMailId = "" }: { testMailId?: string }) {
           </div>
           <p className="text-sm text-muted-foreground leading-relaxed">
             {t(
-              "System notifications cover new mail and successful, failed or unconfirmed sends. Initial imports do not notify. Notification banners are controlled by macOS settings.",
+              "System notifications cover new mail and successful, failed or unconfirmed sends. Initial imports do not notify. Notification banners are controlled by system settings.",
             )}
           </p>
           <Separator />
@@ -210,7 +210,7 @@ export function StorageTools({ testMailId = "" }: { testMailId?: string }) {
                       "Development previews require the frontend server. Enable launch at login in the released app.",
                     )
                   : t(
-                      "Start in the background after logging into your Mac, then continue checking mail and scheduled sends.",
+                      "Start in the background after signing into your computer, then continue checking mail and scheduled sends.",
                     )}
               </p>
               {isDemo() && (

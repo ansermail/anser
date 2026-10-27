@@ -3,6 +3,7 @@ import { RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 import { call, isDemo, native } from "@/lib/api";
 import { t } from "@/lib/i18n";
+import { isWindows } from "@/lib/platform";
 import {
   Card,
   CardHeader,
@@ -172,16 +173,42 @@ export function FileAssociations() {
             {t("Sample mode does not read or change system file associations.")}
           </p>
         )}
-        {enabled && !data.supported && (
+        {enabled &&
+          !data.supported &&
+          (isWindows() ? (
+            <div className="flex flex-col items-start gap-3">
+              <p className="text-sm text-muted-foreground">
+                {t(
+                  "Choose Anser in Windows default app settings or Open with. Windows controls the default file association.",
+                )}
+              </p>
+              <Button
+                variant="outline"
+                onClick={() =>
+                  void call("open_file_association_settings").catch((cause) =>
+                    toast.error(
+                      t("Could not open system settings: {value0}", {
+                        value0: String(cause),
+                      }),
+                    ),
+                  )
+                }
+              >
+                {t("Open Windows default apps")}
+              </Button>
+            </div>
+          ) : (
+            <p className="text-sm text-muted-foreground">
+              {t("File association settings are currently available on macOS.")}
+            </p>
+          ))}
+        {data.supported && (
           <p className="text-sm text-muted-foreground">
-            {t("File association settings are currently available on macOS.")}
+            {t(
+              "Turn on to use Anser. Turn off to restore the previous default application.",
+            )}
           </p>
         )}
-        <p className="text-sm text-muted-foreground">
-          {t(
-            "Turn on to use Anser. Turn off to restore the previous default application.",
-          )}
-        </p>
         {!!items.length && (
           <Badge variant="secondary" className="w-fit">
             {t("Associated {count} of {total}", {

@@ -59,7 +59,8 @@
 body {
   margin: 0;
   font-family:
-    -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", sans-serif;
+    -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", "Segoe UI",
+    "Microsoft YaHei", sans-serif;
   font-size: 13px;
   color: var(--foreground);
   -webkit-font-smoothing: antialiased;
@@ -2669,6 +2670,14 @@ kbd {
   padding-top: var(--window-titlebar-height);
   background: var(--sidebar);
 }
+:root[data-platform="windows"] {
+  --window-titlebar-height: 0px;
+}
+
+:root[data-platform="windows"] .desktop-titlebar {
+  display: none;
+}
+
 .desktop-titlebar {
   position: fixed;
   inset: 0 0 auto;

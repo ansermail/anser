@@ -112,18 +112,25 @@ export function ExternalMailWindow() {
           ))
       )
         return;
-      if (event.metaKey && !event.shiftKey && event.key.toLowerCase() === "r") {
+      if (
+        (event.metaKey || event.ctrlKey) &&
+        !event.altKey &&
+        !event.shiftKey &&
+        event.key.toLowerCase() === "r"
+      ) {
         event.preventDefault();
         compose(false, false);
       } else if (
-        event.metaKey &&
+        (event.metaKey || event.ctrlKey) &&
+        !event.altKey &&
         event.shiftKey &&
         event.key.toLowerCase() === "r"
       ) {
         event.preventDefault();
         compose(false, true);
       } else if (
-        event.metaKey &&
+        (event.metaKey || event.ctrlKey) &&
+        !event.altKey &&
         event.shiftKey &&
         event.key.toLowerCase() === "f"
       ) {

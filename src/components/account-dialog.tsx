@@ -201,7 +201,9 @@ export function AccountDialog({
             </div>
             <div className="privacy-note">
               <LockKeyhole size={15} />
-              {t("Passwords and tokens are stored securely in macOS Keychain")}
+              {t(
+                "Passwords and tokens are encrypted locally; the key is protected by the system credential store.",
+              )}
             </div>
           </>
         ) : (

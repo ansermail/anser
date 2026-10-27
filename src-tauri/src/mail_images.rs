@@ -203,6 +203,7 @@ pub async fn respond(request: http::Request<Vec<u8>>, allowed: bool) -> http::Re
     http::Response::builder()
         .status(status)
         .header("Content-Type", mime)
+        .header("Access-Control-Allow-Origin", "*")
         .header("Cache-Control", "no-store")
         .header("X-Content-Type-Options", "nosniff")
         .header("Content-Security-Policy", "default-src 'none'; sandbox")

@@ -1,10 +1,12 @@
+import { nativeResourceOrigin } from "./platform";
+
 // Only the native reader has resource transports. Browser/Pages rendering keeps
 // normal resource URLs and can never call the native backend through this path.
 function nativeResource(source: string, kind: "image" | "style" | "font") {
   try {
     const url = new URL(source);
     if (url.protocol !== "https:") return source;
-    return `anser-${kind}://localhost/fetch?url=${encodeURIComponent(url.href)}`;
+    return `${nativeResourceOrigin(`anser-${kind}`)}/fetch?url=${encodeURIComponent(url.href)}`;
   } catch {
     return source;
   }
@@ -66,11 +68,13 @@ function cssResources(value: string) {
 export function routeNativeMailResources(doc: Document) {
   for (const link of doc.querySelectorAll<HTMLLinkElement>(
     'link[rel="stylesheet"]',
-  ))
+  )) {
     link.setAttribute(
       "href",
       nativeResource(link.getAttribute("href")!, "style"),
     );
+    link.setAttribute("crossorigin", "anonymous");
+  }
   for (const image of doc.querySelectorAll("img")) {
     const source = image.getAttribute("src");
     if (source) image.setAttribute("src", nativeImage(source));
