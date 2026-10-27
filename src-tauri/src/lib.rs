@@ -17,6 +17,7 @@ mod idle;
 mod interface_language;
 mod mail_formats;
 mod mail_images;
+mod mail_print;
 mod mail_styles;
 mod models;
 mod msg_format;
@@ -1846,6 +1847,7 @@ pub fn run() {
             }
         })
         .invoke_handler(tauri::generate_handler![
+            mail_print::print_mail,
             restart_for_update,
             update_history::update_release_history,
             take_eml_paths,

@@ -3,15 +3,18 @@ fn main() {
         cc::Build::new()
             .file("src/macos_notifications.m")
             .file("src/macos_file_associations.m")
+            .file("src/macos_print.m")
             .flag("-fobjc-arc")
             .flag("-fblocks")
             .compile("anser_notifications");
         println!("cargo:rustc-link-lib=framework=Foundation");
         println!("cargo:rustc-link-lib=framework=AppKit");
+        println!("cargo:rustc-link-lib=framework=WebKit");
         println!("cargo:rustc-link-lib=framework=UniformTypeIdentifiers");
         println!("cargo:rerun-if-changed=src/macos_file_associations.m");
         println!("cargo:rustc-link-lib=framework=UserNotifications");
         println!("cargo:rerun-if-changed=src/macos_notifications.m");
+        println!("cargo:rerun-if-changed=src/macos_print.m");
     }
     tauri_build::build()
 }

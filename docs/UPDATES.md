@@ -1,6 +1,10 @@
 # 发布与应用内更新
 
-## 当前版本：0.1.33（2026-10-26）
+## 0.1.34 发布准备（2026-10-27）
+
+用户已授权提交原格式与 A4 打印修复并发版。五处版本同步 0.1.34，完整说明见 [v0.1.34](releases/v0.1.34.md)。本机系统面板与 PDF 已核对 A4、纵向、100% 与原邮件样式；实际纸张打印、正式包/升级和 Intel 实机未验证。发布全量门槛、固定源码、双架构云端构建、七资源审计、公开更新与 Homebrew 同步分别记录在 [发布工作点](RELEASE_0_1_34_WORKING.md)。当前公开 latest 为 0.1.33。
+
+## 前一正式版本：0.1.33（2026-10-26）
 
 0.1.33 Alpha 于 2026-10-27 00:24:05（Asia/Shanghai）正式发布为 latest，固定源码 `4ae06793364525d548df96c3971ca9f29be02308`。[Checks 40349698910](https://github.com/ansermail/anser/actions/runs/40349698910)、[Preview Pages 40349698920](https://github.com/ansermail/anser/actions/runs/40349698920) 与 [Release macOS 40349710839](https://github.com/ansermail/anser/actions/runs/40349710839) 全部成功，[正式版本](https://github.com/ansermail/anser/releases/tag/v0.1.33) 已公开。0.1.32 的标签在检查阶段因大列表用例超时未产出任何资源，该版本未发布。
 

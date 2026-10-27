@@ -1,42 +1,134 @@
 import { dateLocale, t } from "./i18n";
 import { safeMailHtml } from "./mail-html";
-import { isTauri } from "@tauri-apps/api/core";
+import { invoke, isTauri } from "@tauri-apps/api/core";
 import type { Detail } from "./types";
 
 let activePrint: HTMLElement | null = null;
+let printSequence = 0;
 
-async function printImagesReady(sheet: HTMLElement) {
-  const pending = new Set(
-    [...sheet.querySelectorAll("img")].filter((image) => !image.complete),
-  );
-  if (!pending.size) return;
+function printBody(sheet: HTMLElement) {
+  return sheet.querySelector(".mail-print-body")?.shadowRoot;
+}
+
+async function printResourcesReady(
+  sheet: HTMLElement,
+  refreshStyles: () => void,
+) {
+  const body = printBody(sheet);
+  if (!body) return;
+  // The temporary sheet is laid out off screen so styles, background images
+  // and fonts can load before the system takes its print snapshot.
+  void sheet.offsetHeight;
   await new Promise<void>((resolve) => {
     const finish = () => {
       clearTimeout(timer);
-      for (const image of pending) {
-        image.removeEventListener("load", settled);
-        image.removeEventListener("error", settled);
-      }
+      clearInterval(poll);
       resolve();
     };
-    const settled = (event: Event) => {
-      const image = event.currentTarget as HTMLImageElement;
-      image.removeEventListener("load", settled);
-      image.removeEventListener("error", settled);
-      pending.delete(image);
-      if (!pending.size) finish();
+    const check = () => {
+      if (activePrint !== sheet) return finish();
+      refreshStyles();
+      void sheet.offsetHeight;
+      if (
+        [...body.querySelectorAll("img")].every((image) => image.complete) &&
+        [
+          ...body.querySelectorAll<HTMLLinkElement>('link[rel="stylesheet"]'),
+        ].every((link) => link.sheet !== null) &&
+        sheet.ownerDocument.fonts?.status !== "loading"
+      )
+        finish();
     };
     const timer = setTimeout(finish, 15_000);
-    for (const image of pending) {
-      image.addEventListener("load", settled);
-      image.addEventListener("error", settled);
-    }
+    const poll = setInterval(check, 50);
+    check();
   });
+}
+
+function printStyles(sheet: HTMLElement, root: ShadowRoot) {
+  const fontStyle = sheet.ownerDocument.createElement("style");
+  const fontFamilies = new Map<string, string>();
+  const copiedFonts = new WeakSet<CSSRule>();
+  const prefix = `anser-print-${++printSequence}`;
+  const unquote = (value: string) =>
+    value.trim().replace(/^(["'])(.*)\1$/, "$2");
+  const rewrite = (rules: CSSRuleList) => {
+    for (const rule of rules) {
+      // Browsers do not register @font-face inside shadow trees. Register only
+      // font rules in the outer document, with private family names so mail
+      // fonts cannot replace the app's fonts. Removal of the sheet removes them.
+      if (rule.type === CSSRule.FONT_FACE_RULE && !copiedFonts.has(rule)) {
+        copiedFonts.add(rule);
+        const font = rule as CSSFontFaceRule;
+        const original = unquote(font.style.getPropertyValue("font-family"));
+        if (!original) continue;
+        let family = fontFamilies.get(original.toLowerCase());
+        if (!family) {
+          family = `${prefix}-${fontFamilies.size}`;
+          fontFamilies.set(original.toLowerCase(), family);
+        }
+        if (!fontStyle.isConnected) sheet.append(fontStyle);
+        const target = fontStyle.sheet!;
+        const index = target.insertRule(font.cssText, target.cssRules.length);
+        const copy = target.cssRules[index] as CSSFontFaceRule;
+        copy.style.setProperty("font-family", `"${family}"`);
+        const base = font.parentStyleSheet?.href;
+        if (base)
+          copy.style.setProperty(
+            "src",
+            copy.style
+              .getPropertyValue("src")
+              .replace(
+                /url\(\s*["']?([^"')]+)["']?\s*\)/g,
+                (_, url: string) => `url("${new URL(url.trim(), base).href}")`,
+              ),
+          );
+      }
+      if ("selectorText" in rule) {
+        const style = rule as CSSStyleRule;
+        // The imported <html> is the email root inside this shadow tree.
+        // Leave quoted attribute values intact when adapting :root selectors.
+        style.selectorText = style.selectorText.replace(
+          /"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|:root\b/g,
+          (token) => (token === ":root" ? "html" : token),
+        );
+      }
+      if ("cssRules" in rule) rewrite((rule as CSSGroupingRule).cssRules);
+      if (rule.type === CSSRule.IMPORT_RULE) {
+        const imported = (rule as CSSImportRule).styleSheet;
+        if (imported) rewrite(imported.cssRules);
+      }
+    }
+  };
+  return () => {
+    for (const node of root.querySelectorAll<
+      HTMLStyleElement | HTMLLinkElement
+    >("style,link")) {
+      try {
+        if (node.sheet) rewrite(node.sheet.cssRules);
+      } catch {
+        // Cross-origin sheets still render; their CSSOM may be unreadable.
+      }
+    }
+    if (!fontFamilies.size) return;
+    const view = sheet.ownerDocument.defaultView!;
+    for (const element of root.querySelectorAll<HTMLElement>(
+      "html,body,body *",
+    )) {
+      const original = view.getComputedStyle(element).fontFamily;
+      const family = original.replace(
+        /"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|[^,]+/g,
+        (name) => fontFamilies.get(unquote(name).toLowerCase()) || name,
+      );
+      if (family !== original)
+        element.style.setProperty("font-family", family, "important");
+    }
+  };
 }
 
 export function printableMail(detail: Detail, doc: Document = document) {
   const sheet = doc.createElement("main");
   sheet.id = "mail-print-root";
+  sheet.setAttribute("inert", "");
   sheet.setAttribute("aria-label", t("Message to print"));
 
   const header = doc.createElement("header");
@@ -68,18 +160,20 @@ export function printableMail(detail: Detail, doc: Document = document) {
   const body = doc.createElement("section");
   body.className = "mail-print-body";
   if (detail.html) {
-    // Reuse the same sanitizer as the reader, then import only the body.
-    // Mail-owned styles stay out of the app document and print controls.
+    // Preserve the entire sanitized document, including head styles and the
+    // html/body attributes that those styles target. Shadow DOM isolates both
+    // the mail's CSS and the app's resets, without an iframe's print page box.
     const safe = new DOMParser().parseFromString(
       safeMailHtml(detail.html, "anser-print", false, isTauri()),
       "text/html",
     );
-    for (const style of safe.body.querySelectorAll("style,link"))
-      style.remove();
     for (const image of safe.body.querySelectorAll("img"))
       image.setAttribute("referrerpolicy", "no-referrer");
-    for (const child of [...safe.body.childNodes])
-      body.append(doc.importNode(child, true));
+    const isolated = body.attachShadow({ mode: "open" });
+    const printStyle = doc.createElement("style");
+    printStyle.textContent =
+      ":host{all:initial;display:block;color-scheme:light}html{-webkit-print-color-adjust:exact;print-color-adjust:exact}";
+    isolated.append(printStyle, doc.importNode(safe.documentElement, true));
   } else {
     body.textContent = detail.mail.body;
     body.classList.add("plain");
@@ -108,6 +202,8 @@ export async function printMail(detail: Detail) {
   const sheet = printableMail(detail);
   activePrint = sheet;
   document.body.append(sheet);
+  const isolated = printBody(sheet);
+  const refreshStyles = isolated ? printStyles(sheet, isolated) : () => {};
   const cleanup = () => {
     if (activePrint === sheet) activePrint = null;
     sheet.remove();
@@ -122,10 +218,10 @@ export async function printMail(detail: Detail) {
     await new Promise<void>((resolve) =>
       requestAnimationFrame(() => resolve()),
     );
-    await printImagesReady(sheet);
+    await printResourcesReady(sheet, refreshStyles);
     if (activePrint !== sheet) return;
-    // Tauri replaces window.print on macOS with its native webview print API.
-    await (window.print() as unknown as Promise<void> | void);
+    if (isTauri()) await invoke("print_mail");
+    else window.print();
   } catch (error) {
     cleanup();
     throw error;

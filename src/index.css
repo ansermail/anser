@@ -3820,18 +3820,18 @@ kbd {
     display: none;
   }
 }
-.mail-print-header,
-.mail-print-body,
-.mail-print-attachments {
-  display: none;
-}
-
 #mail-print-root {
-  display: none;
+  position: fixed;
+  left: -100000px;
+  top: 0;
+  width: 178mm;
+  pointer-events: none;
+  contain: layout paint;
 }
 
 @media print {
   @page {
+    size: A4 portrait;
     margin: 16mm;
   }
 
@@ -3841,6 +3841,9 @@ kbd {
 
   body > #mail-print-root {
     display: block !important;
+    position: static;
+    width: auto;
+    contain: none;
     color: #111;
     background: #fff;
     font:
@@ -3877,15 +3880,6 @@ kbd {
 
   .mail-print-body.plain {
     white-space: pre-wrap;
-  }
-
-  .mail-print-body img,
-  .mail-print-body table {
-    max-width: 100%;
-  }
-
-  .mail-print-body img {
-    height: auto;
   }
 
   .mail-print-attachments {

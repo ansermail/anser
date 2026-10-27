@@ -70,8 +70,11 @@ Pages 语言选择仍只使用隔离的虚构数据/内存偏好，不调用真�
 
 ## 单封邮件打印（2026-10-12）
 
-- 阅读页在星标与本地删除之间调用 `printMail(detail)`，只接收当前已加载的 `Detail`，不遍历对话，也不改变邮件标记或 MIME 原件。打印页由文字节点构造头部与附件清单；HTML 正文先经过现有 `safeMailHtml` 净化，只导入正文节点，不把邮件的 `<style>` 放入主应用文档；纯文本按原换行输出。图片请求设置无 Referrer。
-- 打印页作为临时 DOM 只在打印媒体中显示，`@media print` 隐藏应用根节点，正常界面不显示打印内容。调用当前平台的 `window.print()`；Tauri macOS 将其映射到原生 WebView 打印操作。主窗口的 `main` capability 须包含 `core:webview:allow-print`，否则原生调用会被 ACL 拒绝；浏览器打印成功不能验证该权限。打印结束事件或兜底定时器清理临时节点。附件只打印名称；2026-10-13 本地构建的原生 App 已打开 macOS 打印面板并取消，正式发布包及原位升级仍待验收。
+- 阅读页在星标与本地删除之间调用 `printMail(detail)`，只接收当前已加载的 `Detail`，不遍历对话，也不改变邮件标记或 MIME 原件。打印页由文字节点构造头部与附件清单；HTML 正文先经过现有 `safeMailHtml` 净化，再将完整 html/head/body 文档放进 `.mail-print-body` 的 ShadowRoot，保留作者 CSS、body 属性和结构；应用 reset 不进入该边界，邮件选择器也不能影响头部或主界面。纯文本按原换行输出。图片请求设置无 Referrer。
+- 打印页作为临时 DOM 在屏幕外排版、加载资源，`@media print` 将其恢复为正常文档流并隐藏应用根节点，正常界面不显示打印内容。浏览器调用 `window.print()`；桌面调用 `print_mail`，后端只允许 Tauri 注入的 main / external-mail-* 调用窗口，其他平台转交原生 WebView 打印。主窗口及外部阅读窗口继续保留 `core:webview:allow-print`，浏览器打印不能验证原生 IPC、ACL 或系统面板。打印结束事件或兜底定时器清理临时节点。附件只打印名称。
+- 2026-10-27 原格式修复：屏幕外临时页宽 178mm（A4 默认 16mm 页边距），打印时宽度随实际纸张重新排版；直接打印隔离 DOM，保留文字、链接、表格和跨页内容。适配可读取样式中的 `:root` 为隔离文档的 html 节点；Shadow DOM 无法直接注册的 `@font-face` 仅复制字体规则到临时页，并用私有族名映射正文，清理时一并移除。保留浅色正文和精确打印颜色。跨域 CSS 若禁止 CSSOM 读取仍可正常套用其普通选择器，但其中根变量/字体规则的额外适配受浏览器限制；失败资源不保证还原。
+- A4 比例：CSS `@page` 默认 A4 portrait / 16mm。`mail_print.rs` 经 `with_webview` 在主线程调用 `macos_print.m` 的 WKWebView 打印入口；复制独立 NSPrintInfo，固定 A4、纵向、scalingFactor=1、取消横向/纵向居中，横向 Fit / 纵向 Automatic。AppKit 四边设 0，由 WebKit 应用 CSS 页边距，避免双倍留白；不改 sharedPrintInfo。原生面板启用 PaperSize / Orientation / Scaling 控件，直接显示 A4、纵向及 100%，可调整本次参数，取消/保存 PDF 后返回阅读页。
+- 本轮本机开发包已打开中文系统面板，并通过其“保存为 PDF”得到 595×842pt A4，首行 x=45.35pt（16mm）、y=48.80pt，原样式保留；浏览器长正文 100 段按序完整输出 5 页 A4。真实纸张打印、原生长正文分页、正式包/升级及 Intel 实机仍未验证。详见 `MAIL_PRINT_FORMAT_WORKING.md`。
 - macOS 原生打印设置的英文标签由系统面板绘制。0.1.16 应用包原 `CFBundleDevelopmentRegion=English` 且未声明中文本地化；2026-10-14 起通过 `src-tauri/Info.plist` 合入 `zh-Hans` 开发语言及本地化列表，开发预览包的 `scripts/mac-dev-runner.mjs` 写入同样两项。本地重建/安装包的 plist 与签名已检查，原生打印面板实际显示中文，用户确认无问题；公开 0.1.16 包仍不含此改动，开发预览包未在本轮另行打开打印面板。邮件正文不受此配置改动。
 
 ## 账号目录树、未读数与父目录范围（2026-10-12）
@@ -644,13 +647,13 @@ WebKit原生scripts-disabled正文不绑定子文档load/error/click/auxclick事
 - Tauri 异步协议在主 WebView 注册，接收 GET 图片请求。Rust `mail_images` 读取 `proxy::current` 的短时配置快照，reqwest 使用显式全局代理（含 SOCKS5 远端 DNS）或无代理直连，不依赖终端代理环境或系统代理。沿用代理握手失败可选直连，保持 TLS 校验。
 - 初始地址及最多 5 次跳转仅接受无 URL 用户凭据的 HTTPS，拒绝 localhost/本地域名及私有、回环、链路本地 IP 字面量。最多 6 个活动请求、20 MiB/图片、40 秒总期限（包括排队）；按 GET 实际字节识别常见位图，SVG 以图片类型及响应 CSP 隔离，HTML/WAF 验证页不能充当图片返回。
 - 不转发邮箱凭据、浏览器 Cookie、Origin 或 Referer；不写图片缓存到数据库/存档，不把源 URL、跟踪地址、代理凭据或响应正文写入失败日志。响应使用 `no-store`、`nosniff` 及 `default-src 'none'; sandbox`，仅在 img-src 追加图片协议，保留正文脚本禁用与 iframe sandbox。
-- 图片状态继续使用父页面检查，不向禁用脚本的 WebKit 子帧绑定事件。重试复用净化后的地址，请求时读取最新代理；旧正文离开后响应不会发布到新正文。打印在父页面等待图片完成/失败，最多 15 秒后进入系统打印，不无限阻塞。
+- 图片状态继续使用父页面检查，不向禁用脚本的 WebKit 子帧绑定事件。重试复用净化后的地址，请求时读取最新代理；旧正文离开后响应不会发布到新正文。打印在父页面轮询正文图片、样式表与字体，合计最多 15 秒后进入系统打印，不无限阻塞。
 
 ### 原生正文 CSS 与字体通道（0.1.17 起）
 
 `mail_styles.rs` 为主 WebView 注册 `anser-style`/`anser-font`，复用 `mail_images` 的配置快照、无 Cookie/Referer 请求、HTTPS 目标/重定向检查、6 并发与 40 秒总期限。样式限 1 MiB、字体限 10 MiB，分别核对 CSS Content-Type/UTF-8 与字体字节签名，拒绝 HTML 错误页，返回 no-store/nosniff 与匿名字体 CORS。CSS 使用 cssparser token 化：导入映射为 style，font-face src 映射为 font，其余 url 映射为 image；相对地址以 GET 最终 URL 解析，嵌套深度限 32。
 
-净化层仅保留 HTTPS stylesheet link，并映射原生正文的 link/@import/@font-face，原生 CSP 只向对应类型放开自有协议；网页示例保留正常 HTTPS，不生成协议入口。主页面不插入邮件 CSS，打印删除 link/style。正文仍保持 scripts-disabled sandbox 与用户激活导航边界。ResizeObserver 不同步写被观察尺寸，iframe 仅宽度变化触发重新测量。
+净化层仅保留 HTTPS stylesheet link，并映射原生正文的 link/@import/@font-face，原生 CSP 只向对应类型放开自有协议；网页示例保留正常 HTTPS，不生成协议入口。主页面不插入邮件选择器；打印在 ShadowRoot 保留 link/style，隔离应用样式。阅读正文仍保持 scripts-disabled sandbox 与用户激活导航边界。ResizeObserver 不同步写被观察尺寸，iframe 仅宽度变化触发重新测量。
 
 ### 排版装饰图片（0.1.17 起，0.1.19 补充）
 
