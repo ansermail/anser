@@ -1,5 +1,11 @@
 # 本地加密凭据库与项目固定签名
 
+## Windows 适配（验证中）
+
+Windows 使用同一格式的 AES-256-GCM 本地凭据库，主密钥通过 keyring 的 `windows-native` 后端存入当前用户的 Windows Credential Manager，沿用 `dev.maildesk.desktop` 与 `anser-credentials-key-v2`。不会调用 macOS 的 `/usr/bin/security`。Windows 文件数据刷新并关闭句柄后原子替换；0600 和目录 fsync 为 Unix 行为，Windows 继承当前用户应用数据目录的访问权限。凭据库及密钥均不进入邮件存档备份。
+
+Windows CI 使用随机服务名测试密钥创建、重读、更新与删除，不触碰生产凭据。真实安装、跨版本升级后的凭据读取需独立验收。下文钥匙串、固定证书和 CDHash 的说明适用于 macOS。
+
 ## 存储方式
 
 邮箱密码/OAuth 令牌、全局代理密码和模型 API Key 共用一份 AES-256-GCM 加密的本地凭据库 `credentials.vault`，位于应用数据目录根部（Tauri `app_data_dir()`），权限 0600，写入采用临时文件 + fsync + 原子替换。32 字节密钥以 64 位十六进制文本保存在登录钥匙串 `dev.maildesk.desktop` 服务的 `anser-credentials-key-v2` 条目；凭据值、密钥内容都不进入 SQLite、明文文件、邮件原件、日志、备份或导出。

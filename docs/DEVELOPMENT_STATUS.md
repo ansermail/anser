@@ -4,7 +4,7 @@
 
 ## 当前执行检查点：Windows 客户端（2026-10-27，进行中）
 
-用户要求增加 Windows 客户端。已从 05f40f1 切换到 codex/windows-support，保留两处既有图片诊断 WIP；按 Windows 10/11 x64、WebView2、每用户 NSIS 安装推进。初查发现凭据后端、文件目录同步、外部邮件窗口、正文自有协议与发布清单需要平台适配。当前开始实现，Windows 构建和测试由 CI 验证，真实 Windows 桌面/收发/升级仍未验证。入口见 [Windows 工作点](WINDOWS_SUPPORT_WORKING.md)。
+用户要求增加 Windows 客户端。分支 `codex/windows-support` 基于 `05f40f1`，保留两处既有图片诊断 WIP；首阶段为 Windows 10/11 x64、WebView2、每用户 NSIS 安装。`4467ce0` / `43bfc6d` 已实现凭据后端与文件落盘、原生窗口/Ctrl 提示、HTTPS 正文资源/CSP、通知协议及三平台发布资源。macOS 本地前端 447、Rust 432/4 既有忽略、桌面脚本 37、生产与 Pages 隔离构建通过；浏览器模拟 Win32 的界面与 Ctrl 入口通过。Windows CI 首轮 checkout CRLF 格式失败已修复；第二轮 440/447，7 条 App 交互用例超时，同一提交重跑一次核对中。Windows Rust/NSIS/原生冒烟仍待流水线，真实 Windows 账号收发、通知、打印及升级未验证；公开 0.1.34 与本机已安装 Mac 应用保持不变。入口见 [Windows 工作点](WINDOWS_SUPPORT_WORKING.md) 和 [Windows 说明](WINDOWS.md)。
 
 ## 当前执行检查点：0.1.34 已正式发布并完成清理（2026-10-27）
 

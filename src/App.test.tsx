@@ -1092,30 +1092,34 @@ describe("message and conversation display modes", () => {
     expect(host.querySelectorAll("button.mail-row-main")).toHaveLength(8);
     expect(localStorage.getItem("mail-list-mode")).toBe("conversations");
   });
-  it("reads and navigates single turns without loading or marking the rest of a thread", async () => {
-    await seedReplyThread();
-    await click(nav("本地存档"));
-    await chooseListMode("逐封邮件");
-    const calls = vi.spyOn(api, "call");
-    await click(host.querySelector("button.mail-row-main"));
-    expect(host.querySelector(".conversation-stream")).toBeNull();
-    expect(host.querySelector(".reader-scroll .message-body")).not.toBeNull();
-    expect(
-      calls.mock.calls.some(([command]) => command === "mail_conversation"),
-    ).toBe(false);
-    const single = await snapshot({ ...localQuery, listMode: "messages" });
-    expect(single.messages.find((m) => m.id === "demo-0")?.isRead).toBe(true);
-    expect(single.messages.find((m) => m.id === "older-reply")?.isRead).toBe(
-      false,
-    );
-    await click(host.querySelector('[aria-label="下一封邮件"]'));
-    expect(calls).toHaveBeenCalledWith("mail_detail", { id: "older-reply" });
-    expect(host.querySelectorAll(".mail-row.selected")).toHaveLength(1);
-    await click(host.querySelector('[aria-label="上一封邮件"]'));
-    expect(host.querySelectorAll(".mail-row.selected")).toHaveLength(1);
-    await chooseListMode("按对话分组");
-    expect(host.querySelectorAll(".conversation-turn")).toHaveLength(2);
-  });
+  it(
+    "reads and navigates single turns without loading or marking the rest of a thread",
+    async () => {
+      await seedReplyThread();
+      await click(nav("本地存档"));
+      await chooseListMode("逐封邮件");
+      const calls = vi.spyOn(api, "call");
+      await click(host.querySelector("button.mail-row-main"));
+      expect(host.querySelector(".conversation-stream")).toBeNull();
+      expect(host.querySelector(".reader-scroll .message-body")).not.toBeNull();
+      expect(
+        calls.mock.calls.some(([command]) => command === "mail_conversation"),
+      ).toBe(false);
+      const single = await snapshot({ ...localQuery, listMode: "messages" });
+      expect(single.messages.find((m) => m.id === "demo-0")?.isRead).toBe(true);
+      expect(single.messages.find((m) => m.id === "older-reply")?.isRead).toBe(
+        false,
+      );
+      await click(host.querySelector('[aria-label="下一封邮件"]'));
+      expect(calls).toHaveBeenCalledWith("mail_detail", { id: "older-reply" });
+      expect(host.querySelectorAll(".mail-row.selected")).toHaveLength(1);
+      await click(host.querySelector('[aria-label="上一封邮件"]'));
+      expect(host.querySelectorAll(".mail-row.selected")).toHaveLength(1);
+      await chooseListMode("按对话分组");
+      expect(host.querySelectorAll(".conversation-turn")).toHaveLength(2);
+    },
+    process.platform === "win32" ? 15_000 : 5_000,
+  );
   it("applies a selected single-mail batch action without trashing its reply", async () => {
     await seedReplyThread();
     await click(nav("本地存档"));
@@ -1159,85 +1163,92 @@ describe("message and conversation display modes", () => {
     );
   });
 });
-describe("fixed cursor list loading", () => {
-  it("requests only the next fixed page and appends without changing the query prefix", async () => {
-    await seedLargeMailbox();
-    const original = api.mailPage,
-      calls = vi.spyOn(api, "mailPage").mockImplementation(original);
-    await click(host.querySelector(".load-more"));
-    expect(host.querySelectorAll("button.mail-row-main")).toHaveLength(205);
-    expect(
-      calls.mock.calls.some(([q, cursor]) => q.limit === 200 && !!cursor),
-    ).toBe(true);
-    expect(calls.mock.calls.every(([q]) => q.limit === 200)).toBe(true);
-    expect(host.querySelector(".load-more")).toBeNull();
-  });
-  it("keeps loaded pages and the final cursor through an unchanged refresh", async () => {
-    await seedLargeMailbox();
-    const base = JSON.parse(
-      localStorage.getItem("mail-desktop-demo-v1")!,
-    ) as import("./lib/types").Snapshot;
-    base.messages[0].isRead = true;
-    localStorage.setItem("mail-desktop-demo-v1", JSON.stringify(base));
-    api.restoreDemo();
-    await click(nav("本地存档"));
-    await click(host.querySelector(".load-more"));
-    expect(host.querySelectorAll("button.mail-row-main")).toHaveLength(205);
-    await click(host.querySelector("button.mail-row-main"));
-    expect(host.querySelectorAll("button.mail-row-main")).toHaveLength(205);
-    expect(host.querySelector(".load-more")).toBeNull();
-  });
-  it("replaces a stale page on a new message rather than combining generations", async () => {
-    await seedLargeMailbox();
-    const base = JSON.parse(
-      localStorage.getItem("mail-desktop-demo-v1")!,
-    ) as import("./lib/types").Snapshot;
-    base.messages.push({
-      ...base.messages[0],
-      id: "new-arrival",
-      messageId: "<new-arrival@example.com>",
-      subject: "New arrival",
-      date: new Date(Date.parse(base.messages[0].date) + 10000).toISOString(),
+// Two unchanged Windows runner attempts measured 7-20s for these 205-row
+// render/refresh cases. Keep a bounded workload-specific budget on Windows.
+describe(
+  "fixed cursor list loading",
+  { timeout: process.platform === "win32" ? 30_000 : 5_000 },
+  () => {
+    it("requests only the next fixed page and appends without changing the query prefix", async () => {
+      await seedLargeMailbox();
+      const original = api.mailPage,
+        calls = vi.spyOn(api, "mailPage").mockImplementation(original);
+      await click(host.querySelector(".load-more"));
+      expect(host.querySelectorAll("button.mail-row-main")).toHaveLength(205);
+      expect(
+        calls.mock.calls.some(([q, cursor]) => q.limit === 200 && !!cursor),
+      ).toBe(true);
+      expect(calls.mock.calls.every(([q]) => q.limit === 200)).toBe(true);
+      expect(host.querySelector(".load-more")).toBeNull();
     });
-    localStorage.setItem("mail-desktop-demo-v1", JSON.stringify(base));
-    api.restoreDemo();
-    await click(host.querySelector(".load-more"));
-    expect(host.querySelectorAll("button.mail-row-main")).toHaveLength(200);
-    expect(host.querySelector(".row-subject-text")?.textContent).toBe(
-      "New arrival",
-    );
-    expect(document.body.textContent).toContain("已重新加载最新结果");
-  });
-  it("discards a delayed cursor page after moving to a different category", async () => {
-    await seedLargeMailbox();
-    const original = api.mailPage;
-    let release!: () => void;
-    const gate = new Promise<void>((resolve) => {
-      release = resolve;
+    it("keeps loaded pages and the final cursor through an unchanged refresh", async () => {
+      await seedLargeMailbox();
+      const base = JSON.parse(
+        localStorage.getItem("mail-desktop-demo-v1")!,
+      ) as import("./lib/types").Snapshot;
+      base.messages[0].isRead = true;
+      localStorage.setItem("mail-desktop-demo-v1", JSON.stringify(base));
+      api.restoreDemo();
+      await click(nav("本地存档"));
+      await click(host.querySelector(".load-more"));
+      expect(host.querySelectorAll("button.mail-row-main")).toHaveLength(205);
+      await click(host.querySelector("button.mail-row-main"));
+      expect(host.querySelectorAll("button.mail-row-main")).toHaveLength(205);
+      expect(host.querySelector(".load-more")).toBeNull();
     });
-    vi.spyOn(api, "mailPage").mockImplementation(async (q, cursor) => {
-      if (cursor) await gate;
-      return original(q, cursor);
+    it("replaces a stale page on a new message rather than combining generations", async () => {
+      await seedLargeMailbox();
+      const base = JSON.parse(
+        localStorage.getItem("mail-desktop-demo-v1")!,
+      ) as import("./lib/types").Snapshot;
+      base.messages.push({
+        ...base.messages[0],
+        id: "new-arrival",
+        messageId: "<new-arrival@example.com>",
+        subject: "New arrival",
+        date: new Date(Date.parse(base.messages[0].date) + 10000).toISOString(),
+      });
+      localStorage.setItem("mail-desktop-demo-v1", JSON.stringify(base));
+      api.restoreDemo();
+      await click(host.querySelector(".load-more"));
+      expect(host.querySelectorAll("button.mail-row-main")).toHaveLength(200);
+      expect(host.querySelector(".row-subject-text")?.textContent).toBe(
+        "New arrival",
+      );
+      expect(document.body.textContent).toContain("已重新加载最新结果");
     });
-    await click(host.querySelector(".load-more"));
-    await click(nav("星标邮件"));
-    await act(async () => {
-      release();
-      await gate;
+    it("discards a delayed cursor page after moving to a different category", async () => {
+      await seedLargeMailbox();
+      const original = api.mailPage;
+      let release!: () => void;
+      const gate = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      vi.spyOn(api, "mailPage").mockImplementation(async (q, cursor) => {
+        if (cursor) await gate;
+        return original(q, cursor);
+      });
+      await click(host.querySelector(".load-more"));
+      await click(nav("星标邮件"));
+      await act(async () => {
+        release();
+        await gate;
+      });
+      expect(host.querySelectorAll("button.mail-row-main")).toHaveLength(200);
+      expect(host.querySelector(".list-heading h1")?.textContent).toBe(
+        "星标邮件",
+      );
+      expect(
+        host.querySelector(".load-more")?.getAttribute("aria-busy"),
+      ).not.toBe("true");
     });
-    expect(host.querySelectorAll("button.mail-row-main")).toHaveLength(200);
-    expect(host.querySelector(".list-heading h1")?.textContent).toBe(
-      "星标邮件",
-    );
-    expect(
-      host.querySelector(".load-more")?.getAttribute("aria-busy"),
-    ).not.toBe("true");
-  });
-});
+  },
+);
 // These integration cases render 205 mails and navigate across the 200-row page.
 // The rest of this suite keeps the shared 15s budget; the two seven-navigation
 // cases below need their own bound: shared macOS runners measured 13-17s for
-// them while the same commit passed the rest of the suite.
+// them while the same commit passed the rest of the suite. Windows measured
+// 34-46s in two unchanged runs, so only those cases use a 60s Windows bound.
 describe("reading across loaded page boundaries", { timeout: 15_000 }, () => {
   it.each(["按对话分组", "逐封邮件"])(
     "loads the next page and keeps previous navigation in %s mode",
@@ -1265,7 +1276,7 @@ describe("reading across loaded page boundaries", { timeout: 15_000 }, () => {
           .disabled,
       ).toBe(true);
     },
-    30_000,
+    process.platform === "win32" ? 60_000 : 30_000,
   );
   it("extends an unread boundary when the opened mail disappears from its filter", async () => {
     await seedLargeMailbox();
