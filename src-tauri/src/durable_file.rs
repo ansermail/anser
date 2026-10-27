@@ -13,20 +13,3 @@ pub fn sync_directory(path: &Path) -> io::Result<()> {
         Ok(())
     }
 }
-
-#[cfg(test)]
-mod tests {
-    #[test]
-    fn publishing_and_replacing_unicode_files_preserves_complete_bytes() {
-        let dir = tempfile::tempdir().unwrap();
-        let file = dir.path().join("邮件.eml");
-        for data in [
-            b"first message".as_slice(),
-            b"replacement message".as_slice(),
-        ] {
-            crate::archive::atomic_write(&file, data).unwrap();
-            assert_eq!(std::fs::read(&file).unwrap(), data);
-            assert_eq!(std::fs::read_dir(dir.path()).unwrap().count(), 1);
-        }
-    }
-}

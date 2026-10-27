@@ -33,6 +33,23 @@ pub fn atomic_write(path: &Path, data: &[u8]) -> Result<()> {
     }
     result
 }
+
+#[cfg(test)]
+mod publication_tests {
+    #[test]
+    fn publishing_and_replacing_unicode_files_preserves_complete_bytes() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("邮件.eml");
+        for data in [
+            b"first message".as_slice(),
+            b"replacement message".as_slice(),
+        ] {
+            super::atomic_write(&file, data).unwrap();
+            assert_eq!(std::fs::read(&file).unwrap(), data);
+            assert_eq!(std::fs::read_dir(dir.path()).unwrap().count(), 1);
+        }
+    }
+}
 pub fn store_raw(root: &Path, raw: &[u8]) -> Result<String> {
     let runtime = crate::archive_location::runtime(root);
     let _guard = runtime.gate.read().map_err(err)?;

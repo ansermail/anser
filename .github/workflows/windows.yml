@@ -39,6 +39,7 @@ jobs:
         with:
           workspaces: src-tauri
           key: windows-x64
+          cache-on-failure: true
       - run: npm ci
       - run: cargo fmt --manifest-path src-tauri/Cargo.toml --check
       - run: npm run build

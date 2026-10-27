@@ -18,11 +18,11 @@
 ## 实施清单
 
 - [ ] 凭据与文件落盘的平台适配及回归。
-- [ ] 主窗口/外部邮件、Windows 快捷键及双语文案。
+- [x] 主窗口/外部邮件、Windows 快捷键及双语文案实现与前端回归。
 - [ ] WebView2 邮件资源/CSP/链接与打印检查。
 - [ ] Windows 通知与冷启动定位路径。
 - [ ] NSIS 安装器、Windows CI/冒烟与下载验证构建。
-- [ ] 跨平台发布资源和更新清单，保留 macOS/Homebrew。
+- [x] 跨平台发布资源和更新清单实现与脚本测试，保留 macOS/Homebrew（正式包待发布验收）。
 - [ ] 本地与云端结果、限制及继续入口更新。
 
 ## 当前入口
@@ -34,4 +34,5 @@
 - 43bfc6d 的第二轮 Windows 检查已通过 LF/格式门槛，前端 440/447 通过；App 大列表/连续阅读 7 条只有超时失败（5 秒及 30 秒），尚未进入 Rust。同一提交重跑一次 40493473297 attempt 2 为 441/447，仍有 6 条超时。两次测得固定页组 7–20 秒，七次跨页组 34–46 秒；仅这两组在 Windows 分别定界 30/60 秒，多次切换单封用例定界 15 秒，Mac 时限和断言保留。不添加自动重试或全局延长。
 - Chromium 模拟 Win32 已核对 root 平台类、0px 标题栏留白、Ctrl 提示、Ctrl+K 聚焦和 Ctrl+N 打开空白写信；只使用虚构演示数据，不代表 Windows/WebView2 验收。未启动 macOS Tauri 开发包，未替换已安装应用。
 - 已补 Windows 安装/开发/发布边界说明，以及 README、USAGE、IMPLEMENTATION、UPDATES 与 KEYCHAIN 的平台说明；公开 0.1.34 不变。
-- Windows validation 拆成 frontend/native 独立作业，前端检查与原生构建均须通过；避免前端阻止 Windows 编译诊断。下一步：推送用例工作量时限与文档，继续 Rust 编译、NSIS 安装器与原生冒烟，全部成功后下载验证包和记录源码/资源证据。
+- f5123b5 的 [Windows validation 40510640832](https://github.com/ansermail/anser/actions/runs/40510640832) 前端作业成功：65 文件 447/447、脚本 37/37、格式通过。原生作业已编译 Windows 库与测试二进制，但整体 cargo test 在 keychain-migrate 示例遗漏 durable_file 模块处 E0433 失败；不是 WinRT API 错误。该遗漏已在 macOS 单独复现并修复，文件发布测试移至 archive，修后 cargo check 示例及 cargo test --all-targets 通过（库 432/4 忽略、示例 16/2 忽略）。
+- 已为后续原生失败保留依赖缓存，并让正式 Windows 发布构建同样执行 Rust 回归及安装冒烟。下一步：推送示例修正，继续 Windows Rust 测试、NSIS 安装器与原生冒烟，全部成功后下载验证包和记录源码/资源证据。

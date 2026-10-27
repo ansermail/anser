@@ -4,6 +4,8 @@
 #[path = "../src/credentials.rs"]
 #[allow(dead_code)]
 mod credentials;
+#[path = "../src/durable_file.rs"]
+mod durable_file;
 mod models {
     pub type Result<T> = std::result::Result<T, String>;
 }

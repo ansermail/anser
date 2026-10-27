@@ -133,7 +133,10 @@ jobs:
         with:
           workspaces: src-tauri
           key: release-windows-x64
+          cache-on-failure: true
       - run: npm ci
+      - name: Windows native regression tests
+        run: cargo test --manifest-path src-tauri/Cargo.toml
       - name: Require signing and desktop OAuth configuration
         env:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
@@ -152,6 +155,8 @@ jobs:
         with:
           args: --target x86_64-pc-windows-msvc --bundles nsis
           uploadUpdaterJson: false
+      - name: Install and start the WebView2 client
+        run: ./scripts/windows-smoke.ps1
       - run: node scripts/release-assets.mjs collect x86_64-pc-windows-msvc release-assets
       - uses: actions/upload-artifact@v6
         with:
