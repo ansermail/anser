@@ -1,5 +1,15 @@
 # Windows 客户端工作点（2026-10-27）
 
+## 最新检查点
+
+用户最新要求：0.1.35 先保存 GitHub Release 草稿，不发布；Windows 实机验收由用户于 2026-10-28 进行。本轮先执行 Mac 自动回归、双架构签名/资源核验及本机原生检查；公开 0.1.34/latest/Homebrew 保持不变。已在独立干净工作树 `/Users/zhangxiaojun/.codex/worktrees/windows-release-draft/mail` 准备 Mac 验证，原目录既有图片诊断 WIP 保留。源码版本已同步 0.1.35，草稿资源构建及 Mac 验收结果待下文更新。
+
+### 调整为草稿前的构建入口
+
+`d61e1dfcce124cfecaff6190b9fde00b0708c5eb` 已推送。当前 [Windows validation 40514572315](https://github.com/ansermail/anser/actions/runs/40514572315) 的 frontend 成功，native 已通过 Rust 全量及 IMAP 测试，2026-10-27 21:53:34（Asia/Shanghai）进入 NSIS 构建；PE 与许可审计/安装首屏/外部 EML/外链点击尚未完成，未提供或正式发布 Windows 安装器。`f4e904b` 安装器关联及附件保护已包含在本轮源码，先前两轮因新修正推送而取消，不计通过。
+
+下一步：等待该 Windows 作业完整结果，失败读取原日志修复；成功后下载 artifact，核对 Windows 冒烟 JSON 和安装器 SHA-256，更新清单与开发记录。本地仅两处开工前图片诊断 WIP 继续保留；浏览器预览目录已移至 `/Users/zhangxiaojun/.Trash/Anser-Windows-QA-20261027-2139/dist-preview`，Vite 和 ego QA 已结束，本机 App 仍为已安装正式包。
+
 ## 目标与边界
 
 - 用户要求在现有 macOS 客户端之外支持 Windows。首阶段按 Windows 10/11 x64、WebView2 与每用户 NSIS 安装包推进，继续共用 React/Tauri/Rust、协议及存档格式。
@@ -17,7 +27,7 @@
 
 ## 实施清单
 
-- [ ] 凭据与文件落盘的平台适配及回归。
+- [x] 凭据与文件落盘的平台适配及 Windows 回归。
 - [x] 主窗口/外部邮件、Windows 快捷键及双语文案实现与前端回归。
 - [ ] WebView2 邮件资源/CSP/链接与打印检查。
 - [ ] Windows 通知与冷启动定位路径。

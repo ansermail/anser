@@ -1,6 +1,10 @@
 # 发布与应用内更新
 
-## Windows 发布准备（2026-10-27，验证中）
+## 0.1.35 草稿准备（2026-10-27，未发布）
+
+用户明确要求本版先存草稿，2026-10-28 自行进行 Windows 实机验证；本轮先完成 Mac 回归。已同步 0.1.35 源码版本和草稿说明，后续仅生成草稿资源，不公开发布、不更新 latest 或 Homebrew。实际构建及本机验收结果持续记录在 [Windows 工作点](WINDOWS_SUPPORT_WORKING.md)。
+
+### Windows 发布准备
 
 `codex/windows-support` 增加 Windows x64 NSIS 验证包、Windows validation 与原生安装冒烟。Release desktop 已扩展到 macOS 双架构和 Windows x64，收齐九资源才生成草稿，更新清单增加 `windows-x86_64`。Windows Authenticode 尚未配置，Tauri 更新签名单独保留。公开 0.1.34 的七资源保持不变；首次跨平台正式版需新版本、三平台资源审计及 Windows 验收，当前未正式发布。入口见 [Windows 客户端](WINDOWS.md)。
 

@@ -4,7 +4,7 @@
 
 ## 安装与使用
 
-Windows validation 成功后，从对应 Actions 的 `Anser-Windows-x64-validation` artifact 获取 `*-setup.exe`。它是验证构建，版本号暂沿用 0.1.34，不能据此认定公开版本已增加 Windows。正式跨平台发布须使用新版本。
+本轮使用独立版本 0.1.35，按用户要求仅保存 GitHub Release 草稿，不正式发布。Windows validation 成功后，也可从对应 Actions 的 `Anser-Windows-x64-validation` artifact 获取 `*-setup.exe`。此前 0.1.34 验证包仅为构建检查，不属于公开 0.1.34 资源。Windows 实机验收安排在 2026-10-28；验收后是否发布另行决定。
 
 安装器默认仅安装给当前用户。未安装 WebView2 Runtime 时，通过嵌入的引导程序下载运行环境，此时需要联网。当前没有 Windows Authenticode 代码签名，系统可能显示未知发布者；Tauri 更新签名与 Windows 发布者签名分别验证。
 

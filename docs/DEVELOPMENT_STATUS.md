@@ -2,9 +2,13 @@
 
 依据 PRD 第 5、8、9 节、实施记录和当前代码核查。当前仍为 Alpha；功能代码已存在与真实场景验收通过分别记录。早期回归使用临时存储/演示数据；2026-10-05 用户授权后增加当前腾讯企业邮箱与 QQ 邮箱互发测试，未向其他地址发送，未删除真实邮件。
 
-## 当前执行检查点：Windows 客户端（2026-10-27，进行中）
+## 当前执行检查点：0.1.35 草稿与 Mac 验证（2026-10-27，进行中）
 
-用户要求增加 Windows 客户端。分支 `codex/windows-support` 基于 `05f40f1`，保留两处既有图片诊断 WIP；首阶段为 Windows 10/11 x64、WebView2、每用户 NSIS 安装。已实现凭据后端与文件落盘、原生窗口/Ctrl 提示、HTTPS 正文资源/CSP、通知协议及三平台发布资源。macOS 本地前端 447、Rust 全目标库 432/4 忽略与迁移示例 16/2 忽略、桌面脚本 37、生产与 Pages 隔离构建通过；浏览器模拟 Win32 的界面与 Ctrl 入口通过。Windows checkout LF 已修复，按两次实测为重渲染用例单独定界；`f5123b5` 的 Windows validation 40510640832 前端 447/447、脚本 37/37 成功，Windows 库与测试已编译，整轮在迁移示例遗漏模块 E0433 失败。`e4d060f` 已补齐并重新推送验证。Windows Rust 运行/NSIS/原生冒烟仍待流水线，真实 Windows 账号收发、通知、打印及升级未验证；公开 0.1.34 与本机已安装 Mac 应用保持不变。入口见 [Windows 工作点](WINDOWS_SUPPORT_WORKING.md) 和 [Windows 说明](WINDOWS.md)。
+用户最新要求：本版先存 GitHub Release 草稿，不正式发布；Windows 实机由用户于 2026-10-28 验证，本轮先完成 Mac 回归。版本已独立调整为 0.1.35，计划收齐 Mac 双架构和 Windows x64 九资源；不修改 0.1.34 公开资源、不更新 latest/Homebrew、不合并未验收工作到 main。Mac 验证使用独立干净工作树和固定签名候选包，检查完成后恢复已安装应用；当前结果见 [Windows 工作点](WINDOWS_SUPPORT_WORKING.md)。
+
+### Windows 开发阶段检查点
+
+用户要求增加 Windows 客户端。分支 `codex/windows-support` 基于 `05f40f1`，保留两处既有图片诊断 WIP；首阶段为 Windows 10/11 x64、WebView2、每用户 NSIS 安装。已实现凭据后端与文件落盘、原生窗口/Ctrl 提示、HTTPS 正文资源/CSP、通知协议及三平台发布资源。macOS 本地前端 447、Rust 全目标库 432/4 忽略与迁移示例 16/2 忽略、桌面脚本 37、生产与 Pages 隔离构建通过；浏览器模拟 Win32 的界面与 Ctrl 入口通过。Windows checkout LF 已修复，按两次实测为重渲染用例单独定界；`f5123b5` 的 Windows validation 40510640832 前端 447/447、脚本 37/37 成功，Windows 库与测试已编译，整轮在迁移示例遗漏模块 E0433 失败。`d61e1df` 已补齐迁移示例、可移植参数测试和安装/附件边界；Windows validation 40514572315 前端再次通过，Rust 全量运行中。NSIS/原生冒烟仍待流水线，真实 Windows 账号收发、通知、打印及升级未验证；公开 0.1.34 与本机已安装 Mac 应用保持不变。入口见 [Windows 工作点](WINDOWS_SUPPORT_WORKING.md) 和 [Windows 说明](WINDOWS.md)。
 
 ## 当前执行检查点：0.1.34 已正式发布并完成清理（2026-10-27）
 
