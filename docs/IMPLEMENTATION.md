@@ -8,6 +8,8 @@ Windows 使用 `tauri.windows.conf.json` 合并原生窗口、HTTPS scheme、Web
 
 发布收集器支持三平台九资源，Windows 使用 NSIS EXE 和 Tauri 更新签名。Windows CI 包含原生安装/首屏/外部 EML/外链点击冒烟，真实账号与升级另验。详见 [Windows 工作点](WINDOWS_SUPPORT_WORKING.md)。
 
+Windows 覆盖配置不使用默认 fileAssociations 安装宏；NSIS hooks 只注册可选邮件处理程序、OpenWithProgids 和系统设置候选，不修改扩展名默认值及 UserChoice。附件预览在调用系统关联前拒绝 Windows 脚本、快捷方式、控制面板和安装器类型，另存原附件仍保留。
+
 ## 联系人地址操作（2026-10-24）
 
 阅读页主发件人、对话气泡发件人、收件人/抄送/密送字段及外部邮件窗口共用 `ContactAddress`。地址先由 `addressTokens` / `parseAddresses` 拆成单个联系人；可解析的地址渲染为使用 shadcn `Button` 与 `ContextMenu` 的焦点可操作项，无法解析的原文保留普通文本。悬停、键盘焦点及菜单打开状态使用现有 `--secondary` 中性底色，不引入第二套视觉组件。

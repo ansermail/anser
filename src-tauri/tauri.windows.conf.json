@@ -20,11 +20,13 @@
   },
   "bundle": {
     "targets": ["nsis"],
+    "fileAssociations": [],
     "icon": ["icons/32x32.png", "icons/128x128.png", "icons/icon.ico"],
     "windows": {
       "webviewInstallMode": { "type": "embedBootstrapper", "silent": true },
       "nsis": {
         "installMode": "currentUser",
+        "installerHooks": "nsis/hooks.nsh",
         "languages": ["SimpChinese", "English"],
         "displayLanguageSelector": true
       }

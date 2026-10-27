@@ -67,7 +67,32 @@ fn can_open(name: &str, mime: &str, bytes: &[u8]) -> bool {
             | "bat"
             | "cmd"
             | "ps1"
+            | "psm1"
+            | "psd1"
+            | "vbs"
+            | "vbe"
+            | "jse"
+            | "wsf"
+            | "wsh"
+            | "hta"
+            | "lnk"
+            | "url"
+            | "website"
+            | "pif"
+            | "scr"
+            | "cpl"
+            | "msc"
+            | "reg"
+            | "inf"
             | "msi"
+            | "msp"
+            | "mst"
+            | "msix"
+            | "msixbundle"
+            | "appx"
+            | "appxbundle"
+            | "application"
+            | "appref-ms"
             | "pkg"
             | "dmg"
             | "workflow"
@@ -86,6 +111,59 @@ fn can_open(name: &str, mime: &str, bytes: &[u8]) -> bool {
         ]
         .iter()
         .any(|magic| bytes.starts_with(*magic))
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn windows_shell_programs_are_not_opened_as_document_previews() {
+        for extension in [
+            "vbs",
+            "VBE",
+            "jse",
+            "wsf",
+            "wsh",
+            "hta",
+            "lnk",
+            "url",
+            "website",
+            "pif",
+            "scr",
+            "cpl",
+            "msc",
+            "reg",
+            "inf",
+            "psm1",
+            "psd1",
+            "msp",
+            "mst",
+            "msix",
+            "msixbundle",
+            "appx",
+            "appxbundle",
+            "application",
+            "appref-ms",
+        ] {
+            assert!(
+                !super::can_open(
+                    &format!("attachment.{extension}"),
+                    "application/octet-stream",
+                    b"plain script or shell data"
+                ),
+                "{extension}"
+            );
+        }
+        assert!(super::can_open(
+            "document.pdf",
+            "application/pdf",
+            b"%PDF-1.7"
+        ));
+        assert!(super::can_open(
+            "notes.txt",
+            "text/plain",
+            b"ordinary notes"
+        ));
+    }
 }
 
 fn private_dir(path: &Path) -> Result<()> {

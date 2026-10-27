@@ -5,6 +5,7 @@
 ## 项目与代码仓库
 
 - 客户端支持方向为 macOS 与 Windows，共用现有界面、邮件协议与存档格式；平台原生行为分别适配。Windows 首阶段为 Windows 10/11 x64 + WebView2，保留系统窗口控件、Ctrl 快捷键和每用户安装；编译、安装包、启动冒烟与真实桌面验收分别记录。Windows 系统默认应用只能由用户在系统设置中选择，不能改写受保护的 UserChoice 来绕过确认。
+- Windows 安装器只注册 OpenWithProgids、Applications/SupportedTypes 与 Capabilities 候选项，不写扩展名默认值或 UserChoice；当前 Tauri NSIS 默认关联宏会写扩展名默认值，因此 Windows 配置清空继承的 fileAssociations 并使用专用 hooks。更换安装器时须核对默认值、可选处理程序和卸载清理，不能仅检查 UserChoice。
 - 源文件统一 LF，由 .gitattributes 固定，避免 Windows checkout 的自动 CRLF 转换让全项目格式检查误报。Windows CI 脚本使用 PowerShell 7（pwsh）读取 UTF-8，不能依赖 Windows PowerShell 5 的本地代码页。
 - Windows runner 的 jsdom 大列表测试按平台实测工作量定界：205 行固定页刷新组 30 秒，两条七次跨页导航 60 秒，单封/对话多次切换 15 秒；macOS 保持原有时限。依据同一提交两次 Windows 实测 7–20 秒及 34–46 秒，不整体延长、不添加自动重试，断言和真实原生验收分别保留。
 

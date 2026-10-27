@@ -36,3 +36,10 @@
 - 已补 Windows 安装/开发/发布边界说明，以及 README、USAGE、IMPLEMENTATION、UPDATES 与 KEYCHAIN 的平台说明；公开 0.1.34 不变。
 - f5123b5 的 [Windows validation 40510640832](https://github.com/ansermail/anser/actions/runs/40510640832) 前端作业成功：65 文件 447/447、脚本 37/37、格式通过。原生作业已编译 Windows 库与测试二进制，但整体 cargo test 在 keychain-migrate 示例遗漏 durable_file 模块处 E0433 失败；不是 WinRT API 错误。该遗漏已在 macOS 单独复现并修复，文件发布测试移至 archive，修后 cargo check 示例及 cargo test --all-targets 通过（库 432/4 忽略、示例 16/2 忽略）。
 - 已为后续原生失败保留依赖缓存，并让正式 Windows 发布构建同样执行 Rust 回归及安装冒烟。下一步：推送示例修正，继续 Windows Rust 测试、NSIS 安装器与原生冒烟，全部成功后下载验证包和记录源码/资源证据。
+
+## 安装与附件边界复核（e4d060f 验证期间）
+
+- 发现默认 NSIS APP_ASSOCIATE 会改写 HKCU 扩展名默认值，尽管不触碰 UserChoice。Windows 配置现在清空继承的 fileAssociations，专用 hooks 只注册 OpenWithProgids、Applications/SupportedTypes 和 Capabilities；卸载只移除自有注册。冒烟同步检查三类邮件原默认值和候选项，不把“UserChoice 未变”当作完整证明。
+- Windows 由系统关联打开附件，既有预览拦截遗漏 VBS/HTA/快捷方式等 Shell 可执行类型。已补齐脚本、控制面板、安装器及快捷方式类型；原始字节和另存入口保留。本地附件预览两项回归通过，含普通 PDF/TXT 仍可预览。
+- 原生冒烟新增安装后 PE x64、源码版本、四项许可文件和安装器/App SHA-256 记录；实际验证待后续 Windows 作业。
+- 本机正式 App 元数据现为 0.1.34，本轮未安装/替换它；浏览器 QA 已结束，Vite 已停止。
