@@ -170,7 +170,7 @@ test("source or note drift after metadata update prevents upload", () => {
   }
 });
 
-test("only seven matching assets and the source release notes can be uploaded", (t) => {
+test("only nine matching desktop assets and the source release notes can be uploaded", (t) => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "anser-draft-assets-"));
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));
   const out = path.join(root, "assets");
@@ -207,12 +207,17 @@ test("only seven matching assets and the source release notes can be uploaded", 
       fs.writeFileSync(path.join(out, base + ext), "fixture");
   }
   // Exercise the production producer/consumer together, including final LF.
+  fs.writeFileSync(path.join(out, "Anser_1.2.3_x86_64-setup.exe"), "installer");
+  fs.writeFileSync(
+    path.join(out, "Anser_1.2.3_x86_64-setup.exe.sig"),
+    "fixture",
+  );
   const manifest = createManifest(out, root);
   assert.equal(manifest.notes, "new notes\n");
   const write = () =>
     fs.writeFileSync(path.join(out, "latest.json"), JSON.stringify(manifest));
   write();
-  assert.equal(releaseFiles(root, out, "1.2.3").length, 7);
+  assert.equal(releaseFiles(root, out, "1.2.3").length, 9);
   manifest.notes = "previous source";
   write();
   assert.throws(() => releaseFiles(root, out, "1.2.3"));

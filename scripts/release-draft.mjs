@@ -3,7 +3,12 @@ import fs from "node:fs";
 import path from "node:path";
 import { execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
-import { repository, targets, validateVersion } from "./release-assets.mjs";
+import {
+  repository,
+  targets,
+  targetAssets,
+  validateVersion,
+} from "./release-assets.mjs";
 
 const query = `query($tag:String!, $ref:String!) {
   repository(owner:"ansermail",name:"anser") {
@@ -181,10 +186,9 @@ export function updateDraft(client, { tag, sha, notes, files }) {
 }
 
 export function releaseFiles(root, output, version) {
-  const names = targets.flatMap((target) => {
-    const base = `Anser_${version}_${target.split("-")[0]}`;
-    return [`${base}.dmg`, `${base}.app.tar.gz`, `${base}.app.tar.gz.sig`];
-  });
+  const names = targets.flatMap(
+    (target) => targetAssets(target, version).files,
+  );
   names.push("latest.json");
   assert.deepEqual(
     fs.readdirSync(output).sort(),
@@ -200,19 +204,18 @@ export function releaseFiles(root, output, version) {
     fs.readFileSync(path.join(output, "latest.json")),
   );
   assert.equal(manifest.version, version);
-  assert.deepEqual(Object.keys(manifest.platforms).sort(), [
-    "darwin-aarch64",
-    "darwin-x86_64",
-  ]);
+  assert.deepEqual(
+    Object.keys(manifest.platforms).sort(),
+    targets.map((target) => targetAssets(target, version).platform).sort(),
+  );
   for (const target of targets) {
-    const arch = target.split("-")[0];
-    const name = `Anser_${version}_${arch}.app.tar.gz`;
+    const { updater: name, platform } = targetAssets(target, version);
     assert.equal(
-      manifest.platforms[`darwin-${arch}`].url,
+      manifest.platforms[platform].url,
       `https://github.com/${repository}/releases/download/v${version}/${name}`,
     );
     assert.equal(
-      manifest.platforms[`darwin-${arch}`].signature,
+      manifest.platforms[platform].signature,
       fs.readFileSync(path.join(output, name + ".sig"), "utf8").trim(),
     );
   }

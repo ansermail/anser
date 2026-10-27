@@ -32,7 +32,46 @@ try {
     if ($null -ne $root.FindFirst([System.Windows.Automation.TreeScope]::Descendants, $condition)) { $ready = $true; break }
   }
   if (-not $ready) { throw 'The installed WebView2 app did not render its mailbox setup screen.' }
-  @{ installer = 'passed'; frontendReady = $true; protocolRegistered = $true; protectedAssociationUnchanged = $true } | ConvertTo-Json | Set-Content 'windows-smoke.json'
+  $sample = Join-Path $env:RUNNER_TEMP 'anser-windows-smoke.eml'
+  @'
+From: Windows QA <qa@example.com>
+To: Reader <reader@example.com>
+Subject: Windows external mail QA
+Date: Tue, 27 Oct 2026 10:00:00 +0000
+MIME-Version: 1.0
+Content-Type: text/html; charset=utf-8
+
+<html><body><h1>WINDOWS-EML-BODY</h1><p>Fictional installer acceptance data.</p><a href="https://example.com/anser-windows-smoke">Windows external link</a></body></html>
+'@ | Set-Content $sample -Encoding utf8
+  Start-Process $exe -ArgumentList ('"' + $sample + '"') | Out-Null
+  $desktop = [System.Windows.Automation.AutomationElement]::RootElement
+  $owned = [System.Windows.Automation.PropertyCondition]::new([System.Windows.Automation.AutomationElement]::ProcessIdProperty, $app.Id)
+  $bodyCondition = [System.Windows.Automation.PropertyCondition]::new([System.Windows.Automation.AutomationElement]::NameProperty, 'WINDOWS-EML-BODY')
+  $linkCondition = [System.Windows.Automation.PropertyCondition]::new([System.Windows.Automation.AutomationElement]::NameProperty, 'Windows external link')
+  $mailReady = $false
+  $externalLink = $null
+  for ($i = 0; $i -lt 60; $i++) {
+    Start-Sleep -Seconds 1
+    foreach ($window in $desktop.FindAll([System.Windows.Automation.TreeScope]::Children, $owned)) {
+      if ($null -ne $window.FindFirst([System.Windows.Automation.TreeScope]::Descendants, $bodyCondition)) {
+        $externalLink = $window.FindFirst([System.Windows.Automation.TreeScope]::Descendants, $linkCondition)
+        $mailReady = $true
+        break
+      }
+    }
+    if ($mailReady) { break }
+  }
+  if (-not $mailReady -or $null -eq $externalLink) { throw 'The external EML reader did not render the original body.' }
+  $invoke = $externalLink.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern)
+  $invoke.Invoke()
+  $browserOpened = $false
+  for ($i = 0; $i -lt 30; $i++) {
+    Start-Sleep -Seconds 1
+    $browser = Get-CimInstance Win32_Process | Where-Object { $_.Name -in @('msedge.exe', 'chrome.exe', 'firefox.exe') -and $_.CommandLine -like '*https://example.com/anser-windows-smoke*' }
+    if ($null -ne $browser) { $browserOpened = $true; break }
+  }
+  if (-not $browserOpened) { throw 'The real mail link click did not reach the system browser.' }
+  @{ installer = 'passed'; frontendReady = $true; externalMailReady = $true; nativeLinkClick = $true; protocolRegistered = $true; protectedAssociationUnchanged = $true } | ConvertTo-Json | Set-Content 'windows-smoke.json'
 } finally {
   if ($null -ne $app -and -not $app.HasExited) { Stop-Process $app.Id -Force }
   $uninstaller = Join-Path $installPath 'uninstall.exe'

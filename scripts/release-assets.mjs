@@ -3,7 +3,30 @@ import path from "node:path";
 import assert from "node:assert/strict";
 import { fileURLToPath } from "node:url";
 export const repository = "ansermail/anser";
-export const targets = ["aarch64-apple-darwin", "x86_64-apple-darwin"];
+export const targets = [
+  "aarch64-apple-darwin",
+  "x86_64-apple-darwin",
+  "x86_64-pc-windows-msvc",
+];
+export function targetAssets(target, version) {
+  assert.ok(targets.includes(target), "Unsupported release target");
+  if (target === "x86_64-pc-windows-msvc") {
+    const updater = `Anser_${version}_x86_64-setup.exe`;
+    return {
+      platform: "windows-x86_64",
+      updater,
+      files: [updater, updater + ".sig"],
+    };
+  }
+  const arch = target.split("-")[0],
+    base = `Anser_${version}_${arch}`;
+  const updater = base + ".app.tar.gz";
+  return {
+    platform: `darwin-${arch}`,
+    updater,
+    files: [base + ".dmg", updater, updater + ".sig"],
+  };
+}
 export function validateVersion(root = ".") {
   const config = JSON.parse(
     fs.readFileSync(path.join(root, "src-tauri/tauri.conf.json")),
@@ -52,6 +75,23 @@ export function collect(target, output, root = ".") {
   const version = validateVersion(root),
     arch = target.split("-")[0];
   const bundles = path.join(root, "src-tauri/target", target, "release/bundle");
+  if (target === "x86_64-pc-windows-msvc") {
+    const folder = path.join(bundles, "nsis");
+    const installers = fs
+      .readdirSync(folder)
+      .filter((name) => name.endsWith(".exe"));
+    assert.equal(installers.length, 1, "Expected one Windows installer");
+    const source = path.join(folder, installers[0]);
+    assert.ok(
+      fs.readFileSync(source + ".sig", "utf8").trim(),
+      "Missing Windows update signature",
+    );
+    fs.mkdirSync(output, { recursive: true });
+    const name = targetAssets(target, version).updater;
+    fs.copyFileSync(source, path.join(output, name));
+    fs.copyFileSync(source + ".sig", path.join(output, name + ".sig"));
+    return;
+  }
   const archive = path.join(bundles, "macos/雁信.app.tar.gz");
   const signature = fs.readFileSync(archive + ".sig", "utf8").trim();
   assert.ok(signature, "Missing update signature");
@@ -72,17 +112,14 @@ export function manifest(output, root = ".") {
   const version = validateVersion(root),
     platforms = {};
   for (const target of targets) {
-    const arch = target.split("-")[0],
-      name = `Anser_${version}_${arch}.app.tar.gz`;
-    assert.ok(fs.statSync(path.join(output, name)).size > 0);
-    assert.ok(
-      fs.statSync(path.join(output, `Anser_${version}_${arch}.dmg`)).size > 0,
-    );
+    const { updater: name, files, platform } = targetAssets(target, version);
+    for (const file of files)
+      assert.ok(fs.statSync(path.join(output, file)).size > 0);
     const signature = fs
       .readFileSync(path.join(output, name + ".sig"), "utf8")
       .trim();
     assert.ok(signature);
-    platforms[`darwin-${arch}`] = {
+    platforms[platform] = {
       url: `https://github.com/${repository}/releases/download/v${version}/${name}`,
       signature,
     };

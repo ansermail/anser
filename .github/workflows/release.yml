@@ -1,4 +1,4 @@
-name: Release macOS
+name: Release desktop
 on:
   push:
     tags: ["v[0-9]*"]
@@ -6,7 +6,7 @@ on:
 permissions:
   contents: read
 concurrency:
-  group: release-macos
+  group: release-desktop
   cancel-in-progress: false
 jobs:
   check:
@@ -115,8 +115,52 @@ jobs:
           path: release-assets/*
           if-no-files-found: error
           retention-days: 14
+  build-windows:
+    needs: check
+    if: needs.check.outputs.build_required == 'true'
+    runs-on: windows-2022
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+      - uses: dtolnay/rust-toolchain@1.91.1
+        with:
+          targets: x86_64-pc-windows-msvc
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+          key: release-windows-x64
+      - run: npm ci
+      - name: Require signing and desktop OAuth configuration
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          MAIL_GOOGLE_CLIENT_ID: ${{ secrets.MAIL_GOOGLE_CLIENT_ID }}
+          MAIL_GOOGLE_CLIENT_SECRET: ${{ secrets.MAIL_GOOGLE_CLIENT_SECRET }}
+          MAIL_MICROSOFT_CLIENT_ID: ${{ secrets.MAIL_MICROSOFT_CLIENT_ID }}
+        run: node -e "for (const k of ['TAURI_SIGNING_PRIVATE_KEY','MAIL_GOOGLE_CLIENT_ID','MAIL_GOOGLE_CLIENT_SECRET','MAIL_MICROSOFT_CLIENT_ID']) if (!process.env[k]) throw new Error('Missing ' + k)"
+      - name: Build Windows installer and signed update
+        uses: tauri-apps/tauri-action@944946e3e4cac6603d1fe8f514171e9ecd3c78aa
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ""
+          MAIL_GOOGLE_CLIENT_ID: ${{ secrets.MAIL_GOOGLE_CLIENT_ID }}
+          MAIL_GOOGLE_CLIENT_SECRET: ${{ secrets.MAIL_GOOGLE_CLIENT_SECRET }}
+          MAIL_MICROSOFT_CLIENT_ID: ${{ secrets.MAIL_MICROSOFT_CLIENT_ID }}
+        with:
+          args: --target x86_64-pc-windows-msvc --bundles nsis
+          uploadUpdaterJson: false
+      - run: node scripts/release-assets.mjs collect x86_64-pc-windows-msvc release-assets
+      - uses: actions/upload-artifact@v6
+        with:
+          name: release-x86_64-pc-windows-msvc
+          path: release-assets/*
+          if-no-files-found: error
+          retention-days: 14
   draft:
-    needs: build
+    needs: [build, build-windows]
     runs-on: ubuntu-24.04
     permissions:
       contents: write
