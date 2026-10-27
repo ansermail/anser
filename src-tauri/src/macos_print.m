@@ -15,12 +15,15 @@ static NSPrintInfo *anserMailPrintInfo(void) {
     info.verticallyCentered = NO;
     info.horizontalPagination = NSPrintingPaginationModeFit;
     info.verticalPagination = NSPrintingPaginationModeAutomatic;
-    // WebKit applies the document's @page 16mm margins. Additional AppKit
-    // margins would inset the content twice.
-    info.topMargin = 0;
-    info.rightMargin = 0;
-    info.bottomMargin = 0;
-    info.leftMargin = 0;
+    // Match CSS @page before WebKit computes the printable area. WebKit
+    // replaces these with the computed CSS margins (it does not add them).
+    // Starting at zero makes AppKit fit the full-paper layout into the later
+    // inset area, shrinking the text and adding excessive space above it.
+    const CGFloat margin = 16.0 * pointsPerMillimeter;
+    info.topMargin = margin;
+    info.rightMargin = margin;
+    info.bottomMargin = margin;
+    info.leftMargin = margin;
     return info;
 }
 

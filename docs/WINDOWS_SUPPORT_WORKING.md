@@ -1,8 +1,25 @@
 # Windows 客户端工作点（2026-10-27）
 
+## Mac 原生打印复验（2026-10-27，修复中）
+
+- 干净源码 e05d2b6：Mac 全目标 Rust 库 433 passed / 4 ignored、迁移示例 16 passed / 2 ignored；前端 447/447、桌面脚本 37/37、生产构建通过。
+- 固定自签身份的 0.1.35 候选 App 构建与签名/DR 核验通过；本机原账号/存档可读，无钥匙串提示。Cmd+K、失焦后的 Cmd+N、空白写信关闭无新增草稿、Finder 冷启动外部虚构 EML、CID 图、To/Cc 分行及原生正文外链打开系统浏览器实测通过。
+- 60 段虚构长邮件的原生打印预览只显示一页，后半正文截断；用户指出上边距异常。先修复并保存实际原生 PDF 检查位置与完整分页，再构建最终草稿。旧 Release desktop 40517803029 的同提交重跑 check 已通过，后续构建已取消；第一次失败为 Mac jsdom 固定页刷新用例 6,655ms 超过 5,000ms，日志核对后同提交重跑通过，未提高超时。
+- 本机 `/Applications/雁信.app` 0.1.34 未替换；真实邮件未发送；用户于 2026-10-28 验证 Windows，仍禁止正式发布。
+
+## 打印修复结果（2026-10-27，候选 App 复验待完成）
+
+- 根因已对照真实 WKWebView PDF：外部窗口的 html/body 固定高度+overflow:hidden 导致只输出第一页/8 段；打印媒体中解除外层裁切后 60 段及附件完整。原生边距 0 与 CSS 16mm 使首次布局和最终绘制区域不一致；同为 16mm 后首行 x=45.35pt、文字顶 y=50.24pt，旧参数为 y=86.69pt 且文字缩小。
+- 新增 `npm run test:mac-print`，直接使用生产 printableMail、构建 CSS、原生打印参数与 PDFKit。主/外部窗口 × HTML/纯文本四组合实际打印均为 5 页 A4、60 段按序各一次、末尾标记及附件名完整，无应用内容；首末页渲染检查通过。
+- 最终修复的干净候选 App、系统面板及云端草稿资源仍待本轮继续；前一版本 e05d2b6 的 Windows validation 40517678031 已完整成功，不能替代最终修复源码的草稿构建。
+
 ## 最新检查点
 
 用户最新要求：0.1.35 先保存 GitHub Release 草稿，不发布；Windows 实机验收由用户于 2026-10-28 进行。本轮先执行 Mac 自动回归、双架构签名/资源核验及本机原生检查；公开 0.1.34/latest/Homebrew 保持不变。已在独立干净工作树 `/Users/zhangxiaojun/.codex/worktrees/windows-release-draft/mail` 准备 Mac 验证，原目录既有图片诊断 WIP 保留。源码版本已同步 0.1.35，草稿资源构建及 Mac 验收结果待下文更新。
+
+- 0.1.35 源码 `e05d2b6b18fe0be9ee302c2a371b683c2804717e` 已推送，手动触发 [Release desktop 40517803029](https://github.com/ansermail/anser/actions/runs/40517803029)，该工作流只生成草稿，没有发布步骤；不推送版本标签、不合并 main。并行 Windows validation 40517678031 负责同版本回归。
+- 干净工作树的 Mac 前端 65 文件 447/447、UI/i18n（1,362 键）/TypeScript/生产构建通过；桌面脚本 37/37、五处版本一致性通过。Mac 全目标 Rust 与固定签名候选包构建仍进行中。
+- 前一固定源码 `d61e1df` 的 [Windows validation 40514572315](https://github.com/ansermail/anser/actions/runs/40514572315) 完整成功：Windows Rust 432 通过/2 既有忽略、IMAP 39；NSIS、x64 PE/版本/四项许可文件、WebView2 首屏、外部 EML 与正文外链实际点击、通知协议和原默认处理程序保护均通过。Artifact `12740640493` 的 ZIP SHA-256 为 `26ec6aac7658dc9faa2029c92de8f47aaeeda21d138c786fdb31f3611bbc39c8`，本地下载一致；安装器 SHA-256 为 `fcc843a35d3d21b8f8ba766685a0cf8bab497626c649e0cf597d3124d380c3cf`，与 Windows 冒烟 JSON 一致。它的内部版本仍为 0.1.34，仅作为历史验证，明日应使用后续 0.1.35 草稿安装器。
 
 ### 调整为草稿前的构建入口
 
