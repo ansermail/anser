@@ -287,17 +287,20 @@ mod tests {
     #[test]
     fn startup_and_url_arguments_are_queued_once_and_drained() {
         let docs = EmlFiles::default();
+        let cwd = std::env::temp_dir();
+        let path = cwd.join("test.EML");
+        let file_url = tauri::Url::from_file_path(&path).unwrap().to_string();
         assert!(docs.queue_args(
             [
                 "--autostart".into(),
                 "test.EML".into(),
                 "https://example.com/test.eml".into(),
-                "file:///tmp/test.EML".into(),
+                file_url,
             ],
-            Path::new("/tmp"),
+            &cwd,
         ));
-        assert_eq!(docs.take_pending().unwrap(), ["/tmp/test.EML"]);
+        assert_eq!(docs.take_pending().unwrap(), [path.to_string_lossy()]);
         assert!(docs.take_pending().unwrap().is_empty());
-        assert!(!docs.queue_args(["--autostart".into()], Path::new("/tmp")));
+        assert!(!docs.queue_args(["--autostart".into()], &cwd));
     }
 }
