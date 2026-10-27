@@ -1,8 +1,14 @@
 # 发布与应用内更新
 
-## 0.1.34 发布准备（2026-10-27）
+## 当前版本：0.1.34（2026-10-27）
 
-用户已授权提交原格式与 A4 打印修复并发版。五处版本同步 0.1.34，完整说明见 [v0.1.34](releases/v0.1.34.md)。本机系统面板与 PDF 已核对 A4、纵向、100% 与原邮件样式；实际纸张打印、正式包/升级和 Intel 实机未验证。发布全量门槛、固定源码、双架构云端构建、七资源审计、公开更新与 Homebrew 同步分别记录在 [发布工作点](RELEASE_0_1_34_WORKING.md)。当前公开 latest 为 0.1.33。
+0.1.34 Alpha 于 2026-10-27 16:35:01（Asia/Shanghai）正式发布为 latest，固定源码 `c1e827e0b908c73307cb23e106c4a4368a7a40b2`。[Checks 40472389821](https://github.com/ansermail/anser/actions/runs/40472389821)、[Pages 40472389775](https://github.com/ansermail/anser/actions/runs/40472389775) 与 [Release macOS 40472397842](https://github.com/ansermail/anser/actions/runs/40472397842) 全部成功，[正式版本](https://github.com/ansermail/anser/releases/tag/v0.1.34) 已公开。
+
+本版打印保留完整净化文档及独立样式边界，恢复邮件原字号、字体、配色、背景、表格与段落间距。默认 A4 纵向、100%、16mm 页边距，长邮件正常分页；macOS 独立打印参数避免继承旧缩放和居中设置，系统面板直接展示纸张、方向及比例。
+
+本地完整门槛：前端 445 项、Rust 429 通过/4 既有忽略、桌面 36、IMAP 39；UI/i18n（1,348 条）/生产/Pages/格式/版本检查通过。开发包原生面板、A4 PDF 与浏览器 100 段/5 页完整分页已核对。七资源大小/SHA-256、两架构更新签名、固定签名/精确 DR、App 版本/架构/标识/语言/EML/许可、DMG 与更新应用一致性、说明原文及匿名公开下载与标准 latest 清单全部通过。[Homebrew 40474521258](https://github.com/ansermail/anser/actions/runs/40474521258) 完成 style/audit/fetch 并生成单文件配方提交 `866ab92`，重复运行 [40474833538](https://github.com/ansermail/anser/actions/runs/40474833538) 确认无需新提交。完整证据见 [发布工作点](RELEASE_0_1_34_WORKING.md)。
+
+按用户要求退出并清理开发预览、测试文件及旧审计 App 副本，恢复运行本机原正式 0.1.33；邮箱数据、存档及原有 WIP 保留。未安装 0.1.34，真实纸张打印、原生长正文分页、原位升级及 Intel 实机未验证。完整说明见 [v0.1.34](releases/v0.1.34.md)。
 
 ## 前一正式版本：0.1.33（2026-10-26）
 
