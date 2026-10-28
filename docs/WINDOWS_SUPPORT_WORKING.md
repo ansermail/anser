@@ -1,4 +1,14 @@
-# Windows 客户端工作点（2026-10-27）
+# Windows 客户端工作点（更新：2026-10-28）
+
+## 当前检查点：0.1.35 草稿已就绪
+
+源码 `cb8b8321893890d175590f2c084f09cf20a54fee` 的三平台 [Release desktop 40522234419](https://github.com/ansermail/anser/actions/runs/40522234419) attempt 2 完整成功；[Windows validation 40522206291](https://github.com/ansermail/anser/actions/runs/40522206291) 同源码完整成功。九资源与三个更新签名、Mac 双架构身份/元数据/许可/DMG 一致性已核验。[GitHub 草稿](https://github.com/ansermail/anser/releases/tag/untagged-5a07cfca4e948c873840) 保持 draft=true / published_at=null；公开 latest 仍为 0.1.34。
+
+Mac 打印修复的四组合原生 PDF 自动检查通过，候选 App 系统面板和实际保存 7 页 A4 PDF 验证通过，页顶留白正常、60 段和末尾/附件完整。本机原账号/存档、快捷键、EML/CID/原生外链及空白草稿关闭已实测，未替换已安装正式 App。原目录两处 WIP 保留。
+
+Windows 安装器已下载到 `~/Downloads/Anser-0.1.35-draft/`，SHA-256 `dcdbde3641b0bc06abe162c3120eaf1b69f71802d6f5a05328d9f18ecc6cdda2`。接下来由用户按 [Windows 真实桌面清单](WINDOWS.md) 验收收发/IDLE、通知冷启动、A4 打印和升级；验收结果出来前继续保持草稿。完整测试与资源表见 [草稿工作点](RELEASE_0_1_35_DRAFT_WORKING.md)。
+
+## 以下为 2026-10-27 开发历史（不作为当前入口）
 
 ## Mac 原生打印复验（2026-10-27，修复中）
 
@@ -13,7 +23,7 @@
 - 新增 `npm run test:mac-print`，直接使用生产 printableMail、构建 CSS、原生打印参数与 PDFKit。主/外部窗口 × HTML/纯文本四组合实际打印均为 5 页 A4、60 段按序各一次、末尾标记及附件名完整，无应用内容；首末页渲染检查通过。
 - 最终修复的干净候选 App、系统面板及云端草稿资源仍待本轮继续；前一版本 e05d2b6 的 Windows validation 40517678031 已完整成功，不能替代最终修复源码的草稿构建。
 
-## 最新检查点
+## 当时的草稿准备检查点
 
 用户最新要求：0.1.35 先保存 GitHub Release 草稿，不发布；Windows 实机验收由用户于 2026-10-28 进行。本轮先执行 Mac 自动回归、双架构签名/资源核验及本机原生检查；公开 0.1.34/latest/Homebrew 保持不变。已在独立干净工作树 `/Users/zhangxiaojun/.codex/worktrees/windows-release-draft/mail` 准备 Mac 验证，原目录既有图片诊断 WIP 保留。源码版本已同步 0.1.35，草稿资源构建及 Mac 验收结果待下文更新。
 
@@ -25,7 +35,7 @@
 
 `d61e1dfcce124cfecaff6190b9fde00b0708c5eb` 已推送。当前 [Windows validation 40514572315](https://github.com/ansermail/anser/actions/runs/40514572315) 的 frontend 成功，native 已通过 Rust 全量及 IMAP 测试，2026-10-27 21:53:34（Asia/Shanghai）进入 NSIS 构建；PE 与许可审计/安装首屏/外部 EML/外链点击尚未完成，未提供或正式发布 Windows 安装器。`f4e904b` 安装器关联及附件保护已包含在本轮源码，先前两轮因新修正推送而取消，不计通过。
 
-下一步：等待该 Windows 作业完整结果，失败读取原日志修复；成功后下载 artifact，核对 Windows 冒烟 JSON 和安装器 SHA-256，更新清单与开发记录。本地仅两处开工前图片诊断 WIP 继续保留；浏览器预览目录已移至 `/Users/zhangxiaojun/.Trash/Anser-Windows-QA-20261027-2139/dist-preview`，Vite 和 ego QA 已结束，本机 App 仍为已安装正式包。
+当时下一步（已完成，当前见顶部）：等待该 Windows 作业完整结果，失败读取原日志修复；成功后下载 artifact，核对 Windows 冒烟 JSON 和安装器 SHA-256，更新清单与开发记录。本地仅两处开工前图片诊断 WIP 继续保留；浏览器预览目录已移至 `/Users/zhangxiaojun/.Trash/Anser-Windows-QA-20261027-2139/dist-preview`，Vite 和 ego QA 已结束，本机 App 仍为已安装正式包。
 
 ## 目标与边界
 
@@ -48,11 +58,11 @@
 - [x] 主窗口/外部邮件、Windows 快捷键及双语文案实现与前端回归。
 - [ ] WebView2 邮件资源/CSP/链接与打印检查。
 - [ ] Windows 通知与冷启动定位路径。
-- [ ] NSIS 安装器、Windows CI/冒烟与下载验证构建。
+- [x] NSIS 安装器、Windows CI/冒烟与下载验证构建。
 - [x] 跨平台发布资源和更新清单实现与脚本测试，保留 macOS/Homebrew（正式包待发布验收）。
-- [ ] 本地与云端结果、限制及继续入口更新。
+- [x] 本地与云端结果、限制及继续入口更新。
 
-## 当前入口
+## 初始开发入口（历史）
 
 - 第一阶段提交 4467ce0 已推送独立分支，Windows validation 40492755820 首轮在格式检查失败：Windows checkout 自动将约 240 份源文件转换为 CRLF；macOS 同一提交格式检查通过。已新增 .gitattributes 固定 LF，下一轮核对原失败是否消失，不跳过检查。
 - 当前实现：Windows Credential Manager 密钥、加密文件/存档落盘、外部邮件窗口、HTTPS 资源与 CSP、Ctrl 提示、Windows 默认应用入口、协议型通知和 NSIS 验证构建；后续验证以实际 Windows 日志为准。

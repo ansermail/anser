@@ -54,3 +54,10 @@ Windows 真实桌面、收发/IDLE、通知点击冷启动、附件打开、A4 �
 - [ ] 后续候选包的升级及数据保留（首次安装不能算作升级通过）。
 
 GitHub Release 草稿仅仓库有权限的账号可见，不会进入公开 latest。未完成上述实机验收前保持草稿；是否正式发布由用户之后决定。
+
+
+### 本次草稿安装器（2026-10-28）
+
+[0.1.35 草稿资源](https://github.com/ansermail/anser/releases/tag/untagged-5a07cfca4e948c873840) 中选择 `Anser_0.1.35_x86_64-setup.exe`；草稿需有仓库权限的 GitHub 账号访问。当前 Mac 上也已保存 `~/Downloads/Anser-0.1.35-draft/Anser_0.1.35_x86_64-setup.exe`。
+
+该安装器为 10,187,040 字节，SHA-256：`dcdbde3641b0bc06abe162c3120eaf1b69f71802d6f5a05328d9f18ecc6cdda2`。Windows CI 的安装、首屏和原生外链冒烟已通过；上方真实桌面验收项仍待实际操作，保持草稿。
