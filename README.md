@@ -2,17 +2,15 @@
 
 **邮件，自在有序。**
 
-雁信是一款多账号邮件客户端，macOS 已提供正式安装包，Windows 10/11 x64 客户端正在验证。它将不同邮箱的邮件集中呈现，提供清晰的阅读与回复体验，并支持将完整邮件和附件独立保存在本机。
+雁信是一款多账号邮件客户端，支持 macOS 与 Windows 10/11 x64。它将不同邮箱的邮件集中呈现，提供清晰的阅读与回复体验，并支持将完整邮件和附件独立保存在本机。
 
 网页预览与桌面共用界面，相关代码推送到 `main` 后自动部署；只展示虚构邮箱，不能实际连接或收发邮件。
 
 [下载最新版本](https://github.com/ansermail/anser/releases/latest) · [产品官网](https://ansermail.github.io/anser/) · [Web 演示](https://ansermail.github.io/anser/demo/) · [使用说明](docs/USAGE.md) · [开发进度](docs/DEVELOPMENT_STATUS.md) · [反馈问题](https://github.com/ansermail/anser/issues)
 
-> **0.1.34 Alpha** 已正式发布，支持 Apple Silicon 与 Intel Mac。长期稳定性、部分服务商兼容性及真实场景验收仍在持续完善。
+> **0.1.35 Alpha** 已正式发布，支持 Apple Silicon / Intel Mac 与 Windows 10/11 x64。长期稳定性、部分服务商兼容性及真实场景验收仍在持续完善。
 
-Windows 的安装方式、开发环境和验收范围见 [Windows 客户端](docs/WINDOWS.md)。验证包通过 Windows validation 的 Actions artifact 提供，公开 0.1.34 未增加 Windows 资源。
-
-0.1.34 修复邮件打印预览丢失原样式的问题，保留字体、字号、配色、背景与段落间距；默认 A4 纵向、100% 比例与 16mm 页边距，长邮件正常分页，系统面板可调整本次纸张与缩放。[下载 0.1.34](https://github.com/ansermail/anser/releases/tag/v0.1.34)，说明见 [0.1.34 发布说明](docs/releases/v0.1.34.md)，验证进度见 [发布工作点](docs/RELEASE_0_1_34_WORKING.md)。
+0.1.35 新增 Windows x64 EXE 安装器、融合式顶栏与托盘后台运行，修复 Mac 原生长邮件打印；官网默认展示访问电脑系统的安装包，也可手动切换。[下载 0.1.35](https://github.com/ansermail/anser/releases/tag/v0.1.35)，说明见 [发布说明](docs/releases/v0.1.35.md)，安装与验收范围见 [Windows 客户端](docs/WINDOWS.md) 和 [发布工作点](docs/WINDOWS_RELEASE_WORKING.md)。
 
 ![雁信的多账号收件箱与邮件阅读界面](docs/screenshots/inbox-demo.png)
 
@@ -39,7 +37,7 @@ _所有展示截图均来自浏览器演示模式，使用项目内置的虚构�
 | 阅读与对话 | 单封邮件独立阅读，有回复引用关系的邮件按往来对话展示；支持搜索、未读、星标及附件筛选。                  |
 | 双语翻译   | 点击后在原段落下方显示译文，支持 OpenAI 兼容服务、本机模型、缓存与活动记录；自 0.1.17 提供。            |
 | 写信与回复 | 纯文本、富文本、Markdown 与 HTML 正文，草稿自动保存、回复、全部回复、转发及发送预览。                   |
-| 附件处理   | 调用系统默认应用预览附件，也可另存到指定位置。                                                       |
+| 附件处理   | 调用系统默认应用预览附件，也可另存到指定位置。                                                          |
 | 本地留存   | 按账号选择完整存档或在线阅读；完整原始邮件独立保存，支持备份、恢复与完整性校验。                        |
 | 自动归类   | 按账号与多条件配置规则，支持优先级、命中后停止及历史邮件处理。支持本地归类及明确的服务器复制/移动动作。 |
 | 桌面集成   | 新邮件与发送结果通知、菜单栏入口、登录自启、本机定时发送及应用内更新。                                  |
@@ -64,7 +62,11 @@ _所有展示截图均来自浏览器演示模式，使用项目内置的虚构�
 
 ## 下载与安装
 
-### Homebrew 安装
+### Windows 安装
+
+从[官网](https://ansermail.github.io/anser/)选择 Windows，下载 `Anser_0.1.35_x86_64-setup.exe` 并运行。安装器面向 Windows 10/11 x64，默认仅安装给当前用户；缺少 WebView2 时需联网下载运行环境。当前未提供 Authenticode 发布者签名，系统可能显示未知发布者。默认邮件应用由用户在 Windows 系统设置中选择。
+
+### Homebrew 安装（macOS）
 
 Homebrew 配方与应用源码在[同一仓库](https://github.com/ansermail/anser/blob/main/Casks/anser.rb)维护。首次安装先指定仓库来源：
 
@@ -75,7 +77,7 @@ brew install --cask ansermail/tap/anser
 
 曾添加旧 Tap 的用户先按[迁移说明](docs/HOMEBREW.md#已有旧-tap-的迁移)切换来源，无需重装应用。Homebrew 会按 Mac 架构选择已发布的 DMG 并核对 SHA-256。已由 Homebrew 安装的用户可运行 `brew upgrade --cask ansermail/tap/anser`，也可使用应用内更新。若「应用程序」中已有手动安装的「雁信」，先退出并备份或移走旧应用，再用 Homebrew 安装；邮箱账号和本地存档不会因移走应用包而自动删除。维护方式与验证范围见 [Homebrew 分发说明](docs/HOMEBREW.md)。
 
-### 手动安装
+### 手动安装（macOS）
 
 1. 前往 [GitHub Releases](https://github.com/ansermail/anser/releases/latest) 下载 DMG。
 2. Apple Silicon Mac 选择文件名含 `aarch64` 的版本；Intel Mac 选择含 `x86_64` 的版本。

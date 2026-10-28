@@ -1,8 +1,8 @@
 # 发布与应用内更新
 
-## 0.1.35 跨平台发布准备（2026-10-28）
+## 当前版本：0.1.35（2026-10-28）
 
-用户在 Windows 确认邮件发送与打印通过，授权补验无问题后正式发布。窗口/草稿/系统通知横幅实测、安装器真实托盘点击冒烟通过；官网 Windows 下载与默认系统选择已开发。最终三平台资源重新构建/审计与公开发布仍在进行，当前公开 latest 仍为 0.1.34。当前入口见 [发布工作点](WINDOWS_RELEASE_WORKING.md)。
+用户在 Windows 确认邮件发送与打印通过，授权补验无问题后正式发布。窗口/草稿/系统通知横幅实测、安装器真实托盘点击冒烟通过；官网 Windows 下载与默认系统选择已开发。最终源码 `bd4d062faaa46c20b5f15ad997af00bbfd981011` 已由 [Release desktop 40650749349](https://github.com/ansermail/anser/actions/runs/40650749349) 完成全量检查及三平台构建，九资源、三个更新签名、Mac 固定签名/DR/许可/DMG 一致性和匿名公开下载/latest 清单均通过；[0.1.35](https://github.com/ansermail/anser/releases/tag/v0.1.35) 已公开为 latest（2026-10-28T08:04:03Z）。[Pages 40654140088](https://github.com/ansermail/anser/actions/runs/40654140088) 已部署并完成线上系统识别/下载链接检查；[Homebrew 40654170192](https://github.com/ansermail/anser/actions/runs/40654170192) 成功，配方提交 `547e78a`，style/audit/fetch 与双 DMG 哈希通过。当前入口见 [发布工作点](WINDOWS_RELEASE_WORKING.md)。
 
 ### 以下为早期草稿记录（历史）
 
@@ -18,7 +18,7 @@
 
 `codex/windows-support` 增加 Windows x64 NSIS 验证包、Windows validation 与原生安装冒烟。Release desktop 已扩展到 macOS 双架构和 Windows x64，收齐九资源才生成草稿，更新清单增加 `windows-x86_64`。Windows Authenticode 尚未配置，Tauri 更新签名单独保留。公开 0.1.34 的七资源保持不变；首次跨平台正式版需新版本、三平台资源审计及 Windows 验收，当前未正式发布。入口见 [Windows 客户端](WINDOWS.md)。
 
-## 当前版本：0.1.34（2026-10-27）
+## 前一正式版本：0.1.34（2026-10-27）
 
 0.1.34 Alpha 于 2026-10-27 16:35:01（Asia/Shanghai）正式发布为 latest，固定源码 `c1e827e0b908c73307cb23e106c4a4368a7a40b2`。[Checks 40472389821](https://github.com/ansermail/anser/actions/runs/40472389821)、[Pages 40472389775](https://github.com/ansermail/anser/actions/runs/40472389775) 与 [Release macOS 40472397842](https://github.com/ansermail/anser/actions/runs/40472397842) 全部成功，[正式版本](https://github.com/ansermail/anser/releases/tag/v0.1.34) 已公开。
 

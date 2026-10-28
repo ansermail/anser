@@ -2,16 +2,13 @@
 
 依据 PRD 第 5、8、9 节、实施记录和当前代码核查。当前仍为 Alpha；功能代码已存在与真实场景验收通过分别记录。早期回归使用临时存储/演示数据；2026-10-05 用户授权后增加当前腾讯企业邮箱与 QQ 邮箱互发测试，未向其他地址发送，未删除真实邮件。
 
-## 当前执行检查点：Windows 实机补验与官网跨平台下载完成，准备 0.1.35 正式发布（2026-10-28）
+## 当前执行检查点：0.1.35 已正式发布，官网与 Homebrew 同步完成（2026-10-28）
 
-用户已授权测试无阻断问题后发版，并确认 Windows 邮件发送、打印已由其测试通过，本轮不重复发信。已接上最新验证源码 `9c3aaae`（原主目录落后三个提交，已快进并保留两处图片诊断 WIP）。通过 Windows App 操作真实 Windows 11：融合顶栏、最大化/还原、最小化隐藏、空白写信关闭、富文本草稿保存重开与系统通知横幅通过；已登录账号及邮件可读。长 EML 的 To/Cc、60 段末尾及普通附件已显示；打印按用户反馈记录，不冒充代理保存 PDF。
+用户确认 Windows 发送、打印实测通过，代理完成 Windows 11 窗口、空白写信、草稿重开、系统通知横幅和外部长 EML 检查；未重复发送邮件，保留虚构测试草稿。最终源码 `bd4d062faaa46c20b5f15ad997af00bbfd981011` 已发布为 [0.1.35 latest](https://github.com/ansermail/anser/releases/tag/v0.1.35)。[Release desktop 40650749349](https://github.com/ansermail/anser/actions/runs/40650749349) 与 [Windows validation 40650747611](https://github.com/ansermail/anser/actions/runs/40650747611) 全部成功；Mac/Windows 前端各 463、桌面脚本 37、IMAP 39 通过，Mac Rust 433/4 忽略、Windows Rust 432/2 忽略；未修改既有测试时限或断言。[main Checks 40654140111](https://github.com/ansermail/anser/actions/runs/40654140111) 同一源码的全量门槛也已成功。
 
-[安装器独立冒烟 40647081835](https://github.com/ansermail/anser/actions/runs/40647081835) 已通过真实托盘点击恢复及全部既有检查。失败根因为 Windows Server runner 的 UIA 仅暴露任务栏 Pane，不暴露图标；MSAA 实见“雁信 · 0 封未读 · 点击打开”，点击实际图标后窗口恢复。没有直接恢复窗口、放宽业务断言或添加自动重试。
-
-官网新增 Windows x64 下载和 shadcn macOS/Windows Tabs；访问 Windows 默认 EXE，macOS 保留两种芯片 DMG，手机/未知系统显示通用入口。10 项系统识别、UI/i18n/桌面与 Pages 构建通过；浏览器实测默认系统与切换，最终窄屏检查继续核对。当前尚未正式发布；接下来构建最终三平台草稿、逐资源和签名审计，通过后合入 main、发布 latest、部署官网与同步 Homebrew。完整入口见 [Windows 发布工作点](WINDOWS_RELEASE_WORKING.md)。通知绑定邮件冷启动、实时 IDLE 新到达、跨版本升级及 Windows 10 实机未验证，发布记录保留限制。
+九项资源的大小/散列、三个更新签名、Mac 双架构固定代码签名/DR、包内标识/架构/语言/许可和 DMG/更新归档一致性通过；九资源匿名公开下载与标准 latest 清单、源码/Release/清单说明原文一致性通过。[Pages 40654140088](https://github.com/ansermail/anser/actions/runs/40654140088) 已成功，线上核对 Windows/macOS 默认选择、手动切换、双语与英文 390px 下载区；本地双语/双平台 390px 无溢出。[Homebrew 40654170192](https://github.com/ansermail/anser/actions/runs/40654170192) 已通过 style/audit/fetch，配方提交 `547e78a` 的双 DMG 哈希与正式资源一致。完整证据和下一入口见 [Windows 发布工作点](WINDOWS_RELEASE_WORKING.md)。Windows 10 实机、主动 IDLE 新到达、绑定邮件通知冷启动、跨版本升级及 Mac Intel 实机仍未验证；本机 Mac 应用未替换，两处既有图片诊断 WIP 保留。
 
 ### 前一检查点：0.1.35 早期草稿与 Mac 验证（历史）
-
 
 按用户要求仅保存草稿。[0.1.35 草稿](https://github.com/ansermail/anser/releases/tag/untagged-5a07cfca4e948c873840) target `cb8b832`、九资源齐全，draft=true / 未发布；[Release desktop 40522234419](https://github.com/ansermail/anser/actions/runs/40522234419) 同提交重跑一次后 check、Mac 双架构、Windows 安装冒烟与草稿全部成功。公开 latest 仍为 0.1.34，未合并 main、未更新 Homebrew。九资源大小/散列、三个更新签名、Mac 双架构固定身份/DR/许可/DMG 一致性已核验。
 

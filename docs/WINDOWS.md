@@ -1,10 +1,10 @@
 # Windows 客户端
 
-首阶段面向 Windows 10/11 x64，使用系统窗口控件、Microsoft Edge WebView2 和每用户 NSIS 安装器。与 macOS 共用邮件协议、SQLite 索引和原始 MIME 存档。当前在 `codex/windows-support` 验证；公开 0.1.34 仍只有 macOS 安装包。
+首阶段面向 Windows 10/11 x64，使用融合式窗口顶栏、Microsoft Edge WebView2 和每用户 NSIS 安装器。与 macOS 共用邮件协议、SQLite 索引和原始 MIME 存档。0.1.35 已正式发布，完成 Windows 11 实机与云端安装冒烟；Windows 10 实机仍未验证。
 
 ## 安装与使用
 
-本轮使用独立版本 0.1.35，按用户要求仅保存 GitHub Release 草稿，不正式发布。Windows validation 成功后，也可从对应 Actions 的 `Anser-Windows-x64-validation` artifact 获取 `*-setup.exe`。此前 0.1.34 验证包仅为构建检查，不属于公开 0.1.34 资源。Windows 实机验收安排在 2026-10-28；验收后是否发布另行决定。
+0.1.35 可从[官网](https://ansermail.github.io/anser/)或[GitHub Releases](https://github.com/ansermail/anser/releases/latest)下载 `Anser_0.1.35_x86_64-setup.exe`。官网默认选择访问电脑的 Windows/macOS，也可手动切换；手机或未知系统显示通用电脑下载提示。
 
 安装器默认仅安装给当前用户。未安装 WebView2 Runtime 时，通过嵌入的引导程序下载运行环境，此时需要联网。当前没有 Windows Authenticode 代码签名，系统可能显示未知发布者；Tauri 更新签名与 Windows 发布者签名分别验证。
 
@@ -38,26 +38,21 @@ Windows validation 执行格式、前端与脚本测试、生产构建、Rust �
 
 Release desktop 将 macOS 两架构与 Windows x64 一并收齐后才生成草稿。新版本共九项资源：两组 Mac DMG/更新归档/签名，Windows NSIS EXE/签名，以及包含三平台的 `latest.json`。Homebrew 仍仅同步两份 Mac DMG。
 
-Windows 真实桌面、收发/IDLE、通知点击冷启动、附件打开、A4 打印和原位升级尚需相应环境验收。每轮已执行结果与失败入口见 [Windows 工作点](WINDOWS_SUPPORT_WORKING.md)。
+Windows 11 真实窗口、草稿、系统通知横幅及外部邮件已检查；发送与打印由用户实测通过。Windows 10 实机、IDLE 新到达、绑定邮件通知冷启动及原位升级尚未验证。完整记录见 [Windows 发布工作点](WINDOWS_RELEASE_WORKING.md)。
 
-## 2026-10-28 实机验收
+## 2026-10-28 实机与云端验收
 
-本轮由用户在 Windows 10/11 x64 验证 0.1.35 草稿安装器。记录系统版本、安装器文件名和 SHA-256；无需安装开发工具。逐项记录实际结果，失败时保留提示及发生步骤：
+- [x] 真实 Windows 11 的融合顶栏、最大化/还原、最小化隐藏；原有账号及邮件可读。
+- [x] 空白写信关闭没有新增草稿；虚构草稿保存后重开仍保留主题和正文。
+- [x] 测试系统通知横幅实际显示。
+- [x] 外部长 EML 的收件人/抄送、60 段正文末尾及附件名称可见。
+- [x] 用户确认邮件发送、打印已测且没有问题；未由代理另行发送或逐页审计打印 PDF。
+- [x] 最终源码的 Windows validation：前端 463、Rust 432（2 项既有忽略）、IMAP 39、桌面脚本 37，安装与原生窗口/托盘/EML/外链/默认关联保护通过。
+- [ ] Windows 10 实机、Ctrl 快捷键完整组合、全服务商兼容、凭据重启读取专项。
+- [ ] IDLE 主动新到达、绑定邮件通知在运行中与冷启动的定位。
+- [ ] EMLX/MSG、普通附件实际打开、系统默认应用选择及真实桌面卸载专项。
+- [ ] 跨版本升级及数据保留；首次安装不作为升级证据。
 
-- [ ] 每用户安装、WebView2 启动、中文/英文、系统窗口控件及 Ctrl+N/Ctrl+K。
-- [ ] 添加邮箱、退出重启后的凭据读取、既有本地邮件与原件可读。
-- [ ] 真实收取/IDLE 到达、写信草稿重开、经用户确认的测试收发与附件。
-- [ ] EML/EMLX/MSG 打开、正文图片/样式/字体、安全外链及普通附件预览。
-- [ ] 托盘、通知点击定位；已运行与退出后的冷启动分别检查。
-- [ ] A4 纵向、100% 正常比例与长正文完整分页。
-- [ ] 安装前后默认邮件应用不变，系统设置中能手动选择雁信；卸载仅移除自有候选注册。
-- [ ] 后续候选包的升级及数据保留（首次安装不能算作升级通过）。
+用户实机安装的是 `9c3aaae` 验证包；最终源码 `bd4d062` 的 Windows validation 40650747611 全部通过，安装器 SHA-256 为 `187263d11a4bc28b78af3fa55018b2656d4bfe5d2b8f9a60f8fe8c43743fe0bc`。该验证包不等同于随后带更新签名的正式资源，正式资源审计继续见发布工作点。虚构 `WINDOWS-QA-20261028` 测试草稿未发送，保留供核对。
 
-GitHub Release 草稿仅仓库有权限的账号可见，不会进入公开 latest。未完成上述实机验收前保持草稿；是否正式发布由用户之后决定。
-
-
-### 本次草稿安装器（2026-10-28）
-
-[0.1.35 草稿资源](https://github.com/ansermail/anser/releases/tag/untagged-5a07cfca4e948c873840) 中选择 `Anser_0.1.35_x86_64-setup.exe`；草稿需有仓库权限的 GitHub 账号访问。当前 Mac 上也已保存 `~/Downloads/Anser-0.1.35-draft/Anser_0.1.35_x86_64-setup.exe`。
-
-该安装器为 10,187,040 字节，SHA-256：`dcdbde3641b0bc06abe162c3120eaf1b69f71802d6f5a05328d9f18ecc6cdda2`。Windows CI 的安装、首屏和原生外链冒烟已通过；上方真实桌面验收项仍待实际操作，保持草稿。
+正式资源：`Anser_0.1.35_x86_64-setup.exe`，10172155 字节，SHA-256 `46d51eb38a29d743ae777c2634447a9931b16e85768f66856f521e7eed5eb8d4`。已核对公开匿名下载和 Tauri 更新签名；该签名不等同于 Authenticode。

@@ -1,6 +1,8 @@
 # 0.1.35 草稿与资源核验工作点（2026-10-28）
 
-## 当前结果
+> 历史快照：以下为 2026-10-28 09:39 的早期草稿证据。用户后续授权发版，最终源码 `bd4d062` 于 16:04:03（Asia/Shanghai）公开为 0.1.35 latest；草稿资源已整体替换，不能沿用下方旧散列。当前结果见 [正式发布工作点](WINDOWS_RELEASE_WORKING.md)。
+
+## 当时结果
 
 源码 `cb8b8321893890d175590f2c084f09cf20a54fee`，分支 `codex/windows-support`。
 [Release desktop 40522234419](https://github.com/ansermail/anser/actions/runs/40522234419) attempt 2 全部成功，2026-10-28 09:39（Asia/Shanghai）生成草稿；[Windows validation 40522206291](https://github.com/ansermail/anser/actions/runs/40522206291) 同源码完整成功。
@@ -32,16 +34,16 @@ Windows 真实账号收发/IDLE、通知冷启动点击、A4 实际打印、原�
 
 ## 草稿资源
 
-| 资源 | 字节 | SHA-256 |
-| --- | ---: | --- |
-| Anser_0.1.35_aarch64.app.tar.gz | 12916723 | 9e6c2d09493baace69bf0462c8b783db1953c5ad531e0983d566b287b70d0583 |
-| Anser_0.1.35_aarch64.app.tar.gz.sig | 424 | 58e579f5c972f47d5644fc873d0b48ca84407ff491918cc23868a6fe6efd47be |
-| Anser_0.1.35_aarch64.dmg | 13470171 | 0019dc8fefae4ee4f464b6f1ae192aacc9e3729b96d7ed1dfe11e7c9d4892984 |
-| Anser_0.1.35_x86_64-setup.exe | 10187040 | dcdbde3641b0bc06abe162c3120eaf1b69f71802d6f5a05328d9f18ecc6cdda2 |
-| Anser_0.1.35_x86_64-setup.exe.sig | 436 | 147cd86e4e0d910c255024aaaa6f5bcb2c19c28b86133092d952c90bcf09cabf |
-| Anser_0.1.35_x86_64.app.tar.gz | 13531409 | 895d0cbb7b45673eea93434c2723d9d45d13b8cac0ef76f165a26e51de22744f |
-| Anser_0.1.35_x86_64.app.tar.gz.sig | 424 | cdcacd3896cba22b43cff3dbe3d11feac72761d8ab682cf2f1220ba41b1f1c82 |
-| Anser_0.1.35_x86_64.dmg | 14182875 | d97d1502ac0c68265ef869e14491f82c46de3cf11671051a2b1bb59654a85649 |
-| latest.json | 3787 | 02650ac62d09c548e32957272ea4341a8ad21e93a898526ec00a56f8007b1e21 |
+| 资源                                |     字节 | SHA-256                                                          |
+| ----------------------------------- | -------: | ---------------------------------------------------------------- |
+| Anser_0.1.35_aarch64.app.tar.gz     | 12916723 | 9e6c2d09493baace69bf0462c8b783db1953c5ad531e0983d566b287b70d0583 |
+| Anser_0.1.35_aarch64.app.tar.gz.sig |      424 | 58e579f5c972f47d5644fc873d0b48ca84407ff491918cc23868a6fe6efd47be |
+| Anser_0.1.35_aarch64.dmg            | 13470171 | 0019dc8fefae4ee4f464b6f1ae192aacc9e3729b96d7ed1dfe11e7c9d4892984 |
+| Anser_0.1.35_x86_64-setup.exe       | 10187040 | dcdbde3641b0bc06abe162c3120eaf1b69f71802d6f5a05328d9f18ecc6cdda2 |
+| Anser_0.1.35_x86_64-setup.exe.sig   |      436 | 147cd86e4e0d910c255024aaaa6f5bcb2c19c28b86133092d952c90bcf09cabf |
+| Anser_0.1.35_x86_64.app.tar.gz      | 13531409 | 895d0cbb7b45673eea93434c2723d9d45d13b8cac0ef76f165a26e51de22744f |
+| Anser_0.1.35_x86_64.app.tar.gz.sig  |      424 | cdcacd3896cba22b43cff3dbe3d11feac72761d8ab682cf2f1220ba41b1f1c82 |
+| Anser_0.1.35_x86_64.dmg             | 14182875 | d97d1502ac0c68265ef869e14491f82c46de3cf11671051a2b1bb59654a85649 |
+| latest.json                         |     3787 | 02650ac62d09c548e32957272ea4341a8ad21e93a898526ec00a56f8007b1e21 |
 
 验证副本清理位置：`~/.Trash/Anser-0.1.35-validation-20261028/`（含可恢复的资源审计与原生 PDF 证据）。候选包及审计 App 已取消 LaunchServices 注册；工作树的临时 target 符号链接已移除，原 target 目录未删除。
