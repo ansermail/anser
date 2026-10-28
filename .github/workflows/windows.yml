@@ -51,14 +51,22 @@ jobs:
           MAIL_GOOGLE_CLIENT_SECRET: ${{ github.event_name != 'pull_request' && secrets.MAIL_GOOGLE_CLIENT_SECRET || '' }}
           MAIL_MICROSOFT_CLIENT_ID: ${{ github.event_name != 'pull_request' && secrets.MAIL_MICROSOFT_CLIENT_ID || '' }}
         run: node scripts/windows-build.mjs
+      - name: Upload Windows validation installer
+        id: installer
+        if: github.event_name != 'pull_request'
+        uses: actions/upload-artifact@v6
+        with:
+          name: Anser-Windows-x64-validation-installer
+          path: src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/*-setup.exe
+          if-no-files-found: error
+          retention-days: 14
       - name: Install and start the WebView2 client
         run: ./scripts/windows-smoke.ps1
-      - uses: actions/upload-artifact@v6
-        if: github.event_name != 'pull_request'
+      - name: Upload Windows validation smoke report
+        if: github.event_name != 'pull_request' && success()
+        uses: actions/upload-artifact@v6
         with:
-          name: Anser-Windows-x64-validation
-          path: |
-            src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/*-setup.exe
-            windows-smoke.json
+          name: Anser-Windows-x64-validation-report
+          path: windows-smoke.json
           if-no-files-found: error
           retention-days: 14
