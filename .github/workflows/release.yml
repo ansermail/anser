@@ -34,7 +34,7 @@ jobs:
       - run: node scripts/release-assets.mjs verify
       - run: npm run format:check && cargo fmt --manifest-path src-tauri/Cargo.toml -- --check
       - name: Frontend tests
-        run: npm test
+        run: npm run test:ci
       - name: Desktop script tests
         run: npm run test:desktop
       - name: Production frontend build

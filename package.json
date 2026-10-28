@@ -20,7 +20,8 @@
     "release:check": "node scripts/release-assets.mjs verify",
     "release:secrets": "node scripts/release-secrets.mjs",
     "format:check": "prettier --check \"src/**/*.{ts,tsx,css,json}\" \"scripts/*.mjs\" \".github/workflows/*.yml\" \"package*.json\" \"src-tauri/*.json\" \"src-tauri/capabilities/*.json\"",
-    "check:i18n": "node scripts/check-i18n.mjs"
+    "check:i18n": "node scripts/check-i18n.mjs",
+    "test:ci": "vitest run --exclude src/App.test.tsx && vitest run src/App.test.tsx"
   },
   "dependencies": {
     "@tauri-apps/api": "^2",
