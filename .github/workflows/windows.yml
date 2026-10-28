@@ -13,7 +13,7 @@ permissions:
   contents: read
   actions: read
 concurrency:
-  group: windows-${{ github.ref }}
+  group: windows-${{ github.ref }}-${{ inputs.installer_run_id }}
   cancel-in-progress: true
 jobs:
   frontend:

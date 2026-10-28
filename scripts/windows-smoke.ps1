@@ -54,6 +54,9 @@ public static class AnserWindowNative {
   [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr window, int command);
   [DllImport("user32.dll")] public static extern bool IsWindowVisible(IntPtr window);
   [DllImport("user32.dll")] public static extern bool IsZoomed(IntPtr window);
+  [DllImport("oleacc.dll")] public static extern int AccessibleObjectFromWindow(IntPtr window, uint objectId, ref Guid interfaceId, [MarshalAs(UnmanagedType.Interface)] out object accessible);
+  [DllImport("user32.dll")] public static extern bool SetCursorPos(int x, int y);
+  [DllImport("user32.dll")] public static extern void mouse_event(uint flags, uint dx, uint dy, uint data, UIntPtr extraInfo);
 }
 '@
   $ready = $false
@@ -112,21 +115,48 @@ public static class AnserWindowNative {
     }
     Start-Sleep -Milliseconds 250
   }
-  if ($null -eq $trayButton) {
-    $allButtons | ForEach-Object {
+  $trayClicked = $false
+  if ($null -ne $trayButton) {
+    $trayInvoke = $null
+    if ($trayButton.TryGetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern, [ref]$trayInvoke)) {
+      $trayInvoke.Invoke()
+    } else {
+      $trayButton.GetCurrentPattern([System.Windows.Automation.LegacyIAccessiblePattern]::Pattern).DoDefaultAction()
+    }
+    $trayClicked = $true
+  } else {
+    # Server 2022 exposes taskbar toolbars as UIA Panes without icon children.
+    # Read the real toolbar's MSAA children and click the matching icon bounds.
+    $trayNames = @()
+    foreach ($element in $allButtons) {
+      if ($element.Current.ClassName -ne 'ToolbarWindow32') { continue }
+      $iid = [Guid]'618736e0-3c3d-11cf-810c-00aa00389b71'
+      $accessible = $null
+      $result = [AnserWindowNative]::AccessibleObjectFromWindow([IntPtr]$element.Current.NativeWindowHandle, 0xfffffffc, [ref]$iid, [ref]$accessible)
+      if ($result -ne 0 -or $null -eq $accessible) { continue }
+      for ($child = 1; $child -le $accessible.accChildCount; $child++) {
+        $name = $accessible.accName($child)
+        $trayNames += $name
+        if ($name -notmatch '^(雁信|Anser)(\s|$)') { continue }
+        $left = 0; $top = 0; $width = 0; $height = 0
+        $accessible.accLocation([ref]$left, [ref]$top, [ref]$width, [ref]$height, $child)
+        if ($width -le 0 -or $height -le 0) { continue }
+        [AnserWindowNative]::SetCursorPos($left + [int]($width / 2), $top + [int]($height / 2)) | Out-Null
+        [AnserWindowNative]::mouse_event(0x0002, 0, 0, 0, [UIntPtr]::Zero)
+        [AnserWindowNative]::mouse_event(0x0004, 0, 0, 0, [UIntPtr]::Zero)
+        $trayClicked = $true
+        break
+      }
+      if ($trayClicked) { break }
+    }
+    @{ msaaNames = $trayNames; uiaElements = @($allButtons | ForEach-Object {
       $item = $_.Current
       if ($item.ProcessId -ne $app.Id -and $item.Name) {
-        [PSCustomObject]@{ name = $item.Name; type = $item.ControlType.ProgrammaticName; id = $item.AutomationId; class = $item.ClassName; offscreen = $item.IsOffscreen }
+        @{ name = $item.Name; type = $item.ControlType.ProgrammaticName; id = $item.AutomationId; class = $item.ClassName }
       }
-    } | ConvertTo-Json -Depth 3 | Set-Content 'windows-tray-diagnostics.json' -Encoding utf8
-    throw 'The installed app system tray icon could not be found; see windows-tray-diagnostics.json.'
+    }) } | ConvertTo-Json -Depth 4 | Set-Content 'windows-tray-diagnostics.json' -Encoding utf8
   }
-  $trayInvoke = $null
-  if ($trayButton.TryGetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern, [ref]$trayInvoke)) {
-    $trayInvoke.Invoke()
-  } else {
-    $trayButton.GetCurrentPattern([System.Windows.Automation.LegacyIAccessiblePattern]::Pattern).DoDefaultAction()
-  }
+  if (-not $trayClicked) { throw 'The installed app system tray icon could not be found; see windows-tray-diagnostics.json.' }
   for ($i = 0; $i -lt 30 -and -not [AnserWindowNative]::IsWindowVisible($mainWindow); $i++) { Start-Sleep -Milliseconds 100 }
   if (-not [AnserWindowNative]::IsWindowVisible($mainWindow)) { throw 'The real tray click did not restore the main window.' }
   $sample = Join-Path $env:RUNNER_TEMP 'anser-windows-smoke.eml'
