@@ -97,14 +97,14 @@ public static class AnserWindowNative {
   $buttons = [System.Windows.Automation.PropertyCondition]::new([System.Windows.Automation.AutomationElement]::ControlTypeProperty, [System.Windows.Automation.ControlType]::Button)
   $trayButton = $null
   for ($i = 0; $i -lt 20; $i++) {
-    $allButtons = $desktop.FindAll([System.Windows.Automation.TreeScope]::Descendants, $buttons)
+    $allButtons = $desktop.FindAll([System.Windows.Automation.TreeScope]::Descendants, [System.Windows.Automation.Condition]::TrueCondition)
     foreach ($button in $allButtons) {
-      if ($button.Current.Name -match '^(雁信|Anser) ·') { $trayButton = $button; break }
+      if ($button.Current.Name -match '^(雁信|Anser)(\s|$)') { $trayButton = $button; break }
     }
     if ($null -ne $trayButton) { break }
     if ($i -eq 0) {
       foreach ($button in $allButtons) {
-        if ($button.Current.AutomationId -eq 'NotificationChevron' -or $button.Current.Name -match '(?i)show hidden icons|显示隐藏.*图标') {
+        if ($button.Current.AutomationId -eq 'NotificationChevron' -or $button.Current.Name -match '(?i)show hidden icons|notification chevron|显示隐藏.*图标') {
           $button.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern).Invoke()
           break
         }
@@ -112,7 +112,15 @@ public static class AnserWindowNative {
     }
     Start-Sleep -Milliseconds 250
   }
-  if ($null -eq $trayButton) { throw 'The installed app system tray icon could not be found.' }
+  if ($null -eq $trayButton) {
+    $allButtons | ForEach-Object {
+      $item = $_.Current
+      if ($item.ProcessId -ne $app.Id -and $item.Name) {
+        [PSCustomObject]@{ name = $item.Name; type = $item.ControlType.ProgrammaticName; id = $item.AutomationId; class = $item.ClassName; offscreen = $item.IsOffscreen }
+      }
+    } | ConvertTo-Json -Depth 3 | Set-Content 'windows-tray-diagnostics.json' -Encoding utf8
+    throw 'The installed app system tray icon could not be found; see windows-tray-diagnostics.json.'
+  }
   $trayInvoke = $null
   if ($trayButton.TryGetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern, [ref]$trayInvoke)) {
     $trayInvoke.Invoke()
