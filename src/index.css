@@ -4820,6 +4820,27 @@ body.site-body #root {
   margin-top: 17px;
   color: #8d9b86;
 }
+.site-download-tabs {
+  margin-top: 28px;
+  align-items: center;
+  width: 100%;
+}
+.site-download-tabs > [data-slot="tabs-content"] {
+  width: 100%;
+}
+.site-detected-platform {
+  font-size: 12px;
+  color: #8d9b86;
+  margin-top: 8px;
+}
+.site-download-options.site-download-windows {
+  grid-template-columns: 1fr;
+  max-width: 440px;
+}
+.site-download-option[data-slot="button"] {
+  height: auto;
+  white-space: normal;
+}
 .site-download-options {
   max-width: 660px;
   display: grid;

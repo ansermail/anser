@@ -1,6 +1,15 @@
 # Windows 客户端工作点（更新：2026-10-28）
 
-## 当前检查点：0.1.35 草稿已就绪
+## 当前检查点：实机验收已补充，正式发版准备中
+
+2026-10-28 用户确认 Windows 邮件发送与打印已自行测试通过，并授权无阻断问题后发布。代理在真实 Windows 11 上确认融合顶栏、最大化/还原、最小化隐藏、空白写信关闭、草稿保存重开、系统通知横幅、长 EML/To/Cc/附件显示；不重复发送邮件。
+
+[40647081835](https://github.com/ansermail/anser/actions/runs/40647081835) 对 `9c3aaae` 安装器补验通过，SHA-256 `f96ce1f488113874507ba63fa6e6ddbc83254c1f9619a5fa50beafa3fed57e59`：UIA 的任务栏子项缺失时使用 MSAA 定位实际图标并点击，主窗口恢复；GUI Subsystem、窗口按钮、原生菜单、外部 EML/外链、许可、通知协议与默认关联保护全部通过。旧草稿的 `cb8b832` 资源不可当成这些顶栏修正的最终包。
+
+官网 Windows 下载及按系统默认选择已开发。当前正式发布流程、最终源码/资源/验收边界统一从 [Windows 发布工作点](WINDOWS_RELEASE_WORKING.md) 继续。旧的“只保存草稿”等限制属于当时指令，已由本轮用户的新发版指令替代；仍只在实际构建与资源核验通过后发布。
+
+## 以下为早期草稿与开发历史（不作为当前入口）
+
 
 源码 `cb8b8321893890d175590f2c084f09cf20a54fee` 的三平台 [Release desktop 40522234419](https://github.com/ansermail/anser/actions/runs/40522234419) attempt 2 完整成功；[Windows validation 40522206291](https://github.com/ansermail/anser/actions/runs/40522206291) 同源码完整成功。九资源与三个更新签名、Mac 双架构身份/元数据/许可/DMG 一致性已核验。[GitHub 草稿](https://github.com/ansermail/anser/releases/tag/untagged-5a07cfca4e948c873840) 保持 draft=true / published_at=null；公开 latest 仍为 0.1.34。
 

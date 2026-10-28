@@ -7,6 +7,8 @@
 - 客户端支持方向为 macOS 与 Windows，共用现有界面、邮件协议与存档格式；平台原生行为分别适配。Windows 首阶段为 Windows 10/11 x64 + WebView2，使用与应用界面融合的 Windows 顶栏，右上角保留最小化/最大化还原/关闭按钮，不重复展示标题栏图标与应用名；保留 Ctrl 快捷键和每用户安装；编译、安装包、启动冒烟与真实桌面验收分别记录。Windows 系统默认应用只能由用户在系统设置中选择，不能改写受保护的 UserChoice 来绕过确认。
 - Windows 安装器只注册 OpenWithProgids、Applications/SupportedTypes 与 Capabilities 候选项，不写扩展名默认值或 UserChoice；当前 Tauri NSIS 默认关联宏会写扩展名默认值，因此 Windows 配置清空继承的 fileAssociations 并使用专用 hooks。更换安装器时须核对默认值、可选处理程序和卸载清理，不能仅检查 UserChoice。
 - Windows 发布二进制必须使用 GUI 子系统（PE Subsystem=2），避免双击应用生成终端；默认 File/Edit/Window/Help 原生菜单仅在 macOS 设置。Windows 主窗口最小化或关闭后保留后台与系统托盘，点击托盘可恢复；外部邮件窗口不套用主窗口隐藏策略。Windows CI 需实测 GUI 子系统、主/外部窗口无原生菜单、最小化隐藏及真实托盘点击恢复。托盘图标可见性由 Windows 用户选择，不能改写通知区域注册表来强制显示；优先在实际桌面通过系统界面固定。
+- Windows 托盘验收同时兼容 UI Automation 与 MSAA：部分 Windows Server runner 仅暴露任务栏 Pane、不暴露图标子节点，不能把定位失败当成托盘未创建；通过 MSAA 读取真实图标名称和边界后实际点击，并检查主窗口恢复，不以直接调用窗口恢复代替。
+- 官网按访问电脑的操作系统默认显示 macOS 或 Windows 下载区，保留手动切换；浏览器不能可靠判断 Mac 芯片时同时提供 Apple Silicon/Intel。手机、平板与未知系统不伪称支持，显示通用下载入口；官网上线前核对对应版本安装器已公开可下载。
 - 源文件统一 LF，由 .gitattributes 固定，避免 Windows checkout 的自动 CRLF 转换让全项目格式检查误报。Windows CI 脚本使用 PowerShell 7（pwsh）读取 UTF-8，不能依赖 Windows PowerShell 5 的本地代码页。
 - Windows runner 的 jsdom 大列表测试按平台实测工作量定界：205 行固定页刷新组 30 秒，两条七次跨页导航 60 秒，单封/对话多次切换 15 秒；macOS 保持原有时限。依据同一提交两次 Windows 实测 7–20 秒及 34–46 秒，不整体延长、不添加自动重试，断言和真实原生验收分别保留。
 

@@ -41,6 +41,10 @@ import rulesImage from "../../preview/site/rules.png";
 import composeImage from "../../preview/site/compose.png";
 import filmPoster from "../../preview/site/film-poster.jpg";
 import filmURL from "../../preview/site/anser-film.mp4";
+import {
+  detectDownloadPlatform,
+  type DownloadPlatform,
+} from "./download-platform";
 const base = import.meta.env.BASE_URL;
 const media: Record<string, string> = {
   "inbox-dark.png": inboxImage,
@@ -65,6 +69,10 @@ export function Website() {
       return "zh-CN";
     }
   });
+  const [detectedPlatform] = useState(() => detectDownloadPlatform(navigator));
+  const [downloadPlatform, setDownloadPlatform] = useState<DownloadPlatform>(
+    detectedPlatform ?? "macos",
+  );
   const [copied, setCopied] = useState(false);
   const [copyError, setCopyError] = useState(false);
   const copy = language === "en" ? en : zh;
@@ -225,7 +233,11 @@ export function Website() {
               <Button asChild size="lg" className="site-primary">
                 <a href="#download">
                   <Download size={18} />
-                  {copy.download}
+                  {detectedPlatform === "windows"
+                    ? copy.downloadWindows
+                    : detectedPlatform === "macos"
+                      ? copy.download
+                      : copy.downloadDesktop}
                 </a>
               </Button>
               <Button
@@ -472,46 +484,96 @@ export function Website() {
           />
           <h2>{copy.getTitle}</h2>
           <p>{copy.getBody}</p>
-          <div className="site-download-options">
-            {[
-              { arch: "aarch64", name: copy.arm, sub: copy.armSub },
-              { arch: "x86_64", name: copy.intel, sub: copy.intelSub },
-            ].map((v) => (
-              <a
-                key={v.arch}
-                href={`${repository}/releases/download/v${pkg.version}/Anser_${pkg.version}_${v.arch}.dmg`}
-                className="site-download-option"
-              >
-                <span>
-                  <strong>{v.name}</strong>
-                  <small>{v.sub}</small>
-                </span>
-                <span>
-                  {copy.getDmg}
-                  <Download size={18} />
-                </span>
-              </a>
-            ))}
-          </div>
-          <div className="site-install">
-            <div>
-              <span>{copy.brew}</span>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => void copyInstall()}
-                aria-label={copy.copy}
-              >
-                {copied ? <Check size={14} /> : <Copy size={14} />}
-                {copied ? copy.copied : copy.copy}
-              </Button>
-            </div>
-            <pre>
-              <code>{install}</code>
-            </pre>
-            <span role="status">{copyError ? copy.copyFailed : ""}</span>
-          </div>
-          <p className="site-install-note">{copy.installNote}</p>
+          <Tabs
+            value={downloadPlatform}
+            onValueChange={(value) =>
+              setDownloadPlatform(value as DownloadPlatform)
+            }
+            className="site-download-tabs"
+          >
+            <TabsList aria-label={copy.choosePlatform}>
+              <TabsTrigger value="macos">macOS</TabsTrigger>
+              <TabsTrigger value="windows">Windows</TabsTrigger>
+            </TabsList>
+            <p className="site-detected-platform">
+              {detectedPlatform
+                ? copy.platformDetected.replace(
+                    "{platform}",
+                    detectedPlatform === "windows" ? "Windows" : "macOS",
+                  )
+                : copy.choosePlatform}
+            </p>
+            <TabsContent value="windows">
+              <div className="site-download-options site-download-windows">
+                <Button
+                  asChild
+                  variant="outline"
+                  className="site-download-option"
+                >
+                  <a
+                    href={`${repository}/releases/download/v${pkg.version}/Anser_${pkg.version}_x86_64-setup.exe`}
+                  >
+                    <span>
+                      <strong>Windows x64</strong>
+                      <small>{copy.windowsSub}</small>
+                    </span>
+                    <span>
+                      {copy.getExe}
+                      <Download />
+                    </span>
+                  </a>
+                </Button>
+              </div>
+              <p className="site-install-note">{copy.windowsInstallNote}</p>
+            </TabsContent>
+            <TabsContent value="macos">
+              <div className="site-download-options">
+                {[
+                  { arch: "aarch64", name: copy.arm, sub: copy.armSub },
+                  { arch: "x86_64", name: copy.intel, sub: copy.intelSub },
+                ].map((v) => (
+                  <Button
+                    key={v.arch}
+                    asChild
+                    variant="outline"
+                    className="site-download-option"
+                  >
+                    <a
+                      href={`${repository}/releases/download/v${pkg.version}/Anser_${pkg.version}_${v.arch}.dmg`}
+                    >
+                      <span>
+                        <strong>{v.name}</strong>
+                        <small>{v.sub}</small>
+                      </span>
+                      <span>
+                        {copy.getDmg}
+                        <Download />
+                      </span>
+                    </a>
+                  </Button>
+                ))}
+              </div>
+              <div className="site-install">
+                <div>
+                  <span>{copy.brew}</span>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => void copyInstall()}
+                    aria-label={copy.copy}
+                  >
+                    {copied ? <Check size={14} /> : <Copy size={14} />}
+                    {copied ? copy.copied : copy.copy}
+                  </Button>
+                </div>
+                <pre>
+                  <code>{install}</code>
+                </pre>
+                <span role="status">{copyError ? copy.copyFailed : ""}</span>
+              </div>
+              <p className="site-install-note">{copy.installNote}</p>
+            </TabsContent>
+          </Tabs>
         </section>
       </main>
       <footer className="site-container site-footer">
