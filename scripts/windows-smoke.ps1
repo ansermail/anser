@@ -132,7 +132,7 @@ public static class AnserWindowNative {
       if ($element.Current.ClassName -ne 'ToolbarWindow32') { continue }
       $iid = [Guid]'618736e0-3c3d-11cf-810c-00aa00389b71'
       $accessible = $null
-      $result = [AnserWindowNative]::AccessibleObjectFromWindow([IntPtr]$element.Current.NativeWindowHandle, 0xfffffffc, [ref]$iid, [ref]$accessible)
+      $result = [AnserWindowNative]::AccessibleObjectFromWindow([IntPtr]$element.Current.NativeWindowHandle, 4294967292, [ref]$iid, [ref]$accessible)
       if ($result -ne 0 -or $null -eq $accessible) { continue }
       for ($child = 1; $child -le $accessible.accChildCount; $child++) {
         $name = $accessible.accName($child)
