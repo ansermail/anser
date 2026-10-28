@@ -6,6 +6,10 @@
 
 修复 Mac 原生打印初始页边距与 CSS 不一致造成的页顶额外留白/字号缩小，以及外部邮件窗口固定高度裁掉后续页。实际 WKWebView 四组合回归均完整输出 60 段/5 页 A4，左边距 16mm，正文原样式保留；候选 App 系统面板 A4/100%/7 页及保存 PDF 完整性已复验通过。
 
+### Windows 实机反馈修正（2026-10-28，构建中）
+
+已连接用户的 Windows 11 专业版实际桌面，发现默认原生菜单、发布入口控制台子系统与最小化行为遗漏；代码已修正，新的安装冒烟与同一 0.1.35 草稿构建待完成。已有草稿资源仍对应 cb8b832，不能作为修后验收证据。
+
 ### Windows 发布准备
 
 `codex/windows-support` 增加 Windows x64 NSIS 验证包、Windows validation 与原生安装冒烟。Release desktop 已扩展到 macOS 双架构和 Windows x64，收齐九资源才生成草稿，更新清单增加 `windows-x86_64`。Windows Authenticode 尚未配置，Tauri 更新签名单独保留。公开 0.1.34 的七资源保持不变；首次跨平台正式版需新版本、三平台资源审计及 Windows 验收，当前未正式发布。入口见 [Windows 客户端](WINDOWS.md)。

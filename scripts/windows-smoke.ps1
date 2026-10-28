@@ -20,6 +20,8 @@ try {
   $peOffset = $pe.ReadInt32()
   $pe.BaseStream.Position = $peOffset
   if ($pe.ReadUInt32() -ne 0x4550 -or $pe.ReadUInt16() -ne 0x8664) { throw 'Installed app is not Windows x64 PE.' }
+  $pe.BaseStream.Position = $peOffset + 24 + 68
+  if ($pe.ReadUInt16() -ne 2) { throw 'Installed app uses the console subsystem instead of Windows GUI.' }
 } finally { $pe.Dispose() }
 $expectedVersion = (Get-Content 'src-tauri/tauri.conf.json' -Raw | ConvertFrom-Json).version
 $installedVersion = (Get-Item $exe).VersionInfo.ProductVersion
@@ -44,6 +46,15 @@ try {
   $app = Start-Process $exe -PassThru
   Add-Type -AssemblyName UIAutomationClient
   Add-Type -AssemblyName UIAutomationTypes
+  Add-Type @'
+using System;
+using System.Runtime.InteropServices;
+public static class AnserWindowNative {
+  [DllImport("user32.dll")] public static extern IntPtr GetMenu(IntPtr window);
+  [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr window, int command);
+  [DllImport("user32.dll")] public static extern bool IsWindowVisible(IntPtr window);
+}
+'@
   $ready = $false
   for ($i = 0; $i -lt 90; $i++) {
     Start-Sleep -Milliseconds 1000
@@ -57,6 +68,39 @@ try {
     if ($null -ne $root.FindFirst([System.Windows.Automation.TreeScope]::Descendants, $condition)) { $ready = $true; break }
   }
   if (-not $ready) { throw 'The installed WebView2 app did not render its mailbox setup screen.' }
+  $mainWindow = $app.MainWindowHandle
+  if ([AnserWindowNative]::GetMenu($mainWindow) -ne [IntPtr]::Zero) { throw 'The Windows main window has an unexpected native menu bar.' }
+  [AnserWindowNative]::ShowWindow($mainWindow, 6) | Out-Null
+  for ($i = 0; $i -lt 30 -and [AnserWindowNative]::IsWindowVisible($mainWindow); $i++) { Start-Sleep -Milliseconds 100 }
+  if ([AnserWindowNative]::IsWindowVisible($mainWindow)) { throw 'Minimizing did not hide the main window to the system tray.' }
+  $desktop = [System.Windows.Automation.AutomationElement]::RootElement
+  $buttons = [System.Windows.Automation.PropertyCondition]::new([System.Windows.Automation.AutomationElement]::ControlTypeProperty, [System.Windows.Automation.ControlType]::Button)
+  $trayButton = $null
+  for ($i = 0; $i -lt 20; $i++) {
+    $allButtons = $desktop.FindAll([System.Windows.Automation.TreeScope]::Descendants, $buttons)
+    foreach ($button in $allButtons) {
+      if ($button.Current.Name -match '^(雁信|Anser) ·') { $trayButton = $button; break }
+    }
+    if ($null -ne $trayButton) { break }
+    if ($i -eq 0) {
+      foreach ($button in $allButtons) {
+        if ($button.Current.AutomationId -eq 'NotificationChevron' -or $button.Current.Name -match '(?i)show hidden icons|显示隐藏.*图标') {
+          $button.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern).Invoke()
+          break
+        }
+      }
+    }
+    Start-Sleep -Milliseconds 250
+  }
+  if ($null -eq $trayButton) { throw 'The installed app system tray icon could not be found.' }
+  $trayInvoke = $null
+  if ($trayButton.TryGetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern, [ref]$trayInvoke)) {
+    $trayInvoke.Invoke()
+  } else {
+    $trayButton.GetCurrentPattern([System.Windows.Automation.LegacyIAccessiblePattern]::Pattern).DoDefaultAction()
+  }
+  for ($i = 0; $i -lt 30 -and -not [AnserWindowNative]::IsWindowVisible($mainWindow); $i++) { Start-Sleep -Milliseconds 100 }
+  if (-not [AnserWindowNative]::IsWindowVisible($mainWindow)) { throw 'The real tray click did not restore the main window.' }
   $sample = Join-Path $env:RUNNER_TEMP 'anser-windows-smoke.eml'
   @'
 From: Windows QA <qa@example.com>
@@ -79,6 +123,7 @@ Content-Type: text/html; charset=utf-8
     Start-Sleep -Seconds 1
     foreach ($window in $desktop.FindAll([System.Windows.Automation.TreeScope]::Children, $owned)) {
       if ($null -ne $window.FindFirst([System.Windows.Automation.TreeScope]::Descendants, $bodyCondition)) {
+        if ([AnserWindowNative]::GetMenu([IntPtr]$window.Current.NativeWindowHandle) -ne [IntPtr]::Zero) { throw 'The Windows external mail window has an unexpected native menu bar.' }
         $externalLink = $window.FindFirst([System.Windows.Automation.TreeScope]::Descendants, $linkCondition)
         $mailReady = $true
         break
@@ -96,7 +141,7 @@ Content-Type: text/html; charset=utf-8
     if ($null -ne $browser) { $browserOpened = $true; break }
   }
   if (-not $browserOpened) { throw 'The real mail link click did not reach the system browser.' }
-  @{ installer = 'passed'; architecture = 'x86_64'; version = $installedVersion; installerSha256 = (Get-FileHash $installer[0].FullName -Algorithm SHA256).Hash.ToLowerInvariant(); appSha256 = (Get-FileHash $exe -Algorithm SHA256).Hash.ToLowerInvariant(); licenseResources = $true; frontendReady = $true; externalMailReady = $true; nativeLinkClick = $true; protocolRegistered = $true; protectedAssociationUnchanged = $true } | ConvertTo-Json | Set-Content 'windows-smoke.json'
+  @{ installer = 'passed'; architecture = 'x86_64'; version = $installedVersion; installerSha256 = (Get-FileHash $installer[0].FullName -Algorithm SHA256).Hash.ToLowerInvariant(); appSha256 = (Get-FileHash $exe -Algorithm SHA256).Hash.ToLowerInvariant(); windowsGuiSubsystem = $true; nativeMenuAbsent = $true; minimizeToTray = $true; trayRestore = $true; licenseResources = $true; frontendReady = $true; externalMailReady = $true; nativeLinkClick = $true; protocolRegistered = $true; protectedAssociationUnchanged = $true } | ConvertTo-Json | Set-Content 'windows-smoke.json'
 } finally {
   if ($null -ne $app -and -not $app.HasExited) { Stop-Process $app.Id -Force }
   $uninstaller = Join-Path $installPath 'uninstall.exe'

@@ -729,3 +729,10 @@ macOS 格式关联通过 NSWorkspace/UTType 在主队列读取和异步更改，
 新结构：`credentials.rs` 用 AES-256-GCM 把统一凭据文档加密为应用数据根目录的 `credentials.vault`（magic + 版本 + 12 字节随机 nonce + 密文，AAD 固定；总上限 2 MiB）。临时文件以 0600 创建、写入并 fsync 后原子重命名，再 fsync 父目录，失败清理临时文件。32 字节密钥以 64 位十六进制保存在登录钥匙串 `dev.maildesk.desktop` / `anser-credentials-key-v2`，只通过 `/usr/bin/security` 的 `find-generic-password` / `add-generic-password` 读写，密钥不经命令行参数。读取前用 `SecKeychainGetStatus` 核对默认钥匙串已解锁，锁定时报错而不触发交互；无法解密、版本未知或超限时报错并保留原文件。`Session` 的串行缓存、墓碑、旧条目无交互迁移和持久化后发布语义保持不变；`load` 首次创建时尝试读取旧 `anser-credentials-v1` 一次，失败或损坏时创建空库并保留旧条目，避免升级后整个凭据入口被旧条目授权阻塞。`credentials::initialize` 在 `lib.rs` 启动时以 `Store.root` 设置文件位置，迁移示例以数据库路径的上级目录初始化。
 
 验证：`cargo test --lib credentials::` 的 16 项单元测试通过（含密文不含明文、篡改/错误密钥/截断/版本拒绝、密钥十六进制往返、0600 与原子替换、旧库读取失败不阻塞）；原生探针用固定证书签名测试二进制，`seed` 创建密文与密钥条目，重新编译并重新签名（CDHash 变化）后 `read` 阶段无授权读取并写回成功，`cleanup` 删除探针条目与文件，探针服务前缀隔离，未触碰生产凭据。完整 `cargo test --lib` 428 项通过。真实开发预览升级时的首次旧库读取与升级后重启免授权仍需实际应用启动验收。
+
+
+## Windows 原生外壳修正（2026-10-28）
+
+`main.rs` 对非 debug 构建声明 windows_subsystem="windows"，使发布 PE 使用 GUI 子系统；`lib.rs` 只在 macOS 设置默认应用菜单，Windows 主/外部阅读窗口不继承 File/Edit 等菜单。系统托盘沿用共享 TrayIconBuilder；主窗口的 Windows Resized 事件确认 is_minimized 后 hide，托盘点击复用 unminimize/show/focus。只对 main 生效，不把隐藏/最小化状态写入下次启动的窗口状态，不改写 Windows 通知区域可见性注册表。
+
+`windows-smoke.ps1` 在真实安装的 EXE 读取 PE 子系统，使用 GetMenu 验证主/外部窗口菜单不存在，通过系统最小化和可访问的真实托盘按钮验证隐藏与恢复。此自动冒烟之外仍保留 Windows 11 专业版 RDP 实机双击、窗口按钮、托盘与实际绘制复验；未执行时不标通过。

@@ -1676,8 +1676,11 @@ pub fn run() {
             archive_jobs::start(store.clone(), app.handle().clone());
             eml_imports::start(store.clone(), app.handle().clone());
             rule_runs::start(store.clone(), app.handle().clone());
-            let menu = tauri::menu::Menu::default(app.handle())?;
-            app.set_menu(menu)?;
+            #[cfg(target_os = "macos")]
+            {
+                let menu = tauri::menu::Menu::default(app.handle())?;
+                app.set_menu(menu)?;
+            }
             let language = store.interface_language().map_err(std::io::Error::other)?;
             let open_item = tauri::menu::MenuItem::with_id(
                 app,
@@ -1850,6 +1853,14 @@ pub fn run() {
         })
         .on_window_event(|window, event| {
             if window.label() == "main" {
+                #[cfg(target_os = "windows")]
+                if matches!(event, tauri::WindowEvent::Resized(_))
+                    && window.is_minimized().unwrap_or(false)
+                {
+                    // Keep background mail tasks running with a single tray
+                    // entry. Do not persist the minimized/hidden launch state.
+                    let _ = window.hide();
+                }
                 if let tauri::WindowEvent::CloseRequested { api, .. } = event {
                     api.prevent_close();
                     use tauri_plugin_window_state::AppHandleExt;
