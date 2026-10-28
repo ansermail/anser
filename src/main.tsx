@@ -7,6 +7,7 @@ import { ExternalMailWindow } from "./components/external-mail-window";
 import "./index.css";
 import { isWindows } from "./lib/platform";
 document.documentElement.dataset.platform = isWindows() ? "windows" : "macos";
+document.documentElement.dataset.desktop = String(isTauri());
 const label = isTauri() ? getCurrentWebviewWindow().label : "main";
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>

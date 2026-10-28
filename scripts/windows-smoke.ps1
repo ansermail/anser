@@ -53,6 +53,7 @@ public static class AnserWindowNative {
   [DllImport("user32.dll")] public static extern IntPtr GetMenu(IntPtr window);
   [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr window, int command);
   [DllImport("user32.dll")] public static extern bool IsWindowVisible(IntPtr window);
+  [DllImport("user32.dll")] public static extern bool IsZoomed(IntPtr window);
 }
 '@
   $ready = $false
@@ -70,7 +71,26 @@ public static class AnserWindowNative {
   if (-not $ready) { throw 'The installed WebView2 app did not render its mailbox setup screen.' }
   $mainWindow = $app.MainWindowHandle
   if ([AnserWindowNative]::GetMenu($mainWindow) -ne [IntPtr]::Zero) { throw 'The Windows main window has an unexpected native menu bar.' }
-  [AnserWindowNative]::ShowWindow($mainWindow, 6) | Out-Null
+  function Find-WindowAction([string[]]$labels) {
+    for ($attempt = 0; $attempt -lt 30; $attempt++) {
+      $element = [System.Windows.Automation.AutomationElement]::FromHandle($mainWindow)
+      foreach ($label in $labels) {
+        $condition = [System.Windows.Automation.PropertyCondition]::new([System.Windows.Automation.AutomationElement]::NameProperty, $label)
+        $action = $element.FindFirst([System.Windows.Automation.TreeScope]::Descendants, $condition)
+        if ($null -ne $action -and $action.Current.IsEnabled) { return $action }
+      }
+      Start-Sleep -Milliseconds 100
+    }
+    throw "The accessible custom window action was not found: $($labels -join ', ')"
+  }
+  $maximize = Find-WindowAction @('最大化窗口', 'Maximize window')
+  $maximize.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern).Invoke()
+  $restore = Find-WindowAction @('还原窗口', 'Restore window')
+  if (-not [AnserWindowNative]::IsZoomed($mainWindow)) { throw 'The custom maximize button did not maximize the native window.' }
+  $restore.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern).Invoke()
+  $minimize = Find-WindowAction @('最小化窗口', 'Minimize window')
+  if ([AnserWindowNative]::IsZoomed($mainWindow)) { throw 'The custom restore button did not restore the native window.' }
+  $minimize.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern).Invoke()
   for ($i = 0; $i -lt 30 -and [AnserWindowNative]::IsWindowVisible($mainWindow); $i++) { Start-Sleep -Milliseconds 100 }
   if ([AnserWindowNative]::IsWindowVisible($mainWindow)) { throw 'Minimizing did not hide the main window to the system tray.' }
   $desktop = [System.Windows.Automation.AutomationElement]::RootElement
@@ -141,7 +161,7 @@ Content-Type: text/html; charset=utf-8
     if ($null -ne $browser) { $browserOpened = $true; break }
   }
   if (-not $browserOpened) { throw 'The real mail link click did not reach the system browser.' }
-  @{ installer = 'passed'; architecture = 'x86_64'; version = $installedVersion; installerSha256 = (Get-FileHash $installer[0].FullName -Algorithm SHA256).Hash.ToLowerInvariant(); appSha256 = (Get-FileHash $exe -Algorithm SHA256).Hash.ToLowerInvariant(); windowsGuiSubsystem = $true; nativeMenuAbsent = $true; minimizeToTray = $true; trayRestore = $true; licenseResources = $true; frontendReady = $true; externalMailReady = $true; nativeLinkClick = $true; protocolRegistered = $true; protectedAssociationUnchanged = $true } | ConvertTo-Json | Set-Content 'windows-smoke.json'
+  @{ installer = 'passed'; architecture = 'x86_64'; version = $installedVersion; installerSha256 = (Get-FileHash $installer[0].FullName -Algorithm SHA256).Hash.ToLowerInvariant(); appSha256 = (Get-FileHash $exe -Algorithm SHA256).Hash.ToLowerInvariant(); windowsGuiSubsystem = $true; customWindowControls = $true; nativeMenuAbsent = $true; minimizeToTray = $true; trayRestore = $true; licenseResources = $true; frontendReady = $true; externalMailReady = $true; nativeLinkClick = $true; protocolRegistered = $true; protectedAssociationUnchanged = $true } | ConvertTo-Json | Set-Content 'windows-smoke.json'
 } finally {
   if ($null -ne $app -and -not $app.HasExited) { Stop-Process $app.Id -Force }
   $uninstaller = Join-Path $installPath 'uninstall.exe'

@@ -6,6 +6,9 @@
   "permissions": [
     "core:default",
     "core:window:allow-start-dragging",
+    "core:window:allow-minimize",
+    "core:window:allow-toggle-maximize",
+    "core:window:allow-close",
     "core:webview:allow-print",
     "dialog:allow-open",
     "dialog:allow-save",

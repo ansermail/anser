@@ -2678,6 +2678,43 @@ kbd {
   display: none;
 }
 
+:root[data-platform="windows"][data-desktop="true"] {
+  --window-titlebar-height: 32px;
+}
+
+:root[data-platform="windows"][data-desktop="true"] .desktop-titlebar {
+  display: flex;
+  justify-content: flex-end;
+  background: var(--sidebar);
+}
+
+.window-controls {
+  position: fixed;
+  top: 0;
+  right: 0;
+  z-index: 100;
+  pointer-events: auto;
+  display: flex;
+  height: 32px;
+  -webkit-app-region: no-drag;
+}
+
+.window-control[data-slot="button"] {
+  width: 46px;
+  height: 32px;
+  border-radius: 0;
+  padding: 0;
+}
+
+.window-control-close[data-slot="button"]:hover {
+  background: var(--destructive);
+  color: white;
+}
+
+:root[data-platform="windows"][data-desktop="true"] .app-actions {
+  right: 150px;
+}
+
 .desktop-titlebar {
   position: fixed;
   inset: 0 0 auto;

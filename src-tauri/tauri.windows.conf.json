@@ -10,7 +10,7 @@
         "height": 900,
         "minWidth": 1000,
         "minHeight": 650,
-        "decorations": true,
+        "decorations": false,
         "useHttpsScheme": true
       }
     ],
@@ -23,7 +23,10 @@
     "fileAssociations": [],
     "icon": ["icons/32x32.png", "icons/128x128.png", "icons/icon.ico"],
     "windows": {
-      "webviewInstallMode": { "type": "embedBootstrapper", "silent": true },
+      "webviewInstallMode": {
+        "type": "embedBootstrapper",
+        "silent": true
+      },
       "nsis": {
         "installMode": "currentUser",
         "installerHooks": "nsis/hooks.nsh",
@@ -33,6 +36,10 @@
     }
   },
   "plugins": {
-    "deep-link": { "desktop": { "schemes": ["anser"] } }
+    "deep-link": {
+      "desktop": {
+        "schemes": ["anser"]
+      }
+    }
   }
 }

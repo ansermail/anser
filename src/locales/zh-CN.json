@@ -1360,5 +1360,10 @@
   "Keep the archive disk connected. The message list remains available when disconnected; original access, backups and saving pause without falling back to this computer.": "请保持存档磁盘连接。断开时仍可查看邮件列表，原件读取、备份及保存将暂停，不会自动改存这台电脑。",
   "Choose Anser in Windows default app settings or Open with. Windows controls the default file association.": "请在 Windows 默认应用设置或“打开方式”中选择雁信，默认文件关联由 Windows 管理。",
   "Open Windows default apps": "打开 Windows 默认应用",
-  "Could not open system settings: {value0}": "无法打开系统设置：{value0}"
+  "Could not open system settings: {value0}": "无法打开系统设置：{value0}",
+  "Minimize window": "最小化窗口",
+  "Maximize window": "最大化窗口",
+  "Restore window": "还原窗口",
+  "Close window": "关闭窗口",
+  "Unable to control this window": "无法操作此窗口"
 }

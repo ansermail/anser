@@ -736,3 +736,10 @@ macOS 格式关联通过 NSWorkspace/UTType 在主队列读取和异步更改，
 `main.rs` 对非 debug 构建声明 windows_subsystem="windows"，使发布 PE 使用 GUI 子系统；`lib.rs` 只在 macOS 设置默认应用菜单，Windows 主/外部阅读窗口不继承 File/Edit 等菜单。系统托盘沿用共享 TrayIconBuilder；主窗口的 Windows Resized 事件确认 is_minimized 后 hide，托盘点击复用 unminimize/show/focus。只对 main 生效，不把隐藏/最小化状态写入下次启动的窗口状态，不改写 Windows 通知区域可见性注册表。
 
 `windows-smoke.ps1` 在真实安装的 EXE 读取 PE 子系统，使用 GetMenu 验证主/外部窗口菜单不存在，通过系统最小化和可访问的真实托盘按钮验证隐藏与恢复。此自动冒烟之外仍保留 Windows 11 专业版 RDP 实机双击、窗口按钮、托盘与实际绘制复验；未执行时不标通过。
+
+
+### Windows 融合式顶栏（用户 DBX 参考，2026-10-28）
+
+主/外部窗口在 Windows 关闭原生 decorations，复用 DesktopTitlebar：由现有 shadcn Button 组合三种窗口操作，Tauri drag-region 保留拖动和双击最大化；按钮本身不参与拖动。监听原生 resize 后重读 isMaximized，兼容系统最大化/还原引起的图标切换；主/外部 capability 显式允许 minimize/toggle-maximize/close。最小化仍走原生事件，只有 main 隐藏到托盘，外部窗口保持系统最小化/关闭语义。
+
+顶栏只显示窗口操作，去掉独立标题栏图标与应用名，操作行右侧为三个窗口按钮留出位置。窗口操作位于 Dialog 遮罩之上，阻止其 pointerdown 成为 Dialog 外部点击，防止最小化/最大化意外关闭写信或未保存设置。Mac 保留原生交通灯与原有空白拖动区；浏览器示例不渲染或调用原生 Windows 按钮。固定文案同步双语；原生 API 失败时给出错误反馈。

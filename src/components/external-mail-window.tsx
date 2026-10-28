@@ -1,3 +1,4 @@
+import { DesktopTitlebar } from "./desktop-titlebar";
 import { formatMailTime, t, useLanguage } from "@/lib/i18n";
 import { invoke } from "@tauri-apps/api/core";
 import { save } from "@tauri-apps/plugin-dialog";
@@ -203,7 +204,7 @@ export function ExternalMailWindow() {
   return (
     <TooltipProvider>
       <div className="external-mail">
-        <div className="desktop-titlebar" data-tauri-drag-region />
+        <DesktopTitlebar />
         <Toaster
           position="bottom-center"
           theme={theme.mode}

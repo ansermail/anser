@@ -4,7 +4,7 @@
 
 ## 项目与代码仓库
 
-- 客户端支持方向为 macOS 与 Windows，共用现有界面、邮件协议与存档格式；平台原生行为分别适配。Windows 首阶段为 Windows 10/11 x64 + WebView2，保留系统窗口控件、Ctrl 快捷键和每用户安装；编译、安装包、启动冒烟与真实桌面验收分别记录。Windows 系统默认应用只能由用户在系统设置中选择，不能改写受保护的 UserChoice 来绕过确认。
+- 客户端支持方向为 macOS 与 Windows，共用现有界面、邮件协议与存档格式；平台原生行为分别适配。Windows 首阶段为 Windows 10/11 x64 + WebView2，使用与应用界面融合的 Windows 顶栏，右上角保留最小化/最大化还原/关闭按钮，不重复展示标题栏图标与应用名；保留 Ctrl 快捷键和每用户安装；编译、安装包、启动冒烟与真实桌面验收分别记录。Windows 系统默认应用只能由用户在系统设置中选择，不能改写受保护的 UserChoice 来绕过确认。
 - Windows 安装器只注册 OpenWithProgids、Applications/SupportedTypes 与 Capabilities 候选项，不写扩展名默认值或 UserChoice；当前 Tauri NSIS 默认关联宏会写扩展名默认值，因此 Windows 配置清空继承的 fileAssociations 并使用专用 hooks。更换安装器时须核对默认值、可选处理程序和卸载清理，不能仅检查 UserChoice。
 - Windows 发布二进制必须使用 GUI 子系统（PE Subsystem=2），避免双击应用生成终端；默认 File/Edit/Window/Help 原生菜单仅在 macOS 设置。Windows 主窗口最小化或关闭后保留后台与系统托盘，点击托盘可恢复；外部邮件窗口不套用主窗口隐藏策略。Windows CI 需实测 GUI 子系统、主/外部窗口无原生菜单、最小化隐藏及真实托盘点击恢复。托盘图标可见性由 Windows 用户选择，不能改写通知区域注册表来强制显示；优先在实际桌面通过系统界面固定。
 - 源文件统一 LF，由 .gitattributes 固定，避免 Windows checkout 的自动 CRLF 转换让全项目格式检查误报。Windows CI 脚本使用 PowerShell 7（pwsh）读取 UTF-8，不能依赖 Windows PowerShell 5 的本地代码页。
@@ -73,6 +73,7 @@
 - 邮件阅读页的打印入口位于星标与本地删除之间，只打印当前阅读的单封邮件；打印内容从安全净化后的正文和文字化的邮件头/附件名称生成，不能把原始 HTML 插入应用页面、让邮件脚本执行，或把侧栏/列表一起打印。打印不修改原件、已读或星标状态。
 - 邮件打印须保留完整净化文档的 head 样式、html/body 属性、作者字体/字号/配色、表格与段落间距；正文在独立样式边界中排版，不能删除样式后套用应用 CSS reset。打印默认使用浅色正文，保留作者背景与品牌色；长邮件须分页完整，不以截图或定高 iframe 截断正文。自定义字体仅以私有族名临时注册，不能覆盖应用字体。
 - 邮件打印默认 A4 纵向、100% 比例、16mm 页边距、从页顶排版；超宽正文可适配可打印宽度，不能把整封长邮件缩成一页。macOS 每次使用独立 NSPrintInfo，不修改共享打印偏好，也不继承旧缩放/居中设置；保留系统面板供用户调整本次任务。原生与 CSS 边距不能重复叠加。
+- Windows 顶栏按用户 DBX 参考采用融合式布局；主窗口和外部邮件窗口共用由 shadcn Button 组合的窗口操作，不再展示独立原生标题栏的图标/应用名。保留拖动、边缘缩放、最大化/还原状态同步、主窗口最小化到托盘及外部窗口正常关闭；同步核对主/外部 capability 的 minimize/toggle-maximize/close 权限。标题栏操作不能触发写信/设置 Dialog 的外部点击关闭，原生安装冒烟须实际点击三类自定义窗口按钮。
 - 原生打印时须解除应用外层 html/body 的固定高度与 overflow 裁切（包括外部邮件窗口），保留 Shadow DOM 内邮件原样式。WKWebView 的初始 NSPrintInfo 页边距须与 CSS @page 一致；WebKit 会用计算后的 CSS 值替换原生边距，初始化为 0 会使首次分页与最终绘制区域不一致，额外缩小正文并增大页顶留白。修改打印布局后运行 `npm run build && npm run test:mac-print`，再实测系统打印面板；参数探针或浏览器 PDF 不能替代原生长正文分页。
 - 新增原生 WebView 能力时同步核对主窗口 Tauri capability 与打包结果；浏览器预览成功不能替代原生 ACL 和系统对话框验收。邮件打印须保留 `core:webview:allow-print` 权限。
 - macOS 系统打印面板的语言随应用包本地化声明选择；正式包的 `src-tauri/Info.plist` 与开发预览包的 `scripts/mac-dev-runner.mjs` 均须声明简体中文，打包后核对实际 `Info.plist`，不能只改邮件打印正文。

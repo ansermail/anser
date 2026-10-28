@@ -1,3 +1,4 @@
+import { DesktopTitlebar } from "./components/desktop-titlebar";
 import {
   dateLocale,
   formatMailTime,
@@ -1683,7 +1684,7 @@ export default function App() {
       open={sidebarOpen}
       onOpenChange={setSidebarOpen}
     >
-      <div className="desktop-titlebar" data-tauri-drag-region />
+      <DesktopTitlebar />
       <Toaster
         position="bottom-center"
         theme={theme.mode}

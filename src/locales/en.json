@@ -1360,5 +1360,10 @@
   "Keep the archive disk connected. The message list remains available when disconnected; original access, backups and saving pause without falling back to this computer.": "Keep the archive disk connected. The message list remains available when disconnected; original access, backups and saving pause without falling back to this computer.",
   "Choose Anser in Windows default app settings or Open with. Windows controls the default file association.": "Choose Anser in Windows default app settings or Open with. Windows controls the default file association.",
   "Open Windows default apps": "Open Windows default apps",
-  "Could not open system settings: {value0}": "Could not open system settings: {value0}"
+  "Could not open system settings: {value0}": "Could not open system settings: {value0}",
+  "Minimize window": "Minimize window",
+  "Maximize window": "Maximize window",
+  "Restore window": "Restore window",
+  "Close window": "Close window",
+  "Unable to control this window": "Unable to control this window"
 }

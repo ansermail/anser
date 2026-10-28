@@ -1545,7 +1545,7 @@ async fn open_external_mail_window(
             .hidden_title(true)
             .title_bar_style(tauri::TitleBarStyle::Overlay);
         #[cfg(target_os = "windows")]
-        let builder = builder.use_https_scheme(true);
+        let builder = builder.use_https_scheme(true).decorations(false);
         builder.build().map_err(|cause| {
             let _ = docs.close_label(&label);
             err(cause)
