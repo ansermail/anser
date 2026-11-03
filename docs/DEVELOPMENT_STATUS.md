@@ -1,8 +1,14 @@
-# 开发计划与继续检查点（更新：2026-10-28）
+# 开发计划与继续检查点（更新：2026-11-03）
 
 依据 PRD 第 5、8、9 节、实施记录和当前代码核查。当前仍为 Alpha；功能代码已存在与真实场景验收通过分别记录。早期回归使用临时存储/演示数据；2026-10-05 用户授权后增加当前腾讯企业邮箱与 QQ 邮箱互发测试，未向其他地址发送，未删除真实邮件。
 
-## 当前执行检查点：0.1.35 已正式发布，官网与 Homebrew 同步完成（2026-10-28）
+## 当前执行检查点：macOS 后台悬停提示残留修复（2026-11-03，本机开发预览已验证，未发布）
+
+`main` / `8a63c49` 基线；保留 `src/lib/mail-images.ts` 与测试的两处既有未提交改动。用户报告雁信在后台时，其他应用的鼠标位置持续出现“雁信 · 0 封未读 · 点击打开”。已核对本机 `/Applications/雁信.app` 为 0.1.35，原生辅助功能树直接观察到后台雁信的独立“帮助标记”窗口，其截图内容与用户报告完全一致。源码 `lib.rs` 每 5 秒无条件设置标题和 tooltip；本机锁定的 tray-icon 0.25.1 将其交给 `NSStatusBarButton.setToolTip` 并刷新原生视图尺寸。确定提示来源；具体 AppKit 残留触发链尚未独立复现，不能仅凭定时调用断言系统内部根因。
+
+已修复：macOS 创建和语言切换均不设置原生 tooltip；移除循环中的动态中文 tooltip，Windows 保留本地化静态提示；菜单栏标题只在未读数变化时更新（写入失败下轮重试），Dock 保持原定时刷新。菜单项、点击恢复和收取逻辑不变。同步 AGENTS 与 USAGE。`cargo test --manifest-path src-tauri/Cargo.toml --lib interface_language -- --nocapture` 1/1 通过；`cargo fmt --manifest-path src-tauri/Cargo.toml -- --check` 与 `npm run build`（含 UI/i18n 1367 键、TypeScript、Vite）通过，只有既有分包/体积警告。`npm run format:check` 与 `git diff --check` 通过。稳定启动器 `npm run desktop` 原生编译通过，已确认开发 App 为 Tauri CLI 直接子进程，并通过固定项目签名及精确 designated requirement 核验。旧正式实例正常退出；修复版读取既有账号与存档，关闭主窗后继续后台运行，切到访达并跨至少 15 秒（三个刷新周期）观察，未见原提示残留。CUA 访问 SystemUIServer 超时，未完成菜单栏图标实际点击恢复验收；不能把 CUA 重新打开窗口算作图标点击通过。当前保留修复版开发预览后台运行，未发送邮件、修改账号或删除存档；原安装包未替换。尚未提交、云端构建或发布，Windows 实机未验证。下一步：按需复验实际菜单栏点击、未读数变化与语言切换，再单独安排新版发布；重新打开 `/Applications/雁信.app` 仍为未修复的 0.1.35。
+
+### 最近正式发布：0.1.35，官网与 Homebrew 同步完成（2026-10-28）
 
 用户确认 Windows 发送、打印实测通过，代理完成 Windows 11 窗口、空白写信、草稿重开、系统通知横幅和外部长 EML 检查；未重复发送邮件，保留虚构测试草稿。最终源码 `bd4d062faaa46c20b5f15ad997af00bbfd981011` 已发布为 [0.1.35 latest](https://github.com/ansermail/anser/releases/tag/v0.1.35)。[Release desktop 40650749349](https://github.com/ansermail/anser/actions/runs/40650749349) 与 [Windows validation 40650747611](https://github.com/ansermail/anser/actions/runs/40650747611) 全部成功；Mac/Windows 前端各 463、桌面脚本 37、IMAP 39 通过，Mac Rust 433/4 忽略、Windows Rust 432/2 忽略；未修改既有测试时限或断言。[main Checks 40654140111](https://github.com/ansermail/anser/actions/runs/40654140111) 同一源码的全量门槛也已成功。
 

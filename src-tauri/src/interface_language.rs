@@ -1,8 +1,9 @@
 use crate::models::{err, Result};
 use std::{collections::HashMap, sync::OnceLock};
+#[cfg(not(target_os = "macos"))]
+use tauri::tray::TrayIcon;
 use tauri::{
     menu::{CheckMenuItem, MenuItem},
-    tray::TrayIcon,
     Wry,
 };
 
@@ -38,6 +39,7 @@ pub struct LanguageMenu {
     pub sync: MenuItem<Wry>,
     pub quiet: CheckMenuItem<Wry>,
     pub quit: MenuItem<Wry>,
+    #[cfg(not(target_os = "macos"))]
     pub tray: TrayIcon<Wry>,
 }
 impl LanguageMenu {
@@ -54,6 +56,7 @@ impl LanguageMenu {
         self.quit
             .set_text(text(language, "Quit Anser"))
             .map_err(err)?;
+        #[cfg(not(target_os = "macos"))]
         self.tray
             .set_tooltip(Some(text(language, "Anser · Click to open")))
             .map_err(err)?;

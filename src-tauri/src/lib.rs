@@ -1720,8 +1720,13 @@ pub fn run() {
             )?;
             let quiet_control = quiet_item.clone();
             let language_items = (open_item, sync_item, quiet_item, quit_item);
-            let tray = tauri::tray::TrayIconBuilder::new()
-                .tooltip(interface_language::text(&language, "Anser · Click to open"))
+            let tray_builder = tauri::tray::TrayIconBuilder::new();
+            // AppKit tooltips can linger at the pointer over other applications.
+            // The macOS status item already shows the unread count in its title.
+            #[cfg(not(target_os = "macos"))]
+            let tray_builder =
+                tray_builder.tooltip(interface_language::text(&language, "Anser · Click to open"));
+            let tray = tray_builder
                 .icon(app.default_window_icon().unwrap().clone())
                 .menu(&tray_menu)
                 .show_menu_on_left_click(false)
@@ -1771,6 +1776,7 @@ pub fn run() {
                 sync: language_items.1,
                 quiet: language_items.2,
                 quit: language_items.3,
+                #[cfg(not(target_os = "macos"))]
                 tray: tray.clone(),
             };
             language_menu
@@ -1780,26 +1786,35 @@ pub fn run() {
             let tray_store = store.clone();
             #[cfg(target_os = "macos")]
             let badge_app = app.handle().clone();
-            std::thread::spawn(move || loop {
-                if let Ok(unread) = tray_store.unread_total() {
-                    let count = if unread == 0 {
-                        String::new()
-                    } else {
-                        unread.to_string()
-                    };
-                    let _ = tray.set_title(if count.is_empty() {
-                        None
-                    } else {
-                        Some(count.as_str())
-                    });
-                    let _ = tray.set_tooltip(Some(format!("雁信 · {unread} 封未读 · 点击打开")));
-                    #[cfg(target_os = "macos")]
-                    if let Some(window) = badge_app.get_webview_window("main") {
-                        let badge = (unread > 0).then(|| unread.min(i64::MAX as u64) as i64);
-                        let _ = window.set_badge_count(badge);
+            std::thread::spawn(move || {
+                let mut displayed_unread = None;
+                loop {
+                    if let Ok(unread) = tray_store.unread_total() {
+                        if displayed_unread != Some(unread) {
+                            let count = if unread == 0 {
+                                String::new()
+                            } else {
+                                unread.to_string()
+                            };
+                            if tray
+                                .set_title(if count.is_empty() {
+                                    None
+                                } else {
+                                    Some(count.as_str())
+                                })
+                                .is_ok()
+                            {
+                                displayed_unread = Some(unread);
+                            }
+                        }
+                        #[cfg(target_os = "macos")]
+                        if let Some(window) = badge_app.get_webview_window("main") {
+                            let badge = (unread > 0).then(|| unread.min(i64::MAX as u64) as i64);
+                            let _ = window.set_badge_count(badge);
+                        }
                     }
+                    std::thread::sleep(std::time::Duration::from_secs(5));
                 }
-                std::thread::sleep(std::time::Duration::from_secs(5));
             });
             let handle = app.handle().clone();
             let scheduled_store = store.clone();
