@@ -9,6 +9,7 @@
 - Windows 发布二进制必须使用 GUI 子系统（PE Subsystem=2），避免双击应用生成终端；默认 File/Edit/Window/Help 原生菜单仅在 macOS 设置。Windows 主窗口最小化或关闭后保留后台与系统托盘，点击托盘可恢复；外部邮件窗口不套用主窗口隐藏策略。Windows CI 需实测 GUI 子系统、主/外部窗口无原生菜单、最小化隐藏及真实托盘点击恢复。托盘图标可见性由 Windows 用户选择，不能改写通知区域注册表来强制显示；优先在实际桌面通过系统界面固定。
 - Windows 托盘验收同时兼容 UI Automation 与 MSAA：部分 Windows Server runner 仅暴露任务栏 Pane、不暴露图标子节点，不能把定位失败当成托盘未创建；通过 MSAA 读取真实图标名称和边界后实际点击，并检查主窗口恢复，不以直接调用窗口恢复代替。
 - 官网按访问电脑的操作系统默认显示 macOS 或 Windows 下载区，保留手动切换；浏览器不能可靠判断 Mac 芯片时同时提供 Apple Silicon/Intel。手机、平板与未知系统不伪称支持，显示通用下载入口；官网上线前核对对应版本安装器已公开可下载。
+- 官网下载地址直接使用 package 版本；准备新版本并推送 main 会提前触发 Pages。发布前须安排部署时序，安装器公开前保持上一正式版官网，公开后再部署新版并核对线上下载链接；不能把提前成功的 Pages 当作发行分发完成。
 - 源文件统一 LF，由 .gitattributes 固定，避免 Windows checkout 的自动 CRLF 转换让全项目格式检查误报。Windows CI 脚本使用 PowerShell 7（pwsh）读取 UTF-8，不能依赖 Windows PowerShell 5 的本地代码页。
 - Windows runner 的 jsdom 大列表测试按平台实测工作量定界：205 行固定页刷新组 30 秒，两条七次跨页导航 60 秒，单封/对话多次切换 15 秒；macOS 保持原有时限。依据同一提交两次 Windows 实测 7–20 秒及 34–46 秒，不整体延长、不添加自动重试，断言和真实原生验收分别保留。
 

@@ -1,10 +1,14 @@
 # 发布与应用内更新
 
-## 准备发布：0.1.36（2026-11-03）
+## 当前版本：0.1.36（2026-11-03）
 
-用户已授权提交并正式发布。本版修复 macOS 后台原生悬停提示残留，避免相同菜单栏标题重复刷新，并保留 Windows 本地化静态托盘提示。最新公开版仍为 0.1.35；本轮全量检查、三平台构建、资源审计和正式发布依次完成，具体状态见 [0.1.36 发布工作点](RELEASE_0_1_36_WORKING.md)，说明见 [v0.1.36](releases/v0.1.36.md)。
+0.1.36 Alpha 于 2026-11-03 11:00:02（Asia/Shanghai）正式公开为 [latest](https://github.com/ansermail/anser/releases/tag/v0.1.36)，固定源码 `68b509ad4d5894c97827baf542914412aad11882`、标签 `v0.1.36`。本版修复 macOS 后台原生悬停提示残留，避免重复刷新相同菜单栏标题，并保留 Windows 本地化静态托盘提示。
 
-## 当前公开版本：0.1.35（2026-10-28）
+[Release desktop 41566370328](https://github.com/ansermail/anser/actions/runs/41566370328)、[Checks 41566362477](https://github.com/ansermail/anser/actions/runs/41566362477) 与 [Windows validation 41566362451](https://github.com/ansermail/anser/actions/runs/41566362451) 全部成功，三平台构建、Windows 安装与启动冒烟完成。九资源大小/散列、三个更新签名、Mac 双架构固定签名与精确 DR、包内元数据/许可、DMG 与更新归档一致性，以及九资源匿名下载和标准 latest 更新端点均核验通过，发布说明原文一致。
+
+[Pages 41566362433](https://github.com/ansermail/anser/actions/runs/41566362433) 最终部署成功，线上加载模块已核对为 0.1.36；[Homebrew 41569507114](https://github.com/ansermail/anser/actions/runs/41569507114) 通过 style/audit/fetch，配方提交 `f961c7084ae68265f47515035a41fd35715b8f31` 的双 DMG 哈希与正式资源一致。本机退出开发预览后，从正式 0.1.35 更新中心完成下载/签名校验及安装 0.1.36；更新后的进程曾没有显示主窗，正常重新启动正式 App 后主窗与版本恢复，本地存档仍为 5499。不能称自动重启全程无异常；Intel/Windows 实机、真实收发与其余升级路径未扩充验收。完整证据见 [发布工作点](RELEASE_0_1_36_WORKING.md)，说明见 [v0.1.36](releases/v0.1.36.md)。
+
+## 前一正式版本：0.1.35（2026-10-28）
 
 用户在 Windows 确认邮件发送与打印通过，授权补验无问题后正式发布。窗口/草稿/系统通知横幅实测、安装器真实托盘点击冒烟通过；官网 Windows 下载与默认系统选择已开发。最终源码 `bd4d062faaa46c20b5f15ad997af00bbfd981011` 已由 [Release desktop 40650749349](https://github.com/ansermail/anser/actions/runs/40650749349) 完成全量检查及三平台构建，九资源、三个更新签名、Mac 固定签名/DR/许可/DMG 一致性和匿名公开下载/latest 清单均通过；[0.1.35](https://github.com/ansermail/anser/releases/tag/v0.1.35) 已公开为 latest（2026-10-28T08:04:03Z）。[Pages 40654140088](https://github.com/ansermail/anser/actions/runs/40654140088) 已部署并完成线上系统识别/下载链接检查；[Homebrew 40654170192](https://github.com/ansermail/anser/actions/runs/40654170192) 成功，配方提交 `547e78a`，style/audit/fetch 与双 DMG 哈希通过。当前入口见 [发布工作点](WINDOWS_RELEASE_WORKING.md)。
 
