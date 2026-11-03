@@ -10,6 +10,8 @@
 
 > **0.1.35 Alpha** 已正式发布，支持 Apple Silicon / Intel Mac 与 Windows 10/11 x64。长期稳定性、部分服务商兼容性及真实场景验收仍在持续完善。
 
+0.1.36 正在准备发布，修复 macOS 后台菜单栏悬停提示残留；最新公开版仍为 0.1.35。具体状态见 [0.1.36 发布工作点](docs/RELEASE_0_1_36_WORKING.md)。
+
 0.1.35 新增 Windows x64 EXE 安装器、融合式顶栏与托盘后台运行，修复 Mac 原生长邮件打印；官网默认展示访问电脑系统的安装包，也可手动切换。[下载 0.1.35](https://github.com/ansermail/anser/releases/tag/v0.1.35)，说明见 [发布说明](docs/releases/v0.1.35.md)，安装与验收范围见 [Windows 客户端](docs/WINDOWS.md) 和 [发布工作点](docs/WINDOWS_RELEASE_WORKING.md)。
 
 ![雁信的多账号收件箱与邮件阅读界面](docs/screenshots/inbox-demo.png)

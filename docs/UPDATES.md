@@ -1,6 +1,10 @@
 # 发布与应用内更新
 
-## 当前版本：0.1.35（2026-10-28）
+## 准备发布：0.1.36（2026-11-03）
+
+用户已授权提交并正式发布。本版修复 macOS 后台原生悬停提示残留，避免相同菜单栏标题重复刷新，并保留 Windows 本地化静态托盘提示。最新公开版仍为 0.1.35；本轮全量检查、三平台构建、资源审计和正式发布依次完成，具体状态见 [0.1.36 发布工作点](RELEASE_0_1_36_WORKING.md)，说明见 [v0.1.36](releases/v0.1.36.md)。
+
+## 当前公开版本：0.1.35（2026-10-28）
 
 用户在 Windows 确认邮件发送与打印通过，授权补验无问题后正式发布。窗口/草稿/系统通知横幅实测、安装器真实托盘点击冒烟通过；官网 Windows 下载与默认系统选择已开发。最终源码 `bd4d062faaa46c20b5f15ad997af00bbfd981011` 已由 [Release desktop 40650749349](https://github.com/ansermail/anser/actions/runs/40650749349) 完成全量检查及三平台构建，九资源、三个更新签名、Mac 固定签名/DR/许可/DMG 一致性和匿名公开下载/latest 清单均通过；[0.1.35](https://github.com/ansermail/anser/releases/tag/v0.1.35) 已公开为 latest（2026-10-28T08:04:03Z）。[Pages 40654140088](https://github.com/ansermail/anser/actions/runs/40654140088) 已部署并完成线上系统识别/下载链接检查；[Homebrew 40654170192](https://github.com/ansermail/anser/actions/runs/40654170192) 成功，配方提交 `547e78a`，style/audit/fetch 与双 DMG 哈希通过。当前入口见 [发布工作点](WINDOWS_RELEASE_WORKING.md)。
 
