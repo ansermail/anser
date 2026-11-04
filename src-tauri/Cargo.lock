@@ -90,7 +90,7 @@ dependencies = [
 
 [[package]]
 name = "anser"
-version = "0.1.36"
+version = "0.1.37"
 dependencies = [
  "aes-gcm",
  "base64 0.22.1",

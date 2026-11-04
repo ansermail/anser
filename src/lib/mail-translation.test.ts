@@ -131,6 +131,44 @@ describe("bilingual mail display", () => {
       expect([...doc.querySelectorAll("a")]).toEqual(links);
     }
   });
+  it("groups ordinary horizontal links despite pasted matching backgrounds, atomic display or underline borders", () => {
+    for (const color of ["#f4f4f4", "#234567"]) {
+      for (const display of ["inline", "inline-block", "inline-flex"]) {
+        const labels = ["Portal", "Handbook", "Support", "Community"];
+        const links = labels
+          .map(
+            (label, i) =>
+              `<a href="https://example.com/${i}" style="display:${display};background:${color};border-bottom:1px solid currentColor"><span style="background:${color}"><b>${label}</b></span></a>`,
+          )
+          .join(' <span style="background:' + color + '"> · </span> ');
+        const doc = mail(
+          `<section style="background:${color}"><p id="nav-row">${links}</p><p id="legal-row"><span style="background:${color}">© Example. All rights reserved. · </span><a href="https://example.com/preferences"><span style="background:${color}">Preferences</span></a></p></section>`,
+        );
+        const original = doc.body.innerHTML;
+        const originals = [...doc.querySelectorAll("a")];
+        const plan = planMailTranslation(doc, "zh-CN");
+        plan.apply(new Map(plan.parts.map((p, i) => [p.id, `译文${i}`])));
+        for (const id of ["nav-row", "legal-row"]) {
+          const row = doc.getElementById(id)!;
+          const views = row.querySelectorAll<HTMLElement>(
+            "[data-anser-translation]",
+          );
+          expect(views).toHaveLength(1);
+          expect(views[0].parentElement).toBe(row);
+          expect(views[0].querySelectorAll("a")).toHaveLength(
+            id === "nav-row" ? 4 : 1,
+          );
+        }
+        for (const link of originals) {
+          expect(link.isConnected).toBe(true);
+          expect(link.querySelector("[data-anser-translation]")).toBeNull();
+        }
+        plan.dispose();
+        expect(doc.body.innerHTML).toBe(original);
+        expect([...doc.querySelectorAll("a")]).toEqual(originals);
+      }
+    }
+  });
   it("内层装饰标签、flex/grid 和定高按钮只保留一个点击区域并恢复样式", () => {
     for (const style of [
       "display:inline-flex;align-items:center;height:44px;white-space:nowrap",
@@ -183,6 +221,36 @@ describe("bilingual mail display", () => {
       plan.dispose();
       expect(doc.body.innerHTML).toBe(original);
     }
+  });
+  it("collapses HTML indentation in translated labels and keeps button line spacing compact", () => {
+    const doc = mail(
+      `<p id="body-row">\n  Ordinary text\n</p><a href="https://example.com/start"><span id="button-label" style="display:inline-block;background:#fa6432;padding:20px;width:220px;text-align:center;line-height:64px">\n                 Start <b>trial</b>\n            </span></a><pre id="preformatted">  Indented line\nNext line</pre>`,
+    );
+    const original = doc.body.innerHTML;
+    const plan = planMailTranslation(doc, "zh-CN");
+    plan.apply(
+      new Map(plan.parts.map((p) => [p.id, "\n          译文\n     "])),
+    );
+    const bodyView = doc.querySelector<HTMLElement>(
+      "#body-row [data-anser-translation]",
+    )!;
+    const label = doc.getElementById("button-label")!;
+    const view = label.querySelector<HTMLElement>("[data-anser-translation]")!;
+    expect(bodyView.style.whiteSpace).toBe("normal");
+    expect(view.style.whiteSpace).toBe("normal");
+    expect(view.style.lineHeight).toBe("1.35");
+    expect(view.style.textIndent).toBe("0px");
+    expect(view.style.padding).toBe("0px");
+    expect(view.querySelector<HTMLElement>("span")?.style.lineHeight).toBe(
+      "inherit",
+    );
+    expect(label.style.padding).toBe("20px");
+    expect(
+      doc.querySelector<HTMLElement>("#preformatted [data-anser-translation]")!
+        .style.whiteSpace,
+    ).toBe("pre-wrap");
+    plan.dispose();
+    expect(doc.body.innerHTML).toBe(original);
   });
   it("keeps original text, inline formatting, links, table and image positions and restores original DOM on hide", () => {
     const doc = mail(

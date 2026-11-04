@@ -95,22 +95,35 @@ export function watchMailImages(
   let poll: ReturnType<typeof setInterval> | undefined;
   const source = (image: HTMLImageElement) =>
     JSON.stringify([image.getAttribute("src"), image.getAttribute("srcset")]);
-  // Only the failing resource is printed, and every character is URL-encoded so
-  // the line can be pasted into a browser or issue without being re-interpreted.
+  // Only the failing resource is printed, exactly as authored so the line can be
+  // scanned and pasted as-is. Native frames load images through an in-app proxy
+  // whose query carries the authored address, so unwrap it: the proxy URL alone
+  // does not say where the image actually came from.
+  const authored = (value: string) => {
+    try {
+      const url = new URL(value);
+      if (url.protocol === "anser-image:" && url.pathname === "/fetch") {
+        const target = url.searchParams.get("url");
+        if (target) return target;
+      }
+    } catch {
+      /* A relative or malformed source is reported as authored. */
+    }
+    return value;
+  };
   const report = (image: HTMLImageElement, reason: "failed" | "timeout") => {
     const raw = image.getAttribute("src") || image.getAttribute("srcset") || "";
-    const url = raw.startsWith("data:")
-      ? `data-url(length=${raw.length})`
-      : encodeURIComponent(raw);
+    const target = authored(raw);
+    const url = target.startsWith("data:")
+      ? `data-url(length=${target.length})`
+      : target;
     const srcset = image.getAttribute("srcset");
     const alt = image.getAttribute("alt");
     const details = [
       `reason=${reason}`,
       `url=${url}`,
-      srcset && !raw.startsWith("data:")
-        ? `srcset=${encodeURIComponent(srcset)}`
-        : "",
-      alt ? `alt=${encodeURIComponent(alt)}` : "",
+      srcset && !target.startsWith("data:") ? `srcset=${authored(srcset)}` : "",
+      alt ? `alt=${alt}` : "",
     ].filter(Boolean);
     console.warn(`[anser:mail-image] ${details.join(" ")}`);
   };

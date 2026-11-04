@@ -406,7 +406,7 @@ describe("mail image deadline", () => {
   });
 });
 describe("mail image console diagnostics", () => {
-  it("prints each failing image once with a URL-encoded address", () => {
+  it("prints each failing image once with a readable address", () => {
     const f = fixture(),
       changed = vi.fn(),
       warn = vi.spyOn(console, "warn").mockImplementation(() => {});
@@ -417,11 +417,10 @@ describe("mail image console diagnostics", () => {
     expect(warn).toHaveBeenCalledTimes(1);
     const line = String(warn.mock.calls[0][0]);
     expect(line).toContain("reason=failed");
-    expect(line).toContain("url=https%3A%2F%2Fexample.com%2Fstall.png");
-    expect(line).toContain(
-      "srcset=https%3A%2F%2Fexample.com%2Fstall%402.png%202x",
-    );
-    expect(line).toContain("alt=%E4%BB%B7%E6%A0%BC%20%E5%9B%BE%E8%A1%A8");
+    expect(line).toContain("url=https://example.com/stall.png");
+    expect(line).toContain("srcset=https://example.com/stall@2.png 2x");
+    expect(line).toContain("alt=价格 图表");
+    expect(line).not.toMatch(/%[0-9A-F]{2}/);
     expect(line).not.toContain("data:image");
     tracker.refresh();
     expect(warn).toHaveBeenCalledTimes(1);
@@ -442,6 +441,26 @@ describe("mail image console diagnostics", () => {
     f.finish();
     tracker.refresh();
     expect(warn).toHaveBeenCalledTimes(1);
+    tracker.dispose();
+    warn.mockRestore();
+  });
+});
+describe("mail image proxy diagnostics", () => {
+  it("reports the authored address instead of the in-app proxy URL", () => {
+    const f = fixture(),
+      changed = vi.fn(),
+      warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const target = "https://www.eechina.com/edm/image.php?id=113&a=1";
+    f.slow.setAttribute(
+      "src",
+      `anser-image://localhost/fetch?url=${encodeURIComponent(target)}`,
+    );
+    f.finish(false);
+    const tracker = watchMailImages(f.doc, changed, false);
+    tracker.refresh();
+    const line = String(warn.mock.calls[0][0]);
+    expect(line).toContain(`url=${target}`);
+    expect(line).not.toContain("anser-image");
     tracker.dispose();
     warn.mockRestore();
   });

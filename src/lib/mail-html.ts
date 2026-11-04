@@ -88,6 +88,24 @@ export function safeMailHtml(
     style.textContent = secureResources(style.textContent || "");
   }
   normalizeMailSpacers(doc);
+  // Image slices often inherit text baselines from pasted span/font wrappers.
+  // Only mark tight, text-free media runs; prose, icons, BR spacing and the
+  // author's margins/padding keep their original layout.
+  const imageRuns = new Set<Element>();
+  for (const img of doc.images) {
+    const parent = img.closest("p,div,td,th");
+    if (parent) imageRuns.add(parent);
+  }
+  for (const parent of imageRuns) {
+    if (
+      !parent.textContent?.trim() &&
+      parent.querySelectorAll("img").length > 1 &&
+      [...parent.querySelectorAll("*")].every((node) =>
+        /^(A|SPAN|FONT|B|STRONG|I|EM|PICTURE|SOURCE|IMG)$/.test(node.tagName),
+      )
+    )
+      parent.setAttribute("data-anser-image-run", "");
+  }
   if (nativeImages) routeNativeMailResources(doc);
   // WebKit suppresses frame event listeners in a scripts-disabled sandbox.
   // Native links use a route the navigation delegate cancels and emits to the
@@ -124,7 +142,7 @@ export function safeMailHtml(
   // A body-only sanitizer otherwise drops leading styles in HTML email fragments.
   doc.head.insertAdjacentHTML(
     "afterbegin",
-    `<meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data: https:${nativeImages ? ` ${nativeResourceSource("anser-image")}` : ""}; style-src 'unsafe-inline' ${nativeImages ? nativeResourceSource("anser-style") : "https:"}; font-src data: ${nativeImages ? nativeResourceSource("anser-font") : "https:"}; upgrade-insecure-requests; base-uri 'none'; form-action 'none'"><style>body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','Microsoft YaHei',sans-serif;font-size:14px;line-height:1.6;color:#242424;margin:0;padding:0;overflow-wrap:break-word}img{max-width:100%;height:auto}table{max-width:100%}pre{white-space:pre-wrap}</style><style id="anser-mail-theme">${mailThemeCss(colorScheme, background)}</style>`,
+    `<meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data: https:${nativeImages ? ` ${nativeResourceSource("anser-image")}` : ""}; style-src 'unsafe-inline' ${nativeImages ? nativeResourceSource("anser-style") : "https:"}; font-src data: ${nativeImages ? nativeResourceSource("anser-font") : "https:"}; upgrade-insecure-requests; base-uri 'none'; form-action 'none'"><style>body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','Microsoft YaHei',sans-serif;font-size:14px;line-height:1.6;color:#242424;margin:0;padding:0;overflow-wrap:break-word}img{max-width:100%;height:auto}table{max-width:100%}pre{white-space:pre-wrap}[data-anser-image-run],[data-anser-image-run] :is(a,span,font,b,strong,i,em){line-height:0}[data-anser-image-run] img{vertical-align:bottom}</style><style id="anser-mail-theme">${mailThemeCss(colorScheme, background)}</style>`,
   );
   return `<!doctype html>${doc.documentElement.outerHTML}`;
 }

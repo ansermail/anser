@@ -10,6 +10,8 @@
 
 > **0.1.36 Alpha** 已正式发布，支持 Apple Silicon / Intel Mac 与 Windows 10/11 x64。长期稳定性、部分服务商兼容性及真实场景验收仍在持续完善。
 
+0.1.37 正在准备发布，修复邮件翻译的异常片段提示、横排链接与图片页尾排版、连续图片白缝以及双语按钮高度；最新公开版仍为 0.1.36。具体状态见 [0.1.37 发布工作点](docs/RELEASE_0_1_37_WORKING.md)。
+
 0.1.36 修复 macOS 后台菜单栏悬停提示残留，保留菜单栏未读数字与点击打开，并改用 Windows 本地化静态托盘提示。[下载 0.1.36](https://github.com/ansermail/anser/releases/tag/v0.1.36)，说明见 [发布说明](docs/releases/v0.1.36.md)，资源与验收范围见 [0.1.36 发布工作点](docs/RELEASE_0_1_36_WORKING.md)。
 
 ![雁信的多账号收件箱与邮件阅读界面](docs/screenshots/inbox-demo.png)

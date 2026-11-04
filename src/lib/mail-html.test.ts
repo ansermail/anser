@@ -8,6 +8,24 @@ import {
   interceptMailLinks,
 } from "./mail-html";
 describe("untrusted email rendering", () => {
+  it("removes text-baseline seams only from tight image-only runs without changing authored spacing", () => {
+    const html = `<p id="slices" style="margin:0;padding:7px"><span style="font-size:18px"><img width="200" height="90" src="https://example.com/a.png"><a href="https://example.com/"><img width="200" height="60" src="https://example.com/b.png"></a></span></p>
+      <p id="prose">Read <img src="https://example.com/icon.png"> this <img src="https://example.com/icon2.png"> text.</p>
+      <p id="breaks"><img src="https://example.com/a.png"><br><br><img src="https://example.com/b.png"></p>`;
+    const doc = new DOMParser().parseFromString(
+      safeMailHtml(html),
+      "text/html",
+    );
+    expect(doc.querySelectorAll("[data-anser-image-run]")).toHaveLength(1);
+    const slices = doc.getElementById("slices")!;
+    expect(slices.hasAttribute("data-anser-image-run")).toBe(true);
+    expect(slices.getAttribute("style")).toBe("margin:0;padding:7px");
+    expect(doc.querySelectorAll("br")).toHaveLength(2);
+    expect(slices.querySelector("img")?.getAttribute("height")).toBe("90");
+    expect(slices.querySelector("a")?.getAttribute("data-mail-href")).toBe(
+      "https://example.com/",
+    );
+  });
   it("marks the isolated document with the requested reader color scheme", () => {
     const light = new DOMParser().parseFromString(
       safeMailHtml("<p>light</p>"),

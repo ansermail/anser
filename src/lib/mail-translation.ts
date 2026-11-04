@@ -153,20 +153,43 @@ export function planMailTranslation(
       styles.set(node, doc.defaultView?.getComputedStyle(node));
     return styles.get(node);
   };
-  // 邮件按钮通常是带底色/边框的链接。将整个链接作为分段边界，
-  // 译文留在同一个点击区域，不能克隆出第二个按钮。
+  // Pasted rich text often repeats the surrounding background on every link
+  // and nested span. That is not a button surface. Plain inline/atomic links
+  // and underline borders must remain part of their original horizontal run.
+  const transparent = (color: string) =>
+    !color || color === "transparent" || /^rgba\([^)]*,\s*0\s*\)$/.test(color);
+  const distinctBackground = (element: Element, color: string) => {
+    if (transparent(color)) return false;
+    for (
+      let parent = element.parentElement;
+      parent;
+      parent = parent.parentElement
+    ) {
+      const background = styleOf(parent)?.backgroundColor || "";
+      if (!transparent(background)) {
+        // Repeated translucent paint still changes the surface by compositing.
+        return (
+          color !== background || /^rgba\([^)]*,\s*0?\.\d+\s*\)$/.test(color)
+        );
+      }
+    }
+    return true;
+  };
+  // Only actual button boxes create a separate group; translations stay
+  // inside that one click target. Display:inline-block alone is not evidence.
   const decorated = (element: Element) => {
     const style = styleOf(element);
     return !!(
       style &&
-      (/^(inline-block|inline-flex|inline-grid|inline-table)$/.test(
-        style.display,
-      ) ||
-        (style.backgroundColor &&
-          !/^(transparent|rgba\(0,\s*0,\s*0,\s*0\))$/.test(
-            style.backgroundColor,
-          )) ||
-        ["Top", "Right", "Bottom", "Left"].some(
+      ((distinctBackground(element, style.backgroundColor) &&
+        (/^(inline-block|inline-flex|inline-grid|inline-table|block|flex|grid)$/.test(
+          style.display,
+        ) ||
+          ["top", "right", "bottom", "left"].some(
+            (side) =>
+              Number.parseFloat(style.getPropertyValue(`padding-${side}`)) > 0,
+          ))) ||
+        ["Top", "Right", "Bottom", "Left"].filter(
           (side) =>
             Number.parseFloat(
               style.getPropertyValue(`border-${side.toLowerCase()}-width`),
@@ -174,7 +197,7 @@ export function planMailTranslation(
             !/^(none|hidden)$/.test(
               style.getPropertyValue(`border-${side.toLowerCase()}-style`),
             ),
-        ))
+        ).length >= 2)
     );
   };
   const actionLinks = new Map<Element, boolean>();
@@ -457,6 +480,9 @@ export function planMailTranslation(
         element.removeAttribute("id");
         element.removeAttribute("name");
         copyTypography(source, element);
+        // A button may use a large line-height to center its original label.
+        // That value must not become the translated label's line spacing.
+        if (insideAction) element.style.setProperty("line-height", "inherit");
         for (const child of [...source.childNodes]) {
           const copied = clone(child);
           if (copied) element.append(copied);
@@ -522,12 +548,22 @@ export function planMailTranslation(
         );
         copyTypography(group.parent, view);
         view.style.setProperty("display", "block", "important");
-        view.style.setProperty("white-space", "pre-wrap");
+        const whitespace =
+          styleOf(group.parent)?.whiteSpace ||
+          (group.parent.closest("pre") ? "pre-wrap" : "normal");
+        // HTML source indentation is not visible whitespace. Preserve authored
+        // PRE/BR formatting, without exposing pretty-printed source as gaps.
+        view.style.setProperty("white-space", whitespace);
         view.style.setProperty("margin-top", "0.35em");
         view.style.setProperty("margin-bottom", "0.5em");
         view.style.setProperty("overflow-wrap", "break-word");
         const action = group.parent.closest("a[data-mail-href],a[href]");
         if (action && actionLink(action)) {
+          view.style.setProperty("white-space", "normal");
+          view.style.setProperty("line-height", "1.35");
+          view.style.setProperty("text-indent", "0");
+          view.style.setProperty("padding", "0");
+          view.style.setProperty("margin-top", "0.2em");
           view.style.setProperty("margin-bottom", "0");
           view.style.setProperty("min-width", "0");
           view.style.setProperty("max-width", "100%");
