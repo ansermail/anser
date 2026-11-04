@@ -8,11 +8,9 @@
 
 [下载最新版本](https://github.com/ansermail/anser/releases/latest) · [产品官网](https://ansermail.github.io/anser/) · [Web 演示](https://ansermail.github.io/anser/demo/) · [使用说明](docs/USAGE.md) · [开发进度](docs/DEVELOPMENT_STATUS.md) · [反馈问题](https://github.com/ansermail/anser/issues)
 
-> **0.1.36 Alpha** 已正式发布，支持 Apple Silicon / Intel Mac 与 Windows 10/11 x64。长期稳定性、部分服务商兼容性及真实场景验收仍在持续完善。
+> **0.1.38 Alpha** 已正式发布，支持 Apple Silicon / Intel Mac 与 Windows 10/11 x64。长期稳定性、部分服务商兼容性及真实场景验收仍在持续完善。
 
-0.1.38 正在准备发布，新增附加存档、快速/深度校验，优化大邮箱阅读性能，并包含此前翻译与排版修复；最新公开版仍为 0.1.36。具体状态见 [0.1.38 发布工作点](docs/RELEASE_0_1_38_WORKING.md)。
-
-0.1.36 修复 macOS 后台菜单栏悬停提示残留，保留菜单栏未读数字与点击打开，并改用 Windows 本地化静态托盘提示。[下载 0.1.36](https://github.com/ansermail/anser/releases/tag/v0.1.36)，说明见 [发布说明](docs/releases/v0.1.36.md)，资源与验收范围见 [0.1.36 发布工作点](docs/RELEASE_0_1_36_WORKING.md)。
+0.1.38 新增附加存档、快速/深度校验，优化大邮箱列表、搜索与对话读取，并修复翻译片段、横排链接、图片白缝和双语按钮排版。[下载 0.1.38](https://github.com/ansermail/anser/releases/tag/v0.1.38)，说明见 [发布说明](docs/releases/v0.1.38.md)，资源与验收范围见 [0.1.38 发布工作点](docs/RELEASE_0_1_38_WORKING.md)。
 
 ![雁信的多账号收件箱与邮件阅读界面](docs/screenshots/inbox-demo.png)
 
@@ -66,7 +64,7 @@ _所有展示截图均来自浏览器演示模式，使用项目内置的虚构�
 
 ### Windows 安装
 
-从[官网](https://ansermail.github.io/anser/)选择 Windows，下载 `Anser_0.1.36_x86_64-setup.exe` 并运行。安装器面向 Windows 10/11 x64，默认仅安装给当前用户；缺少 WebView2 时需联网下载运行环境。当前未提供 Authenticode 发布者签名，系统可能显示未知发布者。默认邮件应用由用户在 Windows 系统设置中选择。
+从[官网](https://ansermail.github.io/anser/)选择 Windows，下载 `Anser_0.1.38_x86_64-setup.exe` 并运行。安装器面向 Windows 10/11 x64，默认仅安装给当前用户；缺少 WebView2 时需联网下载运行环境。当前未提供 Authenticode 发布者签名，系统可能显示未知发布者。默认邮件应用由用户在 Windows 系统设置中选择。
 
 ### Homebrew 安装（macOS）
 

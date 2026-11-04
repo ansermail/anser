@@ -1,10 +1,16 @@
 # 发布与应用内更新
 
-## 准备发布：0.1.38（2026-11-04）
+## 当前公开版本：0.1.38（2026-11-04）
 
-用户授权提交并发版，本次包含性能优化、附加存档、快速/深度校验以及此前翻译和排版修复。0.1.37 已有绑定较早源码的标签与未发布草稿，因此使用新版本 0.1.38，不改动旧标签。公开 latest 暂为 0.1.36；完整门槛、三平台云端构建及九资源审计按 [0.1.38 发布工作点](RELEASE_0_1_38_WORKING.md) 持续记录，说明见 [v0.1.38](releases/v0.1.38.md)。
+0.1.38 Alpha 于 2026-11-04 20:11:31（Asia/Shanghai）正式公开为 [latest](https://github.com/ansermail/anser/releases/tag/v0.1.38)，固定源码 `81656baf2e2df8e6415ad1d7ecb4a9686c5a3b06`、注释标签 `v0.1.38`。包含性能优化、附加存档、快速/深度校验及此前翻译和排版修复；0.1.37 保持旧源码标签与未发布草稿，不移动标签。
 
-## 当前公开版本：0.1.36（2026-11-03）
+[Checks 41822622432](https://github.com/ansermail/anser/actions/runs/41822622432)、[Windows validation 41822622471](https://github.com/ansermail/anser/actions/runs/41822622471)、[Release desktop 41822622565](https://github.com/ansermail/anser/actions/runs/41822622565) 全部成功。Mac 前端 474、Rust 451/5 条件忽略；Windows 前端 474、Rust 450/3 条件忽略；桌面脚本 37、IMAP 39，Windows 正式安装、启动与真实托盘恢复冒烟通过。
+
+九资源大小/SHA-256、三个更新签名、Mac 固定应用签名/精确 DR/元数据/许可、DMG 与更新归档一致性，源码/Release/清单说明原文及匿名九资源下载、标准 latest 清单均通过。[Pages 41827157227](https://github.com/ansermail/anser/actions/runs/41827157227) 与 [Homebrew 41827139283](https://github.com/ansermail/anser/actions/runs/41827139283) 成功；Homebrew style/audit/fetch 通过，配方 `60ae6eb` 的版本与双 DMG 摘要一致。官网在安装器公开前保持 0.1.36，公开后才恢复部署。
+
+本机应用未替换，安装更新由用户自行完成。6.4 万封真实规模、原生完整归档进度/取消/取回、磁盘满/热插拔、Windows/Intel 实机和正式升级仍未验证。完整记录见 [0.1.38 发布工作点](RELEASE_0_1_38_WORKING.md)，说明见 [v0.1.38](releases/v0.1.38.md)。
+
+## 前一正式版本：0.1.36（2026-11-03）
 
 0.1.36 Alpha 于 2026-11-03 11:00:02（Asia/Shanghai）正式公开为 [latest](https://github.com/ansermail/anser/releases/tag/v0.1.36)，固定源码 `68b509ad4d5894c97827baf542914412aad11882`、标签 `v0.1.36`。本版修复 macOS 后台原生悬停提示残留，避免重复刷新相同菜单栏标题，并保留 Windows 本地化静态托盘提示。
 
