@@ -2,7 +2,11 @@
 
 更新：2026-11-04（Asia/Shanghai）。用户已授权提交与正式发布，并自行完成后续安装更新。
 
-## 当前状态：发布准备与本地门槛
+## 当前状态：草稿保留，由 0.1.38 接续正式发布
+
+固定源码 `46b1928704700275ae8247766350f26418368603`，标签 `v0.1.37` 已存在；[Release desktop 41794966805](https://github.com/ansermail/anser/actions/runs/41794966805)、[Checks 41794959174](https://github.com/ansermail/anser/actions/runs/41794959174)、[Windows validation 41794959160](https://github.com/ansermail/anser/actions/runs/41794959160) 已成功，九资源草稿未正式发布。后续新增性能及附加存档后，用户授权整体提交发版；按不移动旧标签规则使用 0.1.38，见 [新发布工作点](RELEASE_0_1_38_WORKING.md)。下方保留原准备记录。
+
+## 历史：发布准备与本地门槛
 
 - `main` / `be4b549` 基线；本轮修改对应未知翻译片段、横排链接、按钮空白、图片切片及保留的图片诊断改动。
 - 五处版本更新为 0.1.37；公开 latest 仍为 0.1.36，尚未创建标签或触发云端构建。
