@@ -18,3 +18,36 @@ export function coalesceRefresh(work: () => Promise<void>) {
     return running;
   };
 }
+
+// Coalesce event bursts into at most one refresh per interval. Manual actions
+// continue to use coalesceRefresh above so their feedback stays immediate.
+export function throttledRefresh(work: () => Promise<void>, intervalMs = 1000) {
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  let running: Promise<void> | null = null;
+  let pending = false;
+  function run() {
+    running = Promise.resolve()
+      .then(work)
+      .catch(() => {})
+      .finally(() => {
+        running = null;
+        if (pending) {
+          pending = false;
+          schedule();
+        }
+      });
+  }
+  function schedule() {
+    if (timer || running) return;
+    timer = setTimeout(() => {
+      timer = null;
+      pending = false;
+      run();
+    }, intervalMs);
+  }
+  return function refresh(): Promise<void> {
+    pending = true;
+    schedule();
+    return Promise.resolve();
+  };
+}

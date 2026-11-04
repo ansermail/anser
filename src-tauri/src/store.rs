@@ -6,10 +6,18 @@ use std::{
     sync::{Arc, Mutex, RwLock},
 };
 #[derive(Clone)]
+struct CachedCounts {
+    stats: Stats,
+    folders: Vec<String>,
+    remote_folder_unread: Vec<RemoteFolderUnread>,
+    account_starred_unread: Vec<AccountUnread>,
+}
+#[derive(Clone)]
 pub struct Store {
     pub root: PathBuf,
     pub(crate) archive_gate: Arc<RwLock<()>>,
     pub(crate) conversation_cache: Arc<Mutex<Option<(i64, Arc<crate::conversation::Index>)>>>,
+    counters_cache: Arc<Mutex<Option<(i64, CachedCounts)>>>,
 }
 impl Store {
     pub fn new(root: PathBuf) -> Result<Self> {
@@ -18,6 +26,7 @@ impl Store {
             root,
             archive_gate: Arc::new(RwLock::new(())),
             conversation_cache: Arc::new(Mutex::new(None)),
+            counters_cache: Arc::new(Mutex::new(None)),
         };
         let db = s.db()?;
         db.execute_batch("PRAGMA journal_mode=WAL; CREATE TABLE IF NOT EXISTS accounts(id TEXT PRIMARY KEY,data TEXT NOT NULL); CREATE TABLE IF NOT EXISTS messages(id TEXT PRIMARY KEY,account_id TEXT NOT NULL,hash TEXT NOT NULL,data TEXT NOT NULL,UNIQUE(account_id,hash)); CREATE TABLE IF NOT EXISTS sources(account_id TEXT,folder TEXT,remote_id TEXT,mail_id TEXT,active INTEGER NOT NULL DEFAULT 1,PRIMARY KEY(account_id,folder,remote_id)); CREATE TABLE IF NOT EXISTS rules(id TEXT PRIMARY KEY,position INTEGER,data TEXT NOT NULL); CREATE TABLE IF NOT EXISTS logs(id INTEGER PRIMARY KEY,time TEXT,message TEXT); CREATE TABLE IF NOT EXISTS drafts(id TEXT PRIMARY KEY,data TEXT); CREATE TABLE IF NOT EXISTS outbox(id TEXT PRIMARY KEY,status TEXT,data TEXT,raw BLOB); CREATE INDEX IF NOT EXISTS messages_account ON messages(account_id);").map_err(err)?;
@@ -47,6 +56,11 @@ impl Store {
             )
             .map_err(err)?;
         }
+        db.execute(
+            "CREATE INDEX IF NOT EXISTS messages_parser_version ON messages(parser_version)",
+            [],
+        )
+        .map_err(err)?;
         db.execute_batch("CREATE TABLE IF NOT EXISTS folder_mappings(account_id TEXT PRIMARY KEY,data TEXT NOT NULL); CREATE TABLE IF NOT EXISTS remote_folders(account_id TEXT NOT NULL,name TEXT NOT NULL,data TEXT NOT NULL,PRIMARY KEY(account_id,name)); CREATE TABLE IF NOT EXISTS contacts(id TEXT PRIMARY KEY,name TEXT NOT NULL,email TEXT NOT NULL COLLATE NOCASE UNIQUE); CREATE TABLE IF NOT EXISTS preferences(key TEXT PRIMARY KEY,data TEXT NOT NULL);")
             .map_err(err)?;
         db.execute_batch("CREATE TABLE IF NOT EXISTS translation_cache(key TEXT PRIMARY KEY,data TEXT NOT NULL,updated_at INTEGER NOT NULL)").map_err(err)?;
@@ -793,62 +807,95 @@ impl Store {
         messages: Vec<Mail>,
         matched: u64,
     ) -> Result<Snapshot> {
-        let mut stats=db.query_row("SELECT COUNT(*),COALESCE(SUM(CASE WHEN saved_locally=1 THEN size ELSE 0 END),0),COALESCE(SUM(saved_locally),0) FROM search_documents",[],|r|Ok(Stats{total:r.get(0)?,saved:r.get(2)?,unread:0,bytes:r.get(1)?})).map_err(err)?;
-        let non_unread = crate::search::non_unread_mail_predicate("listing");
-        stats.unread = db.query_row(
-            &format!("SELECT COUNT(*) FROM readable_listing listing JOIN search_documents d ON d.mail_id=listing.id
-             WHERE d.is_read=0 AND d.trashed=0 AND NOT ({non_unread})"),
-            [],
-            |row| row.get(0),
-        ).map_err(err)?;
-        let mut fs=db.prepare("SELECT DISTINCT local_folder FROM search_documents WHERE local_folder!='全部存档' ORDER BY 1").map_err(err)?;
-        let folders = fs
-            .query_map([], |r| r.get(0))
-            .map_err(err)?
-            .collect::<std::result::Result<Vec<String>, _>>()
-            .map_err(err)?;
-        let mut counts = db.prepare(&format!("WITH unread_sources AS (
-            SELECT s.account_id,s.folder,s.mail_id FROM trusted_sources s
-            JOIN search_documents d ON d.mail_id=s.mail_id AND d.account_id=s.account_id
-            JOIN message_listing listing ON listing.id=s.mail_id
-            WHERE s.active=1 AND d.is_read=0 AND d.trashed=0 AND NOT ({non_unread})
-        ) SELECT f.account_id,f.name,
-            COUNT(DISTINCT CASE WHEN u.folder=f.name THEN u.mail_id END),
-            COUNT(DISTINCT u.mail_id)
-            FROM remote_folders f LEFT JOIN unread_sources u ON u.account_id=f.account_id
-            AND (u.folder=f.name OR (
-                COALESCE(json_extract(f.data,'$.delimiter'),'')!='' AND
-                substr(u.folder,1,length(f.name||json_extract(f.data,'$.delimiter')))=f.name||json_extract(f.data,'$.delimiter')
-            )) GROUP BY f.account_id,f.name")).map_err(err)?;
-        let remote_folder_unread = counts
-            .query_map([], |r| {
-                Ok(RemoteFolderUnread {
-                    account_id: r.get(0)?,
-                    name: r.get(1)?,
-                    direct: r.get(2)?,
-                    tree: r.get(3)?,
-                })
+        let revision: i64 = db
+            .query_row("SELECT version FROM query_revision WHERE id=1", [], |r| {
+                r.get(0)
             })
+            .map_err(err)?;
+        let cached = self
+            .counters_cache
+            .lock()
             .map_err(err)?
-            .collect::<std::result::Result<Vec<_>, _>>()
-            .map_err(err)?;
-        let mut starred = db
-            .prepare(&format!(
-                "SELECT d.account_id,COUNT(*) FROM search_documents d
-            JOIN readable_listing listing ON listing.id=d.mail_id
-            WHERE d.is_read=0 AND d.starred=1 AND d.trashed=0 AND NOT ({non_unread}) GROUP BY d.account_id",
-            ))
-            .map_err(err)?;
-        let account_starred_unread = starred
-            .query_map([], |r| {
-                Ok(AccountUnread {
-                    account_id: r.get(0)?,
-                    unread: r.get(1)?,
+            .as_ref()
+            .filter(|(cached_revision, _)| *cached_revision == revision)
+            .map(|(_, counts)| counts.clone());
+        let (stats, folders, remote_folder_unread, account_starred_unread) = if let Some(counts) =
+            cached
+        {
+            (
+                counts.stats,
+                counts.folders,
+                counts.remote_folder_unread,
+                counts.account_starred_unread,
+            )
+        } else {
+            let mut stats=db.query_row("SELECT COUNT(*),COALESCE(SUM(CASE WHEN saved_locally=1 THEN size ELSE 0 END),0),COALESCE(SUM(saved_locally),0) FROM search_documents",[],|r|Ok(Stats{total:r.get(0)?,saved:r.get(2)?,unread:0,bytes:r.get(1)?})).map_err(err)?;
+            let non_unread = crate::search::non_unread_mail_predicate("listing");
+            stats.unread = db.query_row(
+                    &format!("SELECT COUNT(*) FROM readable_listing listing JOIN search_documents d ON d.mail_id=listing.id
+                     WHERE d.is_read=0 AND d.trashed=0 AND NOT ({non_unread})"),
+                    [],
+                    |row| row.get(0),
+                ).map_err(err)?;
+            let mut fs=db.prepare("SELECT DISTINCT local_folder FROM search_documents WHERE local_folder!='全部存档' ORDER BY 1").map_err(err)?;
+            let folders = fs
+                .query_map([], |r| r.get(0))
+                .map_err(err)?
+                .collect::<std::result::Result<Vec<String>, _>>()
+                .map_err(err)?;
+            let mut counts = db.prepare(&format!("WITH unread_sources AS (
+                    SELECT s.account_id,s.folder,s.mail_id FROM trusted_sources s
+                    JOIN search_documents d ON d.mail_id=s.mail_id AND d.account_id=s.account_id
+                    JOIN message_listing listing ON listing.id=s.mail_id
+                    WHERE s.active=1 AND d.is_read=0 AND d.trashed=0 AND NOT ({non_unread})
+                ) SELECT f.account_id,f.name,
+                    COUNT(DISTINCT CASE WHEN u.folder=f.name THEN u.mail_id END),
+                    COUNT(DISTINCT u.mail_id)
+                    FROM remote_folders f LEFT JOIN unread_sources u ON u.account_id=f.account_id
+                    AND (u.folder=f.name OR (
+                        COALESCE(json_extract(f.data,'$.delimiter'),'')!='' AND
+                        substr(u.folder,1,length(f.name||json_extract(f.data,'$.delimiter')))=f.name||json_extract(f.data,'$.delimiter')
+                    )) GROUP BY f.account_id,f.name")).map_err(err)?;
+            let remote_folder_unread = counts
+                .query_map([], |r| {
+                    Ok(RemoteFolderUnread {
+                        account_id: r.get(0)?,
+                        name: r.get(1)?,
+                        direct: r.get(2)?,
+                        tree: r.get(3)?,
+                    })
                 })
-            })
-            .map_err(err)?
-            .collect::<std::result::Result<Vec<_>, _>>()
-            .map_err(err)?;
+                .map_err(err)?
+                .collect::<std::result::Result<Vec<_>, _>>()
+                .map_err(err)?;
+            let mut starred = db
+                    .prepare(&format!(
+                        "SELECT d.account_id,COUNT(*) FROM search_documents d
+                    JOIN readable_listing listing ON listing.id=d.mail_id
+                    WHERE d.is_read=0 AND d.starred=1 AND d.trashed=0 AND NOT ({non_unread}) GROUP BY d.account_id",
+                    ))
+                    .map_err(err)?;
+            let account_starred_unread = starred
+                .query_map([], |r| {
+                    Ok(AccountUnread {
+                        account_id: r.get(0)?,
+                        unread: r.get(1)?,
+                    })
+                })
+                .map_err(err)?
+                .collect::<std::result::Result<Vec<_>, _>>()
+                .map_err(err)?;
+            *self.counters_cache.lock().map_err(err)? = Some((
+                revision,
+                CachedCounts {
+                    stats: stats.clone(),
+                    folders: folders.clone(),
+                    remote_folder_unread: remote_folder_unread.clone(),
+                    account_starred_unread: account_starred_unread.clone(),
+                },
+            ));
+            (stats, folders, remote_folder_unread, account_starred_unread)
+        };
         let mut ls = db
             .prepare("SELECT time || '  ' || message FROM logs ORDER BY id DESC LIMIT 30")
             .map_err(err)?;
@@ -885,16 +932,9 @@ impl Store {
     }
     pub fn detail(&self, id: &str) -> Result<Detail> {
         let mut mail = self.mail(id)?;
-        let index = self.conversation_index(&mail.account_id)?;
-        mail.conversation_id = index
-            .roots
-            .get(id)
-            .cloned()
-            .unwrap_or_else(|| id.to_string());
-        mail.conversation_count = *index
-            .counts
-            .get(&(mail.conversation_id.clone(), mail.trashed))
-            .unwrap_or(&1);
+        let (conversation_id, conversation_count) = self.conversation_position(&mail)?;
+        mail.conversation_id = conversation_id;
+        mail.conversation_count = conversation_count;
         if mail.source_folder.is_empty() {
             if let Ok((folder, _)) = self.source(&mail.id) {
                 mail.source_folder = folder;

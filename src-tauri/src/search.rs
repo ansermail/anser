@@ -21,6 +21,7 @@ pub fn initialize(db: &Connection) -> Result<()> {
     }
     let objects: i64 = tx.query_row("SELECT COUNT(*) FROM sqlite_schema WHERE name IN ('search_documents','search_fts','search_source','search_message_insert','search_message_update','search_message_delete','search_text_insert','search_text_update','search_text_delete','search_account_time','search_time','search_unindexable','search_summary','search_folders')", [], |r| r.get(0)).map_err(err)?;
     if version == Some(VERSION) && objects == 14 {
+        tx.execute_batch("CREATE INDEX IF NOT EXISTS search_local_time ON search_documents(saved_locally,trashed,instant DESC,mail_id);").map_err(err)?;
         return tx.commit().map_err(err);
     }
     // Rebuild only derived objects, atomically. Missing objects or an interrupted
@@ -44,6 +45,7 @@ pub fn initialize(db: &Connection) -> Result<()> {
         CREATE INDEX search_time ON search_documents(instant DESC,mail_id);
         CREATE INDEX search_summary ON search_documents(saved_locally,trashed,is_read,size);
         CREATE INDEX search_folders ON search_documents(local_folder);
+        CREATE INDEX search_local_time ON search_documents(saved_locally,trashed,instant DESC,mail_id);
         CREATE INDEX search_unindexable ON search_documents(rowid) WHERE fts_safe=0;
         CREATE VIRTUAL TABLE search_fts USING fts5(all_text,content='search_documents',content_rowid='rowid',tokenize='trigram');
         CREATE VIEW search_source AS WITH projected AS (SELECT id AS mail_id,account_id,

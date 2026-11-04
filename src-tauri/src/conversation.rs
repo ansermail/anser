@@ -1,4 +1,5 @@
 use crate::{models::*, store::Store};
+use rusqlite::OptionalExtension;
 use std::{
     collections::{HashMap, HashSet},
     sync::Arc,
@@ -327,44 +328,69 @@ impl Store {
         *cached = Some((revision, graph.clone()));
         Ok(graph)
     }
+    /// Reading one message reuses the graph materialized for the conversation
+    /// list. A stale or missing projection falls back to a single message.
+    pub(crate) fn conversation_position(&self, mail: &Mail) -> Result<(String, usize)> {
+        let db = self.db()?;
+        let position = db
+            .query_row(
+                "SELECT cm.root,COALESCE(cc.count,1)
+                 FROM conversation_members cm
+                 LEFT JOIN conversation_counts cc
+                   ON cc.root=cm.root AND cc.trashed=cm.trashed
+                 WHERE cm.mail_id=?1",
+                [&mail.id],
+                |row| Ok((row.get::<_, String>(0)?, row.get::<_, usize>(1)?)),
+            )
+            .optional()
+            .map_err(err)?;
+        Ok(position.unwrap_or_else(|| (mail.id.clone(), 1)))
+    }
+
     pub fn conversation(&self, id: &str) -> Result<Vec<Mail>> {
         let selected = self.mail(id)?;
-        let index = self.conversation_index(&selected.account_id)?;
-        let group = index
-            .roots
-            .get(id)
-            .ok_or("这封邮件的服务器来源尚未通过核查，请重新收取真实文件夹后再打开")?;
+        self.ensure_conversation_graph()?;
         let db = self.db()?;
+        let group = db
+            .query_row(
+                "SELECT root FROM conversation_members WHERE mail_id=?1",
+                [id],
+                |row| row.get::<_, String>(0),
+            )
+            .optional()
+            .map_err(err)?
+            .ok_or("这封邮件的服务器来源尚未通过核查，请重新收取真实文件夹后再打开")?;
+        let count: usize = db
+            .query_row(
+                "SELECT COALESCE(count,1)
+                 FROM conversation_counts WHERE root=?1 AND trashed=?2",
+                rusqlite::params![group, selected.trashed],
+                |row| row.get(0),
+            )
+            .optional()
+            .map_err(err)?
+            .unwrap_or(1);
         // Fetch bodies only for this thread, using the primary-key index.
         let mut query = db
-            .prepare("SELECT data FROM messages WHERE id=?1 AND json_extract(data,'$.trashed')=?2")
+            .prepare(
+                "SELECT m.data FROM messages m
+                 JOIN conversation_members cm ON cm.mail_id=m.id
+                 WHERE cm.root=?1 AND cm.trashed=?2",
+            )
             .map_err(err)?;
-        let mut mails = Vec::<Mail>::new();
-        for (member, root) in &index.roots {
-            if root != group {
-                continue;
-            }
-            let data = query
-                .query_map(rusqlite::params![member, selected.trashed], |r| {
-                    r.get::<_, String>(0)
-                })
-                .map_err(err)?;
-            for row in data {
-                mails.push(serde_json::from_str(&row.map_err(err)?).map_err(err)?);
-            }
-        }
+        let mut mails = query
+            .query_map(rusqlite::params![group, selected.trashed], |row| {
+                row.get::<_, String>(0)
+            })
+            .map_err(err)?
+            .map(|row| serde_json::from_str(&row.map_err(err)?).map_err(err))
+            .collect::<Result<Vec<Mail>>>()?;
         mails.sort_by(chronological);
         let mut out: Vec<Mail> = Vec::new();
         let mut positions = HashMap::new();
         for mut mail in mails {
-            if index.roots.get(&mail.id) != Some(group) {
-                continue;
-            }
             mail.conversation_id = group.clone();
-            mail.conversation_count = *index
-                .counts
-                .get(&(group.clone(), mail.trashed))
-                .unwrap_or(&1);
+            mail.conversation_count = count;
             // A server Sent copy and the local SMTP archive can have different
             // bytes but the same Message-ID. Keep both archives; show one turn.
             let identity = if mail.server_message_id.is_empty() {

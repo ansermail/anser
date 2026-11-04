@@ -56,7 +56,7 @@ import { EmlImports } from "./components/eml-imports";
 import { RemoteFolderList } from "./components/remote-folder-list";
 import { remoteFolderLabel, sidebarAccountError } from "./lib/remote-folders";
 import { printMail } from "./lib/mail-print";
-import { coalesceRefresh } from "./lib/refresh-queue";
+import { coalesceRefresh, throttledRefresh } from "./lib/refresh-queue";
 import { ConversationReader } from "./components/conversation-reader";
 import { replyHeaders } from "./lib/conversations";
 import { FolderInput } from "./components/folder-input";
@@ -557,6 +557,9 @@ export default function App() {
   const [refresh] = useState(() =>
     coalesceRefresh(() => refreshAction.current()),
   );
+  const [refreshLive] = useState(() =>
+    throttledRefresh(() => refreshAction.current()),
+  );
   useEffect(() => {
     void refresh();
   }, [query, refresh]);
@@ -629,7 +632,7 @@ export default function App() {
       );
       const b = await listen("mail-updated", () => {
         setSyncText("");
-        void refresh();
+        void refreshLive();
       });
       const c = await listen<{
         status: string;
@@ -670,7 +673,7 @@ export default function App() {
       cleanup();
       clearInterval(timer);
     };
-  }, [refresh]);
+  }, [refresh, refreshLive]);
   const compose = useCallback(
     (mail?: Mail, forward = false, all = false, origin?: Detail) => {
       if (clearingDraftsNow.current) return;

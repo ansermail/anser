@@ -355,12 +355,9 @@ impl Store {
             })
             .map_err(err)?;
         let mut mail: Mail = serde_json::from_str(&data).map_err(err)?;
-        let graph = self.conversation_index(&mail.account_id)?;
-        mail.conversation_id = graph.roots.get(id).cloned().unwrap_or_else(|| id.into());
-        mail.conversation_count = *graph
-            .counts
-            .get(&(mail.conversation_id.clone(), mail.trashed))
-            .unwrap_or(&1);
+        let (conversation_id, conversation_count) = self.conversation_position(&mail)?;
+        mail.conversation_id = conversation_id;
+        mail.conversation_count = conversation_count;
         Ok(mail)
     }
     pub fn message_raw(&self, mail: &Mail) -> Result<Vec<u8>> {

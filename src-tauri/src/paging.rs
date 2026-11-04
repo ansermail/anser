@@ -107,7 +107,7 @@ fn projection_revision(db: &Connection) -> Result<i64> {
     )
     .map_err(err)
 }
-fn materialize_graph(db: &Connection) -> Result<()> {
+pub(crate) fn materialize_graph(db: &Connection) -> Result<()> {
     let tx = Transaction::new_unchecked(db, TransactionBehavior::Immediate).map_err(err)?;
     let revision = graph_revision(&tx)?;
     if revision != projection_revision(&tx)? {
@@ -137,6 +137,15 @@ fn materialize_graph(db: &Connection) -> Result<()> {
         .map_err(err)?;
     }
     tx.commit().map_err(err)
+}
+impl Store {
+    pub(crate) fn ensure_conversation_graph(&self) -> Result<()> {
+        let db = self.db()?;
+        if graph_revision(&db)? != projection_revision(&db)? {
+            materialize_graph(&db)?;
+        }
+        Ok(())
+    }
 }
 fn date_bound(input: &str) -> Result<Option<f64>> {
     if input.is_empty() {
@@ -214,7 +223,7 @@ fn bindings(
         (q.exclude_sent as i64).into(),
     ]
 }
-fn filtered(indexed: bool) -> String {
+fn filtered_where(indexed: bool) -> String {
     // The projection carries scalar filters; only Sent's role/source fallback
     // still needs the small body-free JSON record.
     let mut where_sql = search::listing_predicate(indexed);
@@ -234,17 +243,37 @@ fn filtered(indexed: bool) -> String {
         "COALESCE(json_extract(data,'$.savedLocally'),1)",
         "d.saved_locally",
     );
-    format!("FROM readable_listing listing JOIN search_documents d ON d.mail_id=listing.id WHERE {where_sql} AND (?11 IS NULL OR d.instant>=?11) AND (?12 IS NULL OR d.instant<?12)")
+    where_sql = where_sql.replace(
+        "listing.id IN (SELECT mail_id FROM search_documents",
+        "d.mail_id IN (SELECT mail_id FROM search_documents",
+    );
+    // Match readable_listing without evaluating the quarantined-source view
+    // for every saved message. Saved originals are always readable.
+    let readable = "(d.saved_locally=1
+        OR NOT EXISTS(SELECT 1 FROM sources rs JOIN folder_health rh
+            ON rh.account_id=rs.account_id AND rh.folder=rs.folder
+            WHERE rs.mail_id=d.mail_id AND rs.active=1)
+        OR EXISTS(SELECT 1 FROM trusted_sources rt
+            WHERE rt.mail_id=d.mail_id AND rt.active=1))";
+    format!("({readable}) AND {where_sql} AND (?11 IS NULL OR d.instant>=?11) AND (?12 IS NULL OR d.instant<?12)")
+}
+fn filtered(indexed: bool) -> String {
+    format!(
+        "FROM search_documents d JOIN message_listing listing ON listing.id=d.mail_id WHERE {}",
+        filtered_where(indexed)
+    )
 }
 fn units(request: &PageRequest) -> String {
-    let source = filtered(search::phrase(&request.query.search).is_some());
+    let indexed = search::phrase(&request.query.search).is_some();
+    let source = filtered(indexed);
+    let where_sql = filtered_where(indexed);
     if request.query.list_mode == ListMode::Messages {
         return format!("WITH units AS (SELECT listing.id,d.instant,d.is_read,d.starred,d.has_attachments,'' AS root,1 AS count {source})");
     }
-    format!("WITH eligible AS MATERIALIZED (SELECT listing.id,d.instant,d.is_read,d.starred,d.has_attachments,d.trashed,cm.root FROM readable_listing listing JOIN search_documents d ON d.mail_id=listing.id JOIN conversation_members cm ON cm.mail_id=listing.id WHERE {}),
+    format!("WITH eligible AS MATERIALIZED (SELECT listing.id,d.instant,d.is_read,d.starred,d.has_attachments,d.trashed,cm.root FROM search_documents d JOIN message_listing listing ON listing.id=d.mail_id JOIN conversation_members cm ON cm.mail_id=listing.id WHERE {}),
         grouped AS (SELECT root,MIN(is_read) AS is_read,MAX(starred) AS starred,MAX(has_attachments) AS has_attachments FROM eligible GROUP BY root),
         ranked AS (SELECT id,instant,root,trashed,ROW_NUMBER() OVER(PARTITION BY root ORDER BY instant DESC,id ASC) AS n FROM eligible),
-        units AS (SELECT r.id,r.instant,g.is_read,g.starred,g.has_attachments,r.root,c.count FROM ranked r JOIN grouped g ON g.root=r.root JOIN conversation_counts c ON c.root=r.root AND c.trashed=r.trashed WHERE n=1)",source.split_once(" WHERE ").expect("static filter").1)
+        units AS (SELECT r.id,r.instant,g.is_read,g.starred,g.has_attachments,r.root,c.count FROM ranked r JOIN grouped g ON g.root=r.root JOIN conversation_counts c ON c.root=r.root AND c.trashed=r.trashed WHERE n=1)",where_sql)
 }
 
 impl Store {
@@ -364,12 +393,15 @@ impl Store {
             } else {
                 None
             };
-            let coverage_sql = format!(
-                "SELECT COALESCE(SUM(d.body_known),0),COUNT(*)-COALESCE(SUM(d.body_known),0) {}",
-                filtered(false)
-            );
-            let body_coverage = tx
-                .query_row(
+            let body_coverage = if !request.query.search.is_empty()
+                && (request.query.search_field.is_empty()
+                    || request.query.search_field == "body")
+            {
+                let coverage_sql = format!(
+                    "SELECT COALESCE(SUM(d.body_known),0),COUNT(*)-COALESCE(SUM(d.body_known),0) {}",
+                    filtered(false)
+                );
+                tx.query_row(
                     &coverage_sql,
                     params_from_iter(bindings(request, from, before, false).iter()),
                     |r| {
@@ -379,7 +411,13 @@ impl Store {
                         })
                     },
                 )
-                .map_err(err)?;
+                .map_err(err)?
+            } else {
+                Coverage {
+                    known: 0,
+                    unknown: 0,
+                }
+            };
             let snapshot = self.snapshot_metadata(&tx, messages, matched)?;
             return Ok(Page {
                 snapshot,
@@ -869,6 +907,21 @@ mod tests {
     #[test]
     fn coverage_and_trusted_visibility_share_filter_snapshot_and_source_changes_reset() {
         let (_dir, store) = seed(7);
+        store
+            .save_remote_folders(
+                &account().id,
+                &[RemoteFolder {
+                    account_id: account().id,
+                    name: "INBOX".into(),
+                    display_name: "INBOX".into(),
+                    delimiter: Some("/".into()),
+                    selectable: true,
+                    sync_error: None,
+                    roles: vec![],
+                    detected_roles: None,
+                }],
+            )
+            .unwrap();
         let mut m = store.mail("fictional-00001").unwrap();
         m.saved_locally = false;
         m.body.clear();
@@ -876,12 +929,62 @@ mod tests {
         let mut r = request(ListMode::Messages, 2);
         r.query.view = "all".into();
         r.query.remote_folder = "INBOX".into();
+        r.query.search = "invoice".into();
+        r.query.search_field = "body".into();
         let page = store.mail_page(&r).unwrap();
         assert_eq!(
             (page.body_coverage.known, page.body_coverage.unknown),
             (6, 1)
         );
-        r.cursor = page.next_cursor.unwrap();
+        assert_eq!(
+            (
+                page.snapshot.stats.total,
+                page.snapshot.stats.unread,
+                page.snapshot.stats.saved
+            ),
+            (7, 4, 6)
+        );
+        assert_eq!(
+            page.snapshot
+                .account_starred_unread
+                .iter()
+                .find(|count| count.account_id == account().id)
+                .map(|count| count.unread),
+            Some(1)
+        );
+        assert_eq!(
+            page.snapshot
+                .remote_folder_unread
+                .iter()
+                .find(|count| count.name == "INBOX")
+                .map(|count| count.tree),
+            Some(4)
+        );
+        let mut read = store.mail("fictional-00005").unwrap();
+        read.is_read = true;
+        store.update_mail(&read).unwrap();
+        let changed = store.mail_page(&r).unwrap();
+        assert_eq!(changed.snapshot.stats.unread, 3);
+        assert_eq!(
+            changed
+                .snapshot
+                .account_starred_unread
+                .iter()
+                .find(|count| count.account_id == account().id)
+                .map(|count| count.unread)
+                .unwrap_or(0),
+            0
+        );
+        assert_eq!(
+            changed
+                .snapshot
+                .remote_folder_unread
+                .iter()
+                .find(|count| count.name == "INBOX")
+                .map(|count| count.tree),
+            Some(3)
+        );
+        r.cursor = changed.next_cursor.unwrap();
         store
             .isolate_folder(
                 &account(),
@@ -895,6 +998,12 @@ mod tests {
         assert_eq!(new.snapshot.matched, 0);
         assert!(new.snapshot.messages.is_empty());
         assert_eq!(new.body_coverage.known + new.body_coverage.unknown, 0);
+        assert_eq!(new.snapshot.stats.unread, 2);
+        assert!(new
+            .snapshot
+            .remote_folder_unread
+            .iter()
+            .all(|count| count.tree == 0));
     }
 
     #[test]
