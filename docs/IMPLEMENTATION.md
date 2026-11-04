@@ -10,6 +10,22 @@ Windows 使用 `tauri.windows.conf.json` 合并原生窗口、HTTPS scheme、Web
 
 Windows 覆盖配置不使用默认 fileAssociations 安装宏；NSIS hooks 只注册可选邮件处理程序、OpenWithProgids 和系统设置候选，不修改扩展名默认值及 UserChoice。附件预览在调用系统关联前拒绝 Windows 脚本、快捷方式、控制面板和安装器类型，另存原附件仍保留。
 
+## 附加存档与外置分层（2026-11-04，开发中）
+
+`archive_tier.rs` 把超过保留期的完整 MIME 移到独立外置目录，SQLite 索引仍留在应用数据根。配置写入 `archive-tier.json`，外置目录写入 `.anser-tier-store` 标识；`archive_tier` 保存哈希、相对路径、邮件日期和显示元数据，`archive_tier_restored` 阻止取回后的邮件被自动再次归档，`archive_tier_log` 保留最近操作。外置文件使用 `YYYY/MM/<sha256>.eml`，日期来自原始邮件，无法解析时进入 `unsorted/unknown`。
+
+归档先在本机读取并核对 SHA-256，再原子写入外置目录并再次核对，之后在短事务中登记外置索引并移除本机副本。取回反向执行：先复制和校验本机副本，再提交索引变化并删除外置文件。任务在后台线程执行，归档/取回/规范目录共用运行时维护锁；逐文件只用短时读写锁保护文件切换，避免长时间阻塞邮件读取。
+
+`archive::read_raw` 先检查本机普通文件及 SHA-256，只有本机不存在时才读取附加存档；本机文件损坏不回退外置同名文件。外置盘标识失败直接返回连接错误。所有既有完整原件读取路径（详情、规则、附件预览、备份、导出）因此共用回退，而列表和账号读取不访问外置盘。
+
+删除本地存档或文件夹时，`archive_deletion` 先把本机和外置原件移入各自的删除暂存目录，再在 SQLite 事务中删除引用与索引；提交后清理暂存，事务失败或中断时按仍存在的索引恢复。外置盘未连接且待删原件在附加存档中时拒绝删除。本机存档位置迁移允许索引中已由附加存档接管的哈希。
+
+`archive_verification` 的快速校验按“本机优先、附加存档回退”检查存在性、普通文件和大小，深度校验读取实际落点并核对 SHA-256、MIME 和附件解码。校验与归档任务通过维护锁互斥；外置盘断开时报告未完成，不回退旧成功结果。
+
+外置根生成独立 `index.html`，按邮件日期倒序展示并支持浏览器内主题与筛选；`archive_tier_normalize` 递归发现有效 `.eml` 后按索引日期重建目录。设置页使用 shadcn Card/Select/Button/Collapse/Progress/Alert 组合展示统计、待归档、任务进度、断盘错误和最近 50 条记录。完整原始 MIME、附件字节、账号和 SQLite 索引的现有边界不变。
+
+验证与限制见 [附加存档工作点](ARCHIVE_TIER_WORKING.md)。
+
 ## 联系人地址操作（2026-10-24）
 
 阅读页主发件人、对话气泡发件人、收件人/抄送/密送字段及外部邮件窗口共用 `ContactAddress`。地址先由 `addressTokens` / `parseAddresses` 拆成单个联系人；可解析的地址渲染为使用 shadcn `Button` 与 `ContextMenu` 的焦点可操作项，无法解析的原文保留普通文本。悬停、键盘焦点及菜单打开状态使用现有 `--secondary` 中性底色，不引入第二套视觉组件。

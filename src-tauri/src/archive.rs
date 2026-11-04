@@ -120,19 +120,71 @@ pub(crate) fn stage_raw(root: &Path, raw: &[u8]) -> Result<StagedRaw> {
         temporary,
     })
 }
-pub fn read_raw(root: &Path, hash: &str) -> Result<Vec<u8>> {
+enum LocalRead {
+    Found(Vec<u8>),
+    Missing,
+    Failed(String),
+    Unavailable(String),
+}
+
+fn read_local(root: &Path, hash: &str) -> LocalRead {
     let runtime = crate::archive_location::runtime(root);
-    let _guard = runtime.gate.read().map_err(err)?;
-    let actual = crate::archive_location::physical_root(root)?;
-    let root = actual.as_path();
+    let _guard = match runtime.gate.read() {
+        Ok(guard) => guard,
+        Err(_) => return LocalRead::Failed("无法获取存档位置锁".into()),
+    };
+    let actual = match crate::archive_location::physical_root(root) {
+        Ok(actual) => actual,
+        Err(error) => return LocalRead::Unavailable(error),
+    };
+    let path = actual.join("archive").join(format!("{hash}.eml"));
+    match fs::symlink_metadata(&path) {
+        Ok(metadata) if metadata.is_file() => {}
+        Ok(_) => return LocalRead::Failed("存档原件不是普通文件".into()),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return LocalRead::Missing,
+        Err(error) => return LocalRead::Failed(format!("存档原件无法读取：{error}")),
+    }
+    let raw = match fs::read(&path) {
+        Ok(raw) => raw,
+        Err(error) => return LocalRead::Failed(format!("存档原件无法读取：{error}")),
+    };
+    if digest(&raw) != hash {
+        return LocalRead::Failed("存档内容校验失败".into());
+    }
+    LocalRead::Found(raw)
+}
+
+pub fn read_raw(root: &Path, hash: &str) -> Result<Vec<u8>> {
     if hash.len() != 64 || !hash.bytes().all(|x| x.is_ascii_hexdigit()) {
         return Err("无效存档标识".into());
     }
-    let raw = fs::read(root.join("archive").join(format!("{hash}.eml"))).map_err(err)?;
-    if digest(&raw) != hash {
-        return Err("存档内容校验失败".into());
+    let (missing, unavailable) = match read_local(root, hash) {
+        LocalRead::Found(raw) => return Ok(raw),
+        LocalRead::Failed(error) => return Err(error),
+        LocalRead::Missing => (true, String::new()),
+        LocalRead::Unavailable(error) => (false, error),
+    };
+    let tier_error = match crate::archive_tier::read_raw(root, hash) {
+        Ok(raw) => return Ok(raw),
+        Err(error) => error,
+    };
+    // Retrieval may have published the local copy after the first lookup.
+    match read_local(root, hash) {
+        LocalRead::Found(raw) => return Ok(raw),
+        LocalRead::Failed(error) => return Err(error),
+        LocalRead::Missing | LocalRead::Unavailable(_) => {}
     }
-    Ok(raw)
+    if !unavailable.is_empty() {
+        if tier_error.contains("附加存档盘未连接") || tier_error.contains("标识不匹配")
+        {
+            return Err(format!("{unavailable}；附加存档：{tier_error}"));
+        }
+        return Err(unavailable);
+    }
+    if missing {
+        return Err(tier_error);
+    }
+    Err(tier_error)
 }
 pub fn leaves<'a>(part: &'a ParsedMail<'a>, out: &mut Vec<&'a ParsedMail<'a>>) {
     if part.subparts.is_empty() {

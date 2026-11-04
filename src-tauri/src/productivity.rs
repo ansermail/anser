@@ -88,40 +88,7 @@ impl Store {
         Ok(())
     }
     pub fn archive_health(&self) -> Result<ArchiveHealth> {
-        let db = self.db()?;
-        let mut q = db
-            .prepare("SELECT data FROM messages WHERE COALESCE(json_extract(data,'$.savedLocally'),1)=1 ORDER BY rowid")
-            .map_err(err)?;
-        let mut checked = 0;
-        let mut healthy = 0;
-        let mut problems = Vec::new();
-        for row in q.query_map([], |r| r.get::<_, String>(0)).map_err(err)? {
-            let mail: Mail = serde_json::from_str(&row.map_err(err)?).map_err(err)?;
-            checked += 1;
-            match archive::read_raw(&self.root, &mail.hash).and_then(|raw| {
-                let projection = crate::mail_formats::mime(&raw)?;
-                let parsed = mailparse::parse_mail(&projection).map_err(err)?;
-                let mut parts = Vec::new();
-                archive::leaves(&parsed, &mut parts);
-                for part in parts {
-                    archive::decoded_bytes(part)?;
-                }
-                Ok(())
-            }) {
-                Ok(()) => healthy += 1,
-                Err(error) => problems.push(ArchiveProblem {
-                    mail_id: mail.id,
-                    subject: mail.subject,
-                    error,
-                }),
-            }
-        }
-        Ok(ArchiveHealth {
-            checked,
-            healthy,
-            problems,
-            checked_at: chrono::Utc::now().to_rfc3339(),
-        })
+        crate::archive_verification::check_now(self, "deep")
     }
     pub fn contacts(&self) -> Result<Vec<Contact>> {
         let db = self.db()?;

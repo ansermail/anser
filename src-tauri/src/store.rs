@@ -116,6 +116,7 @@ impl Store {
         crate::rule_operations::initialize(&db)?;
         crate::retention::initialize(&db)?;
         crate::archive_jobs::initialize(&db)?;
+        crate::archive_tier::initialize(&db)?;
         crate::eml_imports::initialize(&db)?;
         crate::rule_runs::initialize(&db)?;
         crate::search::initialize(&db)?;
@@ -128,6 +129,9 @@ impl Store {
         }
         if crate::archive_location::physical_root(&s.root).is_ok() {
             s.recover_archive_deletion()?;
+        }
+        if let Err(error) = crate::archive_tier::recover_deletions(&s) {
+            s.log(&format!("附加存档删除清理待完成：{error}"))?;
         }
         s.refresh_archive_metadata()?;
         if let Err(error) = s.cleanup_old_compose_files() {
@@ -829,7 +833,7 @@ impl Store {
                 counts.account_starred_unread,
             )
         } else {
-            let mut stats=db.query_row("SELECT COUNT(*),COALESCE(SUM(CASE WHEN saved_locally=1 THEN size ELSE 0 END),0),COALESCE(SUM(saved_locally),0) FROM search_documents",[],|r|Ok(Stats{total:r.get(0)?,saved:r.get(2)?,unread:0,bytes:r.get(1)?})).map_err(err)?;
+            let mut stats=db.query_row("SELECT COUNT(*),COALESCE(SUM(CASE WHEN saved_locally=1 THEN size ELSE 0 END),0),COALESCE(SUM(saved_locally),0) FROM search_documents",[],|r|Ok(Stats{total:r.get(0)?,saved:r.get(2)?,unread:0,bytes:r.get(1)?,index_bytes:0})).map_err(err)?;
             let non_unread = crate::search::non_unread_mail_predicate("listing");
             stats.unread = db.query_row(
                     &format!("SELECT COUNT(*) FROM readable_listing listing JOIN search_documents d ON d.mail_id=listing.id
@@ -896,6 +900,8 @@ impl Store {
             ));
             (stats, folders, remote_folder_unread, account_starred_unread)
         };
+        let mut stats = stats;
+        stats.index_bytes = self.index_size_bytes();
         let mut ls = db
             .prepare("SELECT time || '  ' || message FROM logs ORDER BY id DESC LIMIT 30")
             .map_err(err)?;
@@ -929,6 +935,19 @@ impl Store {
             remote_folder_unread,
             account_starred_unread,
         })
+    }
+    fn index_size_bytes(&self) -> u64 {
+        [
+            "mail.sqlite3",
+            "mail.sqlite3-wal",
+            "mail.sqlite3-shm",
+            "mail.sqlite3-journal",
+        ]
+        .into_iter()
+        .filter_map(|name| fs::metadata(self.root.join(name)).ok())
+        .filter(|metadata| metadata.is_file())
+        .map(|metadata| metadata.len())
+        .sum()
     }
     pub fn detail(&self, id: &str) -> Result<Detail> {
         let mut mail = self.mail(id)?;

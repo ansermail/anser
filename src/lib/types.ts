@@ -127,6 +127,7 @@ export interface Snapshot {
     unread: number;
     saved: number;
     bytes: number;
+    indexBytes?: number;
   };
   logs: string[];
   dataDir: string;
@@ -275,6 +276,40 @@ export interface ArchiveHealth {
   healthy: number;
   checkedAt: string;
   problems: { mailId: string; subject: string; error: string }[];
+  mode?: "fast" | "deep";
+  running?: boolean;
+  total?: number;
+  completed?: boolean;
+  cancelled?: boolean;
+  startedAt?: string;
+  problemCount?: number;
+  error?: string;
+}
+
+export interface ArchiveTierRecord {
+  id: number;
+  time: string;
+  action: string;
+  moved: number;
+  bytes: number;
+  error: string;
+}
+
+export interface ArchiveTierStatus {
+  configured: boolean;
+  path: string;
+  available: boolean;
+  error: string;
+  retentionDays: number;
+  archivedCount: number;
+  archivedBytes: number;
+  pendingCount: number;
+  pendingBytes: number;
+  running: boolean;
+  action: string;
+  completed: number;
+  total: number;
+  recent: ArchiveTierRecord[];
 }
 
 export interface RemoteFolder {

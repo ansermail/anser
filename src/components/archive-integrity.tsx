@@ -1,83 +1,207 @@
 import { dateLocale, t } from "@/lib/i18n";
-import { useRef, useState } from "react";
-import { ShieldCheck, LoaderCircle, AlertCircle } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { ShieldCheck, LoaderCircle, AlertCircle, Zap, X } from "lucide-react";
 import { call, isDemo } from "@/lib/api";
 import type { ArchiveHealth } from "@/lib/types";
 import { Button } from "./ui/button";
 import { Alert, AlertTitle, AlertDescription } from "./ui/alert";
+import { Progress } from "./ui/progress";
 export function ArchiveIntegrity() {
-  const [checking, setChecking] = useState(false);
   const [health, setHealth] = useState<ArchiveHealth | null>(null);
+  const [starting, setStarting] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const pending = useRef(false);
-  async function check() {
+  const requestSequence = useRef(0);
+  const polling = useRef(false);
+  useEffect(() => {
+    let live = true;
+    const request = ++requestSequence.current;
+    void call<ArchiveHealth>("archive_verification_status")
+      .then((value) => {
+        if (live && request === requestSequence.current) {
+          setHealth(value);
+          setError("");
+        }
+      })
+      .catch((e) => {
+        if (live && request === requestSequence.current) setError(String(e));
+      })
+      .finally(() => {
+        if (live) setLoading(false);
+      });
+    return () => {
+      live = false;
+    };
+  }, []);
+  useEffect(() => {
+    if (!health?.running) return;
+    let live = true;
+    const timer = setInterval(() => {
+      if (polling.current) return;
+      polling.current = true;
+      const request = ++requestSequence.current;
+      void call<ArchiveHealth>("archive_verification_status")
+        .then((value) => {
+          if (live && request === requestSequence.current) {
+            setHealth(value);
+            setError("");
+          }
+        })
+        .catch((e) => {
+          if (live && request === requestSequence.current) {
+            setError(String(e));
+          }
+        })
+        .finally(() => {
+          polling.current = false;
+        });
+    }, 600);
+    return () => {
+      live = false;
+      clearInterval(timer);
+    };
+  }, [health?.running]);
+  async function check(mode: "fast" | "deep") {
     if (pending.current) return;
     pending.current = true;
-    setChecking(true);
-    setHealth(null);
+    const request = ++requestSequence.current;
+    setStarting(true);
     setError("");
     try {
-      setHealth(await call<ArchiveHealth>("archive_health"));
+      const value = await call<ArchiveHealth>("start_archive_verification", {
+        mode,
+      });
+      if (request === requestSequence.current) setHealth(value);
     } catch (e) {
-      setError(String(e));
+      if (request === requestSequence.current) setError(String(e));
     } finally {
       pending.current = false;
-      setChecking(false);
+      if (request === requestSequence.current) setStarting(false);
     }
   }
+  async function cancel() {
+    if (pending.current) return;
+    pending.current = true;
+    const request = ++requestSequence.current;
+    setStarting(true);
+    setError("");
+    try {
+      const value = await call<ArchiveHealth>("cancel_archive_verification");
+      if (request === requestSequence.current) setHealth(value);
+    } catch (e) {
+      if (request === requestSequence.current) setError(String(e));
+    } finally {
+      pending.current = false;
+      if (request === requestSequence.current) setStarting(false);
+    }
+  }
+  const running = !!health?.running;
+  const total = health?.total || 0;
+  const checked = health?.checked || 0;
+  const problems = health?.problems || [];
+  const problemCount = health?.problemCount ?? problems.length;
+  const fast = health?.mode === "fast";
   return (
     <div className="archive-integrity flex min-w-0 flex-col justify-center gap-3">
-      <Button
-        variant="outline"
-        className="self-start"
-        disabled={checking}
-        onClick={() => void check()}
-      >
-        {checking ? (
-          <LoaderCircle data-icon="inline-start" className="animate-spin" />
-        ) : (
+      <div className="flex flex-wrap items-center gap-2">
+        <Button
+          variant="outline"
+          disabled={loading || starting || running}
+          onClick={() => void check("fast")}
+        >
+          {starting && !running ? (
+            <LoaderCircle data-icon="inline-start" className="animate-spin" />
+          ) : (
+            <Zap data-icon="inline-start" />
+          )}
+          {t("Fast check")}
+        </Button>
+        <Button
+          variant="outline"
+          disabled={loading || starting || running}
+          onClick={() => void check("deep")}
+        >
           <ShieldCheck data-icon="inline-start" />
+          {t("Deep check")}
+        </Button>
+        {running && (
+          <Button
+            variant="ghost"
+            disabled={starting}
+            onClick={() => void cancel()}
+          >
+            <X data-icon="inline-start" />
+            {t("Cancel check")}
+          </Button>
         )}
-        {checking ? t("Verifying…") : t("Verify archives")}
-      </Button>
+      </div>
       <p className="text-xs text-muted-foreground" role="status">
-        {checking
-          ? t("Verifying original messages and attachments…")
-          : health
-            ? t("{value0} / {value1} messages verified", {
-                value0: health.healthy,
-                value1: health.checked,
+        {running
+          ? t(
+              fast
+                ? "Fast check in progress: {value0} / {value1} messages"
+                : "Deep check in progress: {value0} / {value1} messages",
+              { value0: checked, value1: total },
+            )
+          : health?.cancelled
+            ? t("Verification cancelled after {value0} / {value1} messages.", {
+                value0: checked,
+                value1: total,
               })
-            : t("Check the integrity of local originals and attachments")}
+            : checked
+              ? t(
+                  fast
+                    ? "{value0} / {value1} messages passed the fast check"
+                    : "{value0} / {value1} messages verified",
+                  { value0: health?.healthy || 0, value1: checked },
+                )
+              : t(
+                  "Fast check confirms files and indexed sizes; deep check verifies hashes and attachments.",
+                )}
       </p>
-      {health && (
+      {running && total > 0 && <Progress value={(checked / total) * 100} />}
+      {health?.completed && health.checkedAt && (
         <p className="text-xs text-muted-foreground">
           {t("Last verified: ")}
           {new Date(health.checkedAt).toLocaleString(dateLocale(), {
             hour12: false,
           })}
+          {" · "}
+          {fast ? t("Fast check") : t("Deep check")}
         </p>
       )}
-      {(error || !!health?.problems.length) && (
+      {(error || !!health?.error || problemCount > 0) && (
         <Alert variant="destructive">
           <AlertCircle />
           <AlertTitle>
-            {error
+            {error || health?.error
               ? t("Verification incomplete")
               : t("{value0} messages need attention", {
-                  value0: health!.problems.length,
+                  value0: problemCount,
                 })}
           </AlertTitle>
           <AlertDescription className="max-h-48 overflow-auto">
-            {error || (
-              <ul className="flex flex-col gap-2">
-                {health!.problems.map((p) => (
-                  <li key={p.mailId}>
-                    <p>{p.subject || t("(No subject)")}</p>
-                    <p>{p.error}</p>
-                  </li>
-                ))}
-              </ul>
+            {error || health?.error ? (
+              error || health?.error
+            ) : (
+              <>
+                {problemCount > problems.length && (
+                  <p>
+                    {t("Showing the first {value0} problems.", {
+                      value0: problems.length,
+                    })}
+                  </p>
+                )}
+                <ul className="flex flex-col gap-2">
+                  {problems.map((p) => (
+                    <li key={p.mailId}>
+                      <p>{p.subject || t("(No subject)")}</p>
+                      <p>{p.error}</p>
+                    </li>
+                  ))}
+                </ul>
+              </>
             )}
           </AlertDescription>
         </Alert>

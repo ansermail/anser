@@ -2,6 +2,8 @@ mod archive;
 mod archive_deletion;
 mod archive_jobs;
 mod archive_location;
+mod archive_tier;
+mod archive_verification;
 mod attachment_preview;
 mod auth;
 mod compose_files;
@@ -658,6 +660,81 @@ async fn archive_health(state: tauri::State<'_, AppState>) -> Result<ArchiveHeal
     tauri::async_runtime::spawn_blocking(move || store.archive_health())
         .await
         .map_err(err)?
+}
+#[tauri::command]
+async fn archive_verification_status(state: tauri::State<'_, AppState>) -> Result<ArchiveHealth> {
+    let store = state.store.clone();
+    tauri::async_runtime::spawn_blocking(move || archive_verification::status(&store))
+        .await
+        .map_err(err)?
+}
+#[tauri::command]
+async fn start_archive_verification(
+    state: tauri::State<'_, AppState>,
+    mode: String,
+) -> Result<ArchiveHealth> {
+    let store = state.store.clone();
+    tauri::async_runtime::spawn_blocking(move || archive_verification::start(&store, &mode))
+        .await
+        .map_err(err)?
+}
+#[tauri::command]
+async fn cancel_archive_verification(state: tauri::State<'_, AppState>) -> Result<ArchiveHealth> {
+    let store = state.store.clone();
+    tauri::async_runtime::spawn_blocking(move || archive_verification::cancel(&store))
+        .await
+        .map_err(err)?
+}
+#[tauri::command]
+async fn archive_tier_status(
+    state: tauri::State<'_, AppState>,
+) -> Result<archive_tier::TierStatus> {
+    let store = state.store.clone();
+    tauri::async_runtime::spawn_blocking(move || archive_tier::status(&store))
+        .await
+        .map_err(err)?
+}
+#[tauri::command]
+async fn configure_archive_tier(
+    state: tauri::State<'_, AppState>,
+    path: String,
+    retention_days: u32,
+) -> Result<archive_tier::TierStatus> {
+    let store = state.store.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        archive_tier::configure(&store, &path, retention_days)
+    })
+    .await
+    .map_err(err)?
+}
+#[tauri::command]
+async fn archive_tier_now(state: tauri::State<'_, AppState>) -> Result<archive_tier::TierStatus> {
+    let store = state.store.clone();
+    tauri::async_runtime::spawn_blocking(move || archive_tier::archive_now(&store, true))
+        .await
+        .map_err(err)?
+}
+#[tauri::command]
+async fn archive_tier_retrieve(
+    state: tauri::State<'_, AppState>,
+) -> Result<archive_tier::TierStatus> {
+    let store = state.store.clone();
+    tauri::async_runtime::spawn_blocking(move || archive_tier::retrieve_local(&store))
+        .await
+        .map_err(err)?
+}
+#[tauri::command]
+async fn archive_tier_normalize(
+    state: tauri::State<'_, AppState>,
+) -> Result<archive_tier::TierStatus> {
+    let store = state.store.clone();
+    tauri::async_runtime::spawn_blocking(move || archive_tier::normalize(&store))
+        .await
+        .map_err(err)?
+}
+#[tauri::command]
+fn open_archive_tier(state: tauri::State<AppState>) -> Result<()> {
+    archive_tier::open_index(&state.store)
 }
 #[tauri::command]
 fn account_action(state: tauri::State<AppState>, id: String, remove: bool) -> Result<()> {
@@ -1676,6 +1753,7 @@ pub fn run() {
             archive_jobs::start(store.clone(), app.handle().clone());
             eml_imports::start(store.clone(), app.handle().clone());
             rule_runs::start(store.clone(), app.handle().clone());
+            archive_tier::start_automatic(store.clone());
             #[cfg(target_os = "macos")]
             {
                 let menu = tauri::menu::Menu::default(app.handle())?;
@@ -1974,6 +2052,15 @@ pub fn run() {
             set_auto_start,
             test_notification,
             archive_health,
+            archive_verification_status,
+            start_archive_verification,
+            cancel_archive_verification,
+            archive_tier_status,
+            configure_archive_tier,
+            archive_tier_now,
+            archive_tier_retrieve,
+            archive_tier_normalize,
+            open_archive_tier,
             account_action,
             sync_mail,
             save_draft,

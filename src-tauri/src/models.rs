@@ -250,6 +250,8 @@ pub struct Stats {
     pub unread: u64,
     pub saved: u64,
     pub bytes: u64,
+    #[serde(default)]
+    pub index_bytes: u64,
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -437,6 +439,22 @@ pub struct ArchiveHealth {
     pub healthy: usize,
     pub problems: Vec<ArchiveProblem>,
     pub checked_at: String,
+    #[serde(default)]
+    pub mode: String,
+    #[serde(default)]
+    pub running: bool,
+    #[serde(default)]
+    pub total: usize,
+    #[serde(default)]
+    pub completed: bool,
+    #[serde(default)]
+    pub cancelled: bool,
+    #[serde(default)]
+    pub started_at: String,
+    #[serde(default)]
+    pub problem_count: usize,
+    #[serde(default)]
+    pub error: String,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]

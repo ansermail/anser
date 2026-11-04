@@ -161,6 +161,7 @@ import { MailActionTooltip } from "./components/mail-action-tooltip";
 import { ContactsPanel } from "./components/contacts-panel";
 import { OutboxPanel } from "./components/outbox-panel";
 import { ArchiveIntegrity } from "./components/archive-integrity";
+import { ArchiveTier } from "./components/archive-tier";
 import { StorageTools } from "./components/storage-tools";
 import { MailTranslationSettings } from "./components/mail-translation-settings";
 import { NetworkProxySettings } from "./components/network-proxy-settings";
@@ -2278,8 +2279,14 @@ export default function App() {
                           <strong>{formatSize(data.stats.bytes)}</strong>
                           <span>{t("Original message size")}</span>
                         </div>
-                        <ArchiveIntegrity />
+                        <div>
+                          <strong>
+                            {formatSize(data.stats.indexBytes || 0)}
+                          </strong>
+                          <span>{t("Built-in index size")}</span>
+                        </div>
                       </div>
+                      <ArchiveIntegrity />
                       <ArchiveLocation
                         initialPath={data.dataDir}
                         onChanged={() => void refresh()}
@@ -2312,6 +2319,7 @@ export default function App() {
                         />
                       </ArchiveLocation>
                     </Card>
+                    <ArchiveTier onChanged={() => void refresh()} />
                   </>
                 }
                 preferences={

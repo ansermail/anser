@@ -191,13 +191,15 @@ impl Store {
             }
         }
         let known: std::collections::HashSet<_> = hashes.iter().collect();
+        let tiered = crate::archive_tier::tier_hashes(&self.root)?;
         let db = self.db()?;
         let mut stmt=db.prepare("SELECT DISTINCT hash FROM messages WHERE COALESCE(json_extract(data,'$.savedLocally'),1)=1").map_err(err)?;
         for hash in stmt.query_map([], |r| r.get::<_, String>(0)).map_err(err)? {
             let hash = hash.map_err(err)?;
-            if !known.contains(&hash) {
+            if !known.contains(&hash) && !tiered.contains(&hash) {
                 return Err(
-                    "有已保存邮件缺少原件，迁移未提交；请先连接原存档磁盘或恢复备份".into(),
+                    "有已保存邮件缺少原件，迁移未提交；请先连接原存档磁盘、附加存档盘或恢复备份"
+                        .into(),
                 );
             }
         }

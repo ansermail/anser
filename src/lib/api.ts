@@ -88,7 +88,7 @@ const empty = (): Snapshot => ({
   messages: [],
   rules: [],
   folders: [],
-  stats: { total: 0, unread: 0, saved: 0, bytes: 0 },
+  stats: { total: 0, unread: 0, saved: 0, bytes: 0, indexBytes: 0 },
   logs: [],
   dataDir: "请在桌面客户端中管理本地存档",
   matched: 0,
@@ -152,6 +152,7 @@ export async function snapshot(query: Query): Promise<Snapshot> {
         bytes: all
           .filter((m) => m.savedLocally !== false)
           .reduce((n, m) => n + m.size, 0),
+        indexBytes: 0,
       },
     };
   }
@@ -218,6 +219,11 @@ export async function call<T = void>(
       "open_data_folder",
       "move_archive_location",
       "cleanup_archive_migration",
+      "configure_archive_tier",
+      "archive_tier_now",
+      "archive_tier_retrieve",
+      "archive_tier_normalize",
+      "open_archive_tier",
     ].includes(command)
   )
     throw new Error(
@@ -258,6 +264,32 @@ export async function call<T = void>(
       case "move_archive_location":
       case "cleanup_archive_migration":
         throw new Error(t("Sample mailboxes do not migrate local files"));
+      case "archive_tier_status":
+        result = {
+          configured: true,
+          path: "/Volumes/Archive/Anser-Archive",
+          available: true,
+          error: "",
+          retentionDays: 7,
+          archivedCount: 0,
+          archivedBytes: 0,
+          pendingCount: 0,
+          pendingBytes: 0,
+          running: false,
+          action: "",
+          completed: 0,
+          total: 0,
+          recent: [],
+        };
+        break;
+      case "configure_archive_tier":
+      case "archive_tier_now":
+      case "archive_tier_retrieve":
+      case "archive_tier_normalize":
+      case "open_archive_tier":
+        throw new Error(
+          t("Sample mailboxes do not move or open local archive files"),
+        );
       case "mail_signature":
         result =
           JSON.parse(
@@ -1041,6 +1073,32 @@ export async function call<T = void>(
           healthy: demo.messages.length,
           problems: [],
           checkedAt: new Date().toISOString(),
+          mode: "deep",
+          running: false,
+          total: demo.messages.length,
+          completed: true,
+          cancelled: false,
+          startedAt: new Date().toISOString(),
+          problemCount: 0,
+          error: "",
+        };
+        break;
+      case "archive_verification_status":
+      case "start_archive_verification":
+      case "cancel_archive_verification":
+        result = {
+          checked: demo.messages.length,
+          healthy: demo.messages.length,
+          problems: [],
+          checkedAt: new Date().toISOString(),
+          mode: args.mode === "fast" ? "fast" : "deep",
+          running: false,
+          total: demo.messages.length,
+          completed: command !== "cancel_archive_verification",
+          cancelled: command === "cancel_archive_verification",
+          startedAt: new Date().toISOString(),
+          problemCount: 0,
+          error: "",
         };
         break;
       default:
@@ -1072,6 +1130,7 @@ export async function call<T = void>(
         "eml_import_jobs",
         "get_file_associations",
         "copy_sources",
+        "archive_tier_status",
       ].includes(command)
     )
       demoStorage.setItem(key, JSON.stringify(demo));

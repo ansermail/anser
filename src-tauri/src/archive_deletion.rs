@@ -153,7 +153,7 @@ pub struct DeletionPreview {
     pub review_token: String,
     pub accounts: Vec<ArchiveScope>,
 }
-#[derive(Serialize)]
+#[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DeletionResult {
     pub deleted: usize,
@@ -223,6 +223,7 @@ impl Store {
         }
         let _archive = self.archive_gate.write().map_err(err)?;
         self.recover_archive_deletion()?;
+        let tier_reader = crate::archive_tier::Reader::load(&self.root)?;
         let mut db = self.db()?;
         let tx = db
             .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
@@ -273,6 +274,11 @@ impl Store {
             tx.execute("DELETE FROM messages WHERE id=?1", [&mail.id])
                 .map_err(err)?;
         }
+        let tier_stage = if hashes.iter().any(|hash| tier_reader.entry(hash).is_some()) {
+            Some(tier_reader.stage_root()?)
+        } else {
+            None
+        };
         let stage = crate::archive_location::physical_root(&self.root)?
             .join(".archive-deletion")
             .join(uuid::Uuid::new_v4().to_string());
@@ -300,6 +306,15 @@ impl Store {
                     Ok(_) => return Err("存档路径不是普通文件，已取消删除".into()),
                     Err(e) => return Err(err(e)),
                 }
+                if let Some(stage) = &tier_stage {
+                    if tier_reader.entry(&hash).is_some() {
+                        tier_reader.stage_deletion(&hash, stage)?;
+                    }
+                }
+                tx.execute("DELETE FROM archive_tier WHERE hash=?1", [&hash])
+                    .map_err(err)?;
+                tx.execute("DELETE FROM archive_tier_restored WHERE hash=?1", [&hash])
+                    .map_err(err)?;
             }
             tx.execute(
                 "INSERT INTO logs(time,message) VALUES(?1,?2)",
@@ -312,12 +327,22 @@ impl Store {
             tx.commit().map_err(err)
         })();
         let cleanup = self.recover_archive_deletion();
-        result.map_err(|error| match &cleanup {
-            Ok(_) => error,
-            Err(cleanup_error) => format!("{error}；存档清理待完成：{cleanup_error}"),
+        let tier_cleanup = crate::archive_tier::recover_deletions(self);
+        result.map_err(|error| {
+            let mut message = error;
+            if let Err(cleanup_error) = &cleanup {
+                message = format!("{message}；存档清理待完成：{cleanup_error}");
+            }
+            if let Err(cleanup_error) = &tier_cleanup {
+                message = format!("{message}；附加存档清理待完成：{cleanup_error}");
+            }
+            message
         })?;
         if let Err(error) = cleanup {
             self.log(&format!("删除本地文件夹后存档清理待完成：{error}"))?;
+        }
+        if let Err(error) = tier_cleanup {
+            self.log(&format!("删除本地文件夹后附加存档清理待完成：{error}"))?;
         }
         Ok(mails.len() as u64)
     }
@@ -361,6 +386,7 @@ impl Store {
     ) -> Result<DeletionResult> {
         let _archive = self.archive_gate.write().map_err(err)?;
         self.recover_archive_deletion()?;
+        let tier_reader = crate::archive_tier::Reader::load(&self.root)?;
         let mut db = self.db()?;
         let tx = db
             .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
@@ -400,6 +426,11 @@ impl Store {
             )
             .map_err(err)?;
         }
+        let tier_stage = if hashes.iter().any(|hash| tier_reader.entry(hash).is_some()) {
+            Some(tier_reader.stage_root()?)
+        } else {
+            None
+        };
         let stage = crate::archive_location::physical_root(&self.root)?
             .join(".archive-deletion")
             .join(uuid::Uuid::new_v4().to_string());
@@ -423,6 +454,15 @@ impl Store {
                     Ok(_) => return Err("存档路径不是普通文件，已取消删除".into()),
                     Err(e) => return Err(err(e)),
                 }
+                if let Some(stage) = &tier_stage {
+                    if tier_reader.entry(&hash).is_some() {
+                        bytes += tier_reader.stage_deletion(&hash, stage)?;
+                    }
+                }
+                tx.execute("DELETE FROM archive_tier WHERE hash=?1", [&hash])
+                    .map_err(err)?;
+                tx.execute("DELETE FROM archive_tier_restored WHERE hash=?1", [&hash])
+                    .map_err(err)?;
             }
             tx.execute(
                 "INSERT INTO logs(time,message) VALUES(?1,?2)",
@@ -442,15 +482,26 @@ impl Store {
         // Rollback or process interruption restores still-referenced files.
         // After commit recovery removes only files with no saved references.
         let cleanup = self.recover_archive_deletion();
-        let bytes = result.map_err(|e| match &cleanup {
-            Ok(_) => e,
-            Err(c) => format!("{e}；存档回滚待完成：{c}"),
+        let tier_cleanup = crate::archive_tier::recover_deletions(self);
+        let bytes = result.map_err(|e| {
+            let mut message = e;
+            if let Err(c) = &cleanup {
+                message = format!("{message}；存档回滚待完成：{c}");
+            }
+            if let Err(c) = &tier_cleanup {
+                message = format!("{message}；附加存档回滚待完成：{c}");
+            }
+            message
         })?;
         Ok(DeletionResult {
             deleted: mails.len(),
             offline_removed,
-            freed_bytes: if cleanup.is_ok() { bytes } else { 0 },
-            cleanup_pending: cleanup.is_err(),
+            freed_bytes: if cleanup.is_ok() && tier_cleanup.is_ok() {
+                bytes
+            } else {
+                0
+            },
+            cleanup_pending: cleanup.is_err() || tier_cleanup.is_err(),
         })
     }
     pub(crate) fn recover_archive_deletion(&self) -> Result<()> {
