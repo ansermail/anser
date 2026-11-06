@@ -1164,38 +1164,50 @@ describe("message and conversation display modes", () => {
   });
 });
 // Two unchanged Windows runner attempts measured 7-20s for these 205-row
-// render/refresh cases. Keep a bounded workload-specific budget on Windows.
+// render/refresh cases; the macOS 15 runner that replaced retired macOS 14
+// measured up to 14s. Keep only the two page-refresh cases at a bounded 30s
+// CI budget while retaining the local 5s regression guard.
 describe(
   "fixed cursor list loading",
   { timeout: process.platform === "win32" ? 30_000 : 5_000 },
   () => {
-    it("requests only the next fixed page and appends without changing the query prefix", async () => {
-      await seedLargeMailbox();
-      const original = api.mailPage,
-        calls = vi.spyOn(api, "mailPage").mockImplementation(original);
-      await click(host.querySelector(".load-more"));
-      expect(host.querySelectorAll("button.mail-row-main")).toHaveLength(205);
-      expect(
-        calls.mock.calls.some(([q, cursor]) => q.limit === 200 && !!cursor),
-      ).toBe(true);
-      expect(calls.mock.calls.every(([q]) => q.limit === 200)).toBe(true);
-      expect(host.querySelector(".load-more")).toBeNull();
-    });
-    it("keeps loaded pages and the final cursor through an unchanged refresh", async () => {
-      await seedLargeMailbox();
-      const base = JSON.parse(
-        localStorage.getItem("mail-desktop-demo-v1")!,
-      ) as import("./lib/types").Snapshot;
-      base.messages[0].isRead = true;
-      localStorage.setItem("mail-desktop-demo-v1", JSON.stringify(base));
-      api.restoreDemo();
-      await click(nav("本地存档"));
-      await click(host.querySelector(".load-more"));
-      expect(host.querySelectorAll("button.mail-row-main")).toHaveLength(205);
-      await click(host.querySelector("button.mail-row-main"));
-      expect(host.querySelectorAll("button.mail-row-main")).toHaveLength(205);
-      expect(host.querySelector(".load-more")).toBeNull();
-    });
+    const pageRefreshTimeout =
+      process.platform === "win32" || process.env.CI ? 30_000 : 5_000;
+    it(
+      "requests only the next fixed page and appends without changing the query prefix",
+      async () => {
+        await seedLargeMailbox();
+        const original = api.mailPage,
+          calls = vi.spyOn(api, "mailPage").mockImplementation(original);
+        await click(host.querySelector(".load-more"));
+        expect(host.querySelectorAll("button.mail-row-main")).toHaveLength(205);
+        expect(
+          calls.mock.calls.some(([q, cursor]) => q.limit === 200 && !!cursor),
+        ).toBe(true);
+        expect(calls.mock.calls.every(([q]) => q.limit === 200)).toBe(true);
+        expect(host.querySelector(".load-more")).toBeNull();
+      },
+      pageRefreshTimeout,
+    );
+    it(
+      "keeps loaded pages and the final cursor through an unchanged refresh",
+      async () => {
+        await seedLargeMailbox();
+        const base = JSON.parse(
+          localStorage.getItem("mail-desktop-demo-v1")!,
+        ) as import("./lib/types").Snapshot;
+        base.messages[0].isRead = true;
+        localStorage.setItem("mail-desktop-demo-v1", JSON.stringify(base));
+        api.restoreDemo();
+        await click(nav("本地存档"));
+        await click(host.querySelector(".load-more"));
+        expect(host.querySelectorAll("button.mail-row-main")).toHaveLength(205);
+        await click(host.querySelector("button.mail-row-main"));
+        expect(host.querySelectorAll("button.mail-row-main")).toHaveLength(205);
+        expect(host.querySelector(".load-more")).toBeNull();
+      },
+      pageRefreshTimeout,
+    );
     it("replaces a stale page on a new message rather than combining generations", async () => {
       await seedLargeMailbox();
       const base = JSON.parse(

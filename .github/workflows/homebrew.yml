@@ -16,7 +16,7 @@ concurrency:
 jobs:
   update:
     if: github.repository == 'ansermail/anser' && (github.event_name == 'release' || github.ref == 'refs/heads/main')
-    runs-on: macos-15-intel
+    runs-on: macos-15
     timeout-minutes: 15
     permissions:
       contents: write

@@ -11,7 +11,7 @@
 - 官网按访问电脑的操作系统默认显示 macOS 或 Windows 下载区，保留手动切换；浏览器不能可靠判断 Mac 芯片时同时提供 Apple Silicon/Intel。手机、平板与未知系统不伪称支持，显示通用下载入口；官网上线前核对对应版本安装器已公开可下载。
 - 官网下载地址直接使用 package 版本；准备新版本并推送 main 会提前触发 Pages。发布前须安排部署时序，安装器公开前保持上一正式版官网，公开后再部署新版并核对线上下载链接；不能把提前成功的 Pages 当作发行分发完成。
 - 源文件统一 LF，由 .gitattributes 固定，避免 Windows checkout 的自动 CRLF 转换让全项目格式检查误报。Windows CI 脚本使用 PowerShell 7（pwsh）读取 UTF-8，不能依赖 Windows PowerShell 5 的本地代码页。
-- Windows runner 的 jsdom 大列表测试按平台实测工作量定界：205 行固定页刷新组 30 秒，两条七次跨页导航 60 秒，单封/对话多次切换 15 秒；macOS 保持原有时限。依据同一提交两次 Windows 实测 7–20 秒及 34–46 秒，不整体延长、不添加自动重试，断言和真实原生验收分别保留。
+- Windows runner 的 jsdom 大列表测试按平台实测工作量定界：205 行固定页刷新组 30 秒，两条七次跨页导航 60 秒，单封/对话多次切换 15 秒。macOS 14 runner 退役后改用 `macos-15`；同组两条较重的固定页刷新用例在 CI 使用 30 秒，其余固定页用例及本地运行保留 5 秒。依据同一提交两次 Windows 实测 7–20 秒及 34–46 秒、macOS 15 实测最长约 14 秒，不整体延长、不添加自动重试，断言和真实原生验收分别保留。
 
 - 中文名：雁信；英文名：Anser。技术栈为 React / TypeScript / shadcn/ui / Tauri 2 / Rust / SQLite。
 - 后续代码、Issues、Actions、Release 和应用内仓库链接统一使用 **https://github.com/ansermail/anser**；origin 为 `git@github.com:ansermail/anser.git`。个人旧仓库已放弃作为开发和发布目标。
