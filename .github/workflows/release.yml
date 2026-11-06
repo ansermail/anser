@@ -10,7 +10,7 @@ concurrency:
   cancel-in-progress: false
 jobs:
   check:
-    runs-on: macos-14
+    runs-on: macos-15
     outputs:
       build_required: ${{ steps.release.outputs.build_required }}
     steps:
@@ -46,7 +46,7 @@ jobs:
   build:
     needs: check
     if: needs.check.outputs.build_required == 'true'
-    runs-on: macos-14
+    runs-on: macos-15
     strategy:
       fail-fast: false
       matrix:
