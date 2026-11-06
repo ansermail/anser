@@ -262,6 +262,8 @@ export interface Preferences {
   sendResultNotifications?: boolean;
   doNotDisturb?: boolean;
   proxy?: NetworkProxy | null;
+  readingCacheDays?: number;
+  readingCacheLimitMb?: number;
 }
 export interface NetworkProxy {
   name: string;
@@ -270,6 +272,12 @@ export interface NetworkProxy {
   port: number;
   username: string;
   directOnFailure: boolean;
+}
+export interface ReadingCacheStatus {
+  entries: number;
+  bytes: number;
+  limitBytes: number;
+  retentionDays: number;
 }
 export interface ArchiveHealth {
   checked: number;

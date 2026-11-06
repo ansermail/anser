@@ -514,6 +514,9 @@ impl Store {
                         job.error = format!("完整原件已保存，但归类未执行：{error}");
                         write(&tx, &mut job)?;
                         tx.commit().map_err(err)?;
+                        if m.saved_locally {
+                            let _ = crate::read_cache::remove_for_mail(self, &m.id);
+                        }
                         return Ok(());
                     }
                     return Err(error);
@@ -535,6 +538,9 @@ impl Store {
                             job.error = error;
                             write(&tx, &mut job)?;
                             tx.commit().map_err(err)?;
+                            if m.saved_locally {
+                                let _ = crate::read_cache::remove_for_mail(self, &m.id);
+                            }
                             return Ok(());
                         }
                         if let Some(id) = op {
@@ -580,6 +586,9 @@ impl Store {
             }
             write(&tx, &mut job)?;
             tx.commit().map_err(err)?;
+            if m.saved_locally {
+                let _ = crate::read_cache::remove_for_mail(self, &m.id);
+            }
             if job.status == "completed" {
                 return Ok(());
             }

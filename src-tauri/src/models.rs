@@ -413,6 +413,10 @@ pub struct Preferences {
     pub sync_interval_minutes: u32,
     #[serde(default)]
     pub proxy: Option<ProxyConfig>,
+    #[serde(default = "default_reading_cache_days")]
+    pub reading_cache_days: u32,
+    #[serde(default = "default_reading_cache_limit_mb")]
+    pub reading_cache_limit_mb: u64,
 }
 impl Default for Preferences {
     fn default() -> Self {
@@ -422,8 +426,16 @@ impl Default for Preferences {
             send_result_notifications: true,
             do_not_disturb: false,
             proxy: None,
+            reading_cache_days: default_reading_cache_days(),
+            reading_cache_limit_mb: default_reading_cache_limit_mb(),
         }
     }
+}
+fn default_reading_cache_days() -> u32 {
+    30
+}
+fn default_reading_cache_limit_mb() -> u64 {
+    1024
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]

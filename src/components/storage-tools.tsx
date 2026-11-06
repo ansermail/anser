@@ -56,7 +56,8 @@ export function StorageTools({ testMailId = "" }: { testMailId?: string }) {
   async function save() {
     setSaving(true);
     try {
-      const p = { ...preferences, syncIntervalMinutes: interval };
+      const current = await call<Preferences>("get_preferences");
+      const p = { ...current, syncIntervalMinutes: interval };
       await call("save_preferences", { preferences: p });
       setPreferences(p);
       toast.success(t("Background check interval updated"));
@@ -72,7 +73,8 @@ export function StorageTools({ testMailId = "" }: { testMailId?: string }) {
   ) {
     setSaving(true);
     try {
-      const p = { ...preferences, [key]: enabled };
+      const current = await call<Preferences>("get_preferences");
+      const p = { ...current, [key]: enabled };
       await call("save_preferences", { preferences: p });
       setPreferences(p);
     } catch (e) {

@@ -1391,6 +1391,34 @@ describe("reading across loaded page boundaries", { timeout: 15_000 }, () => {
   );
 });
 describe("reading unread mail within its current category", () => {
+  it("shows the message header before the online body finishes loading", async () => {
+    const seed = await snapshot(localQuery);
+    const original = api.call;
+    const detail = await original<Detail>("mail_detail", {
+      id: seed.messages[0].id,
+    });
+    let finishBody!: (value: Detail) => void;
+    const pendingBody = new Promise<Detail>((resolve) => {
+      finishBody = resolve;
+    });
+    vi.spyOn(api, "call").mockImplementation(
+      async <T,>(command: string, args?: Record<string, unknown>) =>
+        command === "mail_detail"
+          ? (pendingBody as Promise<T>)
+          : original<T>(command, args),
+    );
+
+    await click(host.querySelector("button.mail-row-main"));
+    expect(host.querySelector(".message-heading h1")?.textContent).toBe(
+      seed.messages[0].subject,
+    );
+    expect(host.querySelector(".mail-body-skeleton")).not.toBeNull();
+
+    await act(async () => finishBody(detail));
+    expect(
+      host.querySelector(".message-body")?.textContent?.length,
+    ).toBeGreaterThan(10);
+  });
   it("shows a detail-only delegating sender and the complete sender address", async () => {
     await chooseListMode("逐封邮件");
     const original = api.call;
@@ -2238,12 +2266,11 @@ describe("reading unread mail within its current category", () => {
     );
     try {
       await click(host.querySelector("button.mail-row-main"));
-      expect(host.querySelector(".reader-loading")?.textContent).toContain(
-        "正在加载邮件",
+      expect(host.querySelector(".message-heading h1")?.textContent).toBe(
+        first.subject,
       );
-      expect(
-        host.querySelector('.reader-loading [data-slot="skeleton"]'),
-      ).not.toBeNull();
+      expect(host.querySelector(".mail-body-skeleton")).not.toBeNull();
+      expect(host.querySelector(".reader-loading")).toBeNull();
       await click(host.querySelectorAll("button.mail-row-main")[1]);
       await act(async () => {
         releaseSecond();
@@ -2252,6 +2279,7 @@ describe("reading unread mail within its current category", () => {
       expect(host.querySelector(".message-heading h1")?.textContent).toBe(
         second.subject,
       );
+      expect(host.querySelector(".mail-body-skeleton")).toBeNull();
       expect(host.querySelector(".reader-loading")).toBeNull();
       await act(async () => {
         releaseFirst();
@@ -2279,9 +2307,10 @@ describe("reading unread mail within its current category", () => {
     );
     await click(host.querySelector("button.mail-row-main"));
     expect(host.querySelector(".reader-loading")?.textContent).toContain(
-      "邮件加载失败",
+      "正文加载失败",
     );
     expect(host.querySelector(".reader-loading .animate-spin")).toBeNull();
+    expect(host.querySelector(".message-heading h1")).not.toBeNull();
     fail = false;
     await click(host.querySelector(".reader-loading button"));
     expect(host.querySelector(".message-heading")).not.toBeNull();

@@ -65,9 +65,11 @@ import { Tabs, TabsList, TabsTrigger } from "./components/ui/tabs";
 import { disableNativeContextMenu } from "./lib/context-menu";
 import { NavigationLayout, MailLayout } from "./components/resizable-layout";
 import {
+  MailBodySkeleton,
   MailListSkeleton,
   MailReaderSkeleton,
 } from "./components/mail-skeleton";
+import { ScrollArea } from "./components/ui/scroll-area";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   Archive,
@@ -165,6 +167,7 @@ import { ArchiveTier } from "./components/archive-tier";
 import { StorageTools } from "./components/storage-tools";
 import { MailTranslationSettings } from "./components/mail-translation-settings";
 import { NetworkProxySettings } from "./components/network-proxy-settings";
+import { ReadingCacheSettings } from "./components/reading-cache-settings";
 import { DeleteArchiveDialog } from "./components/delete-archive-dialog";
 import {
   replyRecipients,
@@ -276,6 +279,7 @@ export default function App() {
     [selected, setSelected] = useState(""),
     [readerExpanded, setReaderExpanded] = useState(false),
     [detail, setDetail] = useState<Detail | null>(null),
+    [headerMail, setHeaderMail] = useState<Mail | null>(null),
     [detailError, setDetailError] = useState<{
       id: string;
       message: string;
@@ -424,6 +428,7 @@ export default function App() {
           click: notificationToken.click,
         });
         readingNeighbors.current = null;
+        setHeaderMail(mail);
         setSelected(mail.id);
         setDetailRetry((value) => value + 1);
       })
@@ -618,6 +623,29 @@ export default function App() {
       live = false;
     };
   }, [selected, detailRetry]);
+  useEffect(() => {
+    if (!selected) {
+      setHeaderMail(null);
+      return;
+    }
+    let live = true;
+    setHeaderMail((current) => (current?.id === selected ? current : null));
+    const listed = dataRef.current.messages.find((m) => m.id === selected);
+    if (listed) setHeaderMail(listed);
+    // Header metadata is local and cheap; this also covers messages opened
+    // from notifications before the current list has caught up.
+    void call<Mail>("mail_metadata", { id: selected })
+      .then((mail) => {
+        if (live) setHeaderMail(mail);
+      })
+      .catch(() => {});
+    return () => {
+      live = false;
+    };
+  }, [selected]);
+  useEffect(() => {
+    if (detail?.mail.id === selected) setHeaderMail(detail.mail);
+  }, [detail, selected]);
   useEffect(() => {
     setChecked((ids) =>
       ids.filter((id) => data.messages.some((m) => m.id === id)),
@@ -1269,6 +1297,7 @@ export default function App() {
         known: messages.map((item) => item.id),
         date: m.date,
       };
+    setHeaderMail(m);
     setSelected(m.id);
     try {
       const mode = query.listMode;
@@ -1682,6 +1711,19 @@ export default function App() {
       {!!count && <em>{count}</em>}
     </Button>
   );
+  const activeMailBase =
+    detail?.mail.id === selected
+      ? detail.mail
+      : headerMail?.id === selected
+        ? headerMail
+        : null;
+  const activeMail = activeMailBase
+    ? {
+        ...activeMailBase,
+        ...localChanges.current.get(activeMailBase.id),
+      }
+    : null;
+  const bodyReady = detail?.mail.id === selected;
   return (
     <SidebarProvider
       className={`app-shell ${readerExpanded ? "reader-expanded" : ""}`}
@@ -2329,7 +2371,7 @@ export default function App() {
                         <h2>{t("Preferences")}</h2>
                         <p>
                           {t(
-                            "Configure display language, notifications, startup, background checks and network proxy.",
+                            "Configure display language, notifications, startup, background checks, reading cache and network proxy.",
                           )}
                         </p>
                       </div>
@@ -2337,6 +2379,7 @@ export default function App() {
                     <div className="settings-preferences-grid">
                       <LanguageSettings />
                       <StorageTools testMailId={selected} />
+                      <ReadingCacheSettings />
                       <NetworkProxySettings />
                       <FileAssociations />
                     </div>
@@ -2979,19 +3022,19 @@ export default function App() {
               }
             >
               <section className="reader">
-                {detail ? (
+                {activeMail ? (
                   <>
                     <div className="message-heading">
                       <div className="sender-line">
                         <div className="sender-block">
                           <span className="sender-avatar">
-                            {senderName(detail.mail.sender).slice(0, 1)}
+                            {senderName(activeMail.sender).slice(0, 1)}
                           </span>
                           <div>
-                            <strong>{senderName(detail.mail.sender)}</strong>
+                            <strong>{senderName(activeMail.sender)}</strong>
                             {(() => {
                               const address = parseAddresses(
-                                detail.mail.sender,
+                                activeMail.sender,
                               )[0];
                               return address ? (
                                 <ContactAddress
@@ -3002,16 +3045,16 @@ export default function App() {
                                   onAddContact={saveContactAddress}
                                 />
                               ) : (
-                                <span>{senderAddress(detail.mail.sender)}</span>
+                                <span>{senderAddress(activeMail.sender)}</span>
                               );
                             })()}
-                            {detail.mail.senderOnBehalfOf && (
+                            {activeMail.senderOnBehalfOf && (
                               <span
                                 className="sender-on-behalf-of"
-                                title={detail.mail.senderOnBehalfOf}
+                                title={activeMail.senderOnBehalfOf}
                               >
                                 {t("Sent on behalf of {value0}", {
-                                  value0: detail.mail.senderOnBehalfOf,
+                                  value0: activeMail.senderOnBehalfOf,
                                 })}
                               </span>
                             )}
@@ -3075,9 +3118,9 @@ export default function App() {
                               size="icon-sm"
                               title={t("Move to local folder")}
                               onClick={() => {
-                                setMoveIds([detail.mail.id]);
+                                setMoveIds([activeMail.id]);
                                 setMoveThreads(false);
-                                setMoveFolder(detail.mail.localFolder);
+                                setMoveFolder(activeMail.localFolder);
                               }}
                             >
                               <Folder size={17} />
@@ -3086,16 +3129,16 @@ export default function App() {
                               variant="ghost"
                               size="icon-sm"
                               title={t("Export complete original message")}
-                              onClick={() => void exportMail(detail.mail)}
+                              onClick={() => void exportMail(activeMail)}
                             >
                               <ArrowDownToLine size={17} />
                             </Button>
                             <span className="toolbar-divider" />
-                            {!isNonUnreadMail(detail.mail) && (
+                            {!isNonUnreadMail(activeMail) && (
                               <MailActionTooltip
                                 action="read"
                                 label={
-                                  detail.mail.isRead
+                                  activeMail.isRead
                                     ? t("Mark unread")
                                     : t("Mark read")
                                 }
@@ -3104,16 +3147,16 @@ export default function App() {
                                   variant="ghost"
                                   size="icon-sm"
                                   title={
-                                    detail.mail.isRead
+                                    activeMail.isRead
                                       ? t("Mark unread")
                                       : t("Mark read")
                                   }
                                   aria-keyshortcuts="Meta+Shift+U Control+Shift+U"
                                   onClick={() =>
                                     void mutate(
-                                      [detail.mail.id],
+                                      [activeMail.id],
                                       "read",
-                                      String(!detail.mail.isRead),
+                                      String(!activeMail.isRead),
                                     )
                                   }
                                 >
@@ -3129,16 +3172,16 @@ export default function App() {
                                 aria-keyshortcuts="Meta+Shift+L Control+Shift+L"
                                 onClick={() =>
                                   void mutate(
-                                    [detail.mail.id],
+                                    [activeMail.id],
                                     "star",
-                                    String(!detail.mail.starred),
+                                    String(!activeMail.starred),
                                   )
                                 }
                               >
                                 <Star
                                   size={17}
                                   className={
-                                    detail.mail.starred ? "star-on" : ""
+                                    activeMail.starred ? "star-on" : ""
                                   }
                                 />
                               </Button>
@@ -3148,7 +3191,9 @@ export default function App() {
                               size="icon-sm"
                               title={t("Print this message")}
                               aria-label={t("Print this message")}
+                              disabled={!bodyReady}
                               onClick={() =>
+                                detail &&
                                 void printMail(detail).catch((error) =>
                                   toast.error(
                                     t("Printing failed: {value0}", {
@@ -3164,19 +3209,19 @@ export default function App() {
                               variant="ghost"
                               size="icon-sm"
                               title={
-                                detail.mail.trashed
+                                activeMail.trashed
                                   ? t("Restore local message")
                                   : t("Move to local trash")
                               }
                               onClick={() =>
                                 void mutate(
-                                  [detail.mail.id],
+                                  [activeMail.id],
                                   "trash",
-                                  String(!detail.mail.trashed),
+                                  String(!activeMail.trashed),
                                 )
                               }
                             >
-                              {detail.mail.trashed ? (
+                              {activeMail.trashed ? (
                                 <Undo2 size={17} />
                               ) : (
                                 <Trash2 size={17} />
@@ -3194,7 +3239,15 @@ export default function App() {
                                 aria-label={t("Reply")}
                                 title={t("Reply")}
                                 aria-keyshortcuts="Meta+R Control+R"
-                                onClick={() => compose(detail.mail)}
+                                disabled={!bodyReady}
+                                onClick={() =>
+                                  compose(
+                                    activeMail,
+                                    false,
+                                    false,
+                                    detail || undefined,
+                                  )
+                                }
                               >
                                 <Reply size={15} />
                                 <span className="action-label">
@@ -3217,8 +3270,10 @@ export default function App() {
                                 <DropdownMenuGroup>
                                   <DropdownMenuItem
                                     aria-keyshortcuts="Meta+Shift+R Control+Shift+R"
+                                    disabled={!detail}
                                     onClick={() =>
-                                      compose(detail.mail, false, true)
+                                      detail &&
+                                      compose(detail.mail, false, true, detail)
                                     }
                                   >
                                     <ReplyAll size={15} />
@@ -3230,7 +3285,7 @@ export default function App() {
                                   <DropdownMenuItem
                                     onClick={() => {
                                       const address = parseAddresses(
-                                        detail.mail.sender,
+                                        activeMail.sender,
                                       )[0];
                                       if (!address) {
                                         toast.error(
@@ -3260,7 +3315,15 @@ export default function App() {
                                 aria-label={t("Forward")}
                                 title={t("Forward")}
                                 aria-keyshortcuts="Meta+Shift+F Control+Shift+F"
-                                onClick={() => compose(detail.mail, true)}
+                                disabled={!bodyReady}
+                                onClick={() =>
+                                  compose(
+                                    activeMail,
+                                    true,
+                                    false,
+                                    detail || undefined,
+                                  )
+                                }
                               >
                                 <ArrowRight size={15} />
                                 <span className="action-label">
@@ -3272,7 +3335,8 @@ export default function App() {
                               <Button
                                 variant="ghost"
                                 size="sm"
-                                onClick={() => reeditSent(detail)}
+                                disabled={!detail}
+                                onClick={() => detail && reeditSent(detail)}
                               >
                                 <SquarePen size={15} />
                                 {t("Edit as new")}
@@ -3281,14 +3345,14 @@ export default function App() {
                             {(["copy", "move"] as const).map((kind) => (
                               <ServerDirectoryMenu
                                 key={kind}
-                                mail={detail.mail}
+                                mail={activeMail}
                                 kind={kind}
                                 view={query.view}
                                 remoteFolder={query.remoteFolder}
                                 disabled={
                                   !data.accounts.some(
                                     (a) =>
-                                      a.id === detail.mail.accountId &&
+                                      a.id === activeMail.accountId &&
                                       a.enabled &&
                                       a.protocol === "imap",
                                   )
@@ -3326,33 +3390,33 @@ export default function App() {
                       <div className="recipient-line">
                         <MailRecipients
                           to={displayAddresses(
-                            detail.to,
-                            detail.mail.recipients,
+                            detail?.to,
+                            activeMail.recipients,
                           )}
-                          cc={displayAddresses(detail.cc, detail.mail.cc)}
-                          bcc={displayAddresses(detail.bcc)}
+                          cc={displayAddresses(detail?.cc, activeMail.cc)}
+                          bcc={displayAddresses(detail?.bcc)}
                           onComposeAddress={composeAddress}
                           onAddContact={saveContactAddress}
                         />
                         <div className="message-metadata">
-                          <time dateTime={detail.mail.date}>
-                            {formatMailTime(detail.mail.date)}
+                          <time dateTime={activeMail.date}>
+                            {formatMailTime(activeMail.date)}
                           </time>
                           <span className="saved-chip">
                             <ShieldCheck size={13} />
                             {demo
                               ? t("Demo archive")
-                              : detail.mail.savedLocally === false
+                              : activeMail.savedLocally === false
                                 ? t("Server message")
                                 : t("Fully saved")}
                           </span>
-                          {detail.mail.savedLocally === false && (
+                          {activeMail.savedLocally === false && (
                             <Button
                               variant="ghost"
                               size="sm"
                               disabled={archiving}
                               onClick={() =>
-                                void queueArchives([detail.mail.id])
+                                void queueArchives([activeMail.id])
                               }
                             >
                               <HardDriveDownload />
@@ -3362,45 +3426,72 @@ export default function App() {
                         </div>
                       </div>
                       <div className="message-title-row">
-                        <h1>{detail.mail.subject}</h1>
+                        <h1>{activeMail.subject}</h1>
                         <div className="shrink-0" ref={setTranslationActions} />
                       </div>
                     </div>
-                    <ConversationReader
-                      key={`${selected}:${query.listMode}:${notificationSelected?.click ?? "list"}`}
-                      selected={detail}
-                      singleMessage={
-                        !grouped || notificationSelected?.id === selected
-                      }
-                      revision={data.messages}
-                      accounts={data.accounts}
-                      demo={demo}
-                      scrollRef={readerRef}
-                      translationActions={translationActions}
-                      editorOpen={!!draft}
-                      onReply={(source, forward = false, all = false) =>
-                        compose(source.mail, forward, all, source)
-                      }
-                      onEdit={setDraft}
-                      onReedit={reeditSent}
-                      onSent={() => void refresh()}
-                      onExport={(mail) => void exportMail(mail)}
-                      onAttachment={(mail, index, name) =>
-                        attachment(index, name, mail)
-                      }
-                      onAction={(mail, action, value) =>
-                        action === "save"
-                          ? void queueArchives([mail.id])
-                          : void mutate([mail.id], action, value, false, [mail])
-                      }
-                      onLink={(href) =>
-                        void openMailLink(href).catch((e) =>
-                          toast.error(String(e)),
-                        )
-                      }
-                      onComposeAddress={composeAddress}
-                      onAddContact={saveContactAddress}
-                    />
+                    {detail ? (
+                      <ConversationReader
+                        key={`${selected}:${query.listMode}:${notificationSelected?.click ?? "list"}`}
+                        selected={detail}
+                        singleMessage={
+                          !grouped || notificationSelected?.id === selected
+                        }
+                        revision={data.messages}
+                        accounts={data.accounts}
+                        demo={demo}
+                        scrollRef={readerRef}
+                        translationActions={translationActions}
+                        editorOpen={!!draft}
+                        onReply={(source, forward = false, all = false) =>
+                          compose(source.mail, forward, all, source)
+                        }
+                        onEdit={setDraft}
+                        onReedit={reeditSent}
+                        onSent={() => void refresh()}
+                        onExport={(mail) => void exportMail(mail)}
+                        onAttachment={(mail, index, name) =>
+                          attachment(index, name, mail)
+                        }
+                        onAction={(mail, action, value) =>
+                          action === "save"
+                            ? void queueArchives([mail.id])
+                            : void mutate([mail.id], action, value, false, [
+                                mail,
+                              ])
+                        }
+                        onLink={(href) =>
+                          void openMailLink(href).catch((e) =>
+                            toast.error(String(e)),
+                          )
+                        }
+                        onComposeAddress={composeAddress}
+                        onAddContact={saveContactAddress}
+                      />
+                    ) : detailError?.id === selected ? (
+                      <div
+                        className="reader-loading"
+                        role="status"
+                        aria-live="polite"
+                      >
+                        <AlertCircle size={24} />
+                        <span>{t("Could not load body")}</span>
+                        <p>{detailError.message}</p>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setDetailRetry((value) => value + 1)}
+                        >
+                          {t("Reload")}
+                        </Button>
+                      </div>
+                    ) : (
+                      <ScrollArea className="reader-scroll" type="always">
+                        <div className="reader-scroll-content">
+                          <MailBodySkeleton />
+                        </div>
+                      </ScrollArea>
+                    )}
                   </>
                 ) : selected ? (
                   <div

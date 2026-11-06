@@ -31,6 +31,7 @@ mod operations;
 mod paging;
 mod productivity;
 mod proxy;
+mod read_cache;
 mod realtime;
 mod remote;
 mod retention;
@@ -551,6 +552,19 @@ async fn archive_outbox(state: tauri::State<'_, AppState>, id: String) -> Result
 #[tauri::command]
 fn get_preferences(state: tauri::State<AppState>) -> Result<Preferences> {
     state.store.preferences()
+}
+#[tauri::command]
+fn reading_cache_status(state: tauri::State<AppState>) -> Result<read_cache::ReadingCacheStatus> {
+    read_cache::status(&state.store)
+}
+#[tauri::command]
+async fn clear_reading_cache(
+    state: tauri::State<'_, AppState>,
+) -> Result<read_cache::ReadingCacheStatus> {
+    let store = state.store.clone();
+    tauri::async_runtime::spawn_blocking(move || read_cache::clear(&store))
+        .await
+        .map_err(err)?
 }
 #[tauri::command]
 fn get_interface_language(state: tauri::State<AppState>) -> Result<String> {
@@ -2044,6 +2058,8 @@ pub fn run() {
             translation::cancel_translation,
             translation::clear_translation_cache,
             get_preferences,
+            reading_cache_status,
+            clear_reading_cache,
             get_interface_language,
             set_interface_language,
             save_preferences,

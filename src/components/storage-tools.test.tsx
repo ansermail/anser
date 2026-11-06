@@ -29,6 +29,8 @@ it("persists independent notification toggles and leaves the sync interval intac
       syncIntervalMinutes: 15,
       newMailNotifications: true,
       sendResultNotifications: true,
+      readingCacheDays: 90,
+      readingCacheLimitMb: 512,
     },
   });
   await act(async () => root.render(<StorageTools />));
@@ -39,6 +41,8 @@ it("persists independent notification toggles and leaves the sync interval intac
     syncIntervalMinutes: 15,
     newMailNotifications: false,
     sendResultNotifications: true,
+    readingCacheDays: 90,
+    readingCacheLimitMb: 512,
   });
   await act(async () =>
     host
@@ -49,6 +53,8 @@ it("persists independent notification toggles and leaves the sync interval intac
     syncIntervalMinutes: 15,
     newMailNotifications: false,
     sendResultNotifications: false,
+    readingCacheDays: 90,
+    readingCacheLimitMb: 512,
   });
   await act(async () =>
     host.querySelector<HTMLButtonElement>("#auto-start")!.click(),

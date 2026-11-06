@@ -943,9 +943,24 @@ export async function call<T = void>(
       case "get_preferences":
         result = JSON.parse(
           demoStorage.getItem(key + "-preferences") ||
-            '{"syncIntervalMinutes":5,"newMailNotifications":true,"sendResultNotifications":true}',
+            '{"syncIntervalMinutes":5,"newMailNotifications":true,"sendResultNotifications":true,"readingCacheDays":30,"readingCacheLimitMb":1024}',
         );
         break;
+      case "reading_cache_status":
+      case "clear_reading_cache": {
+        const preferences = JSON.parse(
+          demoStorage.getItem(key + "-preferences") ||
+            '{"readingCacheDays":30,"readingCacheLimitMb":1024}',
+        ) as Record<string, unknown>;
+        result = {
+          entries: 0,
+          bytes: 0,
+          limitBytes:
+            Number(preferences.readingCacheLimitMb || 1024) * 1024 * 1024,
+          retentionDays: Number(preferences.readingCacheDays ?? 30),
+        };
+        break;
+      }
       case "save_preferences": {
         const previous = JSON.parse(
           demoStorage.getItem(key + "-preferences") || "{}",
@@ -1131,6 +1146,8 @@ export async function call<T = void>(
         "get_file_associations",
         "copy_sources",
         "archive_tier_status",
+        "reading_cache_status",
+        "clear_reading_cache",
       ].includes(command)
     )
       demoStorage.setItem(key, JSON.stringify(demo));

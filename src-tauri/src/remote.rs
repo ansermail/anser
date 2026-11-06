@@ -367,7 +367,14 @@ impl Store {
         if mail.saved_locally {
             archive::read_raw(&self.root, &mail.hash)
         } else {
-            network::read_remote(self, &self.account(&mail.account_id)?, mail)
+            if let Some(raw) = crate::read_cache::get(self, mail)? {
+                return Ok(raw);
+            }
+            let raw = network::read_remote(self, &self.account(&mail.account_id)?, mail)?;
+            if let Err(error) = crate::read_cache::put(self, mail, &raw) {
+                let _ = self.log(&format!("阅读缓存写入失败：{error}"));
+            }
+            Ok(raw)
         }
     }
 }

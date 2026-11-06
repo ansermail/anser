@@ -84,7 +84,11 @@ impl Store {
         if ![1, 5, 10, 15, 30, 60].contains(&p.sync_interval_minutes) {
             return Err("请选择有效的后台检查间隔".into());
         }
+        crate::read_cache::validate_preferences(p)?;
         self.db()?.execute("INSERT INTO preferences(key,data) VALUES('sync',?1) ON CONFLICT(key) DO UPDATE SET data=excluded.data",[serde_json::to_string(p).map_err(err)?]).map_err(err)?;
+        if let Err(error) = crate::read_cache::prune(self) {
+            let _ = self.log(&format!("阅读缓存设置已保存，但清理未完成：{error}"));
+        }
         Ok(())
     }
     pub fn archive_health(&self) -> Result<ArchiveHealth> {

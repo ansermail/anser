@@ -274,7 +274,11 @@ impl Store {
             .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
             .map_err(err)?;
         self.complete_archive_in(&tx, job, &prepared)?;
-        tx.commit().map_err(err)
+        tx.commit().map_err(err)?;
+        if let Err(error) = crate::read_cache::remove_for_mail(self, &job.mail_id) {
+            let _ = self.log(&format!("完整保存后的阅读缓存清理未完成：{error}"));
+        }
+        Ok(())
     }
     pub(crate) fn archive_job_for_mail_in(
         db: &rusqlite::Connection,

@@ -116,6 +116,7 @@ impl Store {
         crate::rule_operations::initialize(&db)?;
         crate::retention::initialize(&db)?;
         crate::archive_jobs::initialize(&db)?;
+        crate::read_cache::initialize(&db)?;
         crate::archive_tier::initialize(&db)?;
         crate::eml_imports::initialize(&db)?;
         crate::rule_runs::initialize(&db)?;
@@ -132,6 +133,9 @@ impl Store {
         }
         if let Err(error) = crate::archive_tier::recover_deletions(&s) {
             s.log(&format!("附加存档删除清理待完成：{error}"))?;
+        }
+        if let Err(error) = crate::read_cache::maintenance(&s) {
+            s.log(&format!("阅读缓存清理待完成：{error}"))?;
         }
         s.refresh_archive_metadata()?;
         if let Err(error) = s.cleanup_old_compose_files() {
@@ -287,6 +291,11 @@ impl Store {
         tx.commit().map_err(err)
     }
     pub fn remove_account(&self, id: &str) -> Result<()> {
+        // Remove cache records before deleting online message rows: the
+        // message-delete trigger removes index rows but cannot know file names.
+        if let Err(error) = crate::read_cache::remove_account(self, id) {
+            let _ = self.log(&format!("移除账号前的阅读缓存清理未完成：{error}"));
+        }
         let mut db = self.db()?;
         let tx = db
             .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
@@ -506,6 +515,11 @@ impl Store {
         }
         tx.execute("INSERT INTO sources(account_id,folder,remote_id,mail_id) VALUES(?1,?2,?3,?4) ON CONFLICT(account_id,folder,remote_id) DO UPDATE SET mail_id=excluded.mail_id,active=1",params![a.id,folder,remote,mail.id]).map_err(err)?;
         tx.commit().map_err(err)?;
+        if save {
+            if let Err(error) = crate::read_cache::remove_for_mail(self, &mail.id) {
+                let _ = self.log(&format!("完整保存后的阅读缓存清理未完成：{error}"));
+            }
+        }
         // A deduplicated MIME can acquire its rule source on a later folder scan.
         if is_new || upgraded {
             self.apply_rules(&mail.id)?;
