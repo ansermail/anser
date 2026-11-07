@@ -1,12 +1,14 @@
 # 发布与应用内更新
 
-## 当前版本：0.1.39（发布准备中，2026-11-06）
+## 当前版本：0.1.39（2026-11-06）
 
-0.1.39 已完成本地提交与完整门槛，正在执行正式发布。本版让在线阅读邮件的发件人、收件人、主题、时间和操作栏先于正文显示，并新增独立的过期阅读缓存：默认保留 30 天、容量 1 GB，可关闭或选择 7/30/90/365 天及 256 MB–4 GB；缓存按最后打开时间清理，不改变完整保存状态，也不计入存档、备份和完整性校验。
+0.1.39 Alpha 于 2026-11-06T15:40:16Z 正式公开为 [latest](https://github.com/ansermail/anser/releases/tag/v0.1.39)，固定源码 `2f46fc6b9ac08f0e68ab8ecf0820699764aa7c3d`，Release ID `436671297`。本版让在线阅读邮件的发件人、收件人、主题、时间和操作栏先于正文显示，并新增独立的过期阅读缓存：默认保留 30 天、容量 1 GB，可关闭或选择 7/30/90/365 天及 256 MB–4 GB；缓存按最后打开时间清理，不改变完整保存状态，也不计入存档、备份和完整性校验。
 
 本地门槛为前端 477 项、Rust 库 454 项通过/5 项条件忽略、桌面脚本 37 项、IMAP 39 项，生产/Pages/UI/i18n/格式/发布资源检查通过。原生开发预览已核对头部即时显示、两封在线邮件生成缓存及再次打开命中缓存；缓存过期/关闭后重新拉取、完整保存后缓存移除及清除确认仍需真实操作补验。本机正式安装更新由用户自行完成。
 
-完整资源、签名、官网与 Homebrew 核验结果将在正式公开后补入本节；当前入口见 [0.1.39 发布工作点](RELEASE_0_1_39_WORKING.md)，说明见 [v0.1.39](releases/v0.1.39.md)。
+2026-11-07 修复 Homebrew runner 的单个 cask 信任配置后，[Homebrew 42327996645](https://github.com/ansermail/anser/actions/runs/42327996645) 的 style/audit/fetch 全部通过，配方提交 `c2adfda` 仅更新 Casks/anser.rb，双架构 DMG 哈希与公开资源一致。
+
+[Checks 42238506819](https://github.com/ansermail/anser/actions/runs/42238506819)、[Windows validation 42238506771](https://github.com/ansermail/anser/actions/runs/42238506771)、[Release desktop 42238531277](https://github.com/ansermail/anser/actions/runs/42238531277) 成功，三平台构建及 Windows 正式安装/启动/真实托盘恢复冒烟通过。九资源大小/摘要、三个更新签名、Mac 双架构固定签名/精确 DR/元数据/许可、DMG 与更新归档一致性、说明原文、匿名公开下载与标准 latest 清单均通过。[Pages 42245382706](https://github.com/ansermail/anser/actions/runs/42245382706) 成功，线上模块为 0.1.39，双 DMG 与 Windows EXE 链接均返回 HTTP 200。Homebrew 修复与最终分发结果见 [0.1.39 发布工作点](RELEASE_0_1_39_WORKING.md)，说明见 [v0.1.39](releases/v0.1.39.md)。
 
 ## 前一正式版本：0.1.38（2026-11-04）
 

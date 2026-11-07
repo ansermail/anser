@@ -64,46 +64,46 @@ gh workflow run homebrew.yml --repo ansermail/anser --ref main -f tag=v0.1.23
 
 正式发布后由 `release.published` 触发 [Homebrew 流水线 39092910712](https://github.com/ansermail/anser/actions/runs/39092910712)，主仓库提交 [1c85297](https://github.com/ansermail/anser/commit/1c852970a9c1686a72b0daca8caf1fb30f4c5f6a) 仅更新配方。手动复核 [39092992802](https://github.com/ansermail/anser/actions/runs/39092992802) 返回 `Cask is already current; no commit needed.`；本机 `brew style`、`brew audit`、Apple Silicon `brew fetch` 通过，未覆盖安装或升级本机应用。Intel 实机与 Homebrew 原位升级仍未验证。
 
-| 架构 | DMG | SHA-256 |
-| --- | --- | --- |
+| 架构          | DMG                        | SHA-256                                                            |
+| ------------- | -------------------------- | ------------------------------------------------------------------ |
 | Apple Silicon | `Anser_0.1.21_aarch64.dmg` | `2f00c8c0fe241e316404ac210a525700d5a18f5b823b800802c9d155bbfc0c32` |
-| Intel | `Anser_0.1.21_x86_64.dmg` | `fff13d868e465d10b11f06a8234c871e571553416f344827934cc77c4dbac471` |
+| Intel         | `Anser_0.1.21_x86_64.dmg`  | `fff13d868e465d10b11f06a8234c871e571553416f344827934cc77c4dbac471` |
 
 ## 0.1.20 配方初次发布（2026-10-17）
 
 [Tap 4db8165](https://github.com/ansermail/homebrew-tap/commit/4db8165d2a553080365b4f8cacb80c8912137c25) 已公开，配方、公开两架构 DMG 摘要及 brew style/audit/Apple Silicon fetch 通过；未覆盖安装本机应用。 本版 Homebrew 安装/升级与 Intel 实机未验证；不沿用旧版首次安装验收。
 
-| 架构 | DMG | SHA-256 |
-| --- | --- | --- |
+| 架构          | DMG                        | SHA-256                                                            |
+| ------------- | -------------------------- | ------------------------------------------------------------------ |
 | Apple Silicon | `Anser_0.1.20_aarch64.dmg` | `a261a9f63ddc2e9db911fef010fb64b60529802a054dcd7d25f37a313b081d98` |
-| Intel | `Anser_0.1.20_x86_64.dmg` | `b2ffcde117e960ed5bb5147a7fa310501c377a1adc6f0043cf1ecd584e81def4` |
+| Intel         | `Anser_0.1.20_x86_64.dmg`  | `b2ffcde117e960ed5bb5147a7fa310501c377a1adc6f0043cf1ecd584e81def4` |
 
 ## 前一配方：0.1.19（2026-10-16）
 
 [Tap 18a6820](https://github.com/ansermail/homebrew-tap/commit/18a6820f2385e340ce094b202b172ddf1e5fa7f0) 已公开，配方/公开两架构 DMG 摘要及 brew style/audit/Apple Silicon fetch 通过；未覆盖安装本机应用。 本版 Homebrew 安装/升级与 Intel 实机未验证；不沿用旧版首次安装验收。
 
-| 架构 | DMG | SHA-256 |
-| --- | --- | --- |
+| 架构          | DMG                        | SHA-256                                                            |
+| ------------- | -------------------------- | ------------------------------------------------------------------ |
 | Apple Silicon | `Anser_0.1.19_aarch64.dmg` | `752fbc733a5d8fe9beac0e9eb2fdfb69a464cc935340c429eacc164f7d69afa0` |
-| Intel | `Anser_0.1.19_x86_64.dmg` | `5586549faca22cf78d0620572f83d1bd48dfae0ac67f79a1fa3a6a2deac0d7b3` |
+| Intel         | `Anser_0.1.19_x86_64.dmg`  | `5586549faca22cf78d0620572f83d1bd48dfae0ac67f79a1fa3a6a2deac0d7b3` |
 
 ## 前一配方：0.1.18（2026-10-16）
 
 正式资源公开核验后，Tap 提交 [870f4b4](https://github.com/ansermail/homebrew-tap/commit/870f4b43a48e9fc9cbd31ec9da51ed15a2147406) 已推送并核对远端 SHA 及匿名公开配方。brew style、brew audit、Apple Silicon brew fetch 通过，两架构公开 DMG 核对大小/摘要及包内版本/签名/内容一致性。未执行 0.1.18 Homebrew 安装/升级或 Intel 实机运行，首次安装记录仅对应旧版本。
 
-| 架构 | DMG | SHA-256 |
-| --- | --- | --- |
+| 架构          | DMG                        | SHA-256                                                            |
+| ------------- | -------------------------- | ------------------------------------------------------------------ |
 | Apple Silicon | `Anser_0.1.18_aarch64.dmg` | `c522ed9a0536ca0296a01da94f1b674afa7f9ed34a94fb070932e339fb531ce7` |
-| Intel | `Anser_0.1.18_x86_64.dmg` | `c21a446ba32f7e518d44a8604cd6c3f7e8c4beb1272a8bd9bf30421481133471` |
+| Intel         | `Anser_0.1.18_x86_64.dmg`  | `c21a446ba32f7e518d44a8604cd6c3f7e8c4beb1272a8bd9bf30421481133471` |
 
 ## 前一配方：0.1.17（2026-10-15）
 
 桌面正式发布和七资源公开核验后，Tap 提交 [`6f4bb79`](https://github.com/ansermail/homebrew-tap/commit/6f4bb790b3e0d5d199498d69853241205725b240) 已推送 main；远端 SHA 与匿名公开配方均核对一致。
 
-| 架构 | DMG | SHA-256 |
-| --- | --- | --- |
+| 架构          | DMG                        | SHA-256                                                            |
+| ------------- | -------------------------- | ------------------------------------------------------------------ |
 | Apple Silicon | `Anser_0.1.17_aarch64.dmg` | `5667493345306b36087789e88ac443f3e614a0c29531fe4ab644f4278c55761b` |
-| Intel | `Anser_0.1.17_x86_64.dmg` | `225f73d89f3c8aa16ffe8f3944e34d0aa25b4508ad2bbc214a2b22b4de545061` |
+| Intel         | `Anser_0.1.17_x86_64.dmg`  | `225f73d89f3c8aa16ffe8f3944e34d0aa25b4508ad2bbc214a2b22b4de545061` |
 
 `brew style`、`brew audit`、Apple Silicon 的 `brew fetch` 通过，两架构公开 DMG 均核对大小/摘要、包内版本与代码签名，并与更新归档逐文件匹配。本轮未安装或覆盖现有应用，0.1.17 Homebrew 安装/升级及 Intel 实机运行尚未验证；首次 0.1.16 的临时目录安装记录如下，不沿用为新版本验收。
 
@@ -111,10 +111,10 @@ gh workflow run homebrew.yml --repo ansermail/anser --ref main -f tag=v0.1.23
 
 2026-10-14 创建公开仓库并推送配方，提交 [ea1418f](https://github.com/ansermail/homebrew-tap/commit/ea1418ffd9a4f9b95eefac4a90ebef53d0d95f6b)。首个版本为既有的 **0.1.16**：
 
-| 架构 | DMG | SHA-256 |
-| --- | --- | --- |
+| 架构          | DMG                        | SHA-256                                                            |
+| ------------- | -------------------------- | ------------------------------------------------------------------ |
 | Apple Silicon | `Anser_0.1.16_aarch64.dmg` | `d90c4fcc77b74a1b613c212f732daa7a41f5e59d4fb66af4575cd895115a69b8` |
-| Intel | `Anser_0.1.16_x86_64.dmg` | `5f315662c31bc27bf9de2e7766b1f762a588cadddb4aed7bbf616f8917b15a51` |
+| Intel         | `Anser_0.1.16_x86_64.dmg`  | `5f315662c31bc27bf9de2e7766b1f762a588cadddb4aed7bbf616f8917b15a51` |
 
 - `brew style` 与 `brew audit` 通过；Apple Silicon 的 `brew fetch` 通过，Intel DMG 公开下载并核对 SHA-256 通过。
 - 2026-10-15 在 Apple Silicon Mac / Homebrew 7.0.9 上，从公开仓库重新 `brew tap ansermail/tap`，随后执行 `brew install --cask --appdir=/tmp/anser-homebrew-install-20261015 ansermail/tap/anser`，实际安装成功。
