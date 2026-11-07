@@ -1,9 +1,9 @@
 cask "anser" do
   arch arm: "aarch64", intel: "x86_64"
 
-  version "0.1.38"
-  sha256 arm:   "65838213012b8091392115673a85f629d0b1f18a31d7d5256ed40461b3c4f5ed",
-         intel: "727d24b75388748f634a61699b3279825769013b68208325ff82babf1556a53f"
+  version "0.1.39"
+  sha256 arm:   "2796479fd78959caa49444ed581eded89f05af7991a82c1ca70614deb5bab6ad",
+         intel: "9d4755546fce2b65af37c3d4aec964a3ada757d3f9251f178867dd4868bd07d7"
 
   url "https://github.com/ansermail/anser/releases/download/v#{version}/Anser_#{version}_#{arch}.dmg"
   name "Anser (雁信)"
