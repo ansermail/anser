@@ -37,7 +37,7 @@ brew update-reset "$(brew --repository ansermail/tap)"
 
 1. `release.yml` 继续完成测试、双架构构建、签名和七资源草稿；按既有流程独立审计后公开为 latest。
 2. `homebrew.yml` 响应 `release.published`，从 `main` 读取脚本，只接受组织仓库当前 latest 的正式稳定版本；下载两架构公开 DMG，核对大小和 GitHub SHA-256，再生成配方。
-3. 运行脚本回归、`brew style`、`brew audit` 和当前 runner 架构的 `brew fetch`。再次核对公开资源与 latest 后，以配方 blob SHA 为条件，仅向 `main` 提交 `Casks/anser.rb`。旧版本、同版本摘要变化、资源不完整和并发冲突均停止；内容相同不会提交。
+3. 运行脚本回归，在临时 runner 上执行 `brew trust --cask ansermail/tap/anser`，仅信任已生成的单个配方，再执行 `brew style`、`brew audit` 和当前 runner 架构的 `brew fetch`。不关闭 Homebrew Tap Trust。再次核对公开资源与 latest 后，以配方 blob SHA 为条件，仅向 `main` 提交 `Casks/anser.rb`。旧版本、同版本摘要变化、资源不完整和并发冲突均停止；内容相同不会提交。
 4. 使用本仓库 `GITHUB_TOKEN` 的 `contents: write`，无需 PAT 或跨仓库 Secret。自动提交不触发新的桌面发版，不改版本号、标签、Release 资源或更新清单。默认 token 创建的提交不会再次触发普通 push 流水线，Homebrew 专项校验已在提交前完成。
 
 对已经发布但尚未同步的版本，可以手动运行（不重建桌面包）：

@@ -41,6 +41,7 @@ jobs:
         run: |
           brew tap --custom-remote ansermail/tap "$GITHUB_WORKSPACE"
           cp Casks/anser.rb "$(brew --repository ansermail/tap)/Casks/anser.rb"
+          brew trust --cask ansermail/tap/anser
           brew style --cask ansermail/tap/anser
           brew audit --cask ansermail/tap/anser
           brew fetch --cask ansermail/tap/anser
