@@ -1340,151 +1340,154 @@ describe(
   },
 );
 // These integration cases render 205 mails and navigate across the 200-row page.
-// The rest of this suite keeps the shared 15s budget; the two seven-navigation
-// cases below need their own bound: shared macOS runners measured 13-34s for
-// them while the same commit passed the rest of the suite. Windows measured
-// 34-46s in two unchanged runs, so only those cases use a 60s CI bound.
-describe("reading across loaded page boundaries", { timeout: 15_000 }, () => {
-  it.each(["按对话分组", "逐封邮件"])(
-    "loads the next page and keeps previous navigation in %s mode",
-    async (mode) => {
+// The larger pagination cases use a 30s CI budget while the local suite keeps
+// 15s. The two seven-navigation cases need 60s in CI: shared Windows runners
+// measured 34-54s and macOS measured 13-34s for them.
+describe(
+  "reading across loaded page boundaries",
+  { timeout: process.env.CI ? 30_000 : 15_000 },
+  () => {
+    it.each(["按对话分组", "逐封邮件"])(
+      "loads the next page and keeps previous navigation in %s mode",
+      async (mode) => {
+        await seedLargeMailbox();
+        if (mode === "逐封邮件") await chooseListMode(mode);
+        expect(host.querySelectorAll("button.mail-row-main")).toHaveLength(200);
+        await click(host.querySelectorAll("button.mail-row-main")[199]);
+        await click(host.querySelector('[aria-label="下一封邮件"]'));
+        expect(host.querySelector(".message-heading h1")?.textContent).toBe(
+          "Pagination mail 200",
+        );
+        expect(host.querySelectorAll("button.mail-row-main")).toHaveLength(200);
+        await click(host.querySelector('[aria-label="上一封邮件"]'));
+        expect(host.querySelector(".message-heading h1")?.textContent).toBe(
+          "Pagination mail 199",
+        );
+        for (let n = 0; n < 5; n++)
+          await click(host.querySelector('[aria-label="下一封邮件"]'));
+        expect(host.querySelector(".message-heading h1")?.textContent).toBe(
+          "Pagination mail 204",
+        );
+        expect(
+          (host.querySelector('[aria-label="下一封邮件"]') as HTMLButtonElement)
+            .disabled,
+        ).toBe(true);
+      },
+      process.platform === "win32" || process.env.CI ? 60_000 : 30_000,
+    );
+    it("extends an unread boundary when the opened mail disappears from its filter", async () => {
       await seedLargeMailbox();
-      if (mode === "逐封邮件") await chooseListMode(mode);
-      expect(host.querySelectorAll("button.mail-row-main")).toHaveLength(200);
+      await chooseListMode("逐封邮件");
+      await click(filter("未读"));
       await click(host.querySelectorAll("button.mail-row-main")[199]);
+      expect(host.querySelector(".message-heading h1")?.textContent).toBe(
+        "Pagination mail 199",
+      );
+      expect(host.querySelectorAll(".mail-row.selected")).toHaveLength(0);
+      await click(host.querySelector('[aria-label="下一封邮件"]'));
+      expect(host.querySelector(".message-heading h1")?.textContent).toBe(
+        "Pagination mail 200",
+      );
+    });
+    it("does not extend an old position when a new filter excludes the current mail", async () => {
+      await seedLargeMailbox();
+      await click(host.querySelector("button.mail-row-main"));
+      await click(filter("未读"));
+      expect(host.querySelector(".message-heading h1")?.textContent).toBe(
+        "Pagination mail 0",
+      );
+      expect(host.querySelectorAll("button.mail-row-main")).toHaveLength(200);
+      expect(
+        (host.querySelector('[aria-label="下一封邮件"]') as HTMLButtonElement)
+          .disabled,
+      ).toBe(true);
+    });
+    it("keeps the current mail on seek failure, prevents duplicate navigation and allows retry", async () => {
+      await seedLargeMailbox();
+      const original = api.mailNeighbor;
+      let reject!: (error: Error) => void;
+      const gate = new Promise<never>((_, fail) => {
+        reject = fail;
+      });
+      const calls = vi
+        .spyOn(api, "mailNeighbor")
+        .mockImplementation(async (q, id, direction) =>
+          id === "page-199" && direction === "next"
+            ? gate
+            : original(q, id, direction),
+        );
+      await click(host.querySelectorAll("button.mail-row-main")[199]);
+      await click(host.querySelector('[aria-label="下一封邮件"]'));
+      expect(
+        host
+          .querySelector('[aria-label="下一封邮件"]')
+          ?.getAttribute("aria-busy"),
+      ).toBe("true");
+      const before = calls.mock.calls.length;
+      await act(async () =>
+        host.querySelector(".reader")!.dispatchEvent(
+          new KeyboardEvent("keydown", {
+            key: "ArrowDown",
+            altKey: true,
+            bubbles: true,
+          }),
+        ),
+      );
+      expect(calls.mock.calls).toHaveLength(before);
+      await act(async () => reject(new Error("Test unavailable")));
+      expect(host.querySelector(".message-heading h1")?.textContent).toBe(
+        "Pagination mail 199",
+      );
+      expect(document.body.textContent).toContain("加载相邻邮件失败");
+      calls.mockImplementation(original);
       await click(host.querySelector('[aria-label="下一封邮件"]'));
       expect(host.querySelector(".message-heading h1")?.textContent).toBe(
         "Pagination mail 200",
       );
       expect(host.querySelectorAll("button.mail-row-main")).toHaveLength(200);
-      await click(host.querySelector('[aria-label="上一封邮件"]'));
-      expect(host.querySelector(".message-heading h1")?.textContent).toBe(
-        "Pagination mail 199",
-      );
-      for (let n = 0; n < 5; n++)
-        await click(host.querySelector('[aria-label="下一封邮件"]'));
-      expect(host.querySelector(".message-heading h1")?.textContent).toBe(
-        "Pagination mail 204",
-      );
-      expect(
-        (host.querySelector('[aria-label="下一封邮件"]') as HTMLButtonElement)
-          .disabled,
-      ).toBe(true);
-    },
-    process.platform === "win32" || process.env.CI ? 60_000 : 30_000,
-  );
-  it("extends an unread boundary when the opened mail disappears from its filter", async () => {
-    await seedLargeMailbox();
-    await chooseListMode("逐封邮件");
-    await click(filter("未读"));
-    await click(host.querySelectorAll("button.mail-row-main")[199]);
-    expect(host.querySelector(".message-heading h1")?.textContent).toBe(
-      "Pagination mail 199",
-    );
-    expect(host.querySelectorAll(".mail-row.selected")).toHaveLength(0);
-    await click(host.querySelector('[aria-label="下一封邮件"]'));
-    expect(host.querySelector(".message-heading h1")?.textContent).toBe(
-      "Pagination mail 200",
-    );
-  });
-  it("does not extend an old position when a new filter excludes the current mail", async () => {
-    await seedLargeMailbox();
-    await click(host.querySelector("button.mail-row-main"));
-    await click(filter("未读"));
-    expect(host.querySelector(".message-heading h1")?.textContent).toBe(
-      "Pagination mail 0",
-    );
-    expect(host.querySelectorAll("button.mail-row-main")).toHaveLength(200);
-    expect(
-      (host.querySelector('[aria-label="下一封邮件"]') as HTMLButtonElement)
-        .disabled,
-    ).toBe(true);
-  });
-  it("keeps the current mail on seek failure, prevents duplicate navigation and allows retry", async () => {
-    await seedLargeMailbox();
-    const original = api.mailNeighbor;
-    let reject!: (error: Error) => void;
-    const gate = new Promise<never>((_, fail) => {
-      reject = fail;
     });
-    const calls = vi
-      .spyOn(api, "mailNeighbor")
-      .mockImplementation(async (q, id, direction) =>
-        id === "page-199" && direction === "next"
-          ? gate
-          : original(q, id, direction),
-      );
-    await click(host.querySelectorAll("button.mail-row-main")[199]);
-    await click(host.querySelector('[aria-label="下一封邮件"]'));
-    expect(
-      host
-        .querySelector('[aria-label="下一封邮件"]')
-        ?.getAttribute("aria-busy"),
-    ).toBe("true");
-    const before = calls.mock.calls.length;
-    await act(async () =>
-      host.querySelector(".reader")!.dispatchEvent(
-        new KeyboardEvent("keydown", {
-          key: "ArrowDown",
-          altKey: true,
-          bubbles: true,
-        }),
-      ),
+    it.each(["category", "mode", "selection"])(
+      "discards a delayed page after changing %s",
+      async (change) => {
+        await seedLargeMailbox();
+        const original = api.mailNeighbor;
+        let release!: () => void;
+        const gate = new Promise<void>((resolve) => {
+          release = resolve;
+        });
+        vi.spyOn(api, "mailNeighbor").mockImplementation(
+          async (q, id, direction) => {
+            if (id === "page-199" && direction === "next") await gate;
+            return original(q, id, direction);
+          },
+        );
+        await click(host.querySelectorAll("button.mail-row-main")[199]);
+        await click(host.querySelector('[aria-label="下一封邮件"]'));
+        if (change === "category") await click(nav("星标邮件"));
+        if (change === "mode") await chooseListMode("逐封邮件");
+        if (change === "selection")
+          await click(host.querySelector("button.mail-row-main"));
+        await act(async () => {
+          release();
+          await gate;
+        });
+        expect(host.querySelectorAll("button.mail-row-main")).toHaveLength(200);
+        expect(host.querySelector(".message-heading h1")?.textContent).toBe(
+          change === "category"
+            ? undefined
+            : change === "mode"
+              ? "Pagination mail 199"
+              : "Pagination mail 0",
+        );
+        expect(
+          host
+            .querySelector('[aria-label="下一封邮件"]')
+            ?.getAttribute("aria-busy"),
+        ).not.toBe("true");
+      },
     );
-    expect(calls.mock.calls).toHaveLength(before);
-    await act(async () => reject(new Error("Test unavailable")));
-    expect(host.querySelector(".message-heading h1")?.textContent).toBe(
-      "Pagination mail 199",
-    );
-    expect(document.body.textContent).toContain("加载相邻邮件失败");
-    calls.mockImplementation(original);
-    await click(host.querySelector('[aria-label="下一封邮件"]'));
-    expect(host.querySelector(".message-heading h1")?.textContent).toBe(
-      "Pagination mail 200",
-    );
-    expect(host.querySelectorAll("button.mail-row-main")).toHaveLength(200);
-  });
-  it.each(["category", "mode", "selection"])(
-    "discards a delayed page after changing %s",
-    async (change) => {
-      await seedLargeMailbox();
-      const original = api.mailNeighbor;
-      let release!: () => void;
-      const gate = new Promise<void>((resolve) => {
-        release = resolve;
-      });
-      vi.spyOn(api, "mailNeighbor").mockImplementation(
-        async (q, id, direction) => {
-          if (id === "page-199" && direction === "next") await gate;
-          return original(q, id, direction);
-        },
-      );
-      await click(host.querySelectorAll("button.mail-row-main")[199]);
-      await click(host.querySelector('[aria-label="下一封邮件"]'));
-      if (change === "category") await click(nav("星标邮件"));
-      if (change === "mode") await chooseListMode("逐封邮件");
-      if (change === "selection")
-        await click(host.querySelector("button.mail-row-main"));
-      await act(async () => {
-        release();
-        await gate;
-      });
-      expect(host.querySelectorAll("button.mail-row-main")).toHaveLength(200);
-      expect(host.querySelector(".message-heading h1")?.textContent).toBe(
-        change === "category"
-          ? undefined
-          : change === "mode"
-            ? "Pagination mail 199"
-            : "Pagination mail 0",
-      );
-      expect(
-        host
-          .querySelector('[aria-label="下一封邮件"]')
-          ?.getAttribute("aria-busy"),
-      ).not.toBe("true");
-    },
-  );
-});
+  },
+);
 describe("reading unread mail within its current category", () => {
   it("shows the message header before the online body finishes loading", async () => {
     const seed = await snapshot(localQuery);
