@@ -23,6 +23,10 @@ import {
   DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuSeparator,
+  DropdownMenuSub,
+  DropdownMenuSubTrigger,
+  DropdownMenuSubContent,
+  DropdownMenuPortal,
 } from "./ui/dropdown-menu";
 
 export function ServerDirectoryMenu({
@@ -31,12 +35,14 @@ export function ServerDirectoryMenu({
   view,
   remoteFolder,
   disabled,
+  submenu = false,
 }: {
   mail: Mail;
   kind: "copy" | "move";
   view: string;
   remoteFolder?: string;
   disabled?: boolean;
+  submenu?: boolean;
 }) {
   const verb = kind === "move" ? t("Move") : t("Copy");
   const Icon = kind === "move" ? FolderInput : Copy;
@@ -141,23 +147,139 @@ export function ServerDirectoryMenu({
       setBusy(false);
     }
   }
+  const onOpenChange = (next: boolean) => {
+    if (submitting.current) return;
+    setOpen(next);
+    if (next) void load();
+    else epoch.current++;
+  };
+  const blocked = disabled || busy || mail.sourceFolder === "";
+  const label = t("{value0} to server folder", { value0: verb });
+  const content = (
+    <>
+      <DropdownMenuGroup>
+        <DropdownMenuLabel>
+          {t("{value0} to", { value0: verb })}
+        </DropdownMenuLabel>
+        {source && (
+          <DropdownMenuLabel className="whitespace-normal break-words">
+            {t("From {value0}", {
+              value0:
+                folders.find((f) => f.name === source)?.displayName || source,
+            })}
+          </DropdownMenuLabel>
+        )}
+      </DropdownMenuGroup>
+      {loading && (
+        <Skeleton className="h-20" aria-label={t("Loading server folders")} />
+      )}
+      {error && (
+        <Alert variant="destructive">
+          <AlertDescription>{error}</AlertDescription>
+        </Alert>
+      )}
+      {source && (
+        <>
+          {shortcuts.length > 0 && (
+            <>
+              <DropdownMenuGroup>
+                {shortcuts.map((s) => {
+                  const ShortcutIcon =
+                    s.role === "archive"
+                      ? Archive
+                      : s.role === "junk"
+                        ? MailWarning
+                        : Trash2;
+                  return (
+                    <DropdownMenuItem
+                      key={s.role}
+                      disabled={busy || !!s.reason}
+                      onSelect={(event) => {
+                        event.preventDefault();
+                        void submit(s.folder!.name);
+                      }}
+                    >
+                      <ShortcutIcon />
+                      <span className="flex flex-col gap-1">
+                        {s.label}
+                        {s.reason && <span>{s.reason}</span>}
+                      </span>
+                    </DropdownMenuItem>
+                  );
+                })}
+              </DropdownMenuGroup>
+              <DropdownMenuSeparator />
+            </>
+          )}
+          <DropdownMenuGroup>
+            {targets
+              .filter((f) => !specialNames.has(f.name))
+              .map((f) => (
+                <DropdownMenuItem
+                  key={f.name}
+                  disabled={busy}
+                  onSelect={(event) => {
+                    event.preventDefault();
+                    void submit(f.name);
+                  }}
+                >
+                  <Folder />
+                  <span className="whitespace-normal break-words">
+                    {f.displayName}
+                  </span>
+                </DropdownMenuItem>
+              ))}
+            {!targets.length && (
+              <DropdownMenuItem disabled>
+                {t("No available destination folders")}
+              </DropdownMenuItem>
+            )}
+            {busy && (
+              <DropdownMenuItem disabled>{t("Recording…")}</DropdownMenuItem>
+            )}
+          </DropdownMenuGroup>
+        </>
+      )}
+      {!loading && error && !source && (
+        <DropdownMenuGroup>
+          <DropdownMenuItem
+            onSelect={(event) => {
+              event.preventDefault();
+              void load();
+            }}
+          >
+            {t("Reload folders")}
+          </DropdownMenuItem>
+        </DropdownMenuGroup>
+      )}
+    </>
+  );
+  if (submenu)
+    return (
+      <DropdownMenuSub open={open} onOpenChange={onOpenChange}>
+        <DropdownMenuSubTrigger disabled={blocked}>
+          <Icon data-icon="inline-start" />
+          {label}
+        </DropdownMenuSubTrigger>
+        <DropdownMenuPortal>
+          <DropdownMenuSubContent
+            className="w-72 max-h-[var(--radix-dropdown-menu-content-available-height)] overflow-y-auto"
+            aria-label={t("{value0} destination folder", { value0: verb })}
+          >
+            {content}
+          </DropdownMenuSubContent>
+        </DropdownMenuPortal>
+      </DropdownMenuSub>
+    );
   return (
-    <DropdownMenu
-      open={open}
-      onOpenChange={(next) => {
-        if (submitting.current) return;
-        setOpen(next);
-        if (next) void load();
-        else epoch.current++;
-      }}
-    >
+    <DropdownMenu open={open} onOpenChange={onOpenChange}>
       <DropdownMenuTrigger asChild>
         <Button
           variant="ghost"
           size="icon-sm"
-          disabled={disabled || busy || mail.sourceFolder === ""}
-          title={t("{value0} to server folder", { value0: verb })}
-          aria-label={t("{value0} to server folder", { value0: verb })}
+          disabled={blocked}
+          title={label}
+          aria-label={label}
         >
           <Icon data-icon="inline-start" />
         </Button>
@@ -167,101 +289,7 @@ export function ServerDirectoryMenu({
         className="w-72"
         aria-label={t("{value0} destination folder", { value0: verb })}
       >
-        <DropdownMenuGroup>
-          <DropdownMenuLabel>
-            {t("{value0} to", { value0: verb })}
-          </DropdownMenuLabel>
-          {source && (
-            <DropdownMenuLabel className="whitespace-normal break-words">
-              {t("From {value0}", {
-                value0:
-                  folders.find((f) => f.name === source)?.displayName || source,
-              })}
-            </DropdownMenuLabel>
-          )}
-        </DropdownMenuGroup>
-        {loading && (
-          <Skeleton className="h-20" aria-label={t("Loading server folders")} />
-        )}
-        {error && (
-          <Alert variant="destructive">
-            <AlertDescription>{error}</AlertDescription>
-          </Alert>
-        )}
-        {source && (
-          <>
-            {shortcuts.length > 0 && (
-              <>
-                <DropdownMenuGroup>
-                  {shortcuts.map((s) => {
-                    const ShortcutIcon =
-                      s.role === "archive"
-                        ? Archive
-                        : s.role === "junk"
-                          ? MailWarning
-                          : Trash2;
-                    return (
-                      <DropdownMenuItem
-                        key={s.role}
-                        disabled={busy || !!s.reason}
-                        onSelect={(event) => {
-                          event.preventDefault();
-                          void submit(s.folder!.name);
-                        }}
-                      >
-                        <ShortcutIcon />
-                        <span className="flex flex-col gap-1">
-                          {s.label}
-                          {s.reason && <span>{s.reason}</span>}
-                        </span>
-                      </DropdownMenuItem>
-                    );
-                  })}
-                </DropdownMenuGroup>
-                <DropdownMenuSeparator />
-              </>
-            )}
-            <DropdownMenuGroup>
-              {targets
-                .filter((f) => !specialNames.has(f.name))
-                .map((f) => (
-                  <DropdownMenuItem
-                    key={f.name}
-                    disabled={busy}
-                    onSelect={(event) => {
-                      event.preventDefault();
-                      void submit(f.name);
-                    }}
-                  >
-                    <Folder />
-                    <span className="whitespace-normal break-words">
-                      {f.displayName}
-                    </span>
-                  </DropdownMenuItem>
-                ))}
-              {!targets.length && (
-                <DropdownMenuItem disabled>
-                  {t("No available destination folders")}
-                </DropdownMenuItem>
-              )}
-              {busy && (
-                <DropdownMenuItem disabled>{t("Recording…")}</DropdownMenuItem>
-              )}
-            </DropdownMenuGroup>
-          </>
-        )}
-        {!loading && error && !source && (
-          <DropdownMenuGroup>
-            <DropdownMenuItem
-              onSelect={(event) => {
-                event.preventDefault();
-                void load();
-              }}
-            >
-              {t("Reload folders")}
-            </DropdownMenuItem>
-          </DropdownMenuGroup>
-        )}
+        {content}
       </DropdownMenuContent>
     </DropdownMenu>
   );

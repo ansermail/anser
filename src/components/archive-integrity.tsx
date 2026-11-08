@@ -1,12 +1,12 @@
 import { dateLocale, t } from "@/lib/i18n";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { ShieldCheck, LoaderCircle, AlertCircle, Zap, X } from "lucide-react";
 import { call, isDemo } from "@/lib/api";
 import type { ArchiveHealth } from "@/lib/types";
 import { Button } from "./ui/button";
 import { Alert, AlertTitle, AlertDescription } from "./ui/alert";
 import { Progress } from "./ui/progress";
-export function ArchiveIntegrity() {
+export function ArchiveIntegrity({ children }: { children?: ReactNode }) {
   const [health, setHealth] = useState<ArchiveHealth | null>(null);
   const [starting, setStarting] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -104,7 +104,7 @@ export function ArchiveIntegrity() {
   const fast = health?.mode === "fast";
   return (
     <div className="archive-integrity flex min-w-0 flex-col justify-center gap-3">
-      <div className="flex flex-wrap items-center gap-2">
+      <div className="storage-actions flex-wrap items-center">
         <Button
           variant="outline"
           disabled={loading || starting || running}
@@ -135,6 +135,7 @@ export function ArchiveIntegrity() {
             {t("Cancel check")}
           </Button>
         )}
+        {children}
       </div>
       <p className="text-xs text-muted-foreground" role="status">
         {running

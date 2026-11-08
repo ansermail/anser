@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import { call, native, isDemo } from "@/lib/api";
 import { useConfirmation } from "@/hooks/use-confirmation";
 import { Button } from "./ui/button";
+import { Separator } from "./ui/separator";
 import { Alert, AlertDescription } from "./ui/alert";
 import { Progress } from "./ui/progress";
 export interface ArchiveLocationStatus {
@@ -134,8 +135,11 @@ export function ArchiveLocation({
         role="group"
         aria-label={t("Archive management")}
       >
+        {children && (
+          <div className="storage-actions flex-wrap">{children}</div>
+        )}
+        <Separator />
         <div className="storage-actions flex-wrap">
-          {children}
           <Button
             variant="outline"
             disabled={

@@ -1,10 +1,18 @@
 import { t } from "@/lib/i18n";
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import {
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 import { isTauri } from "@tauri-apps/api/core";
+import { ImageOff, LoaderCircle } from "lucide-react";
 import { MailBodySkeleton } from "./mail-skeleton";
 import { disableNativeContextMenu } from "../lib/context-menu";
+import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
-import { Alert, AlertDescription } from "./ui/alert";
 import { watchMailImages, type MailImageStatus } from "../lib/mail-images";
 import {
   applyMailColorScheme,
@@ -21,16 +29,21 @@ export function MailContent({
   onOpenLink,
   title = t("Message body"),
   inspectable = false,
+  originalColors = false,
   onDocumentReady,
+  statusOverlay,
 }: {
   html: string;
   title?: string;
   inspectable?: boolean;
+  originalColors?: boolean;
   onDocumentReady?: (doc: Document | null) => void;
   onOpenLink: (href: string) => void;
+  statusOverlay?: ReactNode;
 }) {
   const { dark } = useTheme();
-  const colorScheme: MailColorScheme = dark ? "dark" : "light";
+  const colorScheme: MailColorScheme =
+    dark && !originalColors ? "dark" : "light";
   const [themeBackground, setThemeBackground] = useState<{
     colorScheme: MailColorScheme;
     value: string;
@@ -42,9 +55,12 @@ export function MailContent({
     applyThemeClass(dark);
     setThemeBackground({
       colorScheme,
-      value: getComputedStyle(document.documentElement)
-        .getPropertyValue("--background")
-        .trim(),
+      value:
+        colorScheme === "light"
+          ? "#fff"
+          : getComputedStyle(document.documentElement)
+              .getPropertyValue("--background")
+              .trim(),
     });
   }, [colorScheme, dark]);
   const background =
@@ -222,31 +238,7 @@ export function MailContent({
       data-mail-debug-region={inspectable ? "" : undefined}
       aria-busy={!ready || images.waiting > 0}
     >
-      {(!ready || images.waiting > 0) && <MailBodySkeleton images={ready} />}
-      {ready && images.timedOut + images.failed > 0 && (
-        <Alert className="mb-2">
-          <AlertDescription className="flex flex-wrap items-center justify-between gap-2">
-            <span>
-              {t("{value0} body images could not load ({value1})", {
-                value0: images.failed + images.timedOut,
-                value1: [
-                  images.failed > 0 && `${images.failed} 张失败`,
-                  images.timedOut > 0 && `${images.timedOut} 张超时`,
-                ]
-                  .filter(Boolean)
-                  .join("，"),
-              })}
-            </span>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => retryImages.current()}
-            >
-              {t("Reload images")}
-            </Button>
-          </AlertDescription>
-        </Alert>
-      )}
+      {!ready && <MailBodySkeleton />}
       <iframe
         ref={frame}
         className={`mail-html mail-html-${colorScheme}`}
@@ -256,6 +248,53 @@ export function MailContent({
         srcDoc={srcDoc}
         onLoad={loaded}
       />
+      {ready &&
+        (statusOverlay ||
+          images.waiting > 0 ||
+          images.timedOut + images.failed > 0) && (
+          <div className="mail-body-status-stack">
+            {statusOverlay}
+            {images.waiting > 0 && (
+              <Badge
+                variant="secondary"
+                className="mail-status-pill"
+                role="status"
+                aria-label={t("Loading images")}
+                data-mail-image-state="loading"
+              >
+                <LoaderCircle className="animate-spin" aria-hidden="true" />
+                <span>{t("Loading images…")}</span>
+              </Badge>
+            )}
+            {images.timedOut + images.failed > 0 && (
+              <div data-mail-image-state="error" role="alert">
+                <Button
+                  type="button"
+                  variant="secondary"
+                  className="mail-status-pill"
+                  aria-label={t("Reload images")}
+                  onClick={() => retryImages.current()}
+                >
+                  <ImageOff aria-hidden="true" />
+                  <span className="mail-status-detail">
+                    {t("{value0} body images could not load ({value1})", {
+                      value0: images.failed + images.timedOut,
+                      value1: [
+                        images.failed > 0 && `${images.failed} 张失败`,
+                        images.timedOut > 0 && `${images.timedOut} 张超时`,
+                      ]
+                        .filter(Boolean)
+                        .join("，"),
+                    })}
+                  </span>
+                  <span className="mail-status-action">
+                    {t("Reload images")}
+                  </span>
+                </Button>
+              </div>
+            )}
+          </div>
+        )}
     </div>
   );
 }

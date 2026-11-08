@@ -14,7 +14,6 @@ import {
   Reply,
   ReplyAll,
   Send,
-  ShieldCheck,
   SquarePen,
   Star,
   Trash2,
@@ -37,6 +36,7 @@ import { MailBodySkeleton } from "./mail-skeleton";
 import { Alert, AlertTitle, AlertDescription } from "./ui/alert";
 import { TranslatableMailBody } from "./translatable-mail-body";
 import { MailAttachments } from "./mail-attachments";
+import { MailStorageStatus } from "./mail-storage-status";
 import { ContactAddress } from "./contact-address";
 import { RecipientAddresses } from "./mail-recipients";
 import { call, newDraft } from "../lib/api";
@@ -352,14 +352,7 @@ function Turn({
           onDownload={(index, name) => onAttachment(mail, index, name)}
         />
         <div className="turn-footer">
-          <ShieldCheck size={12} />
-          <span>
-            {demo
-              ? t("Demo archive")
-              : mail.savedLocally === false
-                ? t("Server message")
-                : t("Saved")}
-          </span>
+          <MailStorageStatus savedLocally={mail.savedLocally} demo={demo} />
           {mail.starred && <Star size={12} className="star-on" />}
         </div>
       </Card>

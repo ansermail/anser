@@ -85,18 +85,22 @@ fn rewrite_tokens(
             | Token::SquareBracketBlock
             | Token::Function(_) => {
                 let opening = input.slice_from(start).to_owned();
+                let inject_font_display = font_block;
                 let closing = match token {
                     Token::CurlyBracketBlock => '}',
                     Token::SquareBracketBlock => ']',
                     _ => ')',
                 };
                 let nested_font = font || font_block;
-                let inner = input
+                let mut inner = input
                     .parse_nested_block(|nested| {
                         rewrite_tokens(nested, base, nested_font, depth + 1)
                             .map_err(|_| nested.new_custom_error::<(), ()>(()))
                     })
                     .map_err(|_| "样式内容无效")?;
+                if inject_font_display && !inner.to_ascii_lowercase().contains("font-display:") {
+                    inner.push_str("font-display:swap;");
+                }
                 output.push_str(&opening);
                 output.push_str(&inner);
                 output.push(closing);
@@ -214,6 +218,7 @@ mod tests {
             assert!(result.contains(&expected), "{result}");
         }
         assert!(result.contains("local(\"Mail\")"));
+        assert!(result.contains("font-display:swap;"));
     }
     #[test]
     fn rejects_html_wrong_types_and_unsafe_urls_without_returning_server_content() {

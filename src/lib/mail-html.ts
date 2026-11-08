@@ -19,6 +19,14 @@ function mailThemeCss(colorScheme: MailColorScheme, background?: string) {
     : "html,body{background-color:#fff}";
 }
 
+function fontDisplaySwap(value: string) {
+  return value.replace(/@font-face\s*\{([^{}]*)\}/gi, (block, body: string) =>
+    /\bfont-display\s*:/i.test(body)
+      ? block
+      : block.replace("{", "{font-display:swap;"),
+  );
+}
+
 export function safeMailHtml(
   html: string,
   documentId = "anser-mail",
@@ -85,7 +93,9 @@ export function safeMailHtml(
     }
   }
   for (const style of doc.querySelectorAll("style")) {
-    style.textContent = secureResources(style.textContent || "");
+    style.textContent = secureResources(
+      fontDisplaySwap(style.textContent || ""),
+    );
   }
   normalizeMailSpacers(doc);
   // Image slices often inherit text baselines from pasted span/font wrappers.
@@ -175,6 +185,31 @@ function luminance(color: NonNullable<ReturnType<typeof rgb>>) {
   );
 }
 
+// Slightly tinted near-black ink is still neutral in a reading surface (for
+// example #1f1b2e). Preserve saturated author colors and colored/image surfaces.
+function darkInk(color: NonNullable<ReturnType<typeof rgb>>) {
+  const channels = [color.red, color.green, color.blue];
+  return (
+    neutral(color) ||
+    (Math.max(...channels) <= 64 &&
+      Math.max(...channels) - Math.min(...channels) <= 32)
+  );
+}
+
+function hasAuthoredColorSurface(element: Element, view: Window) {
+  for (
+    let current: Element | null = element;
+    current;
+    current = current.parentElement
+  ) {
+    const style = view.getComputedStyle(current);
+    if (style.backgroundImage && style.backgroundImage !== "none") return true;
+    const background = rgb(style.backgroundColor);
+    if (background && background.alpha > 0.95) return !neutral(background);
+  }
+  return false;
+}
+
 function hasBackgroundImage(element: Element, view: Window) {
   let current: Element | null = element;
   while (current) {
@@ -241,9 +276,10 @@ export function applyMailColorScheme(
     const foreground = rgb(computed.color);
     if (
       foreground &&
-      neutral(foreground) &&
+      darkInk(foreground) &&
       luminance(foreground) < 0.42 &&
-      !hasBackgroundImage(element, view)
+      !hasBackgroundImage(element, view) &&
+      !hasAuthoredColorSurface(element, view)
     )
       element.style.setProperty(
         "color",

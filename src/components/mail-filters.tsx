@@ -37,9 +37,15 @@ type Filters = Pick<
 export function MailFilters({
   query,
   onChange,
+  open,
+  onOpenChange,
+  excludeSentAvailable = true,
 }: {
   query: Filters;
   onChange: (filters: Partial<Filters>) => void;
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
+  excludeSentAvailable?: boolean;
 }) {
   const id = useId();
   const excludeSent = query.excludeSent !== false;
@@ -52,7 +58,7 @@ export function MailFilters({
     query.dateBefore
   );
   return (
-    <Popover>
+    <Popover open={open} onOpenChange={onOpenChange}>
       <PopoverTrigger asChild>
         <Button
           variant={active ? "secondary" : "ghost"}
@@ -109,7 +115,8 @@ export function MailFilters({
               <Field orientation="horizontal">
                 <Checkbox
                   id={`${id}-exclude-sent`}
-                  checked={excludeSent}
+                  checked={excludeSentAvailable && excludeSent}
+                  disabled={!excludeSentAvailable}
                   onCheckedChange={(checked) =>
                     onChange({ excludeSent: checked === true })
                   }
@@ -119,6 +126,13 @@ export function MailFilters({
                   {t("Exclude sent mail")}
                 </FieldLabel>
               </Field>
+              {!excludeSentAvailable && (
+                <p className="text-xs text-muted-foreground">
+                  {t(
+                    "Sent messages remain visible in Sent and specific server folders.",
+                  )}
+                </p>
+              )}
             </FieldGroup>
           </FieldSet>
           <Separator />

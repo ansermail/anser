@@ -4,6 +4,8 @@ import {
   calendarLocale,
   dateLocale,
   interfaceLanguage,
+  formatMailListTime,
+  formatMailTime,
   setInterfaceLanguage,
   t,
 } from "./i18n";
@@ -13,6 +15,19 @@ import type { RemoteFolder } from "./types";
 afterEach(() => {
   setInterfaceLanguage("zh-CN");
   localStorage.clear();
+});
+it("keeps list dates compact in local calendar time and full timestamps available", () => {
+  const now = new Date(2026, 10, 8, 12);
+  const today = new Date(2026, 10, 8, 0, 7, 42).toISOString();
+  expect(formatMailListTime(today, now)).toBe("00:07");
+  expect(formatMailTime(today)).toContain("00:07:42");
+  const recent = new Date(2026, 10, 6, 15).toISOString();
+  expect(formatMailListTime(recent, now)).not.toContain("2026");
+  const old = new Date(2025, 10, 6, 15).toISOString();
+  expect(formatMailListTime(old, now)).toContain("2025");
+  setInterfaceLanguage("en");
+  expect(formatMailListTime(recent, now)).toBe("Nov 6");
+  expect(formatMailListTime("invalid", now)).toBe("Unknown date");
 });
 it("switches catalog, calendar and document language without parsing inserted text", () => {
   setInterfaceLanguage("en");

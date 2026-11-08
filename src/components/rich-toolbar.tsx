@@ -32,10 +32,10 @@ import {
   Monitor,
   Moon,
   Sun,
+  MoreHorizontal,
 } from "lucide-react";
 import { Button } from "./ui/button";
 import { Tooltip, TooltipTrigger, TooltipContent } from "./ui/tooltip";
-import { ToggleGroup, ToggleGroupItem } from "./ui/toggle-group";
 import { Toggle } from "./ui/toggle";
 import { Separator } from "./ui/separator";
 import {
@@ -48,6 +48,11 @@ import {
   DropdownMenuRadioItem,
   DropdownMenuLabel,
   DropdownMenuSeparator,
+  DropdownMenuCheckboxItem,
+  DropdownMenuSub,
+  DropdownMenuSubTrigger,
+  DropdownMenuSubContent,
+  DropdownMenuPortal,
 } from "./ui/dropdown-menu";
 import { BODY_FONTS, BODY_SIZES } from "@/lib/rich-body";
 import { native, isDemo } from "@/lib/api";
@@ -452,7 +457,7 @@ export function RichToolbar({
         role="group"
         aria-label={t("Text & block formatting")}
       >
-        {marks.map((mark) => (
+        {marks.slice(0, 3).map((mark) => (
           <Tooltip key={mark.label}>
             <TooltipTrigger asChild>
               <Toggle
@@ -514,52 +519,6 @@ export function RichToolbar({
           </DropdownMenuGroup>
         </DropdownMenuContent>
       </DropdownMenu>
-      <DropdownMenu>
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <DropdownMenuTrigger asChild>
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon-sm"
-                aria-label={t("Highlight color")}
-                aria-pressed={state.highlight}
-                disabled={disabled}
-              >
-                <Highlighter />
-              </Button>
-            </DropdownMenuTrigger>
-          </TooltipTrigger>
-          <TooltipContent>{t("Text highlight color")}</TooltipContent>
-        </Tooltip>
-        <DropdownMenuContent
-          className="rich-format-menu"
-          onCloseAutoFocus={focus}
-        >
-          <DropdownMenuGroup>
-            {colors.map((color) => (
-              <DropdownMenuItem
-                key={color.value}
-                onSelect={() =>
-                  editor
-                    .chain()
-                    .focus()
-                    .setHighlight({ color: color.value })
-                    .run()
-                }
-              >
-                <Highlighter style={{ color: color.value }} />
-                {color.label}
-              </DropdownMenuItem>
-            ))}
-            <DropdownMenuItem
-              onSelect={() => editor.chain().focus().unsetHighlight().run()}
-            >
-              {t("Remove highlight")}
-            </DropdownMenuItem>
-          </DropdownMenuGroup>
-        </DropdownMenuContent>
-      </DropdownMenu>
       <Tooltip>
         <TooltipTrigger asChild>
           <Toggle
@@ -575,76 +534,117 @@ export function RichToolbar({
         </TooltipTrigger>
         <TooltipContent>{t("Insert or edit link")}</TooltipContent>
       </Tooltip>
-      <Separator
-        orientation="vertical"
-        className="mx-1 shrink-0 self-center data-[orientation=vertical]:h-5"
-      />
-      <ToggleGroup
-        className="shrink-0"
-        type="single"
-        value={state.align}
-        size="sm"
-        aria-label={t("Paragraph alignment")}
-        disabled={disabled}
-        onValueChange={(value) => {
-          if (value) editor.chain().focus().setTextAlign(value).run();
-        }}
-      >
-        {[
-          { value: "left", label: t("Align left"), icon: AlignLeft },
-          { value: "center", label: t("Align center"), icon: AlignCenter },
-          { value: "right", label: t("Align right"), icon: AlignRight },
-          { value: "justify", label: t("Justify"), icon: AlignJustify },
-        ].map((align) => (
-          <Tooltip key={align.value}>
-            <TooltipTrigger asChild>
-              <ToggleGroupItem
-                className="size-8 px-1.5"
-                value={align.value}
-                aria-label={align.label}
-                onMouseDown={(e) => e.preventDefault()}
+      <DropdownMenu>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <DropdownMenuTrigger asChild>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                disabled={disabled}
+                aria-label={t("More formatting")}
               >
-                <align.icon />
-              </ToggleGroupItem>
-            </TooltipTrigger>
-            <TooltipContent>{align.label}</TooltipContent>
-          </Tooltip>
-        ))}
-      </ToggleGroup>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon-sm"
-            aria-label={t("Insert separator")}
-            disabled={disabled}
-            onMouseDown={(e) => e.preventDefault()}
-            onClick={() => editor.chain().focus().setHorizontalRule().run()}
-          >
-            <Minus />
-          </Button>
-        </TooltipTrigger>
-        <TooltipContent>{t("Insert separator")}</TooltipContent>
-      </Tooltip>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon-sm"
-            aria-label={t("Clear formatting")}
-            disabled={disabled}
-            onMouseDown={(e) => e.preventDefault()}
-            onClick={() =>
-              editor.chain().focus().unsetAllMarks().clearNodes().run()
+                <MoreHorizontal data-icon="inline-start" />
+                {t("More formatting")}
+              </Button>
+            </DropdownMenuTrigger>
+          </TooltipTrigger>
+          <TooltipContent>{t("More formatting")}</TooltipContent>
+        </Tooltip>
+        <DropdownMenuContent
+          className="rich-format-menu"
+          align="start"
+          onCloseAutoFocus={focus}
+        >
+          <DropdownMenuGroup>
+            <DropdownMenuLabel>
+              {t("Text & block formatting")}
+            </DropdownMenuLabel>
+            {marks.slice(3).map((mark) => (
+              <DropdownMenuCheckboxItem
+                key={mark.label}
+                checked={mark.active}
+                onCheckedChange={mark.run}
+              >
+                <mark.icon />
+                {mark.label}
+              </DropdownMenuCheckboxItem>
+            ))}
+          </DropdownMenuGroup>
+          <DropdownMenuSeparator />
+          <DropdownMenuLabel>{t("Paragraph alignment")}</DropdownMenuLabel>
+          <DropdownMenuRadioGroup
+            value={state.align}
+            onValueChange={(value) =>
+              editor.chain().focus().setTextAlign(value).run()
             }
           >
-            <RemoveFormatting />
-          </Button>
-        </TooltipTrigger>
-        <TooltipContent>{t("Clear formatting of selection")}</TooltipContent>
-      </Tooltip>
+            {[
+              { value: "left", label: t("Align left"), icon: AlignLeft },
+              { value: "center", label: t("Align center"), icon: AlignCenter },
+              { value: "right", label: t("Align right"), icon: AlignRight },
+              { value: "justify", label: t("Justify"), icon: AlignJustify },
+            ].map((align) => (
+              <DropdownMenuRadioItem key={align.value} value={align.value}>
+                <align.icon />
+                {align.label}
+              </DropdownMenuRadioItem>
+            ))}
+          </DropdownMenuRadioGroup>
+          <DropdownMenuSeparator />
+          <DropdownMenuGroup>
+            <DropdownMenuSub>
+              <DropdownMenuSubTrigger>
+                <Highlighter />
+                {t("Highlight color")}
+              </DropdownMenuSubTrigger>
+              <DropdownMenuPortal>
+                <DropdownMenuSubContent className="rich-format-menu">
+                  <DropdownMenuGroup>
+                    {colors.map((color) => (
+                      <DropdownMenuItem
+                        key={color.value}
+                        onSelect={() =>
+                          editor
+                            .chain()
+                            .focus()
+                            .setHighlight({ color: color.value })
+                            .run()
+                        }
+                      >
+                        <Highlighter style={{ color: color.value }} />
+                        {color.label}
+                      </DropdownMenuItem>
+                    ))}
+                    <DropdownMenuItem
+                      onSelect={() =>
+                        editor.chain().focus().unsetHighlight().run()
+                      }
+                    >
+                      {t("Remove highlight")}
+                    </DropdownMenuItem>
+                  </DropdownMenuGroup>
+                </DropdownMenuSubContent>
+              </DropdownMenuPortal>
+            </DropdownMenuSub>
+            <DropdownMenuItem
+              onSelect={() => editor.chain().focus().setHorizontalRule().run()}
+            >
+              <Minus />
+              {t("Insert separator")}
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              onSelect={() =>
+                editor.chain().focus().unsetAllMarks().clearNodes().run()
+              }
+            >
+              <RemoveFormatting />
+              {t("Clear formatting")}
+            </DropdownMenuItem>
+          </DropdownMenuGroup>
+        </DropdownMenuContent>
+      </DropdownMenu>
       <Tooltip>
         <TooltipTrigger asChild>
           <Button

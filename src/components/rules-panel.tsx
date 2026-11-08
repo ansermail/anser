@@ -1,4 +1,12 @@
 import { calendarLocale, t } from "@/lib/i18n";
+import {
+  Empty,
+  EmptyHeader,
+  EmptyMedia,
+  EmptyTitle,
+  EmptyDescription,
+  EmptyContent,
+} from "./ui/empty";
 import { SelectField, SelectOption } from "@/components/ui/select-field";
 import { useEffect, useState } from "react";
 import { format } from "date-fns";
@@ -322,6 +330,21 @@ export function RulesPanel({
     [rs[i], rs[i + d]] = [rs[i + d], rs[i]];
     void save(rs);
   }
+  function createRule() {
+    setPreview(null);
+    setEditing({
+      id: crypto.randomUUID(),
+      name: "",
+      accountId: "",
+      enabled: true,
+      mode: "all",
+      conditions: [{ field: "subject", operator: "contains", value: "" }],
+      action: "folder",
+      destination: "",
+      actions: [{ action: "folder", destination: "", sourceFolder: "" }],
+      stop: true,
+    });
+  }
   return (
     <section className="workspace-panel">
       <div className="panel-heading">
@@ -332,31 +355,11 @@ export function RulesPanel({
               title={t("Toggle sidebar")}
               aria-label={t("Toggle sidebar")}
             />
-            <h1>{t("Let mail find its place")}</h1>
+            <h1>{t("Mail rules")}</h1>
           </div>
           <p>{t("Set rules once. Make time for what matters.")}</p>
         </div>
-        <Button
-          onClick={() => {
-            setPreview(null);
-            setEditing({
-              id: crypto.randomUUID(),
-              name: "",
-              accountId: "",
-              enabled: true,
-              mode: "all",
-              conditions: [
-                { field: "subject", operator: "contains", value: "" },
-              ],
-              action: "folder",
-              destination: "",
-              actions: [
-                { action: "folder", destination: "", sourceFolder: "" },
-              ],
-              stop: true,
-            });
-          }}
-        >
+        <Button onClick={createRule}>
           <Plus size={16} />
           {t("New rule")}
         </Button>
@@ -460,15 +463,25 @@ export function RulesPanel({
           </article>
         ))}
         {!data.rules.length && (
-          <div className="panel-empty">
-            <SlidersHorizontal size={34} />
-            <h3>{t("An inbox with its own order")}</h3>
-            <p>
-              {t(
-                "Try filing project mail or bills into a local folder automatically.",
-              )}
-            </p>
-          </div>
+          <Empty>
+            <EmptyHeader>
+              <EmptyMedia variant="icon">
+                <SlidersHorizontal />
+              </EmptyMedia>
+              <EmptyTitle>{t("No mail rules yet")}</EmptyTitle>
+              <EmptyDescription>
+                {t(
+                  "Try filing project mail or bills into a local folder automatically.",
+                )}
+              </EmptyDescription>
+            </EmptyHeader>
+            <EmptyContent>
+              <Button onClick={createRule}>
+                <Plus data-icon="inline-start" />
+                {t("New rule")}
+              </Button>
+            </EmptyContent>
+          </Empty>
         )}
       </div>
       <div className="quiet-note">
@@ -486,7 +499,11 @@ export function RulesPanel({
       >
         <DialogContent className="w-[900px] max-w-[calc(100%-2rem)] sm:max-w-[900px] max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>{t("Edit mail rule")}</DialogTitle>
+            <DialogTitle>
+              {editing && data.rules.some((rule) => rule.id === editing.id)
+                ? t("Edit mail rule")
+                : t("Create mail rule")}
+            </DialogTitle>
             <DialogDescription>
               {t(
                 "Set accounts, conditions and actions. Preview before saving.",

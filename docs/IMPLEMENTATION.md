@@ -1,5 +1,17 @@
 # 实施与验收状态
 
+## UI / UX 审阅改进（2026-11-08，本地待验收）
+
+`applyMailColorScheme` 在原有中性色逻辑上识别略带色相的近黑前景；沿祖先检查作者彩色底面和背景图片，保留这些区域的原配色。`TranslatableMailBody` 持有单封原始浅色开关，`MailContent` 仅为该 iframe 选择浅色渲染，根主题类仍使用应用主题。渲染仍经过原安全净化和禁脚本沙箱，原始 MIME、打印与转发源不变。
+
+`MailContent` 的正文状态栈位于主 iframe 之外的右上角，不参与正文高度计算；图片加载、失败重试和翻译进度共用同一胶囊样式与字号，加载完成、超时、翻译结束或重试清除时正文位置保持不变。正文内联和外链 `@font-face` 在渲染时补充 `font-display:swap`，远端作者字体等待网络期间先显示回退文字。临时阅读缓存仍只保存 MIME；作者字体、正文图片和样式继续按既有匿名代理、容量、并发和禁脚本边界联网读取，状态胶囊不改变缓存或完整保存标记。
+
+搜索结果提示须同时满足查询防抖稳定、读取完成、结果对应当前 `queryScope` 且匹配数为零；保留原阅读内容，不根据当前加载页判断是否命中。筛选恢复按钮与原搜索区共用受控 `MailFilters` Popover；已发送和指定服务器目录明确不应用排除已发送条件。
+
+阅读“更多”菜单组合既有本地动作和 `ServerDirectoryMenu`，后者以共享内容支持独立菜单与嵌套子菜单，继续使用原请求代际、可信来源、任务提交与重复提交保护。富文本低频菜单仍调用 Tiptap 既有命令，关闭时恢复编辑焦点与选区。`MailStorageStatus` 统一阅读页和对话气泡的在线/完整保存说明；不更改保存状态及缓存边界。新增空状态使用官方 shadcn `Empty`。
+
+本轮修改前端正文样式解析及 Rust 外链样式资源重写，两者都只补充 `font-display:swap`；数据库、MIME、协议和保存边界未变。自动与原生验证、限制及用户验收入口见 [UI / UX 改进工作点](UI_UX_REVIEW_WORKING.md)。
+
 ## Windows 平台适配（验证中）
 
 Windows 使用 `tauri.windows.conf.json` 合并原生窗口、HTTPS scheme、WebView2 引导程序和每用户 NSIS 配置。主窗口与外部 EML 窗口均使用 HTTPS scheme；正文图片/样式/字体映射到 `https://anser-*.localhost` 并保持禁脚本 iframe 的 CSP。远端资源仍经原有大小、期限和代理边界读取，不转发邮箱凭据。
@@ -761,13 +773,11 @@ macOS 格式关联通过 NSWorkspace/UTType 在主队列读取和异步更改，
 
 验证：`cargo test --lib credentials::` 的 16 项单元测试通过（含密文不含明文、篡改/错误密钥/截断/版本拒绝、密钥十六进制往返、0600 与原子替换、旧库读取失败不阻塞）；原生探针用固定证书签名测试二进制，`seed` 创建密文与密钥条目，重新编译并重新签名（CDHash 变化）后 `read` 阶段无授权读取并写回成功，`cleanup` 删除探针条目与文件，探针服务前缀隔离，未触碰生产凭据。完整 `cargo test --lib` 428 项通过。真实开发预览升级时的首次旧库读取与升级后重启免授权仍需实际应用启动验收。
 
-
 ## Windows 原生外壳修正（2026-10-28）
 
 `main.rs` 对非 debug 构建声明 windows_subsystem="windows"，使发布 PE 使用 GUI 子系统；`lib.rs` 只在 macOS 设置默认应用菜单，Windows 主/外部阅读窗口不继承 File/Edit 等菜单。系统托盘沿用共享 TrayIconBuilder；主窗口的 Windows Resized 事件确认 is_minimized 后 hide，托盘点击复用 unminimize/show/focus。只对 main 生效，不把隐藏/最小化状态写入下次启动的窗口状态，不改写 Windows 通知区域可见性注册表。
 
 `windows-smoke.ps1` 在真实安装的 EXE 读取 PE 子系统，使用 GetMenu 验证主/外部窗口菜单不存在，通过系统最小化和可访问的真实托盘按钮验证隐藏与恢复。此自动冒烟之外仍保留 Windows 11 专业版 RDP 实机双击、窗口按钮、托盘与实际绘制复验；未执行时不标通过。
-
 
 ### Windows 融合式顶栏（用户 DBX 参考，2026-10-28）
 

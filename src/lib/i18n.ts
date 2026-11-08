@@ -34,6 +34,24 @@ export function formatMailTime(value: string) {
   return `${date.getFullYear()}/${pad(date.getMonth() + 1)}/${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
 }
 
+/** Compact list-only display; original dates and full reading timestamps stay intact. */
+export function formatMailListTime(value: string, now = new Date()) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return t("Unknown date");
+  const today =
+    date.getFullYear() === now.getFullYear() &&
+    date.getMonth() === now.getMonth() &&
+    date.getDate() === now.getDate();
+  return new Intl.DateTimeFormat(
+    dateLocale(),
+    today
+      ? { hour: "2-digit", minute: "2-digit", hourCycle: "h23" }
+      : date.getFullYear() === now.getFullYear()
+        ? { month: "short", day: "numeric" }
+        : { year: "numeric", month: "short", day: "numeric" },
+  ).format(date);
+}
+
 export function setInterfaceLanguage(next: InterfaceLanguage) {
   if (next !== "en" && next !== "zh-CN") throw new Error("Invalid language");
   language = next;

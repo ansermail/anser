@@ -1,7 +1,15 @@
 import { t } from "@/lib/i18n";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { EyeOff, Languages, LoaderCircle, RotateCcw } from "lucide-react";
+import {
+  EyeOff,
+  Languages,
+  LoaderCircle,
+  RotateCcw,
+  Sun,
+  Moon,
+} from "lucide-react";
+import { useTheme } from "@/lib/theme";
 import { call } from "@/lib/api";
 import {
   planMailTranslation,
@@ -13,8 +21,6 @@ import {
 } from "@/lib/mail-translation";
 import { MailContent } from "./mail-content";
 import { Button } from "./ui/button";
-import { Alert, AlertDescription } from "./ui/alert";
-import { Progress } from "./ui/progress";
 import {
   Tooltip,
   TooltipContent,
@@ -48,6 +54,8 @@ export function TranslatableMailBody({
   const [progress, setProgress] = useState({ done: 0, total: 0 });
   const [error, setError] = useState("");
   const [language, setLanguage] = useState("zh-CN");
+  const { dark } = useTheme();
+  const [originalColors, setOriginalColors] = useState(false);
   const cancel = useCallback(() => {
     generation.current++;
     if (request.current) {
@@ -155,19 +163,85 @@ export function TranslatableMailBody({
         value0: progress.done,
         value1: progress.total,
       })
-    : shown
-      ? t("{value0} · {value1}/{value2} text segments", {
-          value0: translationLanguages[language],
-          value1: progress.done,
-          value2: progress.total,
-        })
-      : "";
+    : error
+      ? error
+      : shown
+        ? t("{value0} · {value1}/{value2} text segments", {
+            value0: translationLanguages[language],
+            value1: progress.done,
+            value2: progress.total,
+          })
+        : "";
+  const translationOverlay = busy ? (
+    <Button
+      type="button"
+      variant="secondary"
+      className="mail-status-pill"
+      data-mail-translation-state="busy"
+      aria-label={`${status} · ${t("Cancel translation")}`}
+      onClick={() => {
+        cancel();
+        setBusy(false);
+        setError(
+          t(
+            "Translation canceled. Completed paragraphs remain; retry or hide them.",
+          ),
+        );
+      }}
+    >
+      <LoaderCircle className="animate-spin" aria-hidden="true" />
+      <span>{status}</span>
+      <span className="mail-status-action">{t("Cancel translation")}</span>
+    </Button>
+  ) : error ? (
+    <Button
+      type="button"
+      variant="secondary"
+      className="mail-status-pill"
+      data-mail-translation-state="error"
+      aria-label={`${error} · ${t("Retry translation")}`}
+      title={error}
+      onClick={() => void translate()}
+    >
+      <RotateCcw aria-hidden="true" />
+      <span className="mail-status-detail">{error}</span>
+      <span className="mail-status-action">{t("Retry translation")}</span>
+    </Button>
+  ) : null;
   return (
-    <div className="flex min-w-0 flex-col gap-3">
+    <div className="translatable-mail-body flex min-w-0 flex-col gap-3">
       {actionsContainer &&
         createPortal(
           <TooltipProvider>
             <div className="flex shrink-0 items-center gap-1">
+              {html && dark && (
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="icon-sm"
+                      aria-label={
+                        originalColors
+                          ? t("Follow application colors")
+                          : t("Use original light colors")
+                      }
+                      aria-pressed={originalColors}
+                      onClick={() => setOriginalColors((value) => !value)}
+                    >
+                      {originalColors ? (
+                        <Moon aria-hidden="true" />
+                      ) : (
+                        <Sun aria-hidden="true" />
+                      )}
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    {originalColors
+                      ? t("Follow application colors")
+                      : t("Use original light colors")}
+                  </TooltipContent>
+                </Tooltip>
+              )}
               {shown && error && !busy && (
                 <Tooltip>
                   <TooltipTrigger asChild>
@@ -224,39 +298,39 @@ export function TranslatableMailBody({
           </TooltipProvider>,
           actionsContainer,
         )}
-      <span className="sr-only" role="status" aria-live="polite">
-        {status}
+      <span
+        className="sr-only"
+        role={error && !busy ? "alert" : "status"}
+        aria-live="polite"
+      >
+        {error || status}
       </span>
-      {busy && progress.total > 0 && (
-        <Progress
-          value={(progress.done / progress.total) * 100}
-          aria-label={t("Translation progress")}
-        />
-      )}
-      {error && (
-        <Alert>
-          <AlertDescription>{error}</AlertDescription>
-        </Alert>
-      )}
       {html ? (
         <MailContent
           inspectable
+          originalColors={originalColors}
           html={html}
           title={title}
           onOpenLink={onOpenLink}
           onDocumentReady={documentReady}
+          statusOverlay={translationOverlay}
         />
       ) : (
-        <div className="message-body" data-mail-debug-region="" ref={plain}>
-          {paragraphs.map((text, index) =>
-            index % 2 ? (
-              text
-            ) : (
-              <p className="m-0" key={index}>
-                {text}
-              </p>
-            ),
+        <div className="relative min-w-0">
+          {translationOverlay && (
+            <div className="mail-body-status-stack">{translationOverlay}</div>
           )}
+          <div className="message-body" data-mail-debug-region="" ref={plain}>
+            {paragraphs.map((text, index) =>
+              index % 2 ? (
+                text
+              ) : (
+                <p className="m-0" key={index}>
+                  {text}
+                </p>
+              ),
+            )}
+          </div>
         </div>
       )}
     </div>

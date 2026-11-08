@@ -8,6 +8,50 @@ import {
   interceptMailLinks,
 } from "./mail-html";
 describe("untrusted email rendering", () => {
+  it("shows fallback text while remote email fonts are still loading", () => {
+    const html = safeMailHtml(
+      `<style>@font-face { font-family: Mail; src: url(https://cdn.example/mail.woff2); }</style><p>Readable now</p>`,
+      "font-display",
+      true,
+      true,
+    );
+    expect(html).toContain("font-display:swap;");
+    expect(html).toContain("Readable now");
+  });
+  it("makes near-black tinted headings readable without recoloring saturated text or authored color surfaces", () => {
+    const doc = new DOMParser().parseFromString(
+      safeMailHtml(
+        '<h1 id="ink" style="color:#1f1b2e">Heading</h1><p id="brand" style="color:#215aff">Brand</p><div style="background:#edaa45"><p id="on-brand" style="color:#222">Ink on brand surface</p></div><div style="background-image:url(https://example.com/a.png)"><p id="on-image" style="color:#222">Image text</p></div>',
+      ),
+      "text/html",
+    );
+    Object.defineProperty(doc, "defaultView", {
+      value: {
+        getComputedStyle: (element: Element) => {
+          const style = (element as HTMLElement).style;
+          return {
+            color: style.color || "rgb(0, 0, 0)",
+            backgroundColor: style.backgroundColor || "rgba(0, 0, 0, 0)",
+            backgroundImage: style.backgroundImage || "none",
+            display: "block",
+          };
+        },
+      },
+    });
+    applyMailColorScheme(doc, "dark");
+    expect(doc.querySelector<HTMLElement>("#ink")!.style.color).toBe(
+      "rgb(237, 237, 237)",
+    );
+    expect(doc.querySelector<HTMLElement>("#brand")!.style.color).toBe(
+      "rgb(33, 90, 255)",
+    );
+    expect(doc.querySelector<HTMLElement>("#on-brand")!.style.color).toBe(
+      "rgb(34, 34, 34)",
+    );
+    expect(doc.querySelector<HTMLElement>("#on-image")!.style.color).toBe(
+      "rgb(34, 34, 34)",
+    );
+  });
   it("removes text-baseline seams only from tight image-only runs without changing authored spacing", () => {
     const html = `<p id="slices" style="margin:0;padding:7px"><span style="font-size:18px"><img width="200" height="90" src="https://example.com/a.png"><a href="https://example.com/"><img width="200" height="60" src="https://example.com/b.png"></a></span></p>
       <p id="prose">Read <img src="https://example.com/icon.png"> this <img src="https://example.com/icon2.png"> text.</p>

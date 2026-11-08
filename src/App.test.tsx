@@ -53,6 +53,79 @@ function filter(title: string) {
     ) ?? null
   );
 }
+it("explains an empty search without discarding the opened message and offers filter recovery", async () => {
+  await click(host.querySelector("button.mail-row-main"));
+  const previous = host.querySelector(".message-title-row h1")?.textContent;
+  const input = host.querySelector(
+    '[aria-label="搜索邮件"]',
+  ) as HTMLInputElement;
+  await act(async () => {
+    Object.getOwnPropertyDescriptor(
+      HTMLInputElement.prototype,
+      "value",
+    )!.set!.call(input, "no-matching-mail-ux-1108");
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+    await new Promise((resolve) => setTimeout(resolve, 250));
+  });
+  await vi.waitFor(() =>
+    expect(host.querySelector(".list-empty")?.textContent).toContain(
+      "没有找到邮件",
+    ),
+  );
+  expect(host.querySelector(".message-title-row h1")?.textContent).toBe(
+    previous,
+  );
+  expect(host.querySelector(".reader-search-notice")?.textContent).toContain(
+    "不在当前搜索结果中",
+  );
+  expect(host.querySelector(".search-scope")?.textContent).toContain(
+    "排除已发送",
+  );
+  await click(
+    [...host.querySelectorAll(".list-empty button")].find(
+      (button) => button.textContent === "检查筛选条件",
+    ) || null,
+  );
+  expect(document.querySelector('[role="dialog"]')?.textContent).toContain(
+    "排除已发送邮件",
+  );
+  await act(async () =>
+    document
+      .querySelector('[role="dialog"]')!
+      .dispatchEvent(
+        new KeyboardEvent("keydown", { key: "Escape", bubbles: true }),
+      ),
+  );
+  await click(
+    [...host.querySelectorAll(".list-empty button")].find(
+      (button) => button.textContent === "清除搜索",
+    ) || null,
+  );
+  await vi.waitFor(() =>
+    expect(host.querySelector(".reader-search-notice")).toBeNull(),
+  );
+});
+
+it("keeps daily reading actions direct and groups local and server operations in More", async () => {
+  await click(host.querySelector("button.mail-row-main"));
+  expect(
+    host.querySelector('.reader-toolbar [aria-label="回复"]'),
+  ).not.toBeNull();
+  expect(
+    host.querySelector('.reader-toolbar [title="导出完整原始邮件"]'),
+  ).toBeNull();
+  const more = host.querySelector('[aria-label="更多邮件操作"]')!;
+  await act(async () =>
+    more.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true }),
+    ),
+  );
+  const menu = document.querySelector('[role="menu"]')!;
+  expect(menu.textContent).toContain("本地整理与导出");
+  expect(menu.textContent).toContain("打印这封邮件");
+  expect(menu.textContent).toContain("服务器文件夹操作");
+  expect(menu.textContent).toContain("复制到服务器文件夹");
+});
 it("shows the all-folder unread count beside All Mail", async () => {
   const seed = await snapshot(localQuery);
   seed.messages[0].sourceFolder = "Archive";

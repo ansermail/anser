@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { act, useEffect } from "react";
+import { act, useEffect, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { TranslatableMailBody } from "./translatable-mail-body";
@@ -12,9 +12,11 @@ vi.mock("./mail-content", () => ({
   MailContent: ({
     html,
     onDocumentReady,
+    statusOverlay,
   }: {
     html: string;
     onDocumentReady: (doc: Document | null) => void;
+    statusOverlay: ReactNode;
   }) => {
     useEffect(() => {
       const frame = document.createElement("iframe");
@@ -30,7 +32,12 @@ vi.mock("./mail-content", () => ({
         frame.remove();
       };
     }, [html, onDocumentReady]);
-    return <div>邮件正文</div>;
+    return (
+      <div>
+        邮件正文
+        {statusOverlay}
+      </div>
+    );
   },
 }));
 let root: Root, host: HTMLElement, actions: HTMLElement;
@@ -95,7 +102,10 @@ it("never sends text on opening and displays returned plain text below each orig
   expect(actions.firstElementChild?.tagName).toBe("H1");
   await click("翻译");
   expect(actions.querySelector('button[aria-label="取消翻译"]')).not.toBeNull();
-  expect(host.querySelector('[role="progressbar"]')).not.toBeNull();
+  expect(
+    host.querySelector('[data-mail-translation-state="busy"]'),
+  ).not.toBeNull();
+  expect(host.querySelector('[role="progressbar"]')).toBeNull();
   const args = mock.call.mock.calls.find(
     (c) => c[0] === "translate_mail_parts",
   )![1];
@@ -146,7 +156,9 @@ it("rejects an entirely empty paragraph even when another paragraph has a transl
       { id: "p1_t0", text: "另一段" },
     ]),
   );
-  expect(host.querySelector('[role="alert"]')).not.toBeNull();
+  expect(
+    host.querySelector('[data-mail-translation-state="error"]'),
+  ).not.toBeNull();
   expect(mock.docs[0].querySelector("[data-anser-translation]")).toBeNull();
 });
 it("completes 102 inline pieces across batches, retaining all 51 paragraph translations", async () => {
@@ -260,7 +272,10 @@ it("keeps icon-only cancel, retry and hide actions working without applying canc
     requestId: args.requestId,
   });
   expect(host.textContent).toContain("翻译已取消");
-  expect(host.querySelector('[role="progressbar"]')).toBeNull();
+  expect(host.querySelector('[data-mail-translation-state="busy"]')).toBeNull();
+  expect(
+    host.querySelector('[data-mail-translation-state="error"]'),
+  ).not.toBeNull();
   await click("重试翻译");
   const current = pending!;
   await act(async () => late([{ id: "p0_t0", text: "迟到译文" }]));

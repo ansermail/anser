@@ -98,7 +98,7 @@ export function DeleteArchiveDialog({ onDeleted }: { onDeleted: () => void }) {
   return (
     <>
       <Button
-        variant="outline"
+        variant="destructive"
         onClick={() => {
           setAccountId("");
           setStopSaving(true);

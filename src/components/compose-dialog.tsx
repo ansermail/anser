@@ -779,7 +779,7 @@ export function ComposeDialog({
                   onClick={() => sourceFile.current?.click()}
                 >
                   <FileUp size={14} />
-                  {t("Import file")}
+                  {t("Import body…")}
                 </Button>
                 <Input
                   ref={sourceFile}

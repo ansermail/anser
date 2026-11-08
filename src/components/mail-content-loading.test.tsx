@@ -107,6 +107,30 @@ it("updates the isolated body when the application theme changes", async () => {
   expect(themed.srcdoc).toContain("color-scheme:dark");
   expect(themed.srcdoc).toContain("background-color:oklch(0.2 0 0)!important");
 });
+it("can use original light colors for one body without changing the application theme or disabling sanitization", async () => {
+  await act(async () => setThemeMode("dark"));
+  const html =
+    '<h1 style="color:#1f1b2e">Original title</h1><script>alert(1)</script>';
+  const render = async (originalColors: boolean) =>
+    act(async () =>
+      root.render(
+        <MailContent
+          html={html}
+          originalColors={originalColors}
+          onOpenLink={() => {}}
+        />,
+      ),
+    );
+  await render(true);
+  expect(document.documentElement.classList.contains("dark")).toBe(true);
+  const frame = host.querySelector("iframe")!;
+  expect(frame.className).toContain("mail-html-light");
+  expect(frame.srcdoc).toContain("Original title");
+  expect(frame.srcdoc).not.toContain("<script>");
+  expect(frame.getAttribute("sandbox")).not.toContain("allow-scripts");
+  await render(false);
+  expect(host.querySelector("iframe")!.className).toContain("mail-html-dark");
+});
 it("measures the body without an internal vertical scrollbar narrowing the text", async () => {
   const { doc } = await load();
   // A short frame with its own vertical scrollbar would narrow the body by the
@@ -143,6 +167,28 @@ it("replaces stalled loading with retry after the deadline and clears the notice
   await act(async () => vi.advanceTimersByTime(1000));
   expect(host.querySelector('[aria-label="正在加载图片"]')).toBeNull();
   expect(host.querySelector('[role="alert"]')).toBeNull();
+});
+it("keeps image loading and failure notices out of the body layout", async () => {
+  const { finish } = await load();
+  const container = host.querySelector(".mail-html-container")!;
+  expect(
+    container.querySelector('[data-mail-image-state="loading"]'),
+  ).not.toBeNull();
+  await act(async () => vi.advanceTimersByTime(MAIL_IMAGE_TIMEOUT_MS));
+  expect(
+    container.querySelector('[data-mail-image-state="loading"]'),
+  ).toBeNull();
+  expect(
+    container.querySelector('[data-mail-image-state="error"]'),
+  ).not.toBeNull();
+  expect(container.querySelector('[role="alert"]')).not.toBeNull();
+  expect(container.querySelector(".mail-status-action")?.textContent).toContain(
+    "重新加载图片",
+  );
+  finish();
+  await act(async () => vi.advanceTimersByTime(1000));
+  expect(container.querySelector('[data-mail-image-state="error"]')).toBeNull();
+  expect(container.querySelector("iframe")).not.toBeNull();
 });
 it("reports failed and timed-out content counts together without including decorative resources", async () => {
   const { doc } = await load();

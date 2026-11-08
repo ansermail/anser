@@ -2,6 +2,7 @@ import { DesktopTitlebar } from "./components/desktop-titlebar";
 import {
   dateLocale,
   formatMailTime,
+  formatMailListTime,
   interfaceLanguageRevision,
   setInterfaceLanguage,
   t,
@@ -12,6 +13,15 @@ import { LanguageSettings } from "./components/language-settings";
 import { TaskPanelHeader } from "./components/task-panel-header";
 import { SettingsLayout } from "./components/settings-layout";
 import { EmlViewer } from "./components/eml-viewer";
+import { MailStorageStatus } from "./components/mail-storage-status";
+import {
+  Empty,
+  EmptyHeader,
+  EmptyMedia,
+  EmptyTitle,
+  EmptyDescription,
+  EmptyContent,
+} from "./components/ui/empty";
 import { MailFilters } from "./components/mail-filters";
 import { ArchiveLocation } from "./components/archive-location";
 import { MailSignatures } from "./components/mail-signatures";
@@ -287,6 +297,7 @@ export default function App() {
     [detailRetry, setDetailRetry] = useState(0),
     [checked, setChecked] = useState<string[]>([]),
     [search, setSearch] = useState(""),
+    [filterOpen, setFilterOpen] = useState(false),
     [accountDialog, setAccountDialog] = useState(false),
     [editingAccount, setEditingAccount] = useState<Account | null>(null),
     [mappingAccount, setMappingAccount] = useState<Account | null>(null),
@@ -2328,11 +2339,7 @@ export default function App() {
                           <span>{t("Built-in index size")}</span>
                         </div>
                       </div>
-                      <ArchiveIntegrity />
-                      <ArchiveLocation
-                        initialPath={data.dataDir}
-                        onChanged={() => void refresh()}
-                      >
+                      <ArchiveIntegrity>
                         <Button variant="outline" onClick={() => void backup()}>
                           <ArrowDownToLine size={15} />
                           {t("Back up archives")}
@@ -2352,6 +2359,21 @@ export default function App() {
                             navigate("local", accountId, folder)
                           }
                         />
+                      </ArchiveIntegrity>
+                      <ArchiveLocation
+                        initialPath={data.dataDir}
+                        onChanged={() => void refresh()}
+                      />
+                      <Separator className="archive-danger-separator" />
+                      <div className="archive-danger-zone">
+                        <div>
+                          <h3>{t("Archive deletion")}</h3>
+                          <p>
+                            {t(
+                              "Remove complete originals from local storage. Review the affected messages and recovery options before continuing.",
+                            )}
+                          </p>
+                        </div>
                         <DeleteArchiveDialog
                           onDeleted={() => {
                             setSelected("");
@@ -2359,7 +2381,7 @@ export default function App() {
                             void refresh();
                           }}
                         />
-                      </ArchiveLocation>
+                      </div>
                     </Card>
                     <ArchiveTier onChanged={() => void refresh()} />
                   </>
@@ -2639,41 +2661,56 @@ export default function App() {
                     </div>
                     <MailFilters
                       query={query}
+                      open={filterOpen}
+                      onOpenChange={setFilterOpen}
+                      excludeSentAvailable={
+                        query.view !== "sent" && !query.remoteFolder
+                      }
                       onChange={(filters) =>
                         setQuery((q) => ({ ...q, ...filters, limit: 200 }))
                       }
                     />
                   </div>
-                  {query.search &&
-                    (!query.searchField || query.searchField === "body") && (
-                      <div className="flex flex-wrap items-center gap-2 px-4 pb-3">
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              aria-label={t("Body search coverage")}
-                            >
-                              <Info data-icon="inline-start" />
-                              {t("Body coverage")}
-                            </Button>
-                          </TooltipTrigger>
-                          <TooltipContent className="max-w-72">
-                            <p>
-                              {t(
-                                "Only locally available bodies are searched; no messages are downloaded. Complete in this scope: ",
-                              )}{" "}
-                              {data.bodyCoverage.known}
-                              {t(" messages; incomplete: ")}{" "}
-                              {data.bodyCoverage.unknown}{" "}
-                              {t(
-                                " messages. Save complete messages to include their bodies in search.",
-                              )}
-                            </p>
-                          </TooltipContent>
-                        </Tooltip>
-                      </div>
-                    )}
+                  <div className="search-scope">
+                    <span>
+                      {activeAccount?.name || t("All accounts")} ·{" "}
+                      {query.excludeSent !== false &&
+                      query.view !== "sent" &&
+                      !query.remoteFolder
+                        ? t("Sent messages excluded")
+                        : t("Sent messages included")}
+                    </span>
+                    {query.search &&
+                      (!query.searchField || query.searchField === "body") && (
+                        <>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                aria-label={t("Only locally available bodies")}
+                              >
+                                <Info data-icon="inline-start" />
+                                {t("Only locally available bodies")}
+                              </Button>
+                            </TooltipTrigger>
+                            <TooltipContent className="max-w-72">
+                              <p>
+                                {t(
+                                  "Only locally available bodies are searched; no messages are downloaded. Complete in this scope: ",
+                                )}{" "}
+                                {data.bodyCoverage.known}
+                                {t(" messages; incomplete: ")}{" "}
+                                {data.bodyCoverage.unknown}{" "}
+                                {t(
+                                  " messages. Save complete messages to include their bodies in search.",
+                                )}
+                              </p>
+                            </TooltipContent>
+                          </Tooltip>
+                        </>
+                      )}
+                  </div>
                   <div className="list-filters">
                     <Tabs
                       value={query.unreadOnly ? "unread" : "all"}
@@ -2799,7 +2836,7 @@ export default function App() {
                           <ContextMenuTrigger asChild>
                             <div
                               key={m.id}
-                              className={`mail-row ${selected === m.id || (grouped && !!m.conversationId && m.conversationId === detail?.mail.conversationId) ? "selected" : ""} ${!m.isRead && !isNonUnreadMail(m) ? "unread" : ""}`}
+                              className={`mail-row ${m.preview ? "" : "no-preview"} ${selected === m.id || (grouped && !!m.conversationId && m.conversationId === detail?.mail.conversationId) ? "selected" : ""} ${!m.isRead && !isNonUnreadMail(m) ? "unread" : ""}`}
                             >
                               <div className="row-check">
                                 <Checkbox
@@ -2825,8 +2862,11 @@ export default function App() {
                                   <span className="sender-name">
                                     {senderName(m.sender)}
                                   </span>
-                                  <time dateTime={m.date}>
-                                    {formatMailTime(m.date)}
+                                  <time
+                                    dateTime={m.date}
+                                    title={formatMailTime(m.date)}
+                                  >
+                                    {formatMailListTime(m.date)}
                                   </time>
                                 </div>
                                 <div className="row-subject">
@@ -2853,7 +2893,7 @@ export default function App() {
                                       </Badge>
                                     )}
                                 </div>
-                                <p>{m.preview}</p>
+                                {m.preview && <p>{m.preview}</p>}
                                 <div className="row-meta">
                                   <span
                                     className={`mini-dot color-${data.accounts.findIndex((a) => a.id === m.accountId) % 4}`}
@@ -2981,25 +3021,62 @@ export default function App() {
                         </ContextMenu>
                       ))
                     ) : (
-                      <div className="list-empty">
-                        <Inbox size={30} />
-                        <h3>
-                          {search
-                            ? t("No messages found")
-                            : data.accounts.length
-                              ? t("All quiet here")
-                              : t("Your inbox is ready")}
-                        </h3>
-                        <p>
-                          {search
-                            ? t("Try different keywords.")
-                            : data.accounts.length
-                              ? t("Click refresh above to check for new mail.")
-                              : t(
-                                  "Messages will appear here after you connect a mailbox.",
-                                )}
-                        </p>
-                      </div>
+                      <Empty className="list-empty">
+                        <EmptyHeader>
+                          <EmptyMedia variant="icon">
+                            <Inbox />
+                          </EmptyMedia>
+                          <EmptyTitle>
+                            {search
+                              ? t("No messages found")
+                              : data.accounts.length
+                                ? t("All quiet here")
+                                : t("Your inbox is ready")}
+                          </EmptyTitle>
+                          <EmptyDescription>
+                            {search
+                              ? t(
+                                  "Try different keywords or check the current filters.",
+                                )
+                              : data.accounts.length
+                                ? t(
+                                    "Click refresh above to check for new mail.",
+                                  )
+                                : t(
+                                    "Messages will appear here after you connect a mailbox.",
+                                  )}
+                          </EmptyDescription>
+                        </EmptyHeader>
+                        {(search ||
+                          query.unreadOnly ||
+                          query.starredOnly ||
+                          query.attachmentsOnly ||
+                          query.searchField ||
+                          query.dateFrom ||
+                          query.dateBefore ||
+                          query.excludeSent === false) && (
+                          <EmptyContent>
+                            <div className="flex flex-wrap justify-center gap-2">
+                              {search && (
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => setSearch("")}
+                                >
+                                  {t("Clear search")}
+                                </Button>
+                              )}
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => setFilterOpen(true)}
+                              >
+                                {t("Review filters")}
+                              </Button>
+                            </div>
+                          </EmptyContent>
+                        )}
+                      </Empty>
                     )}
                     {data.nextCursor && (
                       <Button
@@ -3024,6 +3101,20 @@ export default function App() {
               <section className="reader">
                 {activeMail ? (
                   <>
+                    {!!query.search &&
+                      search === query.search &&
+                      !loading &&
+                      dataScope.current === queryScope(query) &&
+                      data.matched === 0 && (
+                        <Alert className="reader-search-notice" role="status">
+                          <Info />
+                          <AlertDescription>
+                            {t(
+                              "Previously opened message · Not in the current search results",
+                            )}
+                          </AlertDescription>
+                        </Alert>
+                      )}
                     <div className="message-heading">
                       <div className="sender-line">
                         <div className="sender-block">
@@ -3113,27 +3204,6 @@ export default function App() {
                               )}
                             </Tooltip>
                             <span className="toolbar-divider" />
-                            <Button
-                              variant="ghost"
-                              size="icon-sm"
-                              title={t("Move to local folder")}
-                              onClick={() => {
-                                setMoveIds([activeMail.id]);
-                                setMoveThreads(false);
-                                setMoveFolder(activeMail.localFolder);
-                              }}
-                            >
-                              <Folder size={17} />
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="icon-sm"
-                              title={t("Export complete original message")}
-                              onClick={() => void exportMail(activeMail)}
-                            >
-                              <ArrowDownToLine size={17} />
-                            </Button>
-                            <span className="toolbar-divider" />
                             {!isNonUnreadMail(activeMail) && (
                               <MailActionTooltip
                                 action="read"
@@ -3189,25 +3259,6 @@ export default function App() {
                             <Button
                               variant="ghost"
                               size="icon-sm"
-                              title={t("Print this message")}
-                              aria-label={t("Print this message")}
-                              disabled={!bodyReady}
-                              onClick={() =>
-                                detail &&
-                                void printMail(detail).catch((error) =>
-                                  toast.error(
-                                    t("Printing failed: {value0}", {
-                                      value0: String(error),
-                                    }),
-                                  ),
-                                )
-                              }
-                            >
-                              <Printer size={17} />
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="icon-sm"
                               title={
                                 activeMail.trashed
                                   ? t("Restore local message")
@@ -3234,8 +3285,9 @@ export default function App() {
                               label={t("Reply")}
                             >
                               <Button
-                                variant="ghost"
+                                variant="secondary"
                                 size="sm"
+                                className="reader-primary-action"
                                 aria-label={t("Reply")}
                                 title={t("Reply")}
                                 aria-keyshortcuts="Meta+R Control+R"
@@ -3342,23 +3394,81 @@ export default function App() {
                                 {t("Edit as new")}
                               </Button>
                             )}
-                            {(["copy", "move"] as const).map((kind) => (
-                              <ServerDirectoryMenu
-                                key={kind}
-                                mail={activeMail}
-                                kind={kind}
-                                view={query.view}
-                                remoteFolder={query.remoteFolder}
-                                disabled={
-                                  !data.accounts.some(
-                                    (a) =>
-                                      a.id === activeMail.accountId &&
-                                      a.enabled &&
-                                      a.protocol === "imap",
-                                  )
-                                }
-                              />
-                            ))}
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <Button
+                                  variant="ghost"
+                                  size="icon-sm"
+                                  aria-label={t("More message actions")}
+                                  title={t("More message actions")}
+                                >
+                                  <MoreHorizontal />
+                                </Button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end">
+                                <DropdownMenuGroup>
+                                  <DropdownMenuLabel>
+                                    {t("Local message actions")}
+                                  </DropdownMenuLabel>
+                                  <DropdownMenuItem
+                                    onSelect={() => {
+                                      setMoveIds([activeMail.id]);
+                                      setMoveThreads(false);
+                                      setMoveFolder(activeMail.localFolder);
+                                    }}
+                                  >
+                                    <Folder />
+                                    {t("Move to local folder")}
+                                  </DropdownMenuItem>
+                                  <DropdownMenuItem
+                                    onSelect={() => void exportMail(activeMail)}
+                                  >
+                                    <ArrowDownToLine />
+                                    {t("Export complete original message")}
+                                  </DropdownMenuItem>
+                                  <DropdownMenuItem
+                                    disabled={!bodyReady}
+                                    onSelect={() =>
+                                      detail &&
+                                      void printMail(detail).catch((error) =>
+                                        toast.error(
+                                          t("Printing failed: {value0}", {
+                                            value0: String(error),
+                                          }),
+                                        ),
+                                      )
+                                    }
+                                  >
+                                    <Printer />
+                                    {t("Print this message")}
+                                  </DropdownMenuItem>
+                                </DropdownMenuGroup>
+                                <DropdownMenuSeparator />
+                                <DropdownMenuGroup>
+                                  <DropdownMenuLabel>
+                                    {t("Server folder actions")}
+                                  </DropdownMenuLabel>
+                                  {(["copy", "move"] as const).map((kind) => (
+                                    <ServerDirectoryMenu
+                                      key={kind}
+                                      submenu
+                                      mail={activeMail}
+                                      kind={kind}
+                                      view={query.view}
+                                      remoteFolder={query.remoteFolder}
+                                      disabled={
+                                        !data.accounts.some(
+                                          (a) =>
+                                            a.id === activeMail.accountId &&
+                                            a.enabled &&
+                                            a.protocol === "imap",
+                                        )
+                                      }
+                                    />
+                                  ))}
+                                </DropdownMenuGroup>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
                           </div>
                           <span className="toolbar-divider" />
                           <Button
@@ -3402,14 +3512,10 @@ export default function App() {
                           <time dateTime={activeMail.date}>
                             {formatMailTime(activeMail.date)}
                           </time>
-                          <span className="saved-chip">
-                            <ShieldCheck size={13} />
-                            {demo
-                              ? t("Demo archive")
-                              : activeMail.savedLocally === false
-                                ? t("Server message")
-                                : t("Fully saved")}
-                          </span>
+                          <MailStorageStatus
+                            savedLocally={activeMail.savedLocally}
+                            demo={demo}
+                          />
                           {activeMail.savedLocally === false && (
                             <Button
                               variant="ghost"
@@ -3541,7 +3647,7 @@ export default function App() {
                     <p>
                       {data.accounts.length
                         ? t(
-                            "Select a message to start reading.\nYour conversations, carefully kept.",
+                            "Select a message to start reading.\nSave complete messages locally for long-term access.",
                           )
                         : t(
                             "Bring your mailboxes together.\nGive every important message a lasting home.",
