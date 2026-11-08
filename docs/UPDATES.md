@@ -1,6 +1,16 @@
 # 发布与应用内更新
 
-## 当前版本：0.1.39（2026-11-06）
+## 当前版本：0.1.40（2026-11-08）
+
+0.1.40 Alpha 于 2026-11-08T05:38:06Z 正式公开为 [latest](https://github.com/ansermail/anser/releases/tag/v0.1.40)，固定源码 `66b959e1f54ebb775fa4284c4ec4b120a55b63cf`，Release ID `438054978`。本版集中改善阅读区层级与稳定性：回复、全部回复和转发优先显示，低频打印/导出/本地整理与服务器操作分组；搜索范围、已发送过滤、正文边界和零结果恢复更明确；正文图片与翻译状态统一为不占布局的右上角胶囊，远端字体回退后正文立即显示；深色正文保留作者颜色并支持单封原始浅色显示；存档统计与管理动作、过滤规则空态及写信格式菜单重新整理。
+
+本地门槛为前端 70 文件 / 485 项、Rust 454/5 条件忽略、凭据迁移示例 16/2 条件忽略、桌面脚本 37 项、IMAP 39 项，生产/Pages/UI/i18n 1463 键/格式/发布资源检查通过。[Checks 42449075123](https://github.com/ansermail/anser/actions/runs/42449075123)、[Windows validation 42449075214](https://github.com/ansermail/anser/actions/runs/42449075214)、[Release desktop 42449122495](https://github.com/ansermail/anser/actions/runs/42449122495) 全部成功，Windows 正式安装、启动及真实托盘恢复冒烟通过。
+
+九资源大小/SHA-256、三个更新签名、Mac 双架构固定签名/精确 DR/元数据/许可、DMG 与更新归档一致性、说明原文、匿名公开下载与标准 latest 清单均通过。[Homebrew 42451544717](https://github.com/ansermail/anser/actions/runs/42451544717) 成功，配方提交 `5198b06` 只更新 Casks/anser.rb，版本与双 DMG 哈希一致。[Preview Pages 42451625454](https://github.com/ansermail/anser/actions/runs/42451625454) 成功，线上模块为 0.1.40，双 DMG 与 Windows EXE 链接返回 HTTP 200。
+
+macOS 分发包继续使用固定免费的项目自签名，未使用 Apple Developer ID 签名或公证。本机正式应用未替换，Windows 实机、Intel Mac、更多邮件模板与正式包原位升级仍需单独验收。完整证据与发版耗时记录见 [0.1.40 发布工作点](RELEASE_0_1_40_WORKING.md)，说明见 [v0.1.40](releases/v0.1.40.md)。
+
+## 前一正式版本：0.1.39（2026-11-06）
 
 0.1.39 Alpha 于 2026-11-06T15:40:16Z 正式公开为 [latest](https://github.com/ansermail/anser/releases/tag/v0.1.39)，固定源码 `2f46fc6b9ac08f0e68ab8ecf0820699764aa7c3d`，Release ID `436671297`。本版让在线阅读邮件的发件人、收件人、主题、时间和操作栏先于正文显示，并新增独立的过期阅读缓存：默认保留 30 天、容量 1 GB，可关闭或选择 7/30/90/365 天及 256 MB–4 GB；缓存按最后打开时间清理，不改变完整保存状态，也不计入存档、备份和完整性校验。
 
