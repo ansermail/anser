@@ -32,6 +32,10 @@
 - `npm run build:preview`：生产预览构建与 Pages 公用布局、虚构数据、原生桥隔离和发布路径检查通过。
 - `npm run release:check`、`npm run release:secrets`、`npm run format:check`、Rust fmt 与 `git diff --check` 通过；更新签名私钥未写入仓库或日志。
 
+首次云端 [Checks 42446658853](https://github.com/ansermail/anser/actions/runs/42446658853) 与 [Release desktop 42446712417](https://github.com/ansermail/anser/actions/runs/42446712417) 在共享 macOS 15 runner 上超时失败，`Preview Pages 42446658887` 已按发布顺序提前取消。失败均来自大型分页交互测试的时间预算：两个 205 行用例未继承 CI 的 30 秒，七次跨页用例实测 33.7 秒、超过 30 秒；安全、分页和交互断言没有报错。
+
+已只为 `App.test.tsx` 修正 CI 测试预算：205 行用例统一使用 CI 30 秒，七次跨页导航使用 CI 60 秒；本地分别保留 5 秒和 30 秒。`CI=true` 定向运行相关 12 项通过。未改业务实现、断言或自动重试；重建标签前继续执行完整本地门槛。
+
 ## 发布顺序
 
 1. 完成剩余本地门槛并核对未提交范围。
