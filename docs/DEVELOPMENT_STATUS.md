@@ -1,8 +1,18 @@
-# 开发计划与继续检查点（更新：2026-11-08）
+# 开发计划与继续检查点（更新：2026-11-10）
 
 依据 PRD 第 5、8、9 节、实施记录和当前代码核查。当前仍为 Alpha；功能代码已存在与真实场景验收通过分别记录。早期回归使用临时存储/演示数据；2026-10-05 用户授权后增加当前腾讯企业邮箱与 QQ 邮箱互发测试，未向其他地址发送，未删除真实邮件。
 
-## 当前执行检查点：0.1.40 正式发布与分发完成（2026-11-08）
+## 当前执行检查点：正文间距与圆角验收完成，提交主线（2026-11-10）
+
+`main`，origin 为组织仓库，开工工作区干净。按用户要求将阅读区滚动内容四周间距统一为 10px，移除宽窄窗口和对话模式中的不同覆盖值；阅读区 HTML 正文不再叠加容器 margin，单封纯文本正文不再叠加 padding，HTML iframe 使用应用 `--radius-lg`（12px）圆角。样式仅作用于阅读区，邮件内部排版、写信/签名预览及打印入口不变；长期约定同步 AGENTS，行为同步 USAGE。
+
+本轮验证：`npm run check:ui`、`npm run build`（含 1463 条双语键、TypeScript、Vite）、`npm test -- src/components/conversation-reader.test.tsx src/components/mail-content-loading.test.tsx src/components/translatable-mail-body.test.tsx src/components/external-mail-window.test.tsx`（4 文件 / 26 项）、`npx prettier --check src/index.css` 与 `git diff --check` 均通过。生产构建仅有既有分包/体积警告。网页示例已确认纯文本阅读区计算 padding 为 10px；网页虚构 HTML 动态挂载探针因模块导入/挂载失败，未取得圆角测量结果，不计作通过。
+
+原生开发预览通过稳定启动器 `npm run desktop` 编译并输出 Running，新应用 PID 12306 的父进程为 Tauri CLI PID 12048，之后才绑定原生 UI。原账号与 5,499 封存档可见；深色界面的 HTML 邮件实际截图已观察到顶部/左右紧凑且一致的外层留白及内容圆角。用户随后明确表示“没问题，我验证完了”，本轮显示效果由用户验收通过。代理未独立完成浅色、窄区和多封对话的原生矩阵，不扩大本轮验收范围。
+
+用户已授权将本轮四个文件提交并推送远程 `main`；提交前 `npm run format:check` 与 `git diff --check` 通过，已 fetch 并确认本地主线与远程一致。此检查点随正文样式一并提交主线；未改版本、创建标签或发布桌面包，正式版仍为下方 0.1.40。用户指定后续转到包含工作记录、摘要/分类建议/风险检测的独立工作树 `/Users/zhangxiaojun/.codex/worktrees/04d4d03e-f32a-48d1-8349-c6fea96cbdcb/mail`，保留其未提交工作后合并最新主线。切换、合并与后续开发状态以目标目录中的 `docs/LOCAL_FEATURES_WORKING.md` 和当前检查点为准。
+
+## 上一正式发布：0.1.40 正式发布与分发完成（2026-11-08）
 
 0.1.40 已于 2026-11-08T05:38:06Z 公开为 [latest](https://github.com/ansermail/anser/releases/tag/v0.1.40)，固定源码 `66b959e1f54ebb775fa4284c4ec4b120a55b63cf`，Release ID `438054978`。正式路径完成 Checks、Windows validation、三平台 Release desktop、九资源匿名审计、Homebrew 与官网；本机正式应用由用户自行升级。
 

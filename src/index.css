@@ -882,7 +882,16 @@ kbd {
   overflow: hidden;
 }
 .reader-scroll-content {
-  padding: 12px 16px 20px;
+  padding: 10px;
+}
+.reader-scroll-content .mail-html-container {
+  margin: 0;
+}
+.reader-scroll-content .mail-html {
+  border-radius: var(--radius-lg);
+}
+.reader-scroll:not(.conversation-scroll) .message-body {
+  padding: 0;
 }
 .reader-scroll [data-slot="scroll-area-viewport"] {
   overscroll-behavior: contain;
@@ -2592,9 +2601,6 @@ kbd {
   .message-list {
     width: 315px;
   }
-  .reader-scroll-content {
-    padding: 12px 16px 20px;
-  }
   .workspace-panel {
     padding: 30px;
   }
@@ -2987,9 +2993,6 @@ kbd {
   }
   .connection {
     max-width: 130px;
-  }
-  .reader-scroll-content {
-    padding: 12px 16px 20px;
   }
 }
 
@@ -3502,9 +3505,6 @@ kbd {
 .conversation-scroll {
   background: color-mix(in srgb, var(--secondary) 35%, var(--background));
 }
-.conversation-scroll .reader-scroll-content {
-  padding: 16px 20px 24px;
-}
 .conversation-stream {
   display: flex;
   flex-direction: column;
@@ -3707,9 +3707,6 @@ kbd {
   gap: 4px;
 }
 @container (max-width: 640px) {
-  .conversation-scroll .reader-scroll-content {
-    padding: 12px;
-  }
   .conversation-turn {
     width: 97%;
   }
