@@ -1,10 +1,12 @@
 # 发布与应用内更新
 
-## 发布准备：0.1.41（2026-11-11）
+## 当前版本：0.1.41（2026-11-11）
 
-0.1.41 统一邮件阅读区正文四周留白为 10px，HTML 正文区域使用 12px 圆角。正式版在桌面安装包及更新资源通过审计后公开。见 [发布说明](releases/v0.1.41.md)和[发布工作点](RELEASE_0_1_41_WORKING.md)。
+0.1.41 Alpha 于 2026-11-11 20:55:53（Asia/Shanghai）正式公开为 [latest](https://github.com/ansermail/anser/releases/tag/v0.1.41)，固定源码 `c360d27b587a5b9aee4a1e07e24b00929cb5b65b`。本版统一邮件阅读区正文四周留白为 10px，HTML 正文区域使用 12px 圆角。
 
-## 当前版本：0.1.40（2026-11-08）
+[Release desktop](https://github.com/ansermail/anser/actions/runs/43019626935) 三平台构建通过，九资源、更新签名、Mac 固定签名、Windows 安装启动冒烟和标准 latest 清单已核验。官网及 Homebrew 已同步，三个官网安装链接可下载，Homebrew 版本与双 DMG 摘要一致。Windows 和 Intel 实机、正式包原位升级待验证。见 [发布说明](releases/v0.1.41.md)和[发布工作点](RELEASE_0_1_41_WORKING.md)。
+
+## 前一正式版本：0.1.40（2026-11-08）
 
 0.1.40 Alpha 于 2026-11-08T05:38:06Z 正式公开为 [latest](https://github.com/ansermail/anser/releases/tag/v0.1.40)，固定源码 `66b959e1f54ebb775fa4284c4ec4b120a55b63cf`，Release ID `438054978`。本版集中改善阅读区层级与稳定性：回复、全部回复和转发优先显示，低频打印/导出/本地整理与服务器操作分组；搜索范围、已发送过滤、正文边界和零结果恢复更明确；正文图片与翻译状态统一为不占布局的右上角胶囊，远端字体回退后正文立即显示；深色正文保留作者颜色并支持单封原始浅色显示；存档统计与管理动作、过滤规则空态及写信格式菜单重新整理。
 

@@ -8,7 +8,7 @@
 
 [下载最新版本](https://github.com/ansermail/anser/releases/latest) · [产品官网](https://ansermail.github.io/anser/) · [Web 演示](https://ansermail.github.io/anser/demo/) · [使用说明](docs/USAGE.md) · [开发进度](docs/DEVELOPMENT_STATUS.md) · [反馈问题](https://github.com/ansermail/anser/issues)
 
-> **0.1.41 Alpha** 支持 Apple Silicon / Intel Mac 与 Windows 10/11 x64。长期稳定性、部分服务商兼容性及真实场景验收仍在持续完善。
+> **0.1.41 Alpha** 已正式发布，支持 Apple Silicon / Intel Mac 与 Windows 10/11 x64。长期稳定性、部分服务商兼容性及真实场景验收仍在持续完善。
 
 0.1.41 统一邮件正文四周留白，并为 HTML 正文区域增加圆角。可从[最新正式版](https://github.com/ansermail/anser/releases/latest)下载安装。详见 [0.1.41 发布说明](docs/releases/v0.1.41.md)。
 
