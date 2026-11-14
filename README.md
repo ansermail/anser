@@ -126,12 +126,16 @@ npm run desktop
 常用检查命令：
 
 ```sh
+npm run test:changed
+npm run test:related -- src/components/mail-signatures.tsx
 npm test
 npm run test:rust
 npm run test:desktop
 npm run format:check
 npm run build
 ```
+
+`test:changed` 根据当前 Git 改动选择关联测试，`test:related` 根据指定源码文件选择导入它的测试；日常迭代使用这两个入口，交付前仍以完整 `npm test` 为准。
 
 所有界面组件统一使用 shadcn/ui，开发约定见 [AGENTS.md](AGENTS.md)。发布构建、密钥配置和 GitHub Actions 流程见 [发布与应用内更新](docs/UPDATES.md)。
 

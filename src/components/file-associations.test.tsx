@@ -4,16 +4,30 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { FileAssociations } from "./file-associations";
 import { setInterfaceLanguage } from "@/lib/i18n";
-const mocks = vi.hoisted(() => ({ call: vi.fn(), demo: false }));
+const mocks = vi.hoisted(() => ({
+  call: vi.fn(),
+  demo: false,
+  windows: false,
+}));
 vi.mock("@/lib/api", () => ({
   call: mocks.call,
   native: true,
   isDemo: () => mocks.demo,
 }));
+vi.mock("@/lib/platform", () => ({
+  isWindows: () => mocks.windows,
+}));
 let root: Root, host: HTMLDivElement;
 let server: {
   supported: boolean;
   busy: boolean;
+  mailClient: {
+    supported: boolean;
+    busy: boolean;
+    currentName: string;
+    currentId: string;
+    isDefault: boolean;
+  };
   items: {
     extension: string;
     currentName: string;
@@ -32,10 +46,18 @@ beforeEach(() => {
   Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
   setInterfaceLanguage("zh-CN");
   mocks.demo = false;
+  mocks.windows = false;
   mocks.call.mockReset();
   server = {
     supported: true,
     busy: false,
+    mailClient: {
+      supported: true,
+      busy: false,
+      currentName: "Thunderbird",
+      currentId: "org.mozilla.thunderbird",
+      isDefault: false,
+    },
     items: [
       {
         extension: "eml",
@@ -51,12 +73,21 @@ beforeEach(() => {
   };
   mocks.call.mockImplementation(async (command, args) => {
     if (command === "get_file_associations") return structuredClone(server);
+    if (command === "get_default_mail_client")
+      return structuredClone(server.mailClient);
     if (command === "set_file_association") {
       server.items[0].isDefault = args.application === "self";
       server.items[0].currentId =
         args.application === "previous" ? "com.apple.mail" : args.application;
       return;
     }
+    if (command === "set_default_mail_client") {
+      server.mailClient.isDefault = true;
+      server.mailClient.currentName = "Anser";
+      server.mailClient.currentId = "self";
+      return;
+    }
+    if (command === "open_file_association_settings") return;
     throw new Error(command);
   });
   host = document.createElement("div");
@@ -72,6 +103,7 @@ it("reads actual associations without changing defaults and verifies an explicit
   expect(control().getAttribute("aria-checked")).toBe("false");
   expect(mocks.call.mock.calls.map((x) => x[0])).toEqual([
     "get_file_associations",
+    "get_default_mail_client",
   ]);
   await act(async () => control().click());
   expect(mocks.call).toHaveBeenCalledWith("set_file_association", {
@@ -79,7 +111,38 @@ it("reads actual associations without changing defaults and verifies an explicit
     application: "self",
   });
   expect(control().getAttribute("aria-checked")).toBe("true");
-  expect(mocks.call.mock.calls.at(-1)?.[0]).toBe("get_file_associations");
+  expect(
+    mocks.call.mock.calls.filter(
+      ([command]) => command === "get_file_associations",
+    ),
+  ).toHaveLength(2);
+});
+it("sets Anser as the default mail client and rereads the actual system state", async () => {
+  await render();
+  expect(document.body.textContent).toContain("当前默认：Thunderbird");
+  const button = [...document.querySelectorAll("button")].find(
+    (item) => item.textContent === "设为默认邮件应用",
+  )!;
+  await act(async () => button.click());
+  expect(mocks.call).toHaveBeenCalledWith("set_default_mail_client");
+  expect(document.body.textContent).toContain("雁信已是默认邮件应用");
+  expect(document.body.textContent).toContain("已是默认");
+});
+it("does not report success when macOS keeps another default mail client", async () => {
+  await render();
+  mocks.call.mockImplementation(async (command) => {
+    if (command === "get_file_associations") return structuredClone(server);
+    if (command === "get_default_mail_client")
+      return structuredClone(server.mailClient);
+    if (command === "set_default_mail_client") return;
+    throw new Error(command);
+  });
+  const button = [...document.querySelectorAll("button")].find(
+    (item) => item.textContent === "设为默认邮件应用",
+  )!;
+  await act(async () => button.click());
+  expect(document.body.textContent).toContain("macOS 未完成更改");
+  expect(document.body.textContent).not.toContain("雁信已是默认邮件应用");
 });
 it("disables directly by restoring the recorded app without a menu or dialog", async () => {
   server.items[0].isDefault = true;
@@ -144,4 +207,21 @@ it("sample mode never reads or changes system associations", async () => {
     '[role="switch"]',
   ))
     expect(button.disabled).toBe(true);
+});
+it("opens Windows default app settings without writing the default directly", async () => {
+  mocks.windows = true;
+  server.supported = false;
+  server.items = [];
+  server.mailClient.supported = false;
+  await render();
+  const button = [...document.querySelectorAll("button")].find(
+    (item) => item.textContent === "打开 Windows 默认应用",
+  )!;
+  await act(async () => button.click());
+  expect(mocks.call).toHaveBeenCalledWith("open_file_association_settings");
+  expect(
+    mocks.call.mock.calls.some(
+      ([command]) => command === "set_default_mail_client",
+    ),
+  ).toBe(false);
 });

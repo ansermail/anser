@@ -21,6 +21,7 @@ describe("signature imports", () => {
     expect(value.included).toBe(true);
     expect(value.body).toContain("Alex");
     expect(value.html).not.toMatch(/<script|onerror/);
+    expect(value.html).not.toContain("<p><br></p>");
   });
   it("rejects unsupported and oversized signature files", async () => {
     await expect(

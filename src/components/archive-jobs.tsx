@@ -1,3 +1,4 @@
+import { TaskCellText, TaskDataTable } from "./task-data-table";
 import { t } from "@/lib/i18n";
 import { TaskPanelHeader } from "./task-panel-header";
 import { useEffect, useState } from "react";
@@ -39,6 +40,8 @@ const states: Record<string, string> = {
     return t("Canceled");
   },
 };
+const unfinished = ["queued", "running", "paused", "blocked"];
+
 export function ArchiveJobsPanel({
   defaultCollapsed = false,
 }: { defaultCollapsed?: boolean } = {}) {
@@ -108,111 +111,118 @@ export function ArchiveJobsPanel({
                 aria-label={t("Loading saving tasks")}
               />
             )}
-            {items?.length === 0 && (
-              <p className="text-sm text-muted-foreground">
-                {t(
+            {items && (
+              <TaskDataTable
+                actionsWidth={16}
+                label={t("Full-message saving history")}
+                empty={t(
                   "No manual saving tasks. Select messages in the list or reader, then choose Save complete message locally.",
                 )}
-              </p>
-            )}
-            <ul
-              className="flex flex-col gap-4"
-              aria-label={t("Full-message saving history")}
-            >
-              {items?.map((job) => (
-                <li
-                  key={job.id}
-                  className="flex flex-wrap items-start justify-between gap-3"
-                >
-                  <div className="flex min-w-0 flex-1 flex-col gap-1">
-                    <p className="break-words">
-                      {job.subject || t("(No subject)")}
-                    </p>
-                    <p className="text-sm text-muted-foreground">
-                      {job.accountEmail} ·{" "}
-                      {job.folder || t("Source needs review")}
-                    </p>
-                    {job.error && (
-                      <p className="text-sm text-destructive">{job.error}</p>
-                    )}
-                  </div>
-                  <div className="flex flex-wrap items-center gap-2">
-                    <Badge variant="outline">
+                fields={[
+                  "task",
+                  "account",
+                  "folder",
+                  "status",
+                  "reason",
+                  "actions",
+                ]}
+                rows={items.map((job) => ({
+                  id: job.id,
+                  task: (
+                    <TaskCellText text={job.subject || t("(No subject)")} />
+                  ),
+                  account: job.accountEmail && (
+                    <TaskCellText text={job.accountEmail} />
+                  ),
+                  folder: (
+                    <TaskCellText
+                      text={job.folder || t("Source needs review")}
+                    />
+                  ),
+                  reason: job.error && <TaskCellText text={job.error} />,
+                  status: (
+                    <Badge
+                      variant={
+                        job.status === "blocked" ? "destructive" : "outline"
+                      }
+                    >
                       {states[job.status] || job.status}
                     </Badge>
-                    {["queued", "running"].includes(job.status) && (
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        disabled={busy}
-                        onClick={() => void action(job.id, "pause")}
-                      >
-                        {t("Pause")}
-                      </Button>
-                    )}
-                    {job.status === "paused" && (
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        disabled={busy}
-                        onClick={() => void action(job.id, "resume")}
-                      >
-                        {t("Resume saving")}
-                      </Button>
-                    )}
-                    {job.status === "blocked" && (
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        disabled={busy}
-                        onClick={() => void action(job.id, "retry")}
-                      >
-                        {t("Recheck & save")}
-                      </Button>
-                    )}
-                    {["queued", "running", "paused", "blocked"].includes(
-                      job.status,
-                    ) && (
+                  ),
+                  actions: unfinished.includes(job.status) ? (
+                    <div className="flex items-center justify-end gap-1">
+                      {["queued", "running"].includes(job.status) && (
+                        <Button
+                          variant="outline"
+                          size="xs"
+                          disabled={busy}
+                          onClick={() => void action(job.id, "pause")}
+                        >
+                          {t("Pause")}
+                        </Button>
+                      )}
+                      {job.status === "paused" && (
+                        <Button
+                          variant="outline"
+                          size="xs"
+                          disabled={busy}
+                          onClick={() => void action(job.id, "resume")}
+                        >
+                          {t("Resume saving")}
+                        </Button>
+                      )}
+                      {job.status === "blocked" && (
+                        <Button
+                          variant="outline"
+                          size="xs"
+                          disabled={busy}
+                          onClick={() => void action(job.id, "retry")}
+                        >
+                          {t("Recheck & save")}
+                        </Button>
+                      )}
                       <Button
                         variant="ghost"
-                        size="sm"
+                        size="xs"
                         disabled={busy}
                         onClick={() => void action(job.id, "cancel")}
                       >
                         {t("Cancel task")}
                       </Button>
-                    )}
-                  </div>
-                </li>
-              ))}
-            </ul>
+                    </div>
+                  ) : undefined,
+                }))}
+              />
+            )}
           </CardContent>
-          <CardFooter className="flex flex-wrap gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={busy}
-              onClick={() => void action("", "pause")}
-            >
-              {t("Pause all pending saves")}
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={busy}
-              onClick={() => void action("", "resume")}
-            >
-              {t("Resume all paused saves")}
-            </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              disabled={busy}
-              onClick={() => void action("", "cancel")}
-            >
-              {t("Cancel all unfinished")}
-            </Button>
-          </CardFooter>
+          {items?.some((job) => unfinished.includes(job.status)) && (
+            <CardFooter className="flex flex-wrap gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={busy}
+                onClick={() => void action("", "pause")}
+              >
+                {t("Pause all pending saves")}
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={busy}
+                onClick={() => void action("", "resume")}
+              >
+                {t("Resume all paused saves")}
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                disabled={busy}
+                onClick={() => void action("", "cancel")}
+              >
+                {t("Cancel all unfinished")}
+              </Button>
+            </CardFooter>
+          )}
         </CollapsibleContent>
       </Card>
     </Collapsible>

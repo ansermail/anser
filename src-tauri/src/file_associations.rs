@@ -22,6 +22,15 @@ pub struct Associations {
     pub busy: bool,
     pub items: Vec<Association>,
 }
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DefaultMailClient {
+    pub supported: bool,
+    pub busy: bool,
+    pub current_name: String,
+    pub current_id: String,
+    pub is_default: bool,
+}
 fn allowed(extension: &str) -> Result<()> {
     if ["eml", "emlx", "msg"].contains(&extension) {
         Ok(())
@@ -39,6 +48,8 @@ mod macos {
             extension: *const c_char,
             application: *const c_char,
         ) -> *mut c_char;
+        fn anser_mail_default_client_read() -> *mut c_char;
+        fn anser_mail_default_client_set() -> *mut c_char;
         fn anser_mail_association_free(data: *mut c_char);
     }
     unsafe fn value(pointer: *mut c_char) -> Result<serde_json::Value> {
@@ -70,6 +81,16 @@ mod macos {
         };
         Ok(())
     }
+    pub fn read_default_client() -> Result<DefaultMailClient> {
+        serde_json::from_value(unsafe { value(anser_mail_default_client_read())? })
+            .map_err(|_| "associationFailed".into())
+    }
+    pub fn set_default_client() -> Result<()> {
+        unsafe {
+            value(anser_mail_default_client_set())?;
+        };
+        Ok(())
+    }
 }
 pub fn read() -> Result<Associations> {
     #[cfg(target_os = "macos")]
@@ -97,6 +118,34 @@ pub fn set(extension: &str, application: &str) -> Result<()> {
     #[cfg(not(target_os = "macos"))]
     {
         let _ = application;
+        Err("unsupportedAssociation".into())
+    }
+}
+
+pub fn read_default_client() -> Result<DefaultMailClient> {
+    #[cfg(target_os = "macos")]
+    {
+        macos::read_default_client()
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        Ok(DefaultMailClient {
+            supported: false,
+            busy: false,
+            current_name: String::new(),
+            current_id: String::new(),
+            is_default: false,
+        })
+    }
+}
+
+pub fn set_default_client() -> Result<()> {
+    #[cfg(target_os = "macos")]
+    {
+        macos::set_default_client()
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
         Err("unsupportedAssociation".into())
     }
 }

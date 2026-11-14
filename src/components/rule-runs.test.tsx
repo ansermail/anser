@@ -5,7 +5,6 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import * as api from "@/lib/api";
 import { RuleRunsPanel, type RuleRun } from "./rule-runs";
 let root: Root, host: HTMLDivElement, items: RuleRun[];
-const show = vi.fn();
 function task(status: string): RuleRun {
   return {
     id: status,
@@ -17,7 +16,7 @@ function task(status: string): RuleRun {
     applied: 1,
     status,
     error: status === "blocked" ? "来源已隔离" : "",
-    updatedAt: "",
+    updatedAt: "2026-11-14T10:00:00+08:00",
   };
 }
 async function click(label: string) {
@@ -29,12 +28,11 @@ async function click(label: string) {
   await act(async () => button!.click());
 }
 async function render() {
-  await act(async () => root.render(<RuleRunsPanel onShowTasks={show} />));
+  await act(async () => root.render(<RuleRunsPanel />));
 }
 beforeEach(() => {
   Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
   items = [];
-  show.mockClear();
   vi.spyOn(api, "call").mockImplementation(async (command) =>
     command === "rule_runs" ? (items as never) : (undefined as never),
   );
@@ -52,9 +50,36 @@ it("starts collapsed, shows pending count and exposes pause/resume/retry without
   await render();
   expect(host.textContent).toContain("3 项待处理");
   expect(host.textContent).not.toContain("example running");
-  await click("展开规则处理任务");
+  expect(
+    host.querySelector('button[aria-label="展开或收起规则处理任务"]')
+      ?.textContent,
+  ).toContain("最近 100 项");
+  await click("展开或收起规则处理任务");
   expect(host.textContent).toContain("来源已隔离");
   expect(host.textContent).toContain("最后检查：完整保存");
+  const table = host.querySelector<HTMLTableElement>(
+    'table[aria-label="规则处理任务"]',
+  )!;
+  expect(
+    [...table.querySelectorAll("th")].map((cell) => cell.textContent),
+  ).toEqual([
+    "主题",
+    "邮箱地址",
+    "当前步骤",
+    "已处理",
+    "匹配数",
+    "状态",
+    "详情",
+    "时间",
+    "操作",
+  ]);
+  expect(table.querySelectorAll("tbody tr")).toHaveLength(4);
+  expect(
+    table.querySelector('tbody td[data-column="progress"]')?.textContent,
+  ).toBe("1/2");
+  expect(
+    table.querySelector('tbody td[data-column="matched"]')?.textContent,
+  ).toBe("1");
   for (const [label, id, action] of [
     ["暂停", "running", "pause"],
     ["继续", "paused", "resume"],
@@ -63,8 +88,8 @@ it("starts collapsed, shows pending count and exposes pause/resume/retry without
     await click(label);
     expect(api.call).toHaveBeenCalledWith("rule_run_action", { id, action });
   }
-  await click("查看保存与服务器任务");
-  expect(show).toHaveBeenCalledOnce();
+  expect(host.textContent).not.toContain("查看保存与服务器任务");
+  expect(host.textContent).not.toContain("已保存原件保留");
   expect(api.call).not.toHaveBeenCalledWith(
     "directory_operation_action",
     expect.anything(),
@@ -73,7 +98,7 @@ it("starts collapsed, shows pending count and exposes pause/resume/retry without
 it("locks duplicate actions while pending and reports a rejected action", async () => {
   items = [task("running")];
   await render();
-  await click("展开规则处理任务");
+  await click("展开或收起规则处理任务");
   let reject!: (error: Error) => void;
   vi.mocked(api.call).mockImplementation(async (command) =>
     command === "rule_run_action"

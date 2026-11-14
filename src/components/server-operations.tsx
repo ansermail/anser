@@ -1,3 +1,4 @@
+import { TaskCellText, TaskDataTable } from "./task-data-table";
 import { t } from "@/lib/i18n";
 import { TaskPanelHeader } from "./task-panel-header";
 import { Collapsible, CollapsibleContent } from "./ui/collapsible";
@@ -157,68 +158,69 @@ export function ServerOperations({
                     </Badge>
                   )}
                 </div>
-                {data.items.length ? (
-                  <ul
-                    className="flex flex-col gap-4"
-                    aria-label={t("Server sync tasks")}
-                  >
-                    {data.items.map((item) => (
-                      <li
-                        key={item.id}
-                        className="flex items-start justify-between gap-4"
+                <TaskDataTable
+                  actionsWidth={6}
+                  label={t("Server sync tasks")}
+                  empty={t("No sync tasks")}
+                  fields={[
+                    "task",
+                    "account",
+                    "folder",
+                    "operation",
+                    "status",
+                    "reason",
+                    "actions",
+                  ]}
+                  rows={data.items.map((item) => ({
+                    id: item.id,
+                    task: (
+                      <TaskCellText text={item.subject || t("(No subject)")} />
+                    ),
+                    account: item.accountEmail && (
+                      <TaskCellText text={item.accountEmail} />
+                    ),
+                    folder: item.folder && <TaskCellText text={item.folder} />,
+                    operation: (
+                      <TaskCellText
+                        text={
+                          item.action === "read"
+                            ? item.value
+                              ? t("Mark read")
+                              : t("Mark unread")
+                            : item.value
+                              ? t("Add star")
+                              : t("Unstar")
+                        }
+                      />
+                    ),
+                    reason: item.error && <TaskCellText text={item.error} />,
+                    status: (
+                      <Badge
+                        variant={
+                          item.status === "blocked" ? "destructive" : "outline"
+                        }
                       >
-                        <div className="min-w-0 flex-1 space-y-1">
-                          <p className="truncate text-sm font-medium">
-                            {item.subject || t("(No subject)")}
-                          </p>
-                          <p className="break-words text-xs text-muted-foreground">
-                            {item.accountEmail} · {item.folder} ·{" "}
-                            {item.action === "read"
-                              ? item.value
-                                ? t("Mark read")
-                                : t("Mark unread")
-                              : item.value
-                                ? t("Add star")
-                                : t("Unstar")}
-                          </p>
-                          {item.error && (
-                            <p className="break-words text-sm text-destructive">
-                              {item.error}
-                            </p>
-                          )}
-                        </div>
-                        <div className="flex shrink-0 items-center gap-2">
-                          <Badge
-                            variant={
-                              item.status === "blocked"
-                                ? "destructive"
-                                : "outline"
-                            }
+                        {item.status === "queued" && item.error
+                          ? t("Waiting to retry")
+                          : states[item.status]}
+                      </Badge>
+                    ),
+                    actions:
+                      item.status === "blocked" ||
+                      (item.status === "queued" && item.error) ? (
+                        <div className="flex flex-wrap items-center justify-end gap-1">
+                          <Button
+                            variant="outline"
+                            size="xs"
+                            disabled={busy !== null}
+                            onClick={() => void retry(item.id)}
                           >
-                            {item.status === "queued" && item.error
-                              ? t("Waiting to retry")
-                              : states[item.status]}
-                          </Badge>
-                          {(item.status === "blocked" ||
-                            (item.status === "queued" && item.error)) && (
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              disabled={busy !== null}
-                              onClick={() => void retry(item.id)}
-                            >
-                              {busy === item.id ? t("Retrying…") : t("Retry")}
-                            </Button>
-                          )}
+                            {busy === item.id ? t("Retrying…") : t("Retry")}
+                          </Button>
                         </div>
-                      </li>
-                    ))}
-                  </ul>
-                ) : (
-                  <p className="text-sm text-muted-foreground">
-                    {t("No sync tasks")}
-                  </p>
-                )}
+                      ) : undefined,
+                  }))}
+                />
                 {data.items.length >= 50 && (
                   <p className="text-xs text-muted-foreground">
                     {t("Up to 50 entries, with pending tasks first.")}

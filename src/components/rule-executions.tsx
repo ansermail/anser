@@ -1,7 +1,8 @@
-import { t } from "@/lib/i18n";
+import { formatMailListTime, formatMailTime, t } from "@/lib/i18n";
 import { useEffect, useState } from "react";
 import { call } from "@/lib/api";
 import { coalesceRefresh } from "@/lib/refresh-queue";
+import { TaskCellText, TaskDataTable } from "./task-data-table";
 import { Button } from "./ui/button";
 import { Badge } from "./ui/badge";
 import { Alert, AlertDescription } from "./ui/alert";
@@ -138,58 +139,88 @@ export function RuleExecutions({ onShowTasks }: { onShowTasks: () => void }) {
         {!items && !error && (
           <Skeleton className="h-16" aria-label={t("Loading rule history")} />
         )}
-        {items?.length === 0 && (
-          <p className="text-sm text-muted-foreground">
-            {t("No server rule matches. Previewing does not create tasks.")}
-          </p>
-        )}
-        <ul
-          className="flex flex-col gap-4"
-          aria-label={t("Server rule matches")}
-        >
-          {items?.map((item) => (
-            <li
-              key={item.id}
-              className="flex flex-wrap items-start justify-between gap-3"
-            >
-              <div className="flex min-w-0 flex-col gap-1">
-                <p className="break-words">
-                  {item.ruleName} · {item.subject || t("(No subject)")}
-                </p>
-                <p className="text-sm text-muted-foreground">
-                  {item.accountEmail} ·{" "}
-                  {item.action === "serverMove" ? t("Move") : t("Copy")} ·{" "}
-                  {item.source} → {item.target}
-                </p>
-                {item.error && (
-                  <p className="text-sm text-destructive">{item.error}</p>
-                )}
-              </div>
-              <div className="flex items-center gap-2">
-                <Badge variant="outline">
-                  {states[item.status] || item.status}
-                </Badge>
-                {!item.operationId && item.status === "blocked" && (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    disabled={busy}
-                    onClick={() => void retry(item.id)}
+        {items && (
+          <TaskDataTable
+            actionsWidth={12}
+            label={t("Server rule matches")}
+            empty={t(
+              "No server rule matches. Previewing does not create tasks.",
+            )}
+            fields={[
+              "rule",
+              "task",
+              "account",
+              "operation",
+              "folder",
+              "target",
+              "status",
+              "time",
+              "reason",
+              "actions",
+            ]}
+            rows={items.map((item) => {
+              const retryable = !item.operationId && item.status === "blocked";
+              const viewTasks =
+                !!item.operationId &&
+                !["completed", "cancelled"].includes(item.status);
+              return {
+                id: item.id,
+                rule: item.ruleName && <TaskCellText text={item.ruleName} />,
+                task: <TaskCellText text={item.subject || t("(No subject)")} />,
+                account: item.accountEmail && (
+                  <TaskCellText text={item.accountEmail} />
+                ),
+                operation: (
+                  <TaskCellText
+                    text={item.action === "serverMove" ? t("Move") : t("Copy")}
+                  />
+                ),
+                folder: item.source && <TaskCellText text={item.source} />,
+                target: item.target && <TaskCellText text={item.target} />,
+                status: (
+                  <Badge
+                    variant={
+                      item.status === "blocked" ? "destructive" : "outline"
+                    }
                   >
-                    {t("Recheck & queue")}
-                  </Button>
-                )}
-                {item.operationId &&
-                  item.status !== "completed" &&
-                  item.status !== "cancelled" && (
-                    <Button variant="outline" size="sm" onClick={onShowTasks}>
-                      {t("View server tasks")}
-                    </Button>
-                  )}
-              </div>
-            </li>
-          ))}
-        </ul>
+                    {states[item.status] || item.status}
+                  </Badge>
+                ),
+                time: item.updatedAt ? (
+                  <TaskCellText
+                    text={formatMailListTime(item.updatedAt)}
+                    detail={formatMailTime(item.updatedAt)}
+                  />
+                ) : undefined,
+                reason: item.error && <TaskCellText text={item.error} />,
+                actions:
+                  retryable || viewTasks ? (
+                    <div className="flex items-center justify-end gap-1">
+                      {retryable && (
+                        <Button
+                          variant="outline"
+                          size="xs"
+                          disabled={busy}
+                          onClick={() => void retry(item.id)}
+                        >
+                          {t("Recheck & queue")}
+                        </Button>
+                      )}
+                      {viewTasks && (
+                        <Button
+                          variant="outline"
+                          size="xs"
+                          onClick={onShowTasks}
+                        >
+                          {t("View server tasks")}
+                        </Button>
+                      )}
+                    </div>
+                  ) : undefined,
+              };
+            })}
+          />
+        )}
       </CardContent>
     </Card>
   );

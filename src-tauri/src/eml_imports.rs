@@ -404,6 +404,7 @@ impl Store {
                     mail.local_read_override = old.local_read_override;
                     mail.local_star_override = old.local_star_override;
                     mail.local_folder = old.local_folder;
+                    mail.tags = old.tags;
                     mail.trashed = old.trashed;
                     mail.date = old.date;
                     mail.server_date = old.server_date;

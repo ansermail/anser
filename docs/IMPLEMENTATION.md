@@ -340,6 +340,20 @@ prepareCompose 生成独立的 deliveryBody/deliveryHtml，保留可编辑 body/
 
 验证：43 项前端测试、41 项 Rust 测试、生产构建及 UI 检查通过。覆盖回复/转发默认开关、独立原文渲染、发送预览排除原文、HTML 表格/样式/body 属性保持、重复准备幂等、草稿及定时计划取消恢复、内嵌图片 MIME 往返。浏览器用合成周报核查原文和合并预览的表格及 CSS 实际生效，未向真实邮箱发送测试信。不同收件客户端对 HTML/CSS 的支持仍可能产生展示差异。
 
+## 发送正文签名行距与发送记录表格（2026-11-14）
+
+发送预览、即时发送队列与定时发送共同使用 `prepareCompose` 生成的 `deliveryBody` / `deliveryHtml`，没有预览专用的 HTML 转换。纯文本签名原先通过 `textToHtml` 转成逐行 `<p>`，邮件 iframe 与收件客户端的默认段落外边距会把签名行距放大。现在纯文本签名写入单一 `data-anser-signature` 容器，设置 `white-space:pre-wrap` 和 `line-height:1.45`，并只把签名原文作为文本节点写入；HTML 签名继续复制净化后的 body 属性和 head 样式，其中 `p/div/li` 的浏览器默认上下边距归零。回归测试同时核对签名内容转义、原始换行、无逐行段落以及投递正文共享。
+
+空富文本编辑器在用户第一次输入前只有可见的空 `<p>`，但草稿 HTML 仍为空。旧逻辑把“编辑 HTML 和签名 HTML 都为空”当作纯文本邮件，令预览退回 `textToHtml` 的逐行 `<p>`，因此打开预览时签名行距明显大于输入一个字符之后。`withSignature` 现在为默认富文本空状态直接生成紧凑签名容器，同时剔除不可见空段落；无作者内容时签名上边距为 0，有正文时才保留 18px。写信正文容器不再嵌入签名 `MailContent`，用户只能在右侧发送预览看到签名。
+
+Chromium 示例页使用多行纯文本签名实测：空正文 iframe 只有 `data-anser-signature` 容器，没有空段落，`white-space:pre-wrap`、行高约 20.3px、上边距 0；输入正文后该容器上边距为 18px，两行签名与正文均保持约 20.3px 行高，左侧编辑器不含签名。签名及写信专项 29 项通过。
+
+发送记录从多行卡片改为 `TaskDataTable`，使用 shadcn Table 与 TanStack Table 的状态、主题、收件人、计划时间、更新时间、服务器副本及操作列。`TaskDataTable` 的 `pageSize` 可配置，发送记录使用 15 条，其他后台任务保持 10 条；空列自动隐藏，单元格采用单行省略和完整悬浮值。多人收件时单元格显示首个地址与剩余数量，悬浮和可访问名称包含完整收件人、抄送及密送。详情 Dialog 的元信息占满可用宽度，地址按收件人、抄送、密送分组为小标签，地址列表限高独立滚动，操作集中在底部右侧；诊断文本、服务器副本原因、改期、重发及本地恢复也集中在详情中。浏览器示例使用 24 个收件人、5 个抄送和 2 个密送核查浅色、深色及 980×900 窄窗口，地址区为 88px 高、内容 312px 时在内部滚动，页面无横向溢出；15 行表格行高保持 41px。
+
+本地标签目录与邮件多值关系保存在 SQLite。创建、重命名、删除和逐封赋予以短事务维护；查询在普通分页和固定游标分页中使用同一大小写不敏感匹配，在线邮件补存及 EML 导入保留标签，备份恢复同步标签目录。侧栏标签色点由名称计算稳定索引，标签管理弹层复用 shadcn Checkbox 与 Dialog。
+
+`mailto:` 由共享前端解析器拆分地址及 `to / cc / bcc / subject / body`。解析器在解码前拆分收件人，保留地址中的 `+`，拒绝损坏的百分号编码。原生 `mailto_entry` 队列接收启动参数、单实例回调和 macOS `RunEvent::Opened`；主窗口排空队列并打开预填草稿。macOS `Info.plist` 与稳定开发包声明 `mailto` URL 类型；Windows NSIS hooks 写入 Capabilities URL 关联、自有 ProgID 和 Mail 客户端候选项，系统默认应用由用户选择。设置页读取当前 `mailto:` 处理程序；macOS 通过 `NSWorkspace setDefaultApplicationAtURL:toOpenURLsWithScheme:` 设置雁信并重新读取实际结果，Windows 只打开 `ms-settings:defaultapps`。
+
 ## IMAP 实时收取与开发实例管理（2026-10-02）
 
 - 每个启用的 IMAP 账号使用独立连接监听 INBOX，通过 CAPABILITY 检查 IDLE 支持；EXAMINE 后进入 IDLE，再触发补收，覆盖建立连接期间的新邮件。EXISTS 数量变化与 EXPUNGE 触发同步，重复通知及服务器保活不重复收取。
@@ -763,7 +777,7 @@ DeepSeek 官方域名/443/标准路径才附加 `thinking.disabled`、JSON 输�
 
 MSG 使用固定版 msg_parser 与严格 cfb；先核对容器深度、目录与流数量及声明总长度，再重建规范 CFB 给属性解析器。PT_STRING8 依 MAPI 代码页转 Unicode，二进制 HTML 依 MIME charset/MAPI internet codepage 解码；派生 MIME 与附件使用有界输出，RTF 解压前核对声明容量。不支持的嵌入邮件、OLE、纯 RTF 变体明确失败。
 
-macOS 格式关联通过 NSWorkspace/UTType 在主队列读取和异步更改，只允许 EML/EMLX/MSG，开启前在 NSUserDefaults 记录当前其他应用 ID，关闭时恢复该记录并核对系统仍已注册；只接受 self/previous 两种操作，不提供其他应用选择器。按 LaunchServices 的 bundle ID 核对是否为雁信（系统可能选择同标识的已安装副本）；更改完成后重新读取系统状态。45 秒超时返回 pending，不自动重复写入；处理期间不允许第二次更改。开发与正式包共用类型声明，保持 Viewer/Alternate。网页与示例模式不调用系统关联读写。
+macOS 系统默认应用与格式关联通过 NSWorkspace/UTType 在主队列读取和异步更改。默认邮件应用使用 `mailto:` 当前处理程序，设置后重新读取 Launch Services，当前 bundle ID 与雁信一致才返回成功。格式关联只允许 EML/EMLX/MSG，开启前在 NSUserDefaults 记录当前其他应用 ID，关闭时恢复该记录并核对系统仍已注册；只接受 self/previous 两种操作，不提供其他应用选择器。按 Launch Services 的 bundle ID 核对是否为雁信（系统可能选择同标识的已安装副本）；更改完成后重新读取系统状态。45 秒超时返回 pending，不自动重复写入；处理期间不允许第二次更改。开发与正式包共用类型声明，保持 Viewer/Alternate。Windows 不写默认邮件应用或 UserChoice，只打开系统默认应用设置。网页与示例模式不调用系统默认应用读写。
 
 ## 本地加密凭据库替代进程内钥匙串读取（2026-10-26）
 
@@ -784,3 +798,19 @@ macOS 格式关联通过 NSWorkspace/UTType 在主队列读取和异步更改，
 主/外部窗口在 Windows 关闭原生 decorations，复用 DesktopTitlebar：由现有 shadcn Button 组合三种窗口操作，Tauri drag-region 保留拖动和双击最大化；按钮本身不参与拖动。监听原生 resize 后重读 isMaximized，兼容系统最大化/还原引起的图标切换；主/外部 capability 显式允许 minimize/toggle-maximize/close。最小化仍走原生事件，只有 main 隐藏到托盘，外部窗口保持系统最小化/关闭语义。
 
 顶栏只显示窗口操作，去掉独立标题栏图标与应用名，操作行右侧为三个窗口按钮留出位置。窗口操作位于 Dialog 遮罩之上，阻止其 pointerdown 成为 Dialog 外部点击，防止最小化/最大化意外关闭写信或未保存设置。Mac 保留原生交通灯与原有空白拖动区；浏览器示例不渲染或调用原生 Windows 按钮。固定文案同步双语；原生 API 失败时给出错误反馈。
+
+## 邮件 AI 共用模型与草稿 Diff（2026-11-14，开发中）
+
+摘要和修复通过 `run_mail_ai` 使用现有模型配置、凭据、端点校验、代理、请求取消和 HTTP 响应上限。服务核对配置版本，拒绝旧配置结果。摘要语言来自已保存的翻译目标语言，摘要缓存限于当前 WebView 会话，以单封身份、发送给模型的有界正文、目标语言、配置与模板版本为键，缓存版本为 `summary-v3`。摘要和修复以纯文本渲染结构化结果，模型输出不进入 HTML。
+
+模型配置保存先按候选地址、模型和密钥调用固定 `Hello, world.` 请求验证，网络请求不持锁。验证成功后在短互斥区重新核对配置 revision，再原子写入凭据与偏好并取消旧请求；验证或并发核对失败时不修改已保存配置。设置页所有卡片统一使用轻边框与无阴影样式。
+
+写信助手在同一个模态 Dialog 内使用独立右侧容器，assistant-ui ExternalStoreRuntime 连接当前草稿的会话状态，模型调用沿用原生命令。写信修复仅针对正文中可完整替换的顶层段落和标题。正文版本变化会清除临时 Diff 与待应用建议。通过 ProseMirror 装饰预览删除和新增，应用时使用独立事务保留可用内联格式和未涉及节点，自动保存沿用写信窗口的既有路径。
+
+### 日历与工作台（2026-11-14，开发中）
+
+偏好设置新增持久字段 `showWorkbench`，旧配置缺少该字段时按 `true` 兼容。设置页「应用偏好」中的 Workbench 卡片只控制侧栏入口；切换时先读取最新偏好再合并保存，不覆盖同步、通知、代理等并发修改。关闭后若当前位于工作台则返回邮件，邮件摘要和系统提醒的工作台跳转只显示开启提示；事项数据和工作台页面不删除。
+
+`work_items` 使用本机 SQLite，按事项日期建立索引，以版本保护编辑与删除。月历、分组表格、状态看板和报告读取同一份记录。邮件摘要和提醒使用同一次模型请求。提醒输出必须匹配原文证据，通过日期和时间校验后才显示。用户确认保存后，以本机邮件 ID 关联邮箱内的源邮件。报告沿用同一模型配置，CSV 对可执行单元格前缀转义，PDF 复用现有 A4 打印入口。
+
+工作事项 JSON 新增可选结束日期和重要、紧急布尔字段，使用反序列化缺省值兼容旧数据。原日期索引继续以开始日期为键，结束日期由后端验证为合法日期且不早于开始日期。

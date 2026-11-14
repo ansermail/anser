@@ -66,7 +66,7 @@ describe("directory task feedback", () => {
         }) as DirectoryOperation,
     );
     await act(async () => root.render(<DirectoryOperationsPanel />));
-    const rows = host.querySelectorAll("li");
+    const rows = host.querySelectorAll("tbody tr");
     expect(rows[0].textContent).toContain("待完成移动");
     expect(rows[0].querySelectorAll("button")).toHaveLength(0);
     expect(rows[1].textContent).toContain("原目录结果未确认");
@@ -97,7 +97,7 @@ describe("directory task feedback", () => {
   });
   it("offers only safe actions for each persisted state", async () => {
     await act(async () => root.render(<DirectoryOperationsPanel />));
-    const rows = [...host.querySelectorAll("li")];
+    const rows = [...host.querySelectorAll("tbody tr")];
     expect(rows[0].textContent).toContain("结果未确认");
     expect(rows[0].querySelectorAll("button")).toHaveLength(0);
     expect(rows[1].textContent).toContain("只读核对");
@@ -138,7 +138,7 @@ describe("directory task feedback", () => {
     items[0].kind = "move";
     items[4].kind = "move";
     await act(async () => root.render(<DirectoryOperationsPanel />));
-    const rows = host.querySelectorAll("li");
+    const rows = host.querySelectorAll("tbody tr");
     expect(rows[0].textContent).toContain("移动");
     expect(rows[0].querySelectorAll("button")).toHaveLength(1);
     expect(rows[0].textContent).toContain("只读核对");

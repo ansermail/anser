@@ -10,10 +10,12 @@ import { CollapsibleTrigger } from "./ui/collapsible";
 export function TaskPanelHeader({
   title,
   description,
+  badge,
   onRefresh,
 }: {
   title: string;
   description: ReactNode;
+  badge?: ReactNode;
   onRefresh: () => Promise<void>;
 }) {
   const [refreshing, setRefreshing] = useState(false);
@@ -52,20 +54,23 @@ export function TaskPanelHeader({
   }
 
   return (
-    <CardHeader className="flex flex-row items-start gap-2 px-4">
+    <CardHeader className="flex flex-row items-center gap-2 px-4">
       <CollapsibleTrigger asChild>
         <Button
           variant="ghost"
           aria-label={t("Expand or collapse {value0}", { value0: title })}
-          className="group h-auto min-w-0 flex-1 items-start justify-start gap-4 px-2 py-1 text-left whitespace-normal"
+          className="group h-auto min-w-0 flex-1 items-center justify-start gap-4 px-2 py-1 text-left whitespace-normal"
         >
           <span className="flex min-w-0 flex-1 flex-col gap-2">
-            <span className="font-semibold">{title}</span>
+            <span className="flex flex-wrap items-center gap-2">
+              <span className="font-semibold">{title}</span>
+              {badge}
+            </span>
             <span className="text-sm leading-relaxed font-normal text-muted-foreground">
               {description}
             </span>
           </span>
-          <ChevronDown className="mt-0.5 transition-transform group-data-[state=open]:rotate-180 motion-reduce:transition-none" />
+          <ChevronDown className="shrink-0 transition-transform group-data-[state=open]:rotate-180 motion-reduce:transition-none" />
         </Button>
       </CollapsibleTrigger>
       <Button

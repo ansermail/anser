@@ -4,8 +4,17 @@ import { act } from "react";
 import { beforeEach, afterEach, it, expect, vi } from "vitest";
 import { RichEditor } from "./rich-editor";
 import { toast } from "sonner";
-const mode = vi.hoisted(() => ({ demo: false }));
-vi.mock("@/lib/api", () => ({ native: true, isDemo: () => mode.demo }));
+const mode = vi.hoisted(() => ({
+  demo: false,
+  call: vi.fn<
+    (command: string, args?: Record<string, unknown>) => Promise<unknown>
+  >(),
+}));
+vi.mock("@/lib/api", () => ({
+  native: true,
+  isDemo: () => mode.demo,
+  call: mode.call,
+}));
 vi.mock("sonner", () => ({ toast: { error: vi.fn(), info: vi.fn() } }));
 const picker = vi.hoisted(() => ({ open: vi.fn() }));
 vi.mock("@tauri-apps/plugin-dialog", () => picker);
@@ -15,6 +24,7 @@ let root: Root, host: HTMLDivElement;
 beforeEach(() => {
   Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
   HTMLElement.prototype.scrollIntoView = vi.fn();
+  HTMLElement.prototype.scrollTo = vi.fn();
   Range.prototype.getBoundingClientRect = () => ({
     left: 0,
     right: 0,
@@ -245,4 +255,168 @@ it("right-clicks only the target image, locks proportions, supports independent 
   expect(
     document.querySelector(".rich-body img[src]")?.getAttribute("width"),
   ).toBe("300");
+});
+
+it("previews AI revisions without saving and applies them as one undoable transaction", async () => {
+  const change = vi.fn();
+  mode.call.mockImplementation(async (command, args) => {
+    if (command === "get_translation_settings") return { revision: "r1" };
+    if (command === "run_mail_ai") {
+      const input = args?.input as { paragraphs: string[] };
+      expect(input.paragraphs).toEqual(["原正文", "保留这一段"]);
+      return { message: "已调整", edits: [{ index: 0, text: "修改后" }] };
+    }
+  });
+  await act(async () =>
+    root.render(
+      <RichEditor
+        body=""
+        html="<p><strong>原正文</strong></p><p>保留这一段</p>"
+        assistantHost={host}
+        disabled={false}
+        onChange={change}
+        onBusy={vi.fn()}
+        readImages={vi.fn()}
+      />,
+    ),
+  );
+  const button = (label: string) =>
+    [...host.querySelectorAll("button")].find(
+      (b) => b.textContent === label || b.getAttribute("aria-label") === label,
+    )!;
+  await act(async () => {
+    button("AI 助手").click();
+    await import("./compose-repair");
+  });
+  await act(async () => button("精简一点").click());
+  expect(host.querySelector(".compose-repair-added")?.textContent).toContain(
+    "修改后",
+  );
+  expect(change).not.toHaveBeenCalled();
+  await act(async () => button("应用到正文").click());
+  expect(change).toHaveBeenLastCalledWith(
+    "修改后\n保留这一段",
+    "<p><strong>修改后</strong></p><p>保留这一段</p>",
+  );
+  const undo = host.querySelector(
+    'button[aria-label="撤销编辑"]',
+  ) as HTMLButtonElement;
+  expect(undo).toBeTruthy();
+  await act(async () => undo.click());
+  expect(change).toHaveBeenLastCalledWith(
+    "原正文\n保留这一段",
+    "<p><strong>原正文</strong></p><p>保留这一段</p>",
+  );
+});
+
+it("ignores IME Enter, cancels an in-flight repair and discards suggestions after typing", async () => {
+  const change = vi.fn();
+  const replies: ((value: unknown) => void)[] = [];
+  mode.call.mockImplementation(async (command) => {
+    if (command === "get_translation_settings") return { revision: "r1" };
+    if (command === "run_mail_ai")
+      return new Promise((resolve) => replies.push(resolve));
+  });
+  await act(async () =>
+    root.render(
+      <RichEditor
+        body=""
+        html="<p>原正文</p>"
+        assistantHost={host}
+        disabled={false}
+        onChange={change}
+        onBusy={vi.fn()}
+        readImages={vi.fn()}
+      />,
+    ),
+  );
+  const button = (label: string) =>
+    [...host.querySelectorAll("button")].find(
+      (element) =>
+        element.textContent === label ||
+        element.getAttribute("aria-label") === label,
+    )!;
+  await act(async () => {
+    button("AI 助手").click();
+    await import("./compose-repair");
+  });
+  const prompt = host.querySelector<HTMLTextAreaElement>(
+    ".compose-repair-panel textarea",
+  )!;
+  await act(async () => {
+    Object.getOwnPropertyDescriptor(
+      HTMLTextAreaElement.prototype,
+      "value",
+    )!.set!.call(prompt, "请精简");
+    prompt.dispatchEvent(new Event("input", { bubbles: true }));
+    prompt.dispatchEvent(
+      new KeyboardEvent("keydown", {
+        key: "Enter",
+        bubbles: true,
+        isComposing: true,
+      }),
+    );
+  });
+  expect(replies).toHaveLength(0);
+  await act(async () => button("发送修改要求").click());
+  const request = mode.call.mock.calls.find(
+    ([name]) => name === "run_mail_ai",
+  )?.[1];
+  expect(replies).toHaveLength(1);
+  await act(async () => button("停止生成").click());
+  expect(mode.call).toHaveBeenCalledWith("cancel_translation", {
+    requestId: request?.requestId,
+  });
+  await act(async () =>
+    replies[0]({ message: "迟到建议", edits: [{ index: 0, text: "迟到" }] }),
+  );
+  expect(host.textContent).not.toContain("迟到建议");
+  await act(async () => button("精简一点").click());
+  await act(async () =>
+    replies[1]({ message: "建议", edits: [{ index: 0, text: "修改后" }] }),
+  );
+  expect(button("应用到正文")).toBeDefined();
+  const body = host.querySelector<HTMLElement>(".rich-body")!;
+  await act(async () => {
+    body.textContent = "手动更新";
+    body.dispatchEvent(new InputEvent("input", { bubbles: true }));
+  });
+  expect(host.textContent).toContain("草稿已变更，请重新生成建议。");
+  expect(button("应用到正文")).toBeUndefined();
+  expect(body.querySelector(".compose-repair-added")).toBeNull();
+});
+
+it("shows a specific repair failure without assistant-ui's loading dot", async () => {
+  mode.call.mockImplementation(async (command) => {
+    if (command === "get_translation_settings") return { revision: "r1" };
+    if (command === "run_mail_ai") throw "模型返回的内容不符合格式，请重试";
+  });
+  await act(async () =>
+    root.render(
+      <RichEditor
+        body=""
+        html="<p>原正文</p>"
+        assistantHost={host}
+        disabled={false}
+        onChange={vi.fn()}
+        onBusy={vi.fn()}
+        readImages={vi.fn()}
+      />,
+    ),
+  );
+  const button = (label: string) =>
+    [...host.querySelectorAll("button")].find(
+      (element) =>
+        element.textContent === label ||
+        element.getAttribute("aria-label") === label,
+    )!;
+  await act(async () => {
+    button("AI 助手").click();
+    await import("./compose-repair");
+  });
+  await act(async () => button("精简一点").click());
+  expect(host.textContent).toContain(
+    "模型返回内容格式不正确，请重试或换用支持 JSON 输出的模型。",
+  );
+  expect(host.textContent).not.toContain("●");
 });

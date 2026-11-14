@@ -1,3 +1,4 @@
+import type { WorkItem } from "@/lib/workbench";
 import { t } from "@/lib/i18n";
 import {
   useCallback,
@@ -35,6 +36,7 @@ import {
 import { MailBodySkeleton } from "./mail-skeleton";
 import { Alert, AlertTitle, AlertDescription } from "./ui/alert";
 import { TranslatableMailBody } from "./translatable-mail-body";
+import { MailSummaryLayer } from "./mail-summary";
 import { MailAttachments } from "./mail-attachments";
 import { MailStorageStatus } from "./mail-storage-status";
 import { ContactAddress } from "./contact-address";
@@ -144,6 +146,7 @@ function Turn({
   onAddContact,
   onLoaded,
   translationActions,
+  onAddWorkItem,
 }: {
   mail: Mail;
   selected: Detail | null;
@@ -164,6 +167,7 @@ function Turn({
   onAddContact?: (address: Address) => void;
   onLoaded: (detail: Detail) => void;
   translationActions: HTMLElement | null;
+  onAddWorkItem?: (item: WorkItem) => void;
 }) {
   const [localActions, setLocalActions] = useState<HTMLDivElement | null>(null);
   const [detail, setDetail] = useState<Detail | null>(selected);
@@ -333,6 +337,9 @@ function Turn({
         ) : (
           <TranslatableMailBody
             key={`${mail.id}:${mail.hash}`}
+            mailId={mail.id}
+            mailDate={mail.date}
+            onAddWorkItem={onAddWorkItem}
             html={detail.html}
             body={detail.mail.body}
             title={t("Message body: {value0}", { value0: mail.id })}
@@ -602,6 +609,7 @@ export function ConversationReader({
   demo,
   scrollRef,
   translationActions,
+  onAddWorkItem,
   editorOpen,
   onReply,
   onReedit,
@@ -623,6 +631,7 @@ export function ConversationReader({
   editorOpen: boolean;
   scrollRef: RefObject<HTMLDivElement | null>;
   translationActions: HTMLElement | null;
+  onAddWorkItem?: (item: WorkItem) => void;
   onReply: (detail: Detail, forward?: boolean, all?: boolean) => void;
   onReedit: (detail: Detail) => void;
   onEdit: (draft: Compose) => void;
@@ -779,108 +788,116 @@ export function ConversationReader({
   if (!replying || !messages.some((mail) => mail.id === replyTarget.current))
     replyTarget.current = target?.id || "";
   const targetDetail = details[replyTarget.current];
-  if (
+  const showSingle =
     singleMessage ||
     (messages.length === 1 &&
       (selected.mail.conversationCount || 1) === 1 &&
       !selected.mail.inReplyTo?.length &&
-      !selected.mail.references?.length)
-  ) {
-    return (
-      <ScrollArea
-        className="reader-scroll"
-        type="always"
-        viewportRef={scrollRef}
-        viewportProps={
-          {
-            id: "mail-reader-content",
-            "data-mail-debug-region": "",
-          } as ComponentProps<"div">
-        }
-      >
-        <div className="reader-scroll-content">
-          <ParseWarnings mail={selected.mail} />
-          <TranslatableMailBody
-            key={`${selected.mail.id}:${selected.mail.hash}`}
-            html={selected.html}
-            body={selected.mail.body}
-            actionsContainer={translationActions}
-            onOpenLink={onLink}
-          />
-          <MailAttachments
-            mailId={selected.mail.id}
-            demo={demo}
-            attachments={selected.attachments}
-            onPreview={
-              onAttachmentPreview
-                ? (index, name) =>
-                    onAttachmentPreview(selected.mail, index, name)
-                : undefined
-            }
-            onDownload={(index, name) =>
-              onAttachment(selected.mail, index, name)
-            }
-          />
-        </div>
-      </ScrollArea>
-    );
-  }
+      !selected.mail.references?.length);
   return (
     <>
-      <ScrollArea
-        className="reader-scroll conversation-scroll"
-        type="always"
-        viewportRef={scrollRef}
-        viewportProps={
-          {
-            id: "mail-reader-content",
-            "data-mail-debug-region": "",
-          } as ComponentProps<"div">
-        }
-      >
-        <div className="reader-scroll-content conversation-stream" ref={stream}>
-          <div className="conversation-start">
-            <Badge variant="secondary">
-              {messages.length}
-              {t("messages (conversation)")}
-            </Badge>
-            <span>{t("Chronological order")}</span>
-          </div>
-          {error && (
-            <div role="alert" className="turn-error">
-              {t("Could not load conversation")}
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setRetry((n) => n + 1)}
-              >
-                {t("Reload conversation")}
-              </Button>
+      <MailSummaryLayer>
+        {showSingle ? (
+          <ScrollArea
+            className="reader-scroll"
+            type="always"
+            viewportRef={scrollRef}
+            viewportProps={
+              {
+                id: "mail-reader-content",
+                "data-mail-debug-region": "",
+              } as ComponentProps<"div">
+            }
+          >
+            <div className="reader-scroll-content">
+              <ParseWarnings mail={selected.mail} />
+              <TranslatableMailBody
+                key={`${selected.mail.id}:${selected.mail.hash}`}
+                mailId={selected.mail.id}
+                mailDate={selected.mail.date}
+                onAddWorkItem={onAddWorkItem}
+                html={selected.html}
+                body={selected.mail.body}
+                actionsContainer={translationActions}
+                onOpenLink={onLink}
+              />
+              <MailAttachments
+                mailId={selected.mail.id}
+                demo={demo}
+                attachments={selected.attachments}
+                onPreview={
+                  onAttachmentPreview
+                    ? (index, name) =>
+                        onAttachmentPreview(selected.mail, index, name)
+                    : undefined
+                }
+                onDownload={(index, name) =>
+                  onAttachment(selected.mail, index, name)
+                }
+              />
             </div>
-          )}
-          {messages.map((mail) => (
-            <Turn
-              key={mail.id}
-              mail={mail}
-              selected={mail.id === selected.mail.id ? selected : null}
-              own={own(mail)}
-              demo={demo}
-              onReply={onReply}
-              onReedit={onReedit}
-              onExport={onExport}
-              onAttachment={onAttachment}
-              onAttachmentPreview={onAttachmentPreview}
-              onAction={onAction}
-              onLink={onLink}
-              onComposeAddress={onComposeAddress}
-              onAddContact={onAddContact}
-              onLoaded={loaded}
-              translationActions={translationActions}
-            />
-          ))}
-        </div>
-      </ScrollArea>
-      {newBelow && (
+          </ScrollArea>
+        ) : (
+          <ScrollArea
+            className="reader-scroll conversation-scroll"
+            type="always"
+            viewportRef={scrollRef}
+            viewportProps={
+              {
+                id: "mail-reader-content",
+                "data-mail-debug-region": "",
+              } as ComponentProps<"div">
+            }
+          >
+            <div
+              className="reader-scroll-content conversation-stream"
+              ref={stream}
+            >
+              <div className="conversation-start">
+                <Badge variant="secondary">
+                  {messages.length}
+                  {t("messages (conversation)")}
+                </Badge>
+                <span>{t("Chronological order")}</span>
+              </div>
+              {error && (
+                <div role="alert" className="turn-error">
+                  {t("Could not load conversation")}
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setRetry((n) => n + 1)}
+                  >
+                    {t("Reload conversation")}
+                  </Button>
+                </div>
+              )}
+              {messages.map((mail) => (
+                <Turn
+                  key={mail.id}
+                  mail={mail}
+                  selected={mail.id === selected.mail.id ? selected : null}
+                  own={own(mail)}
+                  demo={demo}
+                  onReply={onReply}
+                  onReedit={onReedit}
+                  onExport={onExport}
+                  onAttachment={onAttachment}
+                  onAttachmentPreview={onAttachmentPreview}
+                  onAction={onAction}
+                  onLink={onLink}
+                  onComposeAddress={onComposeAddress}
+                  onAddContact={onAddContact}
+                  onLoaded={loaded}
+                  translationActions={translationActions}
+                  onAddWorkItem={onAddWorkItem}
+                />
+              ))}
+            </div>
+          </ScrollArea>
+        )}
+      </MailSummaryLayer>
+      {!showSingle && newBelow && (
         <Button
           variant="secondary"
           size="sm"
@@ -891,7 +908,7 @@ export function ConversationReader({
           {t("New messages · View")}
         </Button>
       )}
-      {targetDetail && !editorOpen && !selected.mail.trashed && (
+      {!showSingle && targetDetail && !editorOpen && !selected.mail.trashed && (
         <QuickReply
           key={targetDetail.mail.id}
           target={targetDetail}

@@ -58,6 +58,7 @@ export interface Mail {
   date: string;
   isRead: boolean;
   starred: boolean;
+  tags?: string[];
   localFolder: string;
   trashed: boolean;
   hasAttachments: boolean;
@@ -110,6 +111,7 @@ export interface Query {
   attachmentsOnly?: boolean;
   excludeSent?: boolean;
   searchField?: string;
+  tag?: string;
   remoteFolder?: string;
   remoteFolderTree?: boolean;
   remoteFolderDelimiter?: string;
@@ -122,6 +124,7 @@ export interface Snapshot {
   messages: Mail[];
   rules: Rule[];
   folders: string[];
+  tags?: string[];
   stats: {
     total: number;
     unread: number;
@@ -258,6 +261,7 @@ export interface OutboxRecord {
 }
 export interface Preferences {
   syncIntervalMinutes: number;
+  showWorkbench?: boolean;
   newMailNotifications?: boolean;
   sendResultNotifications?: boolean;
   doNotDisturb?: boolean;

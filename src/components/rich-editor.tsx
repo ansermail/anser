@@ -1,3 +1,4 @@
+import { createPortal } from "react-dom";
 import { t } from "@/lib/i18n";
 import {
   Dialog,
@@ -10,11 +11,14 @@ import {
 import { FieldGroup, Field, FieldLabel, FieldError } from "./ui/field";
 import { Input } from "./ui/input";
 import {
+  lazy,
+  Suspense,
   useEffect,
   useState,
   useRef,
   useImperativeHandle,
   type Ref,
+  type ReactNode,
 } from "react";
 import { useEditor } from "@tiptap/react";
 import type { Editor } from "@tiptap/core";
@@ -26,8 +30,16 @@ import DOMPurify from "dompurify";
 import { Button } from "./ui/button";
 import { textToHtml, hexColorStyles } from "@/lib/compose-format";
 import { native, isDemo } from "@/lib/api";
+import { Sparkles } from "lucide-react";
+import { composeRepairDecoration } from "@/lib/compose-repair";
+import { Skeleton } from "./ui/skeleton";
 import { toast } from "sonner";
-import { TooltipProvider } from "./ui/tooltip";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+  TooltipProvider,
+} from "./ui/tooltip";
 import {
   readBodyImage,
   inlineImageBytes,
@@ -35,7 +47,14 @@ import {
   type BodyImage,
 } from "@/lib/rich-body";
 
+const ComposeRepair = lazy(() =>
+  import("./compose-repair").then((module) => ({
+    default: module.ComposeRepair,
+  })),
+);
+
 export type RichEditorHandle = {
+  closeAssistant: () => boolean;
   insertPaths: (paths: string[], point: { x: number; y: number }) => boolean;
 };
 
@@ -43,6 +62,10 @@ export function RichEditor({
   body,
   html,
   disabled,
+  repairDisabled = false,
+  assistantHost,
+  onOpenAssistant,
+  bodyActions,
   onChange,
   onBusy,
   readImages,
@@ -54,6 +77,10 @@ export function RichEditor({
   body: string;
   html: string;
   disabled: boolean;
+  repairDisabled?: boolean;
+  assistantHost?: HTMLElement | null;
+  onOpenAssistant?: () => void;
+  bodyActions?: ReactNode;
   onChange: (body: string, html: string) => void;
   onBusy: (busy: boolean) => void;
   readImages: (paths: string[]) => Promise<BodyImage[]>;
@@ -62,6 +89,8 @@ export function RichEditor({
   themeMode?: "light" | "dark" | "system";
   onToggleTheme?: () => void;
 }) {
+  const [repairOpen, setRepairOpen] = useState(false);
+  const repairToggle = useRef<HTMLButtonElement>(null);
   const [imageBusy, setImageBusy] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const latest = useRef({ disabled, onBusy, readImages });
@@ -76,7 +105,7 @@ export function RichEditor({
   const [href, setHref] = useState("");
   const [linkError, setLinkError] = useState("");
   const editor = useEditor({
-    extensions: richExtensions(),
+    extensions: [...richExtensions(), composeRepairDecoration],
     content: html || (body ? textToHtml(body) : ""),
     editorProps: {
       attributes: {
@@ -212,6 +241,7 @@ export function RichEditor({
     }
   }
   useImperativeHandle(ref, () => ({
+    closeAssistant,
     insertPaths(paths, point) {
       const rect = editor?.view.dom.getBoundingClientRect();
       if (
@@ -240,11 +270,45 @@ export function RichEditor({
   useEffect(() => {
     editor?.setEditable(!disabled, false);
   }, [editor, disabled]);
+  function closeAssistant() {
+    if (!repairOpen) return false;
+    setRepairOpen(false);
+    repairToggle.current?.focus({ preventScroll: true });
+    return true;
+  }
   if (!editor) return null;
   return (
     <TooltipProvider>
       <div className="rich-editor">
         <RichToolbar
+          bodyActions={bodyActions}
+          assistantAction={
+            assistantHost && (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    ref={repairToggle}
+                    type="button"
+                    variant={repairOpen ? "secondary" : "ghost"}
+                    size="icon-sm"
+                    aria-label={t("AI Assistant")}
+                    aria-expanded={repairOpen}
+                    disabled={disabled || imageBusy || repairDisabled}
+                    onClick={() => {
+                      if (repairOpen) closeAssistant();
+                      else {
+                        onOpenAssistant?.();
+                        setRepairOpen(true);
+                      }
+                    }}
+                  >
+                    <Sparkles />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>{t("AI Assistant")}</TooltipContent>
+              </Tooltip>
+            )
+          }
           dark={dark}
           themeMode={themeMode}
           onToggleTheme={onToggleTheme}
@@ -280,7 +344,31 @@ export function RichEditor({
             })
           }
         />
-        <RichImageControls editor={editor} disabled={disabled || imageBusy} />
+        <div className="rich-editor-content">
+          <RichImageControls editor={editor} disabled={disabled || imageBusy} />
+        </div>
+        {repairOpen &&
+          assistantHost &&
+          createPortal(
+            <Suspense
+              fallback={
+                <div
+                  className="compose-repair-panel p-4"
+                  role="status"
+                  aria-label={t("Loading…")}
+                >
+                  <Skeleton className="h-4 w-24" />
+                </div>
+              }
+            >
+              <ComposeRepair
+                editor={editor}
+                disabled={disabled || repairDisabled || imageBusy}
+                onClose={closeAssistant}
+              />
+            </Suspense>,
+            assistantHost,
+          )}
         <Dialog
           open={!!linkDialog}
           onOpenChange={(open) => {

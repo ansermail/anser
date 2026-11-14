@@ -1,3 +1,4 @@
+import { TaskCellText, TaskDataTable } from "./task-data-table";
 import { dateLocale, t } from "@/lib/i18n";
 import { TaskPanelHeader } from "./task-panel-header";
 import { useEffect, useRef, useState } from "react";
@@ -126,76 +127,97 @@ export function FolderHealthPanel({
                 aria-label={t("Loading folder checks")}
               />
             )}
-            {items?.length === 0 && (
-              <p className="text-sm text-muted-foreground">
-                {t("No quarantined folders.")}
-              </p>
-            )}
-            {items?.map((item) => {
-              const key = JSON.stringify([item.accountId, item.folder]);
-              return (
-                <Alert key={key}>
-                  <AlertCircle />
-                  <AlertTitle className="flex flex-wrap items-center gap-2">
-                    {item.displayName}
-                    <Badge variant="secondary">{t("Source quarantined")}</Badge>
-                  </AlertTitle>
-                  <AlertDescription className="gap-2">
-                    <p>{item.accountEmail}</p>
-                    <p>{item.reason}</p>
-                    <p>
-                      {t("Keeping ")}
-                      {item.sources}
-                      {t(" old sources; ")}
-                      {item.alternateSources}{" "}
-                      {t(" have another usable source; ")}
-                      {item.saved}
-                      {t(" have full local archives.")}
-                    </p>
-                    {result?.key === key && (
-                      <p role="status">
-                        {result.evidence.exists === 0 &&
+            {items && (
+              <TaskDataTable
+                actionsWidth={7}
+                label={t("Folder source checks")}
+                empty={t("No quarantined folders.")}
+                fields={[
+                  "folder",
+                  "account",
+                  "status",
+                  "reason",
+                  "checked",
+                  "actions",
+                ]}
+                rows={items.map((item) => {
+                  const key = JSON.stringify([item.accountId, item.folder]);
+                  const review =
+                    result?.key === key
+                      ? result.evidence.exists === 0 &&
                         (result.evidence.uidCount || 0) > 0
+                        ? t(
+                            "Folder responses are still inconsistent. Quarantine continues.",
+                          )
+                        : result.evidence.exists === null ||
+                            result.evidence.uidCount === null
                           ? t(
-                              "Folder responses are still inconsistent. Quarantine continues.",
+                              "Could not confirm the folder opened. Quarantine continues.",
                             )
-                          : result.evidence.exists === null ||
-                              result.evidence.uidCount === null
-                            ? t(
-                                "Could not confirm the folder opened. Quarantine continues.",
-                              )
-                            : t(
-                                "Folder responses recovered. Fetch this folder again to review old sources.",
-                              )}
-                      </p>
-                    )}
-                    <div className="mt-2 flex flex-wrap items-center gap-3">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        disabled={!!busy}
-                        onClick={() => void probe(item)}
-                        aria-label={t("Recheck {value0} {value1}", {
-                          value0: item.accountEmail,
-                          value1: item.displayName,
-                        })}
-                      >
-                        <RefreshCw
-                          className={busy === key ? "animate-spin" : ""}
-                        />
-                        {busy === key ? t("Rechecking…") : t("Recheck")}
-                      </Button>
-                      <span className="text-xs text-muted-foreground">
-                        {t("Review time")}{" "}
-                        {new Date(item.checkedAt).toLocaleString(dateLocale(), {
+                          : t(
+                              "Folder responses recovered. Fetch this folder again to review old sources.",
+                            )
+                      : "";
+                  const details =
+                    t("Keeping ") +
+                    item.sources +
+                    t(" old sources; ") +
+                    item.alternateSources +
+                    " " +
+                    t(" have another usable source; ") +
+                    item.saved +
+                    t(" have full local archives.");
+                  const checked = new Date(item.checkedAt);
+                  return {
+                    id: key,
+                    folder: <TaskCellText text={item.displayName} />,
+                    account: item.accountEmail && (
+                      <TaskCellText text={item.accountEmail} />
+                    ),
+                    reason: (
+                      <TaskCellText
+                        text={review || item.reason || details}
+                        detail={[review, item.reason, details]
+                          .filter(Boolean)
+                          .join("\n")}
+                        status={!!review}
+                      />
+                    ),
+                    checked: Number.isFinite(+checked) ? (
+                      <TaskCellText
+                        text={checked.toLocaleString(dateLocale(), {
                           hour12: false,
                         })}
-                      </span>
-                    </div>
-                  </AlertDescription>
-                </Alert>
-              );
-            })}
+                      />
+                    ) : undefined,
+                    status: (
+                      <Badge variant="secondary">
+                        {t("Source quarantined")}
+                      </Badge>
+                    ),
+                    actions: (
+                      <div className="flex justify-end">
+                        <Button
+                          variant="outline"
+                          size="xs"
+                          disabled={!!busy}
+                          onClick={() => void probe(item)}
+                          aria-label={t("Recheck {value0} {value1}", {
+                            value0: item.accountEmail,
+                            value1: item.displayName,
+                          })}
+                        >
+                          <RefreshCw
+                            className={busy === key ? "animate-spin" : ""}
+                          />
+                          {busy === key ? t("Rechecking…") : t("Recheck")}
+                        </Button>
+                      </div>
+                    ),
+                  };
+                })}
+              />
+            )}
           </CardContent>
         </CollapsibleContent>
       </Card>

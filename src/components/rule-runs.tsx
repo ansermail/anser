@@ -1,26 +1,15 @@
-import { t } from "@/lib/i18n";
+import { formatMailListTime, formatMailTime, t } from "@/lib/i18n";
 import { useEffect, useRef, useState } from "react";
-import { ChevronDown, RefreshCw } from "lucide-react";
 import { call } from "@/lib/api";
 import { coalesceRefresh } from "@/lib/refresh-queue";
-import {
-  Collapsible,
-  CollapsibleTrigger,
-  CollapsibleContent,
-} from "./ui/collapsible";
+import { Collapsible, CollapsibleContent } from "./ui/collapsible";
 import { Button } from "./ui/button";
 import { Badge } from "./ui/badge";
 import { Alert, AlertDescription } from "./ui/alert";
 import { Skeleton } from "./ui/skeleton";
-import {
-  Card,
-  CardHeader,
-  CardTitle,
-  CardDescription,
-  CardContent,
-  CardFooter,
-  CardAction,
-} from "./ui/card";
+import { TaskCellText, TaskDataTable } from "./task-data-table";
+import { TaskPanelHeader } from "./task-panel-header";
+import { Card, CardContent } from "./ui/card";
 export type RuleRun = {
   id: string;
   accountEmail: string;
@@ -53,7 +42,7 @@ const states: Record<string, string> = {
     return t("Canceled");
   },
 };
-export function RuleRunsPanel({ onShowTasks }: { onShowTasks: () => void }) {
+export function RuleRunsPanel() {
   const [open, setOpen] = useState(false);
   const [items, setItems] = useState<RuleRun[] | null>(null),
     [error, setError] = useState(""),
@@ -98,9 +87,9 @@ export function RuleRunsPanel({ onShowTasks }: { onShowTasks: () => void }) {
   return (
     <Collapsible open={open} onOpenChange={setOpen} asChild>
       <Card className="mt-6">
-        <CardHeader>
-          <CardTitle>
-            {t("Rule processing tasks")}{" "}
+        <TaskPanelHeader
+          title={t("Rule processing tasks")}
+          badge={
             <Badge
               variant={
                 items?.some((item) => item.status === "blocked")
@@ -113,42 +102,19 @@ export function RuleRunsPanel({ onShowTasks }: { onShowTasks: () => void }) {
               ).length ?? 0}{" "}
               {t(" items pending")}
             </Badge>
-          </CardTitle>
-          <CardDescription>
-            {t(
-              "The latest 100 tasks. Online bodies are checked as needed; filing follows successful complete saving. Verification, saving or queueing failures stop later rules. See linked tasks for server results.",
-            )}
-          </CardDescription>
-          <CardAction className="flex items-center gap-2">
-            <CollapsibleTrigger asChild>
-              <Button
-                variant="ghost"
-                size="icon-sm"
-                aria-label={
-                  open
-                    ? t("Collapse rule processing tasks")
-                    : t("Expand rule processing tasks")
-                }
-              >
-                <ChevronDown className={open ? "rotate-180" : ""} />
-              </Button>
-            </CollapsibleTrigger>
-            <Button
-              variant="ghost"
-              size="sm"
-              disabled={busy}
-              onClick={() => void reload.current()}
-            >
-              <RefreshCw data-icon="inline-start" />
-              {t("Refresh")}
-            </Button>
-          </CardAction>
-          {error && !open && (
+          }
+          description={t(
+            "The latest 100 tasks. Online bodies are checked as needed; filing follows successful complete saving. Verification, saving or queueing failures stop later rules. See linked tasks for server results.",
+          )}
+          onRefresh={() => reload.current()}
+        />
+        {error && !open && (
+          <div className="px-4">
             <Alert variant="destructive">
               <AlertDescription>{error}</AlertDescription>
             </Alert>
-          )}
-        </CardHeader>
+          </div>
+        )}
         <CollapsibleContent>
           <CardContent className="flex flex-col gap-4">
             {error && (
@@ -159,102 +125,109 @@ export function RuleRunsPanel({ onShowTasks }: { onShowTasks: () => void }) {
             {!items && !error && (
               <Skeleton className="h-24" aria-label={t("Loading rule tasks")} />
             )}
-            {items?.length === 0 && (
-              <p className="text-sm text-muted-foreground">
-                {t(
+            {items && (
+              <TaskDataTable
+                actionsWidth={14}
+                label={t("Rule processing tasks")}
+                empty={t(
                   "No asynchronous rules to process. Rules requiring online bodies or complete saving appear here.",
                 )}
-              </p>
+                fields={[
+                  "task",
+                  "account",
+                  "step",
+                  "progress",
+                  "matched",
+                  "status",
+                  "reason",
+                  "time",
+                  "actions",
+                ]}
+                rows={items.map((item) => {
+                  const step = item.step || t("Rule review");
+                  const actionable = !["completed", "cancelled"].includes(
+                    item.status,
+                  );
+                  return {
+                    id: item.id,
+                    task: (
+                      <TaskCellText text={item.subject || t("(No subject)")} />
+                    ),
+                    account: item.accountEmail && (
+                      <TaskCellText text={item.accountEmail} />
+                    ),
+                    step: (
+                      <TaskCellText
+                        text={`${item.status === "completed" ? t("Last check") : t("Current step")}：${step}`}
+                      />
+                    ),
+                    progress: (
+                      <TaskCellText text={`${item.cursor}/${item.total}`} />
+                    ),
+                    matched: <TaskCellText text={String(item.applied)} />,
+                    status: (
+                      <Badge
+                        variant={
+                          item.status === "blocked" ? "destructive" : "outline"
+                        }
+                      >
+                        {states[item.status] || item.status}
+                      </Badge>
+                    ),
+                    reason: item.error && <TaskCellText text={item.error} />,
+                    time: item.updatedAt ? (
+                      <TaskCellText
+                        text={formatMailListTime(item.updatedAt)}
+                        detail={formatMailTime(item.updatedAt)}
+                      />
+                    ) : undefined,
+                    actions: actionable ? (
+                      <div className="flex items-center justify-end gap-1">
+                        {["queued", "running"].includes(item.status) && (
+                          <Button
+                            size="xs"
+                            variant="outline"
+                            disabled={busy}
+                            onClick={() => void action(item.id, "pause")}
+                          >
+                            {t("Pause")}
+                          </Button>
+                        )}
+                        {item.status === "paused" && (
+                          <Button
+                            size="xs"
+                            variant="outline"
+                            disabled={busy}
+                            onClick={() => void action(item.id, "resume")}
+                          >
+                            {t("Continue")}
+                          </Button>
+                        )}
+                        {item.status === "blocked" && (
+                          <Button
+                            size="xs"
+                            variant="outline"
+                            disabled={busy}
+                            onClick={() => void action(item.id, "retry")}
+                          >
+                            {t("Recheck & run remaining rules")}
+                          </Button>
+                        )}
+                        <Button
+                          size="xs"
+                          variant="ghost"
+                          disabled={busy}
+                          onClick={() => void action(item.id, "cancel")}
+                        >
+                          {t("Cancel remaining rules")}
+                        </Button>
+                      </div>
+                    ) : undefined,
+                  };
+                })}
+              />
             )}
-            {items?.map((item) => (
-              <div key={item.id} className="flex flex-col gap-2">
-                <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <p className="truncate" title={item.subject}>
-                      {item.subject}
-                    </p>
-                    <p className="text-sm text-muted-foreground">
-                      {item.accountEmail}
-                      {t(" · Checked ")}
-                      {item.cursor}/{item.total} {t(" items; matched ")}
-                      {item.applied}
-                      {t(" items")}
-                    </p>
-                    <p className="text-sm text-muted-foreground">
-                      {item.status === "completed"
-                        ? t("Last check")
-                        : t("Current step")}
-                      ：{item.step || t("Rule review")}
-                    </p>
-                  </div>
-                  <Badge
-                    variant={
-                      item.status === "blocked" ? "destructive" : "secondary"
-                    }
-                  >
-                    {states[item.status] || item.status}
-                  </Badge>
-                </div>
-                {item.error && (
-                  <Alert variant="destructive">
-                    <AlertDescription>{item.error}</AlertDescription>
-                  </Alert>
-                )}
-                <div className="flex flex-wrap gap-2">
-                  {["queued", "running"].includes(item.status) && (
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      disabled={busy}
-                      onClick={() => void action(item.id, "pause")}
-                    >
-                      {t("Pause")}
-                    </Button>
-                  )}
-                  {item.status === "paused" && (
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      disabled={busy}
-                      onClick={() => void action(item.id, "resume")}
-                    >
-                      {t("Continue")}
-                    </Button>
-                  )}
-                  {item.status === "blocked" && (
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      disabled={busy}
-                      onClick={() => void action(item.id, "retry")}
-                    >
-                      {t("Recheck & run remaining rules")}
-                    </Button>
-                  )}
-                  {!["completed", "cancelled"].includes(item.status) && (
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      disabled={busy}
-                      onClick={() => void action(item.id, "cancel")}
-                    >
-                      {t("Cancel remaining rules")}
-                    </Button>
-                  )}
-                </div>
-              </div>
-            ))}
           </CardContent>
-          <CardFooter className="flex flex-wrap gap-3">
-            <p className="text-sm text-muted-foreground">
-              {t(
-                "Saved originals remain. Rechecking runs remaining rules using current flags and filing as the starting point. See linked tasks for actual server outcomes.",
-              )}
-            </p>
-            <Button variant="outline" size="sm" onClick={onShowTasks}>
-              {t("View saving & server tasks")}
-            </Button>
-          </CardFooter>
         </CollapsibleContent>
       </Card>
     </Collapsible>

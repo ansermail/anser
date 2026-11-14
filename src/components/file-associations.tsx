@@ -25,6 +25,13 @@ type Association = {
   isDefault: boolean;
 };
 type Associations = { supported: boolean; busy: boolean; items: Association[] };
+type DefaultMailClient = {
+  supported: boolean;
+  busy: boolean;
+  currentName: string;
+  currentId: string;
+  isDefault: boolean;
+};
 function errorText(error: unknown) {
   const code = error instanceof Error ? error.message : String(error);
   switch (code) {
@@ -47,7 +54,7 @@ function errorText(error: unknown) {
       );
     default:
       return t(
-        "Could not read or change file associations. Refresh and try again.",
+        "Could not read or change the default application. Refresh and try again.",
       );
   }
 }
@@ -58,17 +65,31 @@ export function FileAssociations() {
     busy: false,
     items: [],
   });
+  const [mailClient, setMailClient] = useState<DefaultMailClient>({
+    supported: enabled && !isWindows(),
+    busy: false,
+    currentName: "",
+    currentId: "",
+    isDefault: false,
+  });
   const [busy, setBusy] = useState(false),
     [refreshing, setRefreshing] = useState(false),
+    [mailClientBusy, setMailClientBusy] = useState(false),
     [error, setError] = useState("");
   const live = useRef(false),
     ticket = useRef(0),
     pending = useRef(false);
   async function read() {
     const request = ++ticket.current;
-    const next = await call<Associations>("get_file_associations");
-    if (live.current && request === ticket.current) setData(next);
-    return next;
+    const [next, client] = await Promise.all([
+      call<Associations>("get_file_associations"),
+      call<DefaultMailClient>("get_default_mail_client"),
+    ]);
+    if (live.current && request === ticket.current) {
+      setData(next);
+      setMailClient(client);
+    }
+    return { associations: next, mailClient: client };
   }
   useEffect(() => {
     live.current = true;
@@ -87,12 +108,12 @@ export function FileAssociations() {
     };
   }, [enabled]);
   useEffect(() => {
-    if (!enabled || !data.busy) return;
+    if (!enabled || (!data.busy && !mailClient.busy)) return;
     const interval = setInterval(() => {
       if (!pending.current) void read().catch(() => {});
     }, 3000);
     return () => clearInterval(interval);
-  }, [enabled, data.busy]);
+  }, [enabled, data.busy, mailClient.busy]);
   async function refresh() {
     if (pending.current) return;
     pending.current = true;
@@ -119,7 +140,7 @@ export function FileAssociations() {
         application: checked ? "self" : "previous",
       });
       if (!live.current || operation !== ticket.current) return;
-      const actual = await read();
+      const { associations: actual } = await read();
       if (
         actual.items.find((x) => x.extension === extension)?.isDefault !==
         checked
@@ -136,8 +157,50 @@ export function FileAssociations() {
       if (live.current) setBusy(false);
     }
   }
+  async function setDefaultMailClient() {
+    if (
+      !enabled ||
+      isWindows() ||
+      pending.current ||
+      mailClient.busy ||
+      mailClientBusy
+    )
+      return;
+    pending.current = true;
+    setMailClientBusy(true);
+    setError("");
+    try {
+      await call("set_default_mail_client");
+      const { mailClient: actual } = await read();
+      if (!actual.isDefault) throw new Error("associationDenied");
+      toast.success(t("Anser is now the default mail app."));
+    } catch (e) {
+      if (live.current) {
+        setError(errorText(e));
+        await read().catch(() => {});
+      }
+    } finally {
+      pending.current = false;
+      if (live.current) setMailClientBusy(false);
+    }
+  }
+  function openDefaultApps() {
+    void call("open_file_association_settings").catch((cause) =>
+      toast.error(
+        t("Could not open system settings: {value0}", {
+          value0: String(cause),
+        }),
+      ),
+    );
+  }
   const disabled =
-    busy || refreshing || data.busy || !enabled || !data.supported;
+    busy ||
+    refreshing ||
+    mailClientBusy ||
+    data.busy ||
+    mailClient.busy ||
+    !enabled ||
+    !data.supported;
   const items = enabled
     ? data.items
     : ["eml", "emlx", "msg"].map((extension) => ({
@@ -149,10 +212,10 @@ export function FileAssociations() {
   return (
     <Card>
       <CardHeader>
-        <CardTitle>{t("File associations")}</CardTitle>
+        <CardTitle>{t("System default apps")}</CardTitle>
         <CardDescription>
           {t(
-            "Open single-message EML, EMLX and MSG files read-only. MBOX mailboxes use Import mail in Local archive.",
+            "Choose the default mail app and open single-message EML, EMLX and MSG files read-only.",
           )}
         </CardDescription>
         <CardAction>
@@ -173,39 +236,10 @@ export function FileAssociations() {
             {t("Sample mode does not read or change system file associations.")}
           </p>
         )}
-        {enabled &&
-          !data.supported &&
-          (isWindows() ? (
-            <div className="flex flex-col items-start gap-3">
-              <p className="text-sm text-muted-foreground">
-                {t(
-                  "Choose Anser in Windows default app settings or Open with. Windows controls the default file association.",
-                )}
-              </p>
-              <Button
-                variant="outline"
-                onClick={() =>
-                  void call("open_file_association_settings").catch((cause) =>
-                    toast.error(
-                      t("Could not open system settings: {value0}", {
-                        value0: String(cause),
-                      }),
-                    ),
-                  )
-                }
-              >
-                {t("Open Windows default apps")}
-              </Button>
-            </div>
-          ) : (
-            <p className="text-sm text-muted-foreground">
-              {t("File association settings are currently available on macOS.")}
-            </p>
-          ))}
         {data.supported && (
           <p className="text-sm text-muted-foreground">
             {t(
-              "Turn on to use Anser. Turn off to restore the previous default application.",
+              "Mail file associations can be switched individually. Turning one off restores the previous default application.",
             )}
           </p>
         )}
@@ -230,6 +264,55 @@ export function FileAssociations() {
           </Alert>
         )}
         <div className="divide-y">
+          {enabled && (
+            <div className="flex items-center justify-between gap-4 py-4 first:pt-0 last:pb-0">
+              <div className="min-w-0">
+                <Label>{t("Default mail app")}</Label>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  {isWindows()
+                    ? t(
+                        "Windows manages the default mail app. Open default app settings to choose Anser.",
+                      )
+                    : mailClient.isDefault
+                      ? t("Anser is the default mail app")
+                      : t("Current default: {name}", {
+                          name: mailClient.currentName || t("Not associated"),
+                        })}
+                </p>
+              </div>
+              {isWindows() ? (
+                <Button variant="outline" size="sm" onClick={openDefaultApps}>
+                  {t("Open Windows default apps")}
+                </Button>
+              ) : mailClient.isDefault ? (
+                <Badge variant="secondary" className="shrink-0">
+                  {t("Already default")}
+                </Badge>
+              ) : (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="shrink-0"
+                  disabled={
+                    disabled ||
+                    !mailClient.supported ||
+                    mailClientBusy ||
+                    refreshing
+                  }
+                  onClick={() => void setDefaultMailClient()}
+                >
+                  {mailClientBusy
+                    ? t("Setting…")
+                    : t("Set as default mail app")}
+                </Button>
+              )}
+            </div>
+          )}
+          {enabled && !data.supported && !isWindows() && (
+            <p className="py-4 text-sm text-muted-foreground">
+              {t("File association settings are currently available on macOS.")}
+            </p>
+          )}
           {items.map((item) => (
             <div
               key={item.extension}

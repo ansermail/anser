@@ -47,5 +47,8 @@ export default defineConfig(({ mode }) => ({
     strictPort: true,
     watch: { ignored: ["**/src-tauri/**"] },
   },
+  test: {
+    setupFiles: "./src/test-setup.ts",
+  },
   clearScreen: false,
 }));

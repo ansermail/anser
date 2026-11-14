@@ -371,6 +371,7 @@ impl Store {
             mail.local_star_override = old.local_star_override;
             mail.trashed = old.trashed;
             mail.local_folder = old.local_folder;
+            mail.tags = old.tags;
             mail.server_date = old.server_date;
             mail.source_folder = old.source_folder;
             mail.server_message_id = old.server_message_id;

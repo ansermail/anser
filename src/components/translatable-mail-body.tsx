@@ -19,6 +19,8 @@ import {
   type TranslationConfig,
   type TranslationPart,
 } from "@/lib/mail-translation";
+import type { WorkItem } from "@/lib/workbench";
+import { useMailSummary } from "./mail-summary";
 import { MailContent } from "./mail-content";
 import { Button } from "./ui/button";
 import {
@@ -35,13 +37,26 @@ export function TranslatableMailBody({
   onOpenLink,
   title = t("Message body"),
   actionsContainer,
+  mailId,
+  mailDate,
+  onAddWorkItem,
 }: {
+  mailId?: string;
+  mailDate?: string;
+  onAddWorkItem?: (item: WorkItem) => void;
   actionsContainer: HTMLElement | null;
   html: string;
   body: string;
   title?: string;
   onOpenLink: (href: string) => void;
 }) {
+  const summary = useMailSummary(
+    mailId ?? title,
+    body,
+    html,
+    mailDate,
+    onAddWorkItem,
+  );
   const paragraphs = useMemo(() => body.split(/(\n\s*\n)/), [body]);
   const plain = useRef<HTMLDivElement>(null);
   const doc = useRef<Document | null>(null);
@@ -110,7 +125,7 @@ export function TranslatableMailBody({
       if (!config)
         throw new Error(
           t(
-            "Save a model configuration in Settings & accounts → AI translation first.",
+            "Save a model configuration in Settings & accounts → AI assistant first.",
           ),
         );
       setLanguage(config.targetLanguage);
@@ -294,10 +309,12 @@ export function TranslatableMailBody({
                   {status ? `${status} · ${actionLabel}` : actionLabel}
                 </TooltipContent>
               </Tooltip>
+              {summary.trigger(ready && !!(body.trim() || html))}
             </div>
           </TooltipProvider>,
           actionsContainer,
         )}
+      {summary.overlay}
       <span
         className="sr-only"
         role={error && !busy ? "alert" : "status"}

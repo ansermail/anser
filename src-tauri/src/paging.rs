@@ -221,6 +221,7 @@ fn bindings(
         (q.remote_folder_tree as i64).into(),
         q.remote_folder_delimiter.clone().into(),
         (q.exclude_sent as i64).into(),
+        q.tag.clone().into(),
     ]
 }
 fn filtered_where(indexed: bool) -> String {
@@ -300,11 +301,11 @@ impl Store {
             let mut values=bindings(request,from,before,true);
             values.extend([instant.into(),id.to_string().into(),if request.query.list_mode==ListMode::Conversations {root.unwrap_or_default()}else{String::new()}.into()]);
             let (condition,order)=if direction=="next" {
-                ("CASE WHEN ?16 IS NULL THEN u.instant IS NULL AND u.id>?17 ELSE u.instant<?16 OR u.instant IS NULL OR (u.instant=?16 AND u.id>?17) END","u.instant DESC,u.id ASC")
+                ("CASE WHEN ?17 IS NULL THEN u.instant IS NULL AND u.id>?18 ELSE u.instant<?17 OR u.instant IS NULL OR (u.instant=?17 AND u.id>?18) END","u.instant DESC,u.id ASC")
             }else{
-                ("CASE WHEN ?16 IS NULL THEN u.instant IS NOT NULL OR (u.instant IS NULL AND u.id<?17) ELSE u.instant>?16 OR (u.instant=?16 AND u.id<?17) END","u.instant ASC,u.id DESC")
+                ("CASE WHEN ?17 IS NULL THEN u.instant IS NOT NULL OR (u.instant IS NULL AND u.id<?18) ELSE u.instant>?17 OR (u.instant=?17 AND u.id<?18) END","u.instant ASC,u.id DESC")
             };
-            let sql=format!("{} SELECT listing.data,u.is_read,u.starred,u.has_attachments,u.root,u.count FROM units u JOIN message_listing listing ON listing.id=u.id WHERE ({condition}) AND (?18='' OR u.root!=?18) ORDER BY {order} LIMIT 1",units(request));
+            let sql=format!("{} SELECT listing.data,u.is_read,u.starred,u.has_attachments,u.root,u.count FROM units u JOIN message_listing listing ON listing.id=u.id WHERE ({condition}) AND (?19='' OR u.root!=?19) ORDER BY {order} LIMIT 1",units(request));
             let mut stmt=tx.prepare(&sql).map_err(err)?;let mut rows=stmt.query(params_from_iter(values.iter())).map_err(err)?;
             let mail=if let Some(row)=rows.next().map_err(err)? {
                 let mut mail:Mail=serde_json::from_str(&row.get::<_,String>(0).map_err(err)?).map_err(err)?;
@@ -341,7 +342,7 @@ impl Store {
                 let mut anchor = values.clone();
                 anchor.push(c.id.clone().into());
                 anchor.push(c.instant.into());
-                let exists:bool=tx.query_row(&format!("{cte} SELECT EXISTS(SELECT 1 FROM units WHERE id=?16 AND instant IS ?17)"),params_from_iter(anchor.iter()),|r|r.get(0)).map_err(err)?;
+                let exists:bool=tx.query_row(&format!("{cte} SELECT EXISTS(SELECT 1 FROM units WHERE id=?17 AND instant IS ?18)"),params_from_iter(anchor.iter()),|r|r.get(0)).map_err(err)?;
                 if !exists {
                     return Err("分页位置无效，请重新搜索".into());
                 }
@@ -355,8 +356,8 @@ impl Store {
                 ((size + 1) as i64).into(),
             ]);
             let sql=format!("{cte} SELECT listing.data,u.instant,u.is_read,u.starred,u.has_attachments,u.root,u.count FROM units u JOIN message_listing listing ON listing.id=u.id
-                WHERE ?16=0 OR CASE WHEN ?17 IS NULL THEN u.instant IS NULL AND u.id>?18 ELSE u.instant<?17 OR u.instant IS NULL OR (u.instant=?17 AND u.id>?18) END
-                ORDER BY u.instant DESC,u.id ASC LIMIT ?19");
+                WHERE ?17=0 OR CASE WHEN ?18 IS NULL THEN u.instant IS NULL AND u.id>?19 ELSE u.instant<?18 OR u.instant IS NULL OR (u.instant=?18 AND u.id>?19) END
+                ORDER BY u.instant DESC,u.id ASC LIMIT ?20");
             let mut stmt = tx.prepare(&sql).map_err(err)?;
             let mut rows = stmt
                 .query(params_from_iter(page_values.iter()))

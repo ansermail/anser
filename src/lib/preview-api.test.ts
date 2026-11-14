@@ -40,6 +40,7 @@ it("public preview ignores persisted mailbox data and blocks real operations", a
     "delete_local_archives",
     "test_notification",
     "set_file_association",
+    "set_default_mail_client",
     "prepare_eml_import",
     "eml_import_action",
   ]) {
@@ -49,6 +50,13 @@ it("public preview ignores persisted mailbox data and blocks real operations", a
     supported: false,
     busy: false,
     items: [],
+  });
+  expect(await api.call("get_default_mail_client")).toEqual({
+    supported: false,
+    busy: false,
+    currentName: "",
+    currentId: "",
+    isDefault: false,
   });
   api.leaveDemo();
   expect(await api.call("eml_import_jobs")).toEqual([]);

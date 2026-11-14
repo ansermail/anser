@@ -1,3 +1,4 @@
+import type { WorkItem } from "@/lib/workbench";
 import { t } from "./i18n";
 import { memoryStorage } from "./demo-storage";
 import { DemoPager } from "./mail-pages";
@@ -59,6 +60,7 @@ export function leaveDemo() {
   demoStorage.removeItem(key + "-outbox");
   demoStorage.removeItem(key + "-auto-start");
   demoStorage.removeItem(key + "-translation");
+  demoStorage.removeItem(key + "-work-items");
   for (let i = demoStorage.length - 1; i >= 0; i--) {
     const stored = demoStorage.key(i);
     if (stored?.startsWith(key + "-signature-")) demoStorage.removeItem(stored);
@@ -88,6 +90,7 @@ const empty = (): Snapshot => ({
   messages: [],
   rules: [],
   folders: [],
+  tags: [],
   stats: { total: 0, unread: 0, saved: 0, bytes: 0, indexBytes: 0 },
   logs: [],
   dataDir: "请在桌面客户端中管理本地存档",
@@ -112,6 +115,10 @@ export async function snapshot(query: Query): Promise<Snapshot> {
         (!query.unreadOnly || !m.isRead) &&
         (!query.starredOnly || m.starred) &&
         (!query.attachmentsOnly || m.hasAttachments) &&
+        (!query.tag ||
+          (m.tags || []).some(
+            (tag) => tag.toLowerCase() === query.tag!.toLowerCase(),
+          )) &&
         (query.view !== "unread" || !m.isRead) &&
         (query.view !== "starred" || m.starred) &&
         (query.view !== "sent" || m.sourceFolder === "Sent") &&
@@ -214,6 +221,7 @@ export async function call<T = void>(
       "backup_archive",
       "restore_archive",
       "set_file_association",
+      "set_default_mail_client",
       "prepare_eml_import",
       "eml_import_action",
       "open_data_folder",
@@ -237,7 +245,17 @@ export async function call<T = void>(
       case "get_file_associations":
         result = { supported: false, busy: false, items: [] };
         break;
+      case "get_default_mail_client":
+        result = {
+          supported: false,
+          busy: false,
+          currentName: "",
+          currentId: "",
+          isDefault: false,
+        };
+        break;
       case "set_file_association":
+      case "set_default_mail_client":
         throw new Error(
           t("Sample mode does not read or change system file associations."),
         );
@@ -378,6 +396,97 @@ export async function call<T = void>(
           if (args.action === "trash") m.trashed = args.value === "true";
           if (args.action === "folder") m.localFolder = String(args.value);
         }
+        break;
+      }
+      case "create_mail_tag": {
+        const name = String(args.name).trim();
+        if (!name || name.length > 48 || /[\r\n\0]/.test(name))
+          throw new Error(t("Use a tag name of 1–48 characters."));
+        if (
+          (demo.tags || []).some(
+            (tag) => tag.toLowerCase() === name.toLowerCase(),
+          )
+        )
+          throw new Error(t("A tag with this name already exists"));
+        demo.tags = [...(demo.tags || []), name];
+        result = name;
+        break;
+      }
+      case "rename_mail_tag": {
+        const current = String(args.current);
+        const replacement = String(args.replacement).trim();
+        if (
+          !replacement ||
+          replacement.length > 48 ||
+          /[\r\n\0]/.test(replacement)
+        )
+          throw new Error(t("Use a tag name of 1–48 characters."));
+        const existing = (demo.tags || []).find(
+          (tag) => tag.toLowerCase() === current.toLowerCase(),
+        );
+        if (!existing) throw new Error(t("Tag not found"));
+        if (
+          replacement.toLowerCase() !== existing.toLowerCase() &&
+          (demo.tags || []).some(
+            (tag) => tag.toLowerCase() === replacement.toLowerCase(),
+          )
+        )
+          throw new Error(t("A tag with this name already exists"));
+        demo.tags = (demo.tags || []).map((tag) =>
+          tag === existing ? replacement : tag,
+        );
+        for (const mail of demo.messages)
+          mail.tags = [
+            ...new Set(
+              (mail.tags || []).map((tag) =>
+                tag.toLowerCase() === existing.toLowerCase()
+                  ? replacement
+                  : tag,
+              ),
+            ),
+          ];
+        demoPager.changed();
+        break;
+      }
+      case "delete_mail_tag": {
+        const name = String(args.name);
+        const existing = (demo.tags || []).find(
+          (tag) => tag.toLowerCase() === name.toLowerCase(),
+        );
+        if (!existing) throw new Error(t("Tag not found"));
+        let affected = 0;
+        for (const mail of demo.messages) {
+          const before = (mail.tags || []).length;
+          mail.tags = (mail.tags || []).filter(
+            (tag) => tag.toLowerCase() !== existing.toLowerCase(),
+          );
+          if (mail.tags.length !== before) affected++;
+        }
+        demo.tags = (demo.tags || []).filter((tag) => tag !== existing);
+        demoPager.changed();
+        result = affected;
+        break;
+      }
+      case "set_mail_tag": {
+        const mail = demo.messages.find((item) => item.id === args.id);
+        if (!mail) throw new Error(t("Message not found"));
+        const name = (demo.tags || []).find(
+          (tag) => tag.toLowerCase() === String(args.name).toLowerCase(),
+        );
+        if (!name) throw new Error(t("Tag not found"));
+        for (const selected of demo.messages.filter(
+          (item) =>
+            item.id === mail.id ||
+            (!!mail.messageId &&
+              item.messageId === mail.messageId &&
+              item.accountId === mail.accountId),
+        )) {
+          selected.tags = (selected.tags || []).filter(
+            (tag) => tag.toLowerCase() !== name.toLowerCase(),
+          );
+          if (args.enabled === true) selected.tags.push(name);
+        }
+        demoPager.changed();
         break;
       }
       case "rename_local_folder": {
@@ -922,6 +1031,83 @@ export async function call<T = void>(
         );
         demo.logs = demo.logs.slice(0, 30);
         break;
+      case "list_work_items":
+        result = JSON.parse(demoStorage.getItem(key + "-work-items") || "[]");
+        break;
+      case "save_work_item":
+      case "delete_work_item": {
+        const items: WorkItem[] = JSON.parse(
+          demoStorage.getItem(key + "-work-items") || "[]",
+        );
+        const item = args.item as WorkItem | undefined;
+        const id = item?.id ?? args.id;
+        const existing = items.find((entry) => entry.id === id);
+        if ((existing?.revision ?? 0) !== (item?.revision ?? args.revision))
+          throw new Error(t("Work item changed. Reload and try again."));
+        const remaining = items.filter((entry) => entry.id !== id);
+        if (item) {
+          const saved = { ...item, revision: item.revision + 1 };
+          remaining.push(saved);
+          result = saved;
+        }
+        demoStorage.setItem(key + "-work-items", JSON.stringify(remaining));
+        break;
+      }
+      case "run_mail_ai": {
+        const input = args.input as {
+          kind: string;
+          body?: string;
+          reference?: string;
+          paragraphs?: string[];
+          instructions?: string[];
+        };
+        if (input.kind === "report") {
+          result = { text: t("This is a simulated work report.") };
+          break;
+        }
+        const instruction = input.instructions?.at(-1) ?? "";
+        const existing = input.paragraphs?.[0] ?? "";
+        const excerpt =
+          input.body?.trim().split(/\n+/).filter(Boolean).slice(0, 2) ?? [];
+        result =
+          input.kind === "summary"
+            ? {
+                conclusion: t("This is a simulated email summary."),
+                points: excerpt.map((line) => line.slice(0, 120)),
+                reminders:
+                  input.reference &&
+                  input.body?.includes(
+                    "请在 2026 年 10 月 28 日前反馈第一版设计。",
+                  )
+                    ? [
+                        {
+                          title: t("Sample design review"),
+                          date: "2026-10-28",
+                          time: "",
+                          evidence:
+                            "请在 2026 年 10 月 28 日前反馈第一版设计。",
+                        },
+                      ]
+                    : [],
+              }
+            : {
+                message: t("This is a simulated revision."),
+                edits: [
+                  {
+                    index: 0,
+                    text: /English|英文/i.test(instruction)
+                      ? "Thank you. Please let me know if you have any questions."
+                      : /short|精简/i.test(instruction) && existing
+                        ? existing.split(/[。.!！]/)[0].slice(0, 35) ||
+                          existing.slice(0, 35)
+                        : t(
+                            "Thank you. Please let me know if you have any questions.",
+                          ),
+                  },
+                ],
+              };
+        break;
+      }
       case "translate_mail_parts":
         result = (args.parts as { id: string; text: string }[]).map((part) => ({
           id: part.id,
@@ -943,7 +1129,7 @@ export async function call<T = void>(
       case "get_preferences":
         result = JSON.parse(
           demoStorage.getItem(key + "-preferences") ||
-            '{"syncIntervalMinutes":5,"newMailNotifications":true,"sendResultNotifications":true,"readingCacheDays":30,"readingCacheLimitMb":1024}',
+            '{"syncIntervalMinutes":5,"showWorkbench":true,"newMailNotifications":true,"sendResultNotifications":true,"readingCacheDays":30,"readingCacheLimitMb":1024}',
         );
         break;
       case "reading_cache_status":
@@ -1144,6 +1330,7 @@ export async function call<T = void>(
         "archive_jobs",
         "eml_import_jobs",
         "get_file_associations",
+        "get_default_mail_client",
         "copy_sources",
         "archive_tier_status",
         "reading_cache_status",
@@ -1156,6 +1343,10 @@ export async function call<T = void>(
         "update_mail",
         "rename_local_folder",
         "delete_local_folder",
+        "create_mail_tag",
+        "rename_mail_tag",
+        "delete_mail_tag",
+        "set_mail_tag",
         "run_rules",
         "account_action",
         "edit_account",

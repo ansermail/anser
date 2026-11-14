@@ -19,7 +19,7 @@ export function makeDemo(): Snapshot {
     [
       "Lin Chen <lin@example.com>",
       "新的一周，从一些好想法开始",
-      "嗨，Alex：\n\n周末愉快！整理了一下上周讨论的想法，觉得我们可以从最简单的体验出发。\n\n一个安静的收件箱，一套真正顺手的归类方式，还有随时都能找回的邮件。让每天的工作，少一点忙乱，多一点从容。\n\n这周三下午有空吗？想和你一起看看第一版设计。\n\n期待你的想法。\nLin",
+      "嗨，Alex：\n\n周末愉快！整理了一下上周讨论的想法，觉得我们可以从最简单的体验出发。\n\n一个安静的收件箱，一套真正顺手的归类方式，还有随时都能找回的邮件。让每天的工作，少一点忙乱，多一点从容。\n\n请在 2026 年 10 月 28 日前反馈第一版设计。\n\n期待你的想法。\nLin",
       "项目协作",
       false,
       true,
@@ -96,6 +96,7 @@ export function makeDemo(): Snapshot {
     date: new Date(Date.now() - i * 4800000).toISOString(),
     isRead: s[4],
     starred: s[5],
+    tags: i < 3 ? ["跟进"] : [],
     localFolder: s[3],
     trashed: false,
     hasAttachments: false,
@@ -133,6 +134,7 @@ export function makeDemo(): Snapshot {
     messages,
     rules,
     folders: ["项目协作", "订阅邮件", "财务/账单"],
+    tags: ["跟进", "稍后阅读"],
     stats: {
       total: messages.length,
       saved: messages.length,

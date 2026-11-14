@@ -12,6 +12,8 @@
     "desktop": "node scripts/desktop.mjs",
     "desktop:build": "node scripts/build-release.mjs",
     "test": "vitest run",
+    "test:changed": "vitest run --changed --passWithNoTests",
+    "test:related": "vitest related --run --passWithNoTests",
     "check": "tsc -b && cargo check --manifest-path src-tauri/Cargo.toml",
     "test:rust": "cargo test --manifest-path src-tauri/Cargo.toml",
     "test:desktop": "node --test scripts/*.node-test.mjs",
@@ -24,6 +26,8 @@
     "test:ci": "vitest run --exclude src/App.test.tsx && vitest run src/App.test.tsx"
   },
   "dependencies": {
+    "@assistant-ui/react": "0.15.20",
+    "@tanstack/react-table": "9.3.1",
     "@tauri-apps/api": "^2",
     "@tauri-apps/plugin-dialog": "^2",
     "@tauri-apps/plugin-updater": "^2.13.1",

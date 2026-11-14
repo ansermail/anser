@@ -161,13 +161,102 @@ describe("account signatures", () => {
     const draft = {
       ...newDraft("a"),
       body: "<Authored>",
-      signature: { accountId: "a", included: true, body: "<Name>", html: "" },
+      signature: {
+        accountId: "a",
+        included: true,
+        body: "<Name>\nRole\nEmail",
+        html: "",
+      },
     };
-    expect(prepareCompose(draft).deliveryBody).toBe("<Authored>\n\n<Name>");
+    expect(prepareCompose(draft).deliveryBody).toBe(
+      "<Authored>\n\n<Name>\nRole\nEmail",
+    );
     expect(prepareCompose(draft).deliveryHtml).toBe("");
-    expect(
-      prepareCompose({ ...draft, html: "<p>Authored</p>" }).deliveryHtml,
-    ).toContain("&lt;Name&gt;");
+    const delivered = new DOMParser().parseFromString(
+      prepareCompose({ ...draft, html: "<p>Authored</p>" }).deliveryHtml!,
+      "text/html",
+    );
+    const signature = delivered.querySelector<HTMLElement>(
+      "[data-anser-signature]",
+    )!;
+    expect(signature.textContent).toBe("<Name>\nRole\nEmail");
+    expect(signature.querySelector("p")).toBeNull();
+    expect(signature.style.whiteSpace).toBe("pre-wrap");
+    expect(signature.style.lineHeight).toBe("1.45");
+    expect(signature.style.marginTop).toBe("18px");
+  });
+  it("uses compact rich rendering for a plain signature before the first edit", () => {
+    const result = prepareCompose({
+      ...newDraft("a"),
+      signature: {
+        accountId: "a",
+        included: true,
+        body: "Regards\nAlex\nEmail",
+        html: "",
+      },
+    });
+    const delivered = new DOMParser().parseFromString(
+      result.deliveryHtml!,
+      "text/html",
+    );
+    const signature = delivered.querySelector<HTMLElement>(
+      "[data-anser-signature]",
+    )!;
+    expect(signature).not.toBeNull();
+    expect(signature.textContent).toBe("Regards\nAlex\nEmail");
+    expect(signature.style.whiteSpace).toBe("pre-wrap");
+    expect(signature.style.lineHeight).toBe("1.45");
+    expect(signature.style.marginTop).toBe("0px");
+    expect(delivered.querySelector("body > p")).toBeNull();
+  });
+  it("drops an empty rich-editor paragraph before the signature", () => {
+    const delivered = new DOMParser().parseFromString(
+      prepareCompose({
+        ...newDraft("a"),
+        body: "",
+        html: "<p><br></p>",
+        signature: {
+          accountId: "a",
+          included: true,
+          body: "Name\nCompany",
+          html: "<p>Name</p><p>Company</p>",
+        },
+      }).deliveryHtml!,
+      "text/html",
+    );
+    const signature = delivered.querySelector<HTMLElement>(
+      "[data-anser-signature]",
+    )!;
+    expect(delivered.querySelector("body > p")).toBeNull();
+    expect(signature.style.marginTop).toBe("0px");
+    expect(signature.querySelector("p")?.style.marginTop).toBe("0px");
+  });
+  it("compacts paragraph margins inside imported HTML signatures", () => {
+    const delivered = new DOMParser().parseFromString(
+      prepareCompose({
+        ...newDraft("a"),
+        html: "<p>Authored</p>",
+        signature: {
+          accountId: "a",
+          included: true,
+          body: "Name\nCompany\nPhone",
+          html: '<div style="border:1px solid #000;padding:8px"><p>Name</p><p>Company</p><p>Phone</p></div>',
+        },
+      }).deliveryHtml!,
+      "text/html",
+    );
+    const signature = delivered.querySelector<HTMLElement>(
+      "[data-anser-signature]",
+    )!;
+    expect(signature.style.lineHeight).toBe("1.45");
+    for (const paragraph of signature.querySelectorAll<HTMLElement>("p")) {
+      expect(paragraph.style.marginTop).toBe("0px");
+      expect(paragraph.style.marginBottom).toBe("0px");
+      expect(paragraph.style.lineHeight).toBe("1.45");
+    }
+    expect(signature.querySelector<HTMLElement>("div")?.style.padding).toBe(
+      "8px",
+    );
   });
 });
 describe("draft content detection", () => {

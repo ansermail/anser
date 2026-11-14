@@ -46,6 +46,10 @@ export function filteredMail(all: Mail[], query: Query, searching = true) {
         (!query.unreadOnly || !mail.isRead) &&
         (!query.starredOnly || mail.starred) &&
         (!query.attachmentsOnly || mail.hasAttachments) &&
+        (!query.tag ||
+          (mail.tags || []).some(
+            (tag) => tag.toLowerCase() === query.tag!.toLowerCase(),
+          )) &&
         (query.view !== "unread" || !mail.isRead) &&
         (query.view !== "starred" || mail.starred) &&
         (query.view !== "sent" || mail.sourceFolder === "Sent") &&
@@ -79,6 +83,7 @@ function scope(query: Query) {
     unreadOnly: query.unreadOnly,
     starredOnly: !!query.starredOnly,
     attachmentsOnly: !!query.attachmentsOnly,
+    tag: query.tag || "",
     excludeSent: !!query.excludeSent,
     searchField: query.searchField || "",
     remoteFolder: query.remoteFolder || "",

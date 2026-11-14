@@ -63,6 +63,19 @@ it("separates pending, paused, failed and actual complete tasks and keeps reason
     action: "retry",
   });
 });
+it("splits messages, accounts and folders and omits actions for completed records", async () => {
+  items = [job("completed")];
+  await render();
+  const table = host.querySelector("table")!;
+  expect(
+    [...table.querySelectorAll("th")].map((head) => head.dataset.column),
+  ).toEqual(["task", "account", "folder", "status"]);
+  const row = table.querySelector("tbody tr")!;
+  expect(row.querySelector('td[data-column="account"]')?.textContent).toBe(
+    items[0].accountEmail,
+  );
+  expect(host.textContent).not.toContain("暂停全部待保存");
+});
 it("applies global controls to all tasks and refuses duplicate clicks while in flight", async () => {
   items = [job("running")];
   await render();

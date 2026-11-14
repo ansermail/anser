@@ -47,12 +47,17 @@ function probeButton() {
     'button[aria-label^="重新核查"]',
   ) as HTMLButtonElement;
 }
+function sourceDetails() {
+  return host
+    .querySelector('td[data-column="reason"] span')
+    ?.getAttribute("title");
+}
 describe("isolated folder feedback", () => {
   it("shows decoded folder and retained alternate/archive counts", async () => {
     await render();
     expect(host.textContent).toContain("其他文件夹");
-    expect(host.textContent).toContain("其中 1 条另有可用来源");
-    expect(host.textContent).toContain("2 条有完整本地存档");
+    expect(sourceDetails()).toContain("其中 1 条另有可用来源");
+    expect(sourceDetails()).toContain("2 条有完整本地存档");
     expect(host.textContent).not.toContain(fixture.folder);
   });
   it("probes the exact account and wire folder without restoring or syncing mail", async () => {
@@ -112,7 +117,7 @@ describe("isolated folder feedback", () => {
         .click(),
     );
     expect(host.textContent).toContain("此目录正在收取");
-    expect(host.textContent).toContain("保留 2 条旧来源");
+    expect(sourceDetails()).toContain("保留 2 条旧来源");
   });
 });
 it("collapses isolated source details and reveals the existing probe controls on expansion", async () => {
@@ -123,6 +128,6 @@ it("collapses isolated source details and reveals the existing probe controls on
   ) as HTMLButtonElement;
   expect(trigger.getAttribute("aria-expanded")).toBe("false");
   await act(async () => trigger.click());
-  expect(host.textContent).toContain("保留 2 条旧来源");
+  expect(sourceDetails()).toContain("保留 2 条旧来源");
   expect(probeButton()).not.toBeNull();
 });

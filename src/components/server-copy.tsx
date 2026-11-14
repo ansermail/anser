@@ -1,3 +1,4 @@
+import { TaskCellText, TaskDataTable } from "./task-data-table";
 import { t } from "@/lib/i18n";
 import { TaskPanelHeader } from "./task-panel-header";
 import { Collapsible, CollapsibleContent } from "./ui/collapsible";
@@ -171,111 +172,135 @@ export function DirectoryOperationsPanel({
                 aria-label={t("Loading folder operations")}
               />
             )}
-            {items?.length === 0 && (
-              <p className="text-sm text-muted-foreground">
-                {t("No server folder operations.")}
-              </p>
-            )}
-            <ul
-              className="flex flex-col gap-4"
-              aria-label={t("Server folder tasks")}
-            >
-              {items?.map((item) => (
-                <li
-                  key={item.id}
-                  className="flex flex-wrap items-start justify-between gap-3"
-                >
-                  <div className="flex min-w-0 flex-col gap-1">
-                    <p className="break-words">
-                      {item.subject || t("(No subject)")}
-                    </p>
-                    <p className="text-sm text-muted-foreground">
-                      {item.accountEmail} ·{" "}
-                      {item.kind === "move" ? t("Move") : t("Copy")} ·{" "}
-                      {item.folder} → {item.target}
-                    </p>
-                    {item.receiptOrigin === "observed" &&
-                      item.status === "completed" && (
-                        <p className="text-sm text-muted-foreground">
-                          {t(
-                            "Destination full content and source verified read-only",
+            {items && (
+              <TaskDataTable
+                actionsWidth={17}
+                label={t("Server folder tasks")}
+                empty={t("No server folder operations.")}
+                fields={[
+                  "task",
+                  "account",
+                  "operation",
+                  "folder",
+                  "target",
+                  "status",
+                  "reason",
+                  "actions",
+                ]}
+                rows={items.map((item) => {
+                  const verify =
+                    item.status === "confirmed" ||
+                    item.status === "cleanup_uncertain" ||
+                    item.status === "cleanup_blocked" ||
+                    (item.kind === "move" && item.status === "uncertain");
+                  const cancel = ["queued", "blocked"].includes(item.status);
+                  const details = [
+                    item.error,
+                    item.receiptOrigin === "observed" &&
+                      item.status === "completed" &&
+                      t(
+                        "Destination full content and source verified read-only",
+                      ),
+                    item.strategy === "copy-delete" &&
+                      t(
+                        "Compatible move · Verify destination before removing source",
+                      ),
+                  ].filter((text): text is string => !!text);
+                  return {
+                    id: item.id,
+                    task: (
+                      <TaskCellText text={item.subject || t("(No subject)")} />
+                    ),
+                    account: item.accountEmail && (
+                      <TaskCellText text={item.accountEmail} />
+                    ),
+                    operation: (
+                      <TaskCellText
+                        text={item.kind === "move" ? t("Move") : t("Copy")}
+                      />
+                    ),
+                    folder: item.folder && <TaskCellText text={item.folder} />,
+                    target: item.target && <TaskCellText text={item.target} />,
+                    reason: details.length ? (
+                      <TaskCellText
+                        text={details[0]}
+                        detail={details.join("\n")}
+                      />
+                    ) : undefined,
+                    status: (
+                      <Badge
+                        variant={
+                          item.status === "blocked" ||
+                          item.status === "cleanup_blocked"
+                            ? "destructive"
+                            : "outline"
+                        }
+                      >
+                        {item.kind === "move" && item.status === "completed"
+                          ? t("Move completed")
+                          : item.kind === "move" && item.status === "queued"
+                            ? t("Waiting to move")
+                            : statuses[item.status]}
+                      </Badge>
+                    ),
+                    actions:
+                      verify || cancel ? (
+                        <div className="flex items-center justify-end gap-1">
+                          {item.status === "blocked" && (
+                            <Button
+                              size="xs"
+                              variant="outline"
+                              disabled={!!busy}
+                              onClick={() => void action(item.id, "retry")}
+                            >
+                              {t("Retry")}
+                            </Button>
                           )}
-                        </p>
-                      )}
-                    {item.error && (
-                      <p className="text-sm text-destructive">{item.error}</p>
-                    )}
-                    {item.strategy === "copy-delete" && (
-                      <p className="text-sm text-muted-foreground">
-                        {t(
-                          "Compatible move · Verify destination before removing source",
-                        )}
-                      </p>
-                    )}
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Badge variant="outline">
-                      {item.kind === "move" && item.status === "completed"
-                        ? t("Move completed")
-                        : item.kind === "move" && item.status === "queued"
-                          ? t("Waiting to move")
-                          : statuses[item.status]}
-                    </Badge>
-                    {item.status === "blocked" && (
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        disabled={!!busy}
-                        onClick={() => void action(item.id, "retry")}
-                      >
-                        {t("Retry")}
-                      </Button>
-                    )}
-                    {(item.status === "confirmed" ||
-                      item.status === "cleanup_uncertain" ||
-                      item.status === "cleanup_blocked" ||
-                      (item.kind === "move" &&
-                        item.status === "uncertain")) && (
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        disabled={!!busy}
-                        onClick={() => void action(item.id, "verify")}
-                      >
-                        {t("Verify read-only")}
-                      </Button>
-                    )}
-                    {item.kind === "move" &&
-                      item.strategy === "copy-delete" &&
-                      item.receipt &&
-                      [
-                        "confirmed",
-                        "cleanup_uncertain",
-                        "cleanup_blocked",
-                      ].includes(item.status) && (
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          disabled={!!busy}
-                          onClick={() => void action(item.id, "continue_move")}
-                        >
-                          {t("Continue source removal")}
-                        </Button>
-                      )}
-                    {["queued", "blocked"].includes(item.status) && (
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        disabled={!!busy}
-                        onClick={() => void action(item.id, "cancel")}
-                      >
-                        {t("Cancel task")}
-                      </Button>
-                    )}
-                  </div>
-                </li>
-              ))}
-            </ul>
+                          {verify && (
+                            <Button
+                              size="xs"
+                              variant="outline"
+                              disabled={!!busy}
+                              onClick={() => void action(item.id, "verify")}
+                            >
+                              {t("Verify read-only")}
+                            </Button>
+                          )}
+                          {item.kind === "move" &&
+                            item.strategy === "copy-delete" &&
+                            item.receipt &&
+                            [
+                              "confirmed",
+                              "cleanup_uncertain",
+                              "cleanup_blocked",
+                            ].includes(item.status) && (
+                              <Button
+                                size="xs"
+                                variant="outline"
+                                disabled={!!busy}
+                                onClick={() =>
+                                  void action(item.id, "continue_move")
+                                }
+                              >
+                                {t("Continue source removal")}
+                              </Button>
+                            )}
+                          {cancel && (
+                            <Button
+                              size="xs"
+                              variant="ghost"
+                              disabled={!!busy}
+                              onClick={() => void action(item.id, "cancel")}
+                            >
+                              {t("Cancel task")}
+                            </Button>
+                          )}
+                        </div>
+                      ) : undefined,
+                  };
+                })}
+              />
+            )}
           </CardContent>
         </CollapsibleContent>
       </Card>

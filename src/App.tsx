@@ -1,3 +1,7 @@
+import { CalendarDays } from "lucide-react";
+import { Workbench } from "@/components/workbench";
+import type { WorkItem } from "@/lib/workbench";
+import { mailAiSettingsEvent } from "@/lib/mail-ai";
 import { DesktopTitlebar } from "./components/desktop-titlebar";
 import {
   dateLocale,
@@ -10,6 +14,8 @@ import {
   type InterfaceLanguage,
 } from "@/lib/i18n";
 import { LanguageSettings } from "./components/language-settings";
+import { WorkspaceSettings } from "./components/workspace-settings";
+import { TaskCellText, TaskDataTable } from "./components/task-data-table";
 import { TaskPanelHeader } from "./components/task-panel-header";
 import { SettingsLayout } from "./components/settings-layout";
 import { EmlViewer } from "./components/eml-viewer";
@@ -118,6 +124,7 @@ import {
   SlidersHorizontal,
   SquarePen,
   Star,
+  Tag,
   Sun,
   Moon,
   Monitor,
@@ -127,7 +134,6 @@ import {
   ExternalLink,
   AlertCircle,
   Undo2,
-  Check,
   PenLine,
 } from "lucide-react";
 import { Button } from "./components/ui/button";
@@ -187,8 +193,10 @@ import {
 } from "./lib/addresses";
 import { MailRecipients } from "./components/mail-recipients";
 import { ContactAddress } from "./components/contact-address";
-import { sanitizeComposeHtml } from "./lib/compose-format";
+import { hasDraftContent, sanitizeComposeHtml } from "./lib/compose-format";
 import { saveContactAddress } from "./lib/contact-actions";
+import { parseMailtoLink } from "./lib/mailto";
+import { tagColorClass } from "./lib/tag-colors";
 import {
   mailPage,
   mailNeighbor,
@@ -218,6 +226,7 @@ import type {
   Account,
   Address,
   RemoteFolder,
+  Preferences,
 } from "./lib/types";
 import { mailLink } from "./lib/mail-html";
 import { invoke } from "@tauri-apps/api/core";
@@ -306,6 +315,7 @@ export default function App() {
     [archiving, setArchiving] = useState(false),
     [contactSeed, setContactSeed] = useState<Address | null>(null),
     [draft, setDraft] = useState<Compose | null>(null),
+    [workSeed, setWorkSeed] = useState<WorkItem>(),
     [drafts, setDrafts] = useState<Compose[]>([]),
     [clearingDrafts, setClearingDrafts] = useState(false),
     [syncing, setSyncing] = useState(false),
@@ -317,9 +327,50 @@ export default function App() {
     [moveThreads, setMoveThreads] = useState(false),
     [renameFolder, setRenameFolder] = useState(""),
     [renameValue, setRenameValue] = useState(""),
-    [renamingFolder, setRenamingFolder] = useState(false);
+    [renamingFolder, setRenamingFolder] = useState(false),
+    [sidebarSections, setSidebarSections] = useState({
+      accounts: true,
+      saved: true,
+      tags: true,
+    }),
+    [tagNameDialog, setTagNameDialog] = useState<{
+      mode: "create" | "rename";
+      current: string;
+      value: string;
+    } | null>(null),
+    [savingTagName, setSavingTagName] = useState(false),
+    [tagManager, setTagManager] = useState<{
+      ids: string[];
+      threads: boolean;
+      initial: string[];
+      selection: string[];
+    } | null>(null),
+    [savingMailTags, setSavingMailTags] = useState(false),
+    [showWorkbench, setShowWorkbench] = useState(false),
+    [workbenchPreferenceReady, setWorkbenchPreferenceReady] = useState(false),
+    [savingWorkbenchPreference, setSavingWorkbenchPreference] = useState(false);
+  const showWorkbenchRef = useRef(showWorkbench);
+  showWorkbenchRef.current = showWorkbench;
   const theme = useTheme();
   const dark = theme.dark;
+  useEffect(() => {
+    let live = true;
+    void call<Preferences>("get_preferences")
+      .then((preferences) => {
+        if (!live) return;
+        setShowWorkbench(preferences.showWorkbench ?? true);
+        setWorkbenchPreferenceReady(true);
+      })
+      .catch((error) => {
+        if (!live) return;
+        setShowWorkbench(true);
+        setWorkbenchPreferenceReady(true);
+        toast.error(String(error));
+      });
+    return () => {
+      live = false;
+    };
+  }, []);
   useEffect(() => {
     let live = true;
     const revision = interfaceLanguageRevision();
@@ -333,6 +384,10 @@ export default function App() {
       live = false;
     };
   }, [demo]);
+  useEffect(() => {
+    if (workbenchPreferenceReady && !showWorkbench && page === "workbench")
+      setPage("mail");
+  }, [page, showWorkbench, workbenchPreferenceReady]);
   const searchRef = useRef<HTMLInputElement>(null),
     request = useRef(0),
     draftRequest = useRef(0),
@@ -486,17 +541,39 @@ export default function App() {
     window.addEventListener("keydown", restore);
     return () => window.removeEventListener("keydown", restore);
   }, [readerExpanded]);
+  async function openMailtoDraft(href: string) {
+    let fields: ReturnType<typeof parseMailtoLink>;
+    try {
+      fields = parseMailtoLink(href);
+    } catch {
+      throw new Error(t("The mail link is malformed"));
+    }
+    if (draft && hasDraftContent(draft)) {
+      const accepted = await askConfirmation({
+        title: t("Open this mail link?"),
+        description: t(
+          "The current message will be saved as a draft before the linked message opens.",
+        ),
+        action: t("Save draft and continue"),
+      });
+      if (!accepted) return;
+      await call("save_draft", { draft });
+    }
+    const accountId =
+      (detail &&
+        data.accounts.find(
+          (account) => account.id === detail.mail.accountId && account.enabled,
+        )?.id) ||
+      data.accounts.find((account) => account.enabled)?.id ||
+      "";
+    setDraft({ ...newDraft(accountId), ...fields });
+    setPage("mail");
+  }
   async function openMailLink(href: string) {
     const url = mailLink(href);
-    if (!url) return;
+    if (!url) throw new Error(t("Enter a valid http, https or mailto link"));
     if (url.protocol === "mailto:") {
-      const next = newDraft(detail?.mail.accountId ?? "");
-      next.to = decodeURIComponent(url.pathname);
-      next.cc = url.searchParams.get("cc") ?? "";
-      next.bcc = url.searchParams.get("bcc") ?? "";
-      next.subject = url.searchParams.get("subject") ?? "";
-      next.body = url.searchParams.get("body") ?? "";
-      setDraft(next);
+      await openMailtoDraft(href);
     } else if (native) {
       await invoke("open_mail_link", { url: url.href });
     } else {
@@ -505,6 +582,8 @@ export default function App() {
   }
   const openMailLinkRef = useRef(openMailLink);
   openMailLinkRef.current = openMailLink;
+  const openMailtoDraftRef = useRef(openMailtoDraft);
+  openMailtoDraftRef.current = openMailtoDraft;
   const refreshAction = useRef<() => Promise<void>>(async () => {});
   refreshAction.current = async () => {
     const seq = ++request.current;
@@ -663,6 +742,14 @@ export default function App() {
     );
   }, [data.messages]);
   useEffect(() => {
+    const open = () => {
+      setSettingsSection("composing");
+      setPage("settings");
+    };
+    window.addEventListener(mailAiSettingsEvent, open);
+    return () => window.removeEventListener(mailAiSettingsEvent, open);
+  }, []);
+  useEffect(() => {
     if (!native) return;
     let cleanup = () => {};
     let active = true;
@@ -694,17 +781,67 @@ export default function App() {
             ),
           );
       });
+      const openPendingMailto = async () => {
+        try {
+          const links = await call<string[]>("take_mailto_links");
+          if (!active) return;
+          for (const link of links) {
+            await openMailtoDraftRef.current(link).catch((error) =>
+              toast.error(
+                t("Could not open mail link: {value0}", {
+                  value0: String(error),
+                }),
+              ),
+            );
+          }
+        } catch (error) {
+          toast.error(
+            t("Could not open mail link: {value0}", {
+              value0: String(error),
+            }),
+          );
+        }
+      };
+      const mailtoListener = await listen(
+        "mailto-open",
+        () => void openPendingMailto(),
+      );
+      await openPendingMailto();
+      const removeAiListener = await listen(mailAiSettingsEvent, () =>
+        window.dispatchEvent(new Event(mailAiSettingsEvent)),
+      );
+      const removeReminderListener = await listen<WorkItem>(
+        "anser-open-mail-reminder",
+        ({ payload }) => {
+          if (!showWorkbenchRef.current) {
+            toast.info(
+              t(
+                "Enable the workbench in Settings > Preferences to open this reminder.",
+              ),
+            );
+            return;
+          }
+          setWorkSeed(payload);
+          setPage("workbench");
+        },
+      );
       if (!active) {
         a();
         b();
         c();
         d();
+        mailtoListener();
+        removeAiListener();
+        removeReminderListener();
       } else
         cleanup = () => {
           a();
           b();
           c();
           d();
+          mailtoListener();
+          removeAiListener();
+          removeReminderListener();
         };
     });
     const timer = setInterval(() => void refresh(), 20000);
@@ -714,6 +851,28 @@ export default function App() {
       clearInterval(timer);
     };
   }, [refresh, refreshLive]);
+  async function changeWorkbenchVisibility(visible: boolean) {
+    if (
+      savingWorkbenchPreference ||
+      !workbenchPreferenceReady ||
+      visible === showWorkbench
+    )
+      return;
+    const previous = showWorkbench;
+    setShowWorkbench(visible);
+    setSavingWorkbenchPreference(true);
+    try {
+      const preferences = await call<Preferences>("get_preferences");
+      await call("save_preferences", {
+        preferences: { ...preferences, showWorkbench: visible },
+      });
+    } catch (error) {
+      setShowWorkbench(previous);
+      toast.error(String(error));
+    } finally {
+      setSavingWorkbenchPreference(false);
+    }
+  }
   const compose = useCallback(
     (mail?: Mail, forward = false, all = false, origin?: Detail) => {
       if (clearingDraftsNow.current) return;
@@ -921,6 +1080,7 @@ export default function App() {
     remoteFolder = "",
     remoteFolderTree = false,
     remoteFolderDelimiter = "",
+    tag = "",
   ) {
     ++notificationGeneration.current;
     setNotificationToken(null);
@@ -937,10 +1097,11 @@ export default function App() {
       remoteFolder,
       remoteFolderTree,
       remoteFolderDelimiter,
+      tag,
       search: "",
       limit: 200,
       unreadOnly: false,
-      excludeSent: true,
+      excludeSent: !tag,
       listMode: query.listMode,
     });
   }
@@ -1285,6 +1446,27 @@ export default function App() {
       }
     }
   }
+  async function openWorkMail(id: string) {
+    const generation = ++notificationGeneration.current;
+    try {
+      const mail = await call<Mail>("mail_metadata", { id });
+      if (
+        generation !== notificationGeneration.current ||
+        notificationContext.current.page !== "workbench"
+      )
+        return;
+      setPage("mail");
+      notificationReading.current = "";
+      setNotificationToken(null);
+      setNotificationSelected(null);
+      setSelected(mail.id);
+      setHeaderMail(mail);
+    } catch {
+      if (generation === notificationGeneration.current)
+        toast.error(t("The linked email is no longer available."));
+    }
+  }
+
   async function openMail(m: Mail, messages = data.messages) {
     ++notificationGeneration.current;
     setNotificationToken(null);
@@ -1451,6 +1633,119 @@ export default function App() {
       );
     } catch (error) {
       toast.error(String(error));
+    }
+  }
+  function mailHasTag(mail: Mail, tag: string) {
+    return (mail.tags || []).some(
+      (value) => value.toLowerCase() === tag.toLowerCase(),
+    );
+  }
+  function openTagManager(ids: string[], threads: boolean, mails: Mail[]) {
+    const initial = (data.tags || []).filter(
+      (tag) => mails.length > 0 && mails.every((mail) => mailHasTag(mail, tag)),
+    );
+    setTagManager({
+      ids,
+      threads,
+      initial,
+      selection: initial,
+    });
+  }
+  function selectTagForMail(tag: string, selected: boolean) {
+    setTagManager((current) =>
+      current
+        ? {
+            ...current,
+            selection: selected
+              ? [...new Set([...current.selection, tag])]
+              : current.selection.filter((value) => value !== tag),
+          }
+        : current,
+    );
+  }
+  async function saveTagName() {
+    if (!tagNameDialog || savingTagName) return;
+    const value = tagNameDialog.value.trim();
+    if (!value || value.length > 48) return;
+    setSavingTagName(true);
+    try {
+      if (tagNameDialog.mode === "create") {
+        await call("create_mail_tag", { name: value });
+        toast.success(t("Tag created"));
+      } else {
+        await call("rename_mail_tag", {
+          current: tagNameDialog.current,
+          replacement: value,
+        });
+        if (query.tag === tagNameDialog.current)
+          setQuery((current) => ({ ...current, tag: value, limit: 200 }));
+        toast.success(t("Tag renamed"));
+      }
+      setTagNameDialog(null);
+      await refresh();
+    } catch (error) {
+      toast.error(String(error));
+    } finally {
+      setSavingTagName(false);
+    }
+  }
+  async function deleteTag(name: string) {
+    if (
+      !(await askConfirmation({
+        title: t("Delete tag?"),
+        description: t(
+          "Remove “{value0}” from every message. Messages and originals remain unchanged.",
+          { value0: name },
+        ),
+        action: t("Delete tag"),
+        destructive: true,
+      }))
+    )
+      return;
+    try {
+      const affected = await call<number>("delete_mail_tag", { name });
+      if (query.tag === name)
+        setQuery((current) => ({ ...current, tag: "", limit: 200 }));
+      await refresh();
+      toast.success(
+        t("Tag removed from {value0} messages", { value0: affected }),
+      );
+    } catch (error) {
+      toast.error(String(error));
+    }
+  }
+  async function saveMailTags() {
+    if (!tagManager || savingMailTags) return;
+    setSavingMailTags(true);
+    try {
+      let ids = tagManager.ids;
+      if (tagManager.threads) {
+        const threads = await Promise.all(
+          ids.map((id) => call<Mail[]>("mail_conversation", { id })),
+        );
+        ids = [...new Set(threads.flat().map((mail) => mail.id))];
+      }
+      const initial = new Set(tagManager.initial);
+      const selected = new Set(tagManager.selection);
+      const changes = [...new Set([...initial, ...selected])].flatMap((tag) =>
+        initial.has(tag) === selected.has(tag)
+          ? []
+          : [{ tag, enabled: selected.has(tag) }],
+      );
+      for (const id of ids)
+        for (const change of changes)
+          await call("set_mail_tag", {
+            id,
+            name: change.tag,
+            enabled: change.enabled,
+          });
+      setTagManager(null);
+      await refresh();
+      toast.success(t("Tags updated"));
+    } catch (error) {
+      toast.error(String(error));
+    } finally {
+      setSavingMailTags(false);
     }
   }
   async function showDrafts() {
@@ -1700,16 +1995,18 @@ export default function App() {
     }
   }
   const activeAccount = data.accounts.find((a) => a.id === query.accountId),
-    title = query.remoteFolder
-      ? (() => {
-          const folder = remoteFolder(query.accountId, query.remoteFolder);
-          return folder ? remoteFolderLabel(folder) : query.remoteFolder;
-        })()
-      : query.folder ||
-        (query.view === "starred" && query.accountId
-          ? t("Starred mail")
-          : activeAccount?.name) ||
-        viewNames[query.view];
+    title = query.tag
+      ? query.tag
+      : query.remoteFolder
+        ? (() => {
+            const folder = remoteFolder(query.accountId, query.remoteFolder);
+            return folder ? remoteFolderLabel(folder) : query.remoteFolder;
+          })()
+        : query.folder ||
+          (query.view === "starred" && query.accountId
+            ? t("Starred mail")
+            : activeAccount?.name) ||
+          viewNames[query.view];
   const nav = (view: string, Icon: typeof Inbox, count?: number) => (
     <Button
       variant="ghost"
@@ -1734,6 +2031,22 @@ export default function App() {
         ...localChanges.current.get(activeMailBase.id),
       }
     : null;
+  const tagNameValue = tagNameDialog?.value.trim() || "";
+  const tagNameInvalid =
+    !tagNameValue ||
+    tagNameValue.length > 48 ||
+    (data.tags || []).some(
+      (tag) =>
+        tag.toLowerCase() === tagNameValue.toLowerCase() &&
+        (tagNameDialog?.mode !== "rename" ||
+          tag.toLowerCase() !== tagNameDialog.current.toLowerCase()),
+    );
+  const mailTagSelectionChanged =
+    !!tagManager &&
+    [...new Set([...tagManager.initial, ...tagManager.selection])].some(
+      (tag) =>
+        tagManager.initial.includes(tag) !== tagManager.selection.includes(tag),
+    );
   const bodyReady = detail?.mail.id === selected;
   return (
     <SidebarProvider
@@ -1851,211 +2164,383 @@ export default function App() {
                   <span>{t("Send history")}</span>
                 </Button>
               </nav>
-              <div className="nav-section-heading">
-                <span>{t("My accounts")}</span>
-                <Button
-                  variant="ghost"
-                  title={t("Add email account")}
-                  disabled={publicPreview}
-                  onClick={() => setAccountDialog(true)}
-                >
-                  <Plus size={15} />
-                </Button>
-              </div>
-              <div className="account-nav">
-                {data.accounts.map((a, i) => (
-                  <Collapsible
-                    key={a.id}
-                    open={expandedAccounts.includes(a.id)}
-                    onOpenChange={(open) => {
-                      setExpandedAccounts((ids) =>
-                        open ? [...ids, a.id] : ids.filter((id) => id !== a.id),
-                      );
-                      if (open) void loadFolders(a.id);
-                    }}
-                  >
-                    <div
-                      className={`account-navigation ${page === "mail" && query.accountId === a.id ? "active" : ""}`}
-                    >
-                      <CollapsibleTrigger asChild>
-                        <Button
-                          variant="ghost"
-                          className="nav-item account-item"
-                          onClick={() => navigate("all", a.id)}
-                        >
-                          <span className={`account-dot color-${i % 4}`} />
-                          <span>
-                            {a.name}
-                            <small>{a.email}</small>
-                          </span>
-                          {!a.enabled && <span className="paused-dot" />}
-                        </Button>
-                      </CollapsibleTrigger>
-                      {sidebarAccountError(a, serverFolders) && (
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <Button
-                              variant="ghost"
-                              size="icon-xs"
-                              aria-label={t("Mail check failed for {value0}", {
-                                value0: a.name,
-                              })}
-                            >
-                              <AlertCircle
-                                size={14}
-                                className="text-destructive"
-                              />
-                            </Button>
-                          </TooltipTrigger>
-                          <TooltipContent
-                            side="right"
-                            className="max-w-80 break-words"
-                          >
-                            <p>{a.email}</p>
-                            <p>{sidebarAccountError(a, serverFolders)}</p>
-                          </TooltipContent>
-                        </Tooltip>
-                      )}
-                      <CollapsibleTrigger asChild>
-                        <Button
-                          variant="ghost"
-                          size="icon-sm"
-                          aria-label={t("Expand server folders for {value0}", {
-                            value0: a.name,
-                          })}
-                          title={t("Server folders")}
-                        >
-                          <ChevronRight
-                            size={13}
-                            className={
-                              expandedAccounts.includes(a.id) ? "rotate-90" : ""
-                            }
-                          />
-                        </Button>
-                      </CollapsibleTrigger>
-                    </div>
-                    <CollapsibleContent className="remote-folder-list">
-                      {folderLoading.includes(a.id) ? (
-                        <div
-                          role="status"
-                          aria-label={t("Loading server folders")}
-                        >
-                          <Skeleton className="h-6 mb-2" />
-                          <Skeleton className="h-6" />
-                        </div>
-                      ) : (
-                        <>
-                          {folderErrors[a.id] ? (
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => void loadFolders(a.id)}
-                            >
-                              {t("Could not load. Retry")}
-                            </Button>
-                          ) : (
-                            <RemoteFolderList
-                              folders={loadedFolders[a.id] || []}
-                              selected={
-                                query.accountId === a.id
-                                  ? query.remoteFolder || ""
-                                  : ""
-                              }
-                              selectedTree={!!query.remoteFolderTree}
-                              starredSelected={
-                                query.accountId === a.id &&
-                                query.view === "starred"
-                              }
-                              unread={Object.fromEntries(
-                                (data.remoteFolderUnread || [])
-                                  .filter((count) => count.accountId === a.id)
-                                  .map((count) => [
-                                    count.name,
-                                    { direct: count.direct, tree: count.tree },
-                                  ]),
-                              )}
-                              starredUnread={
-                                data.accountStarredUnread?.find(
-                                  (count) => count.accountId === a.id,
-                                )?.unread || 0
-                              }
-                              onSelect={(name, tree, delimiter) =>
-                                void openRemoteFolder(
-                                  a.id,
-                                  name,
-                                  tree,
-                                  delimiter,
-                                )
-                              }
-                              onSelectStarred={() => navigate("starred", a.id)}
-                              onMarkRead={(name, tree, delimiter, starred) =>
-                                void markRemoteFolderRead(
-                                  a.id,
-                                  name,
-                                  tree,
-                                  delimiter,
-                                  starred,
-                                )
-                              }
-                            />
-                          )}
-                        </>
-                      )}
-                    </CollapsibleContent>
-                  </Collapsible>
-                ))}
-                {!data.accounts.length && (
-                  <Button
-                    variant="ghost"
-                    className="add-account-dashed"
-                    onClick={() => setAccountDialog(true)}
-                  >
-                    <Plus size={14} />
-                    {t("Connect your first mailbox")}
-                  </Button>
-                )}
-              </div>
-              <div className="nav-section-heading">
-                <span>{t("Saved on this device")}</span>
-                <HardDrive size={13} />
-              </div>
-              {nav("local", Archive, data.stats.saved)}
-              {data.folders.map((f) => (
-                <ContextMenu key={f}>
-                  <ContextMenuTrigger asChild>
+              <Collapsible
+                open={sidebarSections.accounts}
+                onOpenChange={(open) =>
+                  setSidebarSections((current) => ({
+                    ...current,
+                    accounts: open,
+                  }))
+                }
+              >
+                <div className="nav-section-heading">
+                  <CollapsibleTrigger asChild>
                     <Button
                       variant="ghost"
-                      className={`nav-item folder-item ${query.folder === f && page === "mail" ? "active" : ""}`}
-                      onClick={() => navigate("local", "", f)}
+                      className="sidebar-section-trigger"
+                      aria-label={t("My accounts")}
                     >
-                      <Folder size={16} />
-                      <span>{f}</span>
+                      <ChevronRight
+                        size={13}
+                        className={sidebarSections.accounts ? "rotate-90" : ""}
+                      />
+                      <span>{t("My accounts")}</span>
                     </Button>
-                  </ContextMenuTrigger>
-                  <ContextMenuContent>
-                    <ContextMenuItem
-                      onSelect={() => {
-                        setRenameFolder(f);
-                        setRenameValue(f);
+                  </CollapsibleTrigger>
+                  <Button
+                    variant="ghost"
+                    size="icon-xs"
+                    title={t("Add email account")}
+                    aria-label={t("Add email account")}
+                    disabled={publicPreview}
+                    onClick={() => setAccountDialog(true)}
+                  >
+                    <Plus size={15} />
+                  </Button>
+                </div>
+                <CollapsibleContent className="account-nav">
+                  {data.accounts.map((a, i) => (
+                    <Collapsible
+                      key={a.id}
+                      open={expandedAccounts.includes(a.id)}
+                      onOpenChange={(open) => {
+                        setExpandedAccounts((ids) =>
+                          open
+                            ? [...ids, a.id]
+                            : ids.filter((id) => id !== a.id),
+                        );
+                        if (open) void loadFolders(a.id);
                       }}
                     >
-                      <PenLine />
-                      {t("Rename")}
-                    </ContextMenuItem>
-                    <ContextMenuItem
-                      variant="destructive"
-                      onSelect={() => void deleteLocalFolder(f)}
+                      <div
+                        className={`account-navigation ${page === "mail" && query.accountId === a.id ? "active" : ""}`}
+                      >
+                        <CollapsibleTrigger asChild>
+                          <Button
+                            variant="ghost"
+                            className="nav-item account-item"
+                            onClick={() => navigate("all", a.id)}
+                          >
+                            <span className={`account-dot color-${i % 4}`} />
+                            <span>
+                              {a.name}
+                              <small>{a.email}</small>
+                            </span>
+                            {!a.enabled && <span className="paused-dot" />}
+                          </Button>
+                        </CollapsibleTrigger>
+                        {sidebarAccountError(a, serverFolders) && (
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <Button
+                                variant="ghost"
+                                size="icon-xs"
+                                aria-label={t(
+                                  "Mail check failed for {value0}",
+                                  {
+                                    value0: a.name,
+                                  },
+                                )}
+                              >
+                                <AlertCircle
+                                  size={14}
+                                  className="text-destructive"
+                                />
+                              </Button>
+                            </TooltipTrigger>
+                            <TooltipContent
+                              side="right"
+                              className="max-w-80 break-words"
+                            >
+                              <p>{a.email}</p>
+                              <p>{sidebarAccountError(a, serverFolders)}</p>
+                            </TooltipContent>
+                          </Tooltip>
+                        )}
+                        <CollapsibleTrigger asChild>
+                          <Button
+                            variant="ghost"
+                            size="icon-sm"
+                            aria-label={t(
+                              "Expand server folders for {value0}",
+                              {
+                                value0: a.name,
+                              },
+                            )}
+                            title={t("Server folders")}
+                          >
+                            <ChevronRight
+                              size={13}
+                              className={
+                                expandedAccounts.includes(a.id)
+                                  ? "rotate-90"
+                                  : ""
+                              }
+                            />
+                          </Button>
+                        </CollapsibleTrigger>
+                      </div>
+                      <CollapsibleContent className="remote-folder-list">
+                        {folderLoading.includes(a.id) ? (
+                          <div
+                            role="status"
+                            aria-label={t("Loading server folders")}
+                          >
+                            <Skeleton className="h-6 mb-2" />
+                            <Skeleton className="h-6" />
+                          </div>
+                        ) : (
+                          <>
+                            {folderErrors[a.id] ? (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => void loadFolders(a.id)}
+                              >
+                                {t("Could not load. Retry")}
+                              </Button>
+                            ) : (
+                              <RemoteFolderList
+                                folders={loadedFolders[a.id] || []}
+                                selected={
+                                  query.accountId === a.id
+                                    ? query.remoteFolder || ""
+                                    : ""
+                                }
+                                selectedTree={!!query.remoteFolderTree}
+                                starredSelected={
+                                  query.accountId === a.id &&
+                                  query.view === "starred"
+                                }
+                                unread={Object.fromEntries(
+                                  (data.remoteFolderUnread || [])
+                                    .filter((count) => count.accountId === a.id)
+                                    .map((count) => [
+                                      count.name,
+                                      {
+                                        direct: count.direct,
+                                        tree: count.tree,
+                                      },
+                                    ]),
+                                )}
+                                starredUnread={
+                                  data.accountStarredUnread?.find(
+                                    (count) => count.accountId === a.id,
+                                  )?.unread || 0
+                                }
+                                onSelect={(name, tree, delimiter) =>
+                                  void openRemoteFolder(
+                                    a.id,
+                                    name,
+                                    tree,
+                                    delimiter,
+                                  )
+                                }
+                                onSelectStarred={() =>
+                                  navigate("starred", a.id)
+                                }
+                                onMarkRead={(name, tree, delimiter, starred) =>
+                                  void markRemoteFolderRead(
+                                    a.id,
+                                    name,
+                                    tree,
+                                    delimiter,
+                                    starred,
+                                  )
+                                }
+                              />
+                            )}
+                          </>
+                        )}
+                      </CollapsibleContent>
+                    </Collapsible>
+                  ))}
+                  {!data.accounts.length && (
+                    <Button
+                      variant="ghost"
+                      className="add-account-dashed"
+                      onClick={() => setAccountDialog(true)}
                     >
-                      <Trash2 />
-                      {t("Delete folder")}
-                    </ContextMenuItem>
-                  </ContextMenuContent>
-                </ContextMenu>
-              ))}
-              {nav("trash", Trash2)}
+                      <Plus size={14} />
+                      {t("Connect your first mailbox")}
+                    </Button>
+                  )}
+                </CollapsibleContent>
+              </Collapsible>
+              <Collapsible
+                open={sidebarSections.saved}
+                onOpenChange={(open) =>
+                  setSidebarSections((current) => ({
+                    ...current,
+                    saved: open,
+                  }))
+                }
+              >
+                <div className="nav-section-heading">
+                  <CollapsibleTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      className="sidebar-section-trigger"
+                      aria-label={t("Saved on this device")}
+                    >
+                      <ChevronRight
+                        size={13}
+                        className={sidebarSections.saved ? "rotate-90" : ""}
+                      />
+                      <span>{t("Saved on this device")}</span>
+                    </Button>
+                  </CollapsibleTrigger>
+                  <HardDrive size={13} />
+                </div>
+                <CollapsibleContent className="sidebar-folder-nav">
+                  {nav("local", Archive, data.stats.saved)}
+                  {data.folders.map((f) => (
+                    <ContextMenu key={f}>
+                      <ContextMenuTrigger asChild>
+                        <Button
+                          variant="ghost"
+                          className={`nav-item folder-item ${query.folder === f && page === "mail" ? "active" : ""}`}
+                          onClick={() => navigate("local", "", f)}
+                        >
+                          <Folder size={16} />
+                          <span>{f}</span>
+                        </Button>
+                      </ContextMenuTrigger>
+                      <ContextMenuContent>
+                        <ContextMenuItem
+                          onSelect={() => {
+                            setRenameFolder(f);
+                            setRenameValue(f);
+                          }}
+                        >
+                          <PenLine />
+                          {t("Rename")}
+                        </ContextMenuItem>
+                        <ContextMenuItem
+                          variant="destructive"
+                          onSelect={() => void deleteLocalFolder(f)}
+                        >
+                          <Trash2 />
+                          {t("Delete folder")}
+                        </ContextMenuItem>
+                      </ContextMenuContent>
+                    </ContextMenu>
+                  ))}
+                  {nav("trash", Trash2)}
+                </CollapsibleContent>
+              </Collapsible>
+              <Collapsible
+                open={sidebarSections.tags}
+                onOpenChange={(open) =>
+                  setSidebarSections((current) => ({
+                    ...current,
+                    tags: open,
+                  }))
+                }
+              >
+                <div className="nav-section-heading">
+                  <CollapsibleTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      className="sidebar-section-trigger"
+                      aria-label={t("Tags")}
+                    >
+                      <ChevronRight
+                        size={13}
+                        className={sidebarSections.tags ? "rotate-90" : ""}
+                      />
+                      <span>{t("Tags")}</span>
+                    </Button>
+                  </CollapsibleTrigger>
+                  <Button
+                    variant="ghost"
+                    size="icon-xs"
+                    title={t("New tag")}
+                    aria-label={t("New tag")}
+                    onClick={() =>
+                      setTagNameDialog({
+                        mode: "create",
+                        current: "",
+                        value: "",
+                      })
+                    }
+                  >
+                    <Plus size={15} />
+                  </Button>
+                </div>
+                <CollapsibleContent className="sidebar-tag-nav">
+                  {(data.tags || []).map((tag) => (
+                    <ContextMenu key={tag}>
+                      <ContextMenuTrigger asChild>
+                        <Button
+                          variant="ghost"
+                          className={`nav-item folder-item tag-item ${query.tag === tag && page === "mail" ? "active" : ""}`}
+                          onClick={() =>
+                            navigate("all", "", "", "", false, "", tag)
+                          }
+                        >
+                          <span
+                            className={`tag-dot ${tagColorClass(tag)}`}
+                            aria-hidden="true"
+                          />
+                          <span>{tag}</span>
+                        </Button>
+                      </ContextMenuTrigger>
+                      <ContextMenuContent>
+                        <ContextMenuItem
+                          onSelect={() =>
+                            setTagNameDialog({
+                              mode: "rename",
+                              current: tag,
+                              value: tag,
+                            })
+                          }
+                        >
+                          <PenLine />
+                          {t("Rename tag")}
+                        </ContextMenuItem>
+                        <ContextMenuItem
+                          variant="destructive"
+                          onSelect={() => void deleteTag(tag)}
+                        >
+                          <Trash2 />
+                          {t("Delete tag")}
+                        </ContextMenuItem>
+                      </ContextMenuContent>
+                    </ContextMenu>
+                  ))}
+                  {!(data.tags || []).length && (
+                    <Button
+                      variant="ghost"
+                      className="sidebar-tag-empty"
+                      onClick={() =>
+                        setTagNameDialog({
+                          mode: "create",
+                          current: "",
+                          value: "",
+                        })
+                      }
+                    >
+                      <Plus size={14} />
+                      {t("Create your first tag")}
+                    </Button>
+                  )}
+                </CollapsibleContent>
+              </Collapsible>
             </SidebarContent>
             <SidebarFooter className="mail-sidebar-footer">
               <div className="sidebar-bottom">
+                {showWorkbench && (
+                  <Button
+                    variant="ghost"
+                    className={`nav-item ${page === "workbench" ? "active" : ""}`}
+                    aria-current={page === "workbench" ? "page" : undefined}
+                    onClick={() => setPage("workbench")}
+                  >
+                    <CalendarDays size={17} />
+                    <span>{t("Workbench")}</span>
+                  </Button>
+                )}
                 <Button
                   variant="ghost"
                   className={`nav-item ${page === "contacts" ? "active" : ""}`}
@@ -2107,6 +2592,35 @@ export default function App() {
                 });
               }}
             />
+          ) : page === "workbench" ? (
+            <section className="workspace-panel workbench-workspace">
+              <div className="panel-heading">
+                <div className="page-title-row">
+                  <SidebarTrigger
+                    title={t("Toggle sidebar")}
+                    aria-label={t("Toggle sidebar")}
+                  />
+                  <h1>{t("Workbench")}</h1>
+                </div>
+              </div>
+              <Workbench
+                seed={workSeed}
+                onSeedConsumed={() => setWorkSeed(undefined)}
+                openMail={(id) => void openWorkMail(id)}
+                writeMail={(subject, body) => {
+                  if (draft) return;
+                  const account =
+                    data.accounts.find(
+                      (account) => account.id === query.accountId,
+                    ) ?? data.accounts[0];
+                  if (!account) {
+                    setAccountDialog(true);
+                    return;
+                  }
+                  setDraft({ ...newDraft(account.id), subject, body });
+                }}
+              />
+            </section>
           ) : page === "outbox" ? (
             <OutboxPanel onDraft={setDraft} />
           ) : page === "rules" ? (
@@ -2393,13 +2907,21 @@ export default function App() {
                         <h2>{t("Preferences")}</h2>
                         <p>
                           {t(
-                            "Configure display language, notifications, startup, background checks, reading cache and network proxy.",
+                            "Configure display language, notifications, startup, background checks, reading cache, network proxy and system default apps.",
                           )}
                         </p>
                       </div>
                     </div>
                     <div className="settings-preferences-grid">
                       <LanguageSettings />
+                      <WorkspaceSettings
+                        visible={showWorkbench}
+                        ready={workbenchPreferenceReady}
+                        saving={savingWorkbenchPreference}
+                        onVisibilityChange={(visible) =>
+                          void changeWorkbenchVisibility(visible)
+                        }
+                      />
                       <StorageTools testMailId={selected} />
                       <ReadingCacheSettings />
                       <NetworkProxySettings />
@@ -2414,7 +2936,7 @@ export default function App() {
                         <h2>{t("Reading & composing")}</h2>
                         <p>
                           {t(
-                            "Configure email signatures and AI translation for reading and writing mail.",
+                            "Configure email signatures and the AI assistant for reading and writing mail.",
                           )}
                         </p>
                       </div>
@@ -2461,20 +2983,36 @@ export default function App() {
                         />
                         <CollapsibleContent asChild>
                           <CardContent className="activity-list">
-                            {data.logs.length ? (
-                              data.logs.map((l, i) => (
-                                <p key={i}>
-                                  <Check size={13} />
-                                  {l}
-                                </p>
-                              ))
-                            ) : (
-                              <p>
-                                {t(
-                                  "Mail checks, sends, rule actions and model translations appear here.",
-                                )}
-                              </p>
-                            )}
+                            <TaskDataTable
+                              label={t("Recent activity")}
+                              fields={["time", "account", "activity"]}
+                              empty={t(
+                                "Mail checks, sends, rule actions and model translations appear here.",
+                              )}
+                              rows={data.logs.map((log, index) => {
+                                const [, time, message] =
+                                  /^(\d{2}-\d{2} \d{2}:\d{2})\s+([\s\S]+)$/.exec(
+                                    log,
+                                  ) ?? ["", "", log];
+                                const [, account, activity] =
+                                  /^([^\s@<>]+@[^\s@<>]+\.[^\s@<>]+)\s+([\s\S]+)$/.exec(
+                                    message,
+                                  ) ?? ["", "", message];
+                                return {
+                                  id: String(index),
+                                  time: time && <TaskCellText text={time} />,
+                                  account: account && (
+                                    <TaskCellText text={account} />
+                                  ),
+                                  activity: (
+                                    <TaskCellText
+                                      text={activity}
+                                      detail={log}
+                                    />
+                                  ),
+                                };
+                              })}
+                            />
                           </CardContent>
                         </CollapsibleContent>
                       </Card>
@@ -2782,6 +3320,23 @@ export default function App() {
                       <Button
                         variant="ghost"
                         size="icon-sm"
+                        title={t("Manage tags")}
+                        aria-label={t("Manage tags")}
+                        onClick={() =>
+                          openTagManager(
+                            checked,
+                            grouped,
+                            data.messages.filter((mail) =>
+                              checked.includes(mail.id),
+                            ),
+                          )
+                        }
+                      >
+                        <Tag size={15} />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon-sm"
                         title={t("Save complete message locally")}
                         disabled={archiving}
                         onClick={() => void queueArchives(checked, grouped)}
@@ -2908,6 +3463,21 @@ export default function App() {
                                   {m.localFolder !== "全部存档" && (
                                     <small>{m.localFolder}</small>
                                   )}
+                                  {!!m.tags?.length && (
+                                    <span
+                                      className="mail-row-tags"
+                                      title={m.tags.join(" · ")}
+                                    >
+                                      <span
+                                        className={`tag-dot ${tagColorClass(m.tags[0])}`}
+                                        aria-hidden="true"
+                                      />
+                                      <span>{m.tags[0]}</span>
+                                      {m.tags.length > 1 && (
+                                        <em>+{m.tags.length - 1}</em>
+                                      )}
+                                    </span>
+                                  )}
                                   <span className="row-spacer" />
                                   {m.starred && (
                                     <Star size={13} className="star-on" />
@@ -2948,6 +3518,14 @@ export default function App() {
                               <ContextMenuShortcut>
                                 {mailShortcutKeys.star}
                               </ContextMenuShortcut>
+                            </ContextMenuItem>
+                            <ContextMenuItem
+                              onSelect={() =>
+                                openTagManager([m.id], grouped, [m])
+                              }
+                            >
+                              <Tag />
+                              {t("Manage tags")}
                             </ContextMenuItem>
                             <ContextMenuSeparator />
                             {m.savedLocally === false && (
@@ -3052,6 +3630,7 @@ export default function App() {
                           query.starredOnly ||
                           query.attachmentsOnly ||
                           query.searchField ||
+                          query.tag ||
                           query.dateFrom ||
                           query.dateBefore ||
                           query.excludeSent === false) && (
@@ -3411,6 +3990,16 @@ export default function App() {
                                     {t("Local message actions")}
                                   </DropdownMenuLabel>
                                   <DropdownMenuItem
+                                    onSelect={() =>
+                                      openTagManager([activeMail.id], grouped, [
+                                        activeMail,
+                                      ])
+                                    }
+                                  >
+                                    <Tag />
+                                    {t("Manage tags")}
+                                  </DropdownMenuItem>
+                                  <DropdownMenuItem
                                     onSelect={() => {
                                       setMoveIds([activeMail.id]);
                                       setMoveThreads(false);
@@ -3509,6 +4098,34 @@ export default function App() {
                           onAddContact={saveContactAddress}
                         />
                         <div className="message-metadata">
+                          {!!activeMail.tags?.length && (
+                            <div
+                              className="message-tags"
+                              title={activeMail.tags.join(" · ")}
+                            >
+                              {activeMail.tags.slice(0, 2).map((tag) => (
+                                <Badge
+                                  key={tag}
+                                  variant="secondary"
+                                  className="message-tag"
+                                >
+                                  <span
+                                    className={`tag-dot ${tagColorClass(tag)}`}
+                                    aria-hidden="true"
+                                  />
+                                  <span>{tag}</span>
+                                </Badge>
+                              ))}
+                              {activeMail.tags.length > 2 && (
+                                <Badge
+                                  variant="secondary"
+                                  className="message-tag"
+                                >
+                                  +{activeMail.tags.length - 2}
+                                </Badge>
+                              )}
+                            </div>
+                          )}
                           <time dateTime={activeMail.date}>
                             {formatMailTime(activeMail.date)}
                           </time>
@@ -3547,6 +4164,18 @@ export default function App() {
                         accounts={data.accounts}
                         demo={demo}
                         scrollRef={readerRef}
+                        onAddWorkItem={(item) => {
+                          if (!showWorkbench) {
+                            toast.info(
+                              t(
+                                "Enable the workbench in Settings > Preferences to add this reminder.",
+                              ),
+                            );
+                            return;
+                          }
+                          setWorkSeed(item);
+                          setPage("workbench");
+                        }}
                         translationActions={translationActions}
                         editorOpen={!!draft}
                         onReply={(source, forward = false, all = false) =>
@@ -3813,6 +4442,144 @@ export default function App() {
               onClick={() => void renameLocalFolder()}
             >
               {renamingFolder ? t("Renaming…") : t("Rename")}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+      <Dialog
+        open={!!tagNameDialog}
+        onOpenChange={(open) => {
+          if (!open) setTagNameDialog(null);
+        }}
+      >
+        <DialogContent className="sm:max-w-[430px]">
+          <DialogHeader>
+            <DialogTitle>
+              {tagNameDialog?.mode === "rename"
+                ? t("Rename tag")
+                : t("New tag")}
+            </DialogTitle>
+            <DialogDescription>
+              {t(
+                "Tags work only in this app and never change server folders or original messages.",
+              )}
+            </DialogDescription>
+          </DialogHeader>
+          <Input
+            autoFocus
+            aria-label={t("Tag name")}
+            value={tagNameDialog?.value || ""}
+            maxLength={48}
+            onChange={(event) =>
+              setTagNameDialog((current) =>
+                current ? { ...current, value: event.target.value } : current,
+              )
+            }
+            onKeyDown={(event) => {
+              if (event.key === "Enter" && !tagNameInvalid) {
+                event.preventDefault();
+                void saveTagName();
+              }
+            }}
+          />
+          {tagNameValue && tagNameInvalid && (
+            <p role="alert" className="folder-name-error">
+              {t("A tag with this name already exists")}
+            </p>
+          )}
+          <div className="flex justify-end gap-2">
+            <Button variant="outline" onClick={() => setTagNameDialog(null)}>
+              {t("Cancel")}
+            </Button>
+            <Button
+              disabled={savingTagName || tagNameInvalid}
+              onClick={() => void saveTagName()}
+            >
+              {savingTagName
+                ? t("Saving…")
+                : tagNameDialog?.mode === "rename"
+                  ? t("Rename tag")
+                  : t("Create tag")}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+      <Dialog
+        open={!!tagManager}
+        onOpenChange={(open) => {
+          if (!open) setTagManager(null);
+        }}
+      >
+        <DialogContent className="tag-manager-dialog sm:max-w-[430px]">
+          <DialogHeader>
+            <DialogTitle>{t("Manage tags")}</DialogTitle>
+            <DialogDescription>
+              {t(
+                "Select the tags for this selection. Messages and originals stay unchanged.",
+              )}
+            </DialogDescription>
+          </DialogHeader>
+          {(data.tags || []).length ? (
+            <div className="tag-selection-list">
+              {(data.tags || []).map((tag) => (
+                <div
+                  key={tag}
+                  className="tag-selection-row"
+                  onClick={(event) => {
+                    if (
+                      (event.target as HTMLElement).closest('[role="checkbox"]')
+                    )
+                      return;
+                    selectTagForMail(tag, !tagManager?.selection.includes(tag));
+                  }}
+                >
+                  <Checkbox
+                    aria-label={t("Assign tag “{value0}”", { value0: tag })}
+                    checked={!!tagManager?.selection.includes(tag)}
+                    onCheckedChange={(checked) =>
+                      selectTagForMail(tag, checked === true)
+                    }
+                  />
+                  <span
+                    className={`tag-dot ${tagColorClass(tag)}`}
+                    aria-hidden="true"
+                  />
+                  <span>{tag}</span>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="tag-manager-empty">
+              <p>{t("Create a tag first, then assign it to messages.")}</p>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() =>
+                  setTagNameDialog({
+                    mode: "create",
+                    current: "",
+                    value: "",
+                  })
+                }
+              >
+                <Plus />
+                {t("New tag")}
+              </Button>
+            </div>
+          )}
+          <div className="flex justify-end gap-2">
+            <Button variant="outline" onClick={() => setTagManager(null)}>
+              {t("Cancel")}
+            </Button>
+            <Button
+              disabled={
+                savingMailTags ||
+                !(data.tags || []).length ||
+                !mailTagSelectionChanged
+              }
+              onClick={() => void saveMailTags()}
+            >
+              {savingMailTags ? t("Saving…") : t("Save tags")}
             </Button>
           </div>
         </DialogContent>

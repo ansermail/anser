@@ -199,11 +199,37 @@ it("shows task uncertainty without offering replay and retries only a failed enq
     status,
     error: status === "uncertain" ? "连接中断，结果未确认" : "",
     operationId: status === "blocked" ? null : "task",
-    updatedAt: "",
+    updatedAt: "2026-11-14T10:00:00+08:00",
   }));
   await render();
   expect(document.body.textContent).toContain("结果未确认");
   expect(document.body.textContent).toContain("连接中断，结果未确认");
+  const table = document.querySelector<HTMLTableElement>(
+    'table[aria-label="服务器规则命中记录"]',
+  )!;
+  expect(
+    [...table.querySelectorAll("th")].map((cell) => cell.textContent),
+  ).toEqual([
+    "规则名称",
+    "主题",
+    "邮箱地址",
+    "操作类型",
+    "文件夹名称",
+    "目标文件夹",
+    "状态",
+    "时间",
+    "详情",
+    "操作",
+  ]);
+  const uncertain = [...table.querySelectorAll("tbody tr")].find((row) =>
+    row.textContent?.includes("uncertain"),
+  )!;
+  expect(uncertain.querySelector('td[data-column="folder"]')?.textContent).toBe(
+    "收件箱",
+  );
+  expect(uncertain.querySelector('td[data-column="target"]')?.textContent).toBe(
+    "归档",
+  );
   await click("查看服务器任务");
   expect(showTasks).toHaveBeenCalledOnce();
   await click("重新检查并入队");

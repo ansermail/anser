@@ -33,6 +33,21 @@ async function click(text: string) {
     button(text).click();
   });
 }
+async function clearTaskRecord() {
+  const trigger = host.querySelector<HTMLButtonElement>(
+    'tbody button[aria-haspopup="menu"]',
+  )!;
+  await act(async () =>
+    trigger.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "Enter", bubbles: true }),
+    ),
+  );
+  const clear = [
+    ...document.querySelectorAll<HTMLElement>('[role="menuitem"]'),
+  ].find((item) => item.textContent === "清除任务记录")!;
+  expect(clear).toBeTruthy();
+  await act(async () => clear.click());
+}
 async function render(taskPanel = false) {
   await act(async () =>
     root.render(
@@ -202,6 +217,7 @@ it("shows task results with file warnings and supports clearing only the task re
   server.status = "completed";
   server.processed = 1;
   server.added = 1;
+  server.failed = 1;
   server.warnings = 1;
   server.items[0] = {
     ...server.items[0],
@@ -215,16 +231,81 @@ it("shows task results with file warnings and supports clearing only the task re
       .querySelector('[aria-label="展开或收起邮件导入任务"]')
       ?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
   });
+  expect(
+    host
+      .querySelector('td[data-column="status"] [data-slot="badge"]')
+      ?.getAttribute("data-variant"),
+  ).toBe("outline");
   await click("导入详情");
+  const itemStatus = document.body.querySelector<HTMLElement>(
+    '[data-import-item-status="added"]',
+  );
+  expect(itemStatus?.textContent).toContain("已导入");
+  expect(itemStatus?.getAttribute("data-variant")).toBe("outline");
   expect(document.body.textContent).toContain(
     "已保留原件，部分内容存在解码警告。",
   );
   await click("关闭");
-  await click("清除任务记录");
+  await clearTaskRecord();
   expect(mocks.call).toHaveBeenCalledWith("eml_import_action", {
     id: "job",
     action: "clear",
   });
+});
+
+it("keeps import statuses visible beside long filenames and removes the trailing period", async () => {
+  server.status = "completed";
+  server.total = 2;
+  server.processed = 2;
+  server.added = 1;
+  server.failed = 1;
+  server.items = [
+    {
+      ordinal: 0,
+      filename:
+        "2026-annual-financial-statements-with-a-very-long-filename-that-must-be-truncated.eml",
+      status: "added",
+      error: "",
+      warnings: 0,
+      mailId: "mail",
+    },
+    {
+      ordinal: 1,
+      filename: "03-invalid.eml",
+      status: "failed",
+      error: "invalidMessage",
+      warnings: 0,
+      mailId: "",
+    },
+  ];
+
+  await render(true);
+  await act(async () => {
+    host
+      .querySelector<HTMLButtonElement>(
+        '[aria-label="展开或收起邮件导入任务"]',
+      )!
+      .click();
+  });
+  await click("导入详情");
+
+  const imported = document.body.querySelector<HTMLElement>(
+    '[data-import-item-status="added"]',
+  )!;
+  const failed = document.body.querySelector<HTMLElement>(
+    '[data-import-item-status="failed"]',
+  )!;
+  const filename = document.body.querySelector<HTMLElement>(
+    '[title="2026-annual-financial-statements-with-a-very-long-filename-that-must-be-truncated.eml"]',
+  )!;
+
+  expect(filename.classList).toContain("truncate");
+  expect(filename.classList).toContain("min-w-0");
+  expect(imported.classList).toContain("shrink-0");
+  expect(failed.classList).toContain("shrink-0");
+  expect(failed.textContent).toBe("文件不包含可识别的邮件");
+  expect(failed.textContent).not.toMatch(/。$/);
+  expect(document.body.querySelector(".import-results-scroll")).toBeTruthy();
 });
 
 it("a delayed task refresh cannot restore a cleared task record", async () => {
@@ -256,7 +337,7 @@ it("a delayed task refresh cannot restore a cleared task record", async () => {
   await act(async () => {
     await vi.advanceTimersByTimeAsync(3000);
   });
-  await click("清除任务记录");
+  await clearTaskRecord();
   await act(async () => {
     resolve([structuredClone(server)]);
     await delayed;

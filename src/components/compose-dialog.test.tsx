@@ -54,6 +54,14 @@ async function format(value: string) {
 beforeEach(async () => {
   Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
   vi.stubGlobal(
+    "ResizeObserver",
+    class {
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    },
+  );
+  vi.stubGlobal(
     "matchMedia",
     vi.fn(() => ({
       matches: false,
@@ -150,31 +158,31 @@ describe("compose formats and scheduling", () => {
         .querySelector('iframe[title="发送效果预览正文"]')
         ?.getAttribute("srcdoc"),
     ).toContain("Original");
-    await act(async () =>
-      (
-        document.querySelector(
-          '.delivery-preview-dialog button[data-slot="dialog-close"]',
-        ) as HTMLButtonElement
-      ).click(),
-    );
+    expect(document.querySelectorAll('[role="dialog"]')).toHaveLength(1);
+    expect(
+      document.querySelector(
+        ".compose-dialog + .compose-assistant-host + .compose-preview-panel",
+      ),
+    ).not.toBeNull();
+    await input('textarea[aria-label="邮件正文"]', "边写边预览");
+    expect(
+      document
+        .querySelector('iframe[title="发送效果预览正文"]')
+        ?.getAttribute("srcdoc"),
+    ).toContain("边写边预览");
+    await input('textarea[aria-label="邮件正文"]', "新写内容");
     const toggle = document.querySelector(
       '[role="switch"]',
     ) as HTMLButtonElement;
     await act(async () => toggle.click());
     expect(document.querySelector('iframe[title="引用原文"]')).toBeNull();
-    await click("发送预览");
     expect(
       document
         .querySelector('iframe[title="发送效果预览正文"]')
         ?.getAttribute("srcdoc"),
     ).not.toContain("Original");
-    await act(async () =>
-      (
-        document.querySelector(
-          '.delivery-preview-dialog button[data-slot="dialog-close"]',
-        ) as HTMLButtonElement
-      ).click(),
-    );
+    await click("关闭发送预览");
+    expect(document.activeElement?.getAttribute("aria-label")).toBe("发送预览");
     await click("保存草稿并关闭");
     const saved = (await call<Compose[]>("list_drafts"))[0];
     expect(saved.quote?.included).toBe(false);
@@ -191,22 +199,16 @@ describe("compose formats and scheduling", () => {
       (document.querySelector("textarea") as HTMLTextAreaElement).value,
     ).toBe("Still here");
   });
-  it("saves Markdown source and preview, reopens without switching to rich text", async () => {
+  it("updates the side preview from Markdown and saves the original source", async () => {
     await format("markdown");
-    await input(
-      'textarea[aria-label="Markdown 源码"]',
-      "# Heading\n\n**bold**",
-    );
-    expect(
-      document
-        .querySelector('iframe[title="写信正文预览"]')
-        ?.getAttribute("srcdoc"),
-    ).toContain("<strong>bold</strong>");
-    expect(
-      document
-        .querySelector('iframe[title="写信正文预览"]')
-        ?.getAttribute("srcdoc"),
-    ).toContain("color-scheme:dark");
+    const source = 'textarea[aria-label="Markdown 源码"]';
+    expect(document.querySelector(".compose-body-card iframe")).toBeNull();
+    expect(document.querySelector(".compose-preview-panel")).toBeNull();
+    await click("发送预览");
+    await input(source, "# Heading\n\n**bold**");
+    const frame = document.querySelector('iframe[title="发送效果预览正文"]');
+    expect(frame?.getAttribute("srcdoc")).toContain("<strong>bold</strong>");
+    expect(document.querySelector(".compose-body-card iframe")).toBeNull();
     await click("保存草稿并关闭");
     const drafts = await call<Compose[]>("list_drafts");
     expect(drafts[0].format).toBe("markdown");
@@ -314,9 +316,11 @@ describe("signature composition", () => {
     });
     seed = { ...seed, id: "signature-test", signature: undefined };
     await renderHarness();
+    expect(document.querySelector('iframe[title="本封邮件签名"]')).toBeNull();
+    await click("发送预览");
     expect(
       document
-        .querySelector('iframe[title="本封邮件签名"]')
+        .querySelector('iframe[title="发送效果预览正文"]')
         ?.getAttribute("srcdoc"),
     ).toContain("Snapshot signature");
     await act(async () =>
@@ -354,16 +358,13 @@ describe("signature composition", () => {
         ) as HTMLButtonElement
       ).click(),
     );
-    expect(
-      document
-        .querySelector('iframe[title="本封邮件签名"]')
-        ?.getAttribute("srcdoc"),
-    ).toContain("Snapshot signature");
-    expect(
-      document
-        .querySelector('iframe[title="本封邮件签名"]')
-        ?.getAttribute("srcdoc"),
-    ).not.toContain("Changed settings");
+    expect(document.querySelector('iframe[title="本封邮件签名"]')).toBeNull();
+    await click("发送预览");
+    const preview = document
+      .querySelector('iframe[title="发送效果预览正文"]')
+      ?.getAttribute("srcdoc");
+    expect(preview).toContain("Snapshot signature");
+    expect(preview).not.toContain("Changed settings");
   });
 });
 describe("empty drafts", () => {

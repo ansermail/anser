@@ -1,6 +1,14 @@
+import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuGroup,
+} from "./ui/dropdown-menu";
+import { TaskCellText, TaskDataTable } from "./task-data-table";
 import { mailFileError as importError } from "@/lib/mail-file-errors";
 import { useEffect, useRef, useState } from "react";
-import { FileInput } from "lucide-react";
+import { Ellipsis, FileInput } from "lucide-react";
 import { call, isDemo, native } from "@/lib/api";
 import { t } from "@/lib/i18n";
 import { formatSize } from "@/lib/providers";
@@ -74,7 +82,10 @@ function stateText(status: string) {
 }
 function Counts({ job }: { job: ImportJob }) {
   return (
-    <div className="flex shrink-0 flex-col gap-2" aria-live="polite">
+    <div
+      className="flex shrink-0 flex-col gap-1.5 tabular-nums"
+      aria-live="polite"
+    >
       <p>
         {t("Processed {done} of {total}", {
           done: job.processed,
@@ -134,6 +145,10 @@ export function EmlImports({
   const target =
     folderChoice === "new" ? folderName.trim() : folderChoice.slice(9);
   const locked = !!job && job.status !== "prepared";
+
+  const resultFields = (
+    ["added", "upgraded", "duplicate", "failed", "warnings"] as const
+  ).filter((field) => jobs.some((entry) => entry[field] > 0));
 
   async function discard(id: string) {
     await call("eml_import_action", { id, action: "cancel" });
@@ -353,62 +368,114 @@ export function EmlImports({
                     <AlertDescription>{error}</AlertDescription>
                   </Alert>
                 )}
-                {!jobs.length && (
-                  <p className="text-sm text-muted-foreground">
-                    {t("No mail imports yet.")}
-                  </p>
-                )}
-                {jobs.map((current) => (
-                  <div
-                    key={current.id}
-                    className="flex flex-col gap-3 rounded-md border p-4"
-                  >
-                    <div className="flex flex-wrap items-center gap-2">
-                      <strong className="min-w-0 break-words">
-                        {accounts.find((a) => a.id === current.accountId)
-                          ?.email || t("Removed account")}{" "}
-                        · {current.folder}
-                      </strong>
-                      <Badge variant="secondary">
+                <TaskDataTable
+                  actionsWidth={8}
+                  label={t("Mail import tasks")}
+                  empty={t("No mail imports yet.")}
+                  fields={[
+                    "folder",
+                    "account",
+                    "status",
+                    "progress",
+                    ...resultFields,
+                    "reason",
+                    "actions",
+                  ]}
+                  rows={jobs.map((current) => ({
+                    id: current.id,
+                    folder: current.folder && (
+                      <TaskCellText text={current.folder} />
+                    ),
+                    account: (
+                      <TaskCellText
+                        text={
+                          accounts.find((a) => a.id === current.accountId)
+                            ?.email || t("Removed account")
+                        }
+                      />
+                    ),
+                    reason: current.error && (
+                      <TaskCellText text={importError(current.error)} />
+                    ),
+                    status: (
+                      <Badge
+                        variant={
+                          current.status === "interrupted"
+                            ? "destructive"
+                            : "outline"
+                        }
+                      >
                         {stateText(current.status)}
                       </Badge>
-                    </div>
-                    <Counts job={current} />
-                    {current.error && (
-                      <p className="text-sm text-destructive">
-                        {importError(current.error)}
-                      </p>
-                    )}
-                    <div className="flex flex-wrap gap-2">
-                      <Button
-                        variant="outline"
-                        onClick={() => void show(current.id)}
+                    ),
+                    progress: (
+                      <span
+                        className="tabular-nums"
+                        title={t("Processed {done} of {total}", {
+                          done: current.processed,
+                          total: current.total,
+                        })}
                       >
-                        {t("Import details")}
-                      </Button>
-                      <Button variant="outline" onClick={() => view(current)}>
-                        {t("View imported mail")}
-                      </Button>
-                      {active(current) ? (
-                        <Button
-                          variant="outline"
-                          disabled={busy}
-                          onClick={() => void action(current.id, "cancel")}
-                        >
-                          {t("Cancel import")}
-                        </Button>
-                      ) : (
+                        {current.processed} / {current.total}
+                      </span>
+                    ),
+                    added: current.added,
+                    upgraded: current.upgraded,
+                    duplicate: current.duplicate,
+                    failed: current.failed,
+                    warnings: current.warnings,
+                    actions: (
+                      <div className="flex items-center justify-end gap-1">
                         <Button
                           variant="ghost"
-                          disabled={busy}
-                          onClick={() => void action(current.id, "clear")}
+                          size="xs"
+                          onClick={() => void show(current.id)}
                         >
-                          {t("Clear task record")}
+                          {t("Import details")}
                         </Button>
-                      )}
-                    </div>
-                  </div>
-                ))}
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button
+                              variant="ghost"
+                              size="icon-xs"
+                              aria-label={t("Actions for {value0}", {
+                                value0: current.folder,
+                              })}
+                            >
+                              <Ellipsis />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuGroup>
+                              <DropdownMenuItem onSelect={() => view(current)}>
+                                {t("View imported mail")}
+                              </DropdownMenuItem>
+                              {active(current) ? (
+                                <DropdownMenuItem
+                                  disabled={busy}
+                                  onSelect={() =>
+                                    void action(current.id, "cancel")
+                                  }
+                                >
+                                  {t("Cancel import")}
+                                </DropdownMenuItem>
+                              ) : (
+                                <DropdownMenuItem
+                                  disabled={busy}
+                                  onSelect={() =>
+                                    void action(current.id, "clear")
+                                  }
+                                >
+                                  {t("Clear task record")}
+                                </DropdownMenuItem>
+                              )}
+                            </DropdownMenuGroup>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </div>
+                    ),
+                  }))}
+                />
               </CardContent>
             </CollapsibleContent>
           </Card>
@@ -609,37 +676,62 @@ export function EmlImports({
               )}
               {!!job.items.length && (
                 <ScrollArea
-                  className="min-h-0 flex-1 basis-48 overflow-hidden rounded-md border"
+                  className="import-results-scroll min-h-0 min-w-0 flex-1 basis-48 overflow-hidden rounded-md border"
                   type="always"
                   aria-label={t("Import file results")}
                 >
-                  <div className="flex flex-col gap-3 p-3">
-                    {job.items.map((item) => (
-                      <div key={item.ordinal} className="text-sm break-words">
-                        <span>{item.filename}</span>
-                        <span className="ml-2 text-muted-foreground">
-                          {item.status === "failed"
-                            ? importError(item.error)
-                            : item.status === "duplicate"
-                              ? t("Duplicate skipped")
-                              : item.status === "pending"
-                                ? t("Pending")
-                                : item.status === "upgraded"
-                                  ? t("Original completed")
-                                  : t("Imported")}
-                        </span>
-                        {item.error && item.status !== "failed" && (
-                          <p>{importError(item.error)}</p>
-                        )}
-                        {item.warnings > 0 && (
-                          <p className="text-muted-foreground">
-                            {t(
-                              "Original kept; some content has decoding warnings.",
-                            )}
-                          </p>
-                        )}
-                      </div>
-                    ))}
+                  <div className="flex w-full min-w-0 flex-col gap-3 p-3">
+                    {job.items.map((item) => {
+                      const itemState =
+                        item.status === "failed"
+                          ? importError(item.error)
+                          : item.status === "duplicate"
+                            ? t("Duplicate skipped")
+                            : item.status === "pending"
+                              ? t("Pending")
+                              : item.status === "upgraded"
+                                ? t("Original completed")
+                                : t("Imported");
+                      return (
+                        <div
+                          key={item.ordinal}
+                          className="w-full min-w-0 text-sm"
+                        >
+                          <div className="flex w-full min-w-0 items-center gap-3">
+                            <span
+                              className="min-w-0 flex-1 truncate"
+                              title={item.filename}
+                            >
+                              {item.filename}
+                            </span>
+                            <Badge
+                              data-import-item-status={item.status}
+                              variant="outline"
+                              className={
+                                item.status === "failed"
+                                  ? "max-w-[58%] shrink-0 border-destructive/40 text-destructive"
+                                  : "max-w-[58%] shrink-0 text-muted-foreground"
+                              }
+                              title={itemState}
+                            >
+                              <span className="truncate">{itemState}</span>
+                            </Badge>
+                          </div>
+                          {item.error && item.status !== "failed" && (
+                            <p className="mt-1 break-words">
+                              {importError(item.error)}
+                            </p>
+                          )}
+                          {item.warnings > 0 && (
+                            <p className="mt-1 break-words text-muted-foreground">
+                              {t(
+                                "Original kept; some content has decoding warnings.",
+                              )}
+                            </p>
+                          )}
+                        </div>
+                      );
+                    })}
                   </div>
                 </ScrollArea>
               )}

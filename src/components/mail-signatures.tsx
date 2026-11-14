@@ -311,7 +311,7 @@ export function MailSignatures({ accounts }: { accounts: Account[] }) {
                       {t("Signature preview")}
                     </FieldLabel>
                     <Card
-                      className="signature-preview-frame min-w-0 rounded-md py-0 shadow-xs"
+                      className="signature-preview-frame min-w-0 rounded-md py-0 shadow-none"
                       role="region"
                       aria-labelledby="signature-preview-label"
                     >

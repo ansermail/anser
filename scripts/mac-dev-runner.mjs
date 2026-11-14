@@ -6,7 +6,11 @@ import {
   signDevelopmentBundle,
 } from "./mac-dev-signing.mjs";
 
-import { documentTypes, importedTypes } from "./mac-document-types.mjs";
+import {
+  documentTypes,
+  importedTypes,
+  urlTypes,
+} from "./mac-document-types.mjs";
 
 const [binary, ...args] = process.argv.slice(2);
 if (!binary) throw new Error("缺少开发版可执行文件");
@@ -21,6 +25,7 @@ const config = JSON.parse(
 );
 const bundle = join(dirname(resolve(binary)), "dev-app", "雁信.app");
 const contents = join(bundle, "Contents");
+const formalInfo = await readFile(join(root, "src-tauri/Info.plist"), "utf8");
 await mkdir(join(contents, "MacOS"), { recursive: true });
 await mkdir(join(contents, "Resources"), { recursive: true });
 const executable = join(contents, "MacOS", "anser");
@@ -46,7 +51,8 @@ await writeFile(
 <key>CFBundleLocalizations</key><array><string>zh-Hans</string><string>en</string></array>
 <key>NSHighResolutionCapable</key><true/>
 ${documentTypes(config.bundle.fileAssociations)}
-${importedTypes(await readFile(join(root, "src-tauri/Info.plist"), "utf8"))}
+${urlTypes(formalInfo)}
+${importedTypes(formalInfo)}
 </dict></plist>`,
 );
 await signDevelopmentBundle(bundle, signingIdentity);

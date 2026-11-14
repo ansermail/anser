@@ -39,3 +39,11 @@ export function importedTypes(plist) {
   if (!match) throw new Error("Missing imported mail type declarations");
   return `<key>UTImportedTypeDeclarations</key>${match[1]}`;
 }
+
+export function urlTypes(plist) {
+  const match = plist.match(
+    /<key>CFBundleURLTypes<\/key>\s*(<array>[\s\S]*?<\/dict>\s*<\/array>)\s*<key>/,
+  );
+  if (!match) throw new Error("Missing URL type declarations");
+  return `<key>CFBundleURLTypes</key>${match[1]}`;
+}

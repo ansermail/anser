@@ -198,8 +198,27 @@ export function printableMail(detail: Detail, doc: Document = document) {
 }
 
 export async function printMail(detail: Detail) {
+  return printSheet(printableMail(detail));
+}
+
+export async function printWorkReport(title: string, text: string) {
+  const sheet = document.createElement("article");
+  sheet.id = "mail-print-root";
+  sheet.setAttribute("inert", "");
+  const header = document.createElement("header");
+  header.className = "mail-print-header";
+  const heading = document.createElement("h1");
+  heading.textContent = title;
+  header.append(heading);
+  const body = document.createElement("div");
+  body.className = "mail-print-body plain";
+  body.textContent = text;
+  sheet.append(header, body);
+  return printSheet(sheet);
+}
+
+async function printSheet(sheet: HTMLElement) {
   activePrint?.remove();
-  const sheet = printableMail(detail);
   activePrint = sheet;
   document.body.append(sheet);
   const isolated = printBody(sheet);

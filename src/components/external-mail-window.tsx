@@ -62,6 +62,26 @@ export function ExternalMailWindow() {
   const theme = useTheme();
   const dark = theme.dark;
   const readerRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!native) return;
+    let disposed = false;
+    let unlisten: (() => void) | undefined;
+    void import("@tauri-apps/api/event")
+      .then(({ listen }) =>
+        listen("anser-translation-config-changed", () =>
+          window.dispatchEvent(new Event("anser-translation-config-changed")),
+        ),
+      )
+      .then((remove) => {
+        if (disposed) remove();
+        else unlisten = remove;
+      })
+      .catch(() => {});
+    return () => {
+      disposed = true;
+      unlisten?.();
+    };
+  }, []);
   const [translationActions, setTranslationActions] =
     useState<HTMLDivElement | null>(null);
   useEffect(() => {
@@ -385,6 +405,11 @@ export function ExternalMailWindow() {
               demo={false}
               scrollRef={readerRef}
               translationActions={translationActions}
+              onAddWorkItem={(item) =>
+                void invoke("open_mail_reminder", {
+                  item: { ...item, mailId: "" },
+                }).catch(() => toast.error(t("Could not open calendar.")))
+              }
               editorOpen={!!draft}
               onReply={(_, forward = false, all = false) =>
                 compose(forward, all)

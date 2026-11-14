@@ -63,6 +63,7 @@ impl Store {
         .map_err(err)?;
         db.execute_batch("CREATE TABLE IF NOT EXISTS folder_mappings(account_id TEXT PRIMARY KEY,data TEXT NOT NULL); CREATE TABLE IF NOT EXISTS remote_folders(account_id TEXT NOT NULL,name TEXT NOT NULL,data TEXT NOT NULL,PRIMARY KEY(account_id,name)); CREATE TABLE IF NOT EXISTS contacts(id TEXT PRIMARY KEY,name TEXT NOT NULL,email TEXT NOT NULL COLLATE NOCASE UNIQUE); CREATE TABLE IF NOT EXISTS preferences(key TEXT PRIMARY KEY,data TEXT NOT NULL);")
             .map_err(err)?;
+        db.execute_batch("CREATE TABLE IF NOT EXISTS work_items(id TEXT PRIMARY KEY, revision INTEGER NOT NULL, work_date TEXT NOT NULL, data TEXT NOT NULL); CREATE INDEX IF NOT EXISTS work_items_date ON work_items(work_date,id);").map_err(err)?;
         db.execute_batch("CREATE TABLE IF NOT EXISTS translation_cache(key TEXT PRIMARY KEY,data TEXT NOT NULL,updated_at INTEGER NOT NULL)").map_err(err)?;
         for (column, definition) in [
             ("error", "TEXT NOT NULL DEFAULT ''"),
@@ -122,6 +123,7 @@ impl Store {
         crate::rule_runs::initialize(&db)?;
         crate::search::initialize(&db)?;
         crate::paging::initialize(&db)?;
+        crate::mail_tags::initialize(&db)?;
         crate::compose_files::initialize(&db)?;
         crate::notification_open::initialize(&db)?;
         s.migrate_folder_roles()?;
@@ -459,6 +461,7 @@ impl Store {
                 mail.local_star_override = old.local_star_override;
                 mail.trashed = old.trashed;
                 mail.local_folder = old.local_folder;
+                mail.tags = old.tags;
                 mail.server_date = old.server_date;
                 if mail.date.is_empty() {
                     mail.date = mail.server_date.clone();
@@ -488,6 +491,7 @@ impl Store {
                     mail.local_star_override = old.local_star_override;
                     mail.trashed = old.trashed;
                     mail.local_folder = old.local_folder;
+                    mail.tags = old.tags;
                     mail.server_date = old.server_date;
                 }
             } else {
@@ -793,7 +797,8 @@ impl Store {
                     Option::<f64>::None,
                     q.remote_folder_tree,
                     q.remote_folder_delimiter,
-                    q.exclude_sent
+                    q.exclude_sent,
+                    q.tag
                 ],
                 |r| r.get::<_, String>(0),
             )
@@ -941,6 +946,7 @@ impl Store {
             rules: json_rows(db, "SELECT data FROM rules ORDER BY position")?,
             messages,
             folders,
+            tags: crate::mail_tags::names(db)?,
             stats,
             logs,
             data_dir: crate::archive_location::display_path(&self.root),
@@ -1242,6 +1248,22 @@ impl Store {
                 restored_contacts.push(contact);
             }
         }
+        let mut restored_tags = Vec::<String>::new();
+        if has_table("mail_tags")? {
+            let mut q = source
+                .prepare("SELECT name FROM mail_tags ORDER BY position,name COLLATE NOCASE")
+                .map_err(err)?;
+            for row in q.query_map([], |r| r.get::<_, String>(0)).map_err(err)? {
+                let name = row.map_err(err)?;
+                if name.trim().is_empty()
+                    || name.chars().count() > 48
+                    || name.contains(['\r', '\n', '\0'])
+                {
+                    return Err("备份中的标签名称无效".into());
+                }
+                restored_tags.push(name);
+            }
+        }
         let mut db = self.db()?;
         let tx = db
             .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
@@ -1307,10 +1329,28 @@ impl Store {
                 )
                 .map_err(err)?;
         }
+        let mut tag_count = 0;
+        let mut tag_position: i64 = tx
+            .query_row(
+                "SELECT COALESCE(MAX(position),-1)+1 FROM mail_tags",
+                [],
+                |row| row.get(0),
+            )
+            .map_err(err)?;
+        for tag in restored_tags {
+            let inserted = tx
+                .execute(
+                    "INSERT OR IGNORE INTO mail_tags(name,position) VALUES(?1,?2)",
+                    params![tag, tag_position],
+                )
+                .map_err(err)?;
+            tag_count += inserted;
+            tag_position += inserted as i64;
+        }
         tx.commit().map_err(err)?;
         self.refresh_archive_metadata()?;
         self.log(&format!(
-            "备份恢复：新增 {count} 封邮件、{rule_count} 条规则、{contact_count} 位联系人"
+            "备份恢复：新增 {count} 封邮件、{rule_count} 条规则、{contact_count} 位联系人、{tag_count} 个标签"
         ))?;
         Ok(count)
     }

@@ -490,7 +490,7 @@ export function RulesPanel({
         )}
       </div>
       <RuleExecutions onShowTasks={onShowTasks} />
-      <RuleRunsPanel onShowTasks={onShowTasks} />
+      <RuleRunsPanel />
       <Dialog
         open={!!editing}
         onOpenChange={(v) => {

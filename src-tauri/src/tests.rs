@@ -387,6 +387,7 @@ pub(super) fn query() -> Query {
         attachments_only: false,
         exclude_sent: false,
         search_field: String::new(),
+        tag: String::new(),
         list_mode: ListMode::Conversations,
     }
 }
@@ -1348,6 +1349,7 @@ fn configurable_sync_interval_and_wakeup_are_persistent_and_keep_busy_catchup_pe
     let dir = tempfile::tempdir().unwrap();
     let s = Store::new(dir.path().into()).unwrap();
     assert_eq!(s.preferences().unwrap().sync_interval_minutes, 5);
+    assert!(s.preferences().unwrap().show_workbench);
     s.save_preferences(&Preferences {
         sync_interval_minutes: 15,
         do_not_disturb: true,
@@ -1368,6 +1370,16 @@ fn configurable_sync_interval_and_wakeup_are_persistent_and_keep_busy_catchup_pe
             .preferences()
             .unwrap()
             .do_not_disturb
+    );
+    let mut hidden = s.preferences().unwrap();
+    hidden.show_workbench = false;
+    s.save_preferences(&hidden).unwrap();
+    assert!(
+        !Store::new(dir.path().into())
+            .unwrap()
+            .preferences()
+            .unwrap()
+            .show_workbench
     );
     assert!(s
         .save_preferences(&Preferences {

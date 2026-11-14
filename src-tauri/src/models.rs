@@ -141,6 +141,8 @@ pub struct Mail {
     pub date: String,
     pub is_read: bool,
     pub starred: bool,
+    #[serde(default)]
+    pub tags: Vec<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub local_read_override: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -234,6 +236,8 @@ pub struct Query {
     #[serde(default)]
     pub search_field: String,
     #[serde(default)]
+    pub tag: String,
+    #[serde(default)]
     pub list_mode: ListMode,
 }
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -260,6 +264,8 @@ pub struct Snapshot {
     pub messages: Vec<Mail>,
     pub rules: Vec<Rule>,
     pub folders: Vec<String>,
+    #[serde(default)]
+    pub tags: Vec<String>,
     pub stats: Stats,
     pub logs: Vec<String>,
     pub data_dir: String,
@@ -405,6 +411,8 @@ pub struct OutboxRecord {
 #[serde(rename_all = "camelCase")]
 pub struct Preferences {
     #[serde(default = "default_true")]
+    pub show_workbench: bool,
+    #[serde(default = "default_true")]
     pub new_mail_notifications: bool,
     #[serde(default = "default_true")]
     pub send_result_notifications: bool,
@@ -422,6 +430,7 @@ impl Default for Preferences {
     fn default() -> Self {
         Self {
             sync_interval_minutes: 5,
+            show_workbench: true,
             new_mail_notifications: true,
             send_result_notifications: true,
             do_not_disturb: false,

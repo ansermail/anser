@@ -1,7 +1,9 @@
 // @vitest-environment jsdom
+import { t } from "../lib/i18n";
 import { act, useEffect, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import { MailSummaryLayer } from "./mail-summary";
 import { TranslatableMailBody } from "./translatable-mail-body";
 import type { TranslationPart } from "../lib/mail-translation";
 const mock = vi.hoisted(() => ({ call: vi.fn(), docs: [] as Document[] }));
@@ -44,6 +46,14 @@ let root: Root, host: HTMLElement, actions: HTMLElement;
 let pending: ((value: TranslationPart[]) => void) | undefined;
 beforeEach(() => {
   Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
+  vi.stubGlobal(
+    "ResizeObserver",
+    class {
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    },
+  );
   mock.docs = [];
   pending = undefined;
   mock.call.mockReset();
@@ -71,16 +81,27 @@ beforeEach(() => {
 afterEach(async () => {
   await act(async () => root.unmount());
   document.body.replaceChildren();
+  vi.unstubAllGlobals();
 });
-async function render(html = "<p>Hello <b>world</b></p>") {
+async function render(
+  html = "<p>Hello <b>world</b></p>",
+  onAddWorkItem?: (item: import("../lib/workbench").WorkItem) => void,
+) {
   await act(async () =>
     root.render(
-      <TranslatableMailBody
-        html={html}
-        body=""
-        actionsContainer={actions}
-        onOpenLink={() => {}}
-      />,
+      <MailSummaryLayer>
+        <div className="test-mail-scroll">
+          <TranslatableMailBody
+            html={html}
+            mailId="source-mail"
+            mailDate="2026-11-14T10:00:00+08:00"
+            onAddWorkItem={onAddWorkItem}
+            body=""
+            actionsContainer={actions}
+            onOpenLink={() => {}}
+          />
+        </div>
+      </MailSummaryLayer>,
     ),
   );
 }
@@ -282,7 +303,10 @@ it("keeps icon-only cancel, retry and hide actions working without applying canc
   expect(mock.docs[0].querySelector("[data-anser-translation]")).toBeNull();
   await act(async () => current([{ id: "p0_t0", text: "你好" }]));
   expect(mock.docs[0].body.textContent).toBe("Hello你好");
-  expect(actions.querySelectorAll("button")).toHaveLength(1);
+  expect(actions.querySelectorAll("button")).toHaveLength(2);
+  expect(
+    actions.querySelector('button[aria-label="生成邮件摘要"]'),
+  ).not.toBeNull();
   expect(actions.querySelector("button")?.textContent).toBe("");
   await click("隐藏译文");
   expect(mock.docs[0].body.textContent).toBe("Hello");
@@ -301,4 +325,120 @@ it("removes title actions on unmount and cancels their pending translation", asy
   );
   await act(async () => late([{ id: "p0_t0", text: "迟到译文" }]));
   expect(actions.textContent).toBe("示例邮件标题");
+});
+
+it("summarizes only the selected message, reopens a cached result and ignores late replies", async () => {
+  const get = mock.call.getMockImplementation()!;
+  let resolveSummary!: (value: {
+    conclusion: string;
+    points: string[];
+    reminders: {
+      title: string;
+      date: string;
+      time: string;
+      evidence: string;
+    }[];
+  }) => void;
+  vi.stubGlobal("crypto", {
+    randomUUID: () => "a07f33e0-36fe-475a-8955-f118542a88ab",
+  });
+  try {
+    mock.call.mockImplementation((command, args) => {
+      if (command === "get_translation_settings")
+        return Promise.resolve({
+          baseUrl: "http://localhost/v1",
+          model: "test",
+          targetLanguage: "en",
+          revision: "r",
+          hasApiKey: false,
+        });
+      if (command === "run_mail_ai")
+        return new Promise((resolve) => {
+          expect(args.input).toEqual({
+            kind: "summary",
+            body: "Project deadline",
+            language: "en",
+            reference: "2026-11-14T10:00:00+08:00",
+          });
+          resolveSummary = resolve;
+        });
+      return get(command, args);
+    });
+    const add = vi.fn();
+    await render("<p>Project deadline</p>", add);
+    expect(mock.call).not.toHaveBeenCalled();
+    await click("生成邮件摘要");
+    await act(async () =>
+      resolveSummary({
+        conclusion: "Project due Friday",
+        points: [],
+        reminders: [
+          {
+            title: "Project deadline",
+            date: "2026-11-20",
+            time: "",
+            evidence: "Project deadline",
+          },
+        ],
+      }),
+    );
+    expect(host.textContent).toContain("Project due Friday");
+    const collapse = host.querySelector<HTMLButtonElement>(
+      `button[aria-label="${t("Collapse summary")}"]`,
+    )!;
+    await act(async () => collapse.click());
+    expect(host.textContent).not.toContain("Project due Friday");
+    const collapsed = host.querySelector<HTMLButtonElement>(
+      `button[aria-label="${t("Show summary")}"]`,
+    )!;
+    expect(document.activeElement).toBe(collapsed);
+    await act(async () => collapsed.click());
+    expect(host.textContent).toContain("Project due Friday");
+    expect(host.textContent).toContain(t("Email reminders"));
+    expect(
+      host.querySelector(".test-mail-scroll .mail-summary-result"),
+    ).toBeNull();
+    const addButton = host.querySelector<HTMLButtonElement>(
+      `.mail-summary-layer button[aria-label="${t("Add to calendar")}"]`,
+    )!;
+    expect(add).not.toHaveBeenCalled();
+    await act(async () => addButton.click());
+    expect(add).toHaveBeenCalledWith(
+      expect.objectContaining({
+        mailId: "source-mail",
+        date: "2026-11-20",
+        time: "",
+        notes: "Project deadline",
+      }),
+    );
+    expect(document.activeElement).toBe(
+      host.querySelector(`button[aria-label="${t("Collapse summary")}"]`),
+    );
+    const close = host.querySelector(
+      '.mail-summary-result button[aria-label="' + t("Close") + '"]',
+    ) as HTMLButtonElement;
+    await act(async () => close.click());
+    expect(document.activeElement).toBe(
+      actions.querySelector('button[aria-label="生成邮件摘要"]'),
+    );
+    await click("生成邮件摘要");
+    expect(
+      mock.call.mock.calls.filter(([name]) => name === "run_mail_ai"),
+    ).toHaveLength(1);
+    await act(async () =>
+      window.dispatchEvent(new Event("anser-translation-config-changed")),
+    );
+    await click("生成邮件摘要");
+    await act(async () => root.render(null));
+    await act(async () =>
+      resolveSummary({ conclusion: "Late result", points: [], reminders: [] }),
+    );
+    expect(host.textContent).not.toContain("Late result");
+    expect(mock.call).toHaveBeenCalledWith(
+      "cancel_translation",
+      expect.any(Object),
+    );
+  } finally {
+    vi.unstubAllGlobals();
+  }
 });

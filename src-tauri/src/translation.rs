@@ -1,4 +1,4 @@
-//! User-initiated text translation. Credentials never enter webview storage;
+//! User-initiated mail model features. Credentials never enter webview storage;
 //! model output is data, never HTML or application instructions.
 use crate::{
     models::{err, Result},
@@ -197,6 +197,7 @@ pub fn get_translation_settings(state: tauri::State<AppState>) -> Result<Option<
 }
 #[tauri::command]
 pub async fn save_translation_settings(
+    app: tauri::AppHandle,
     state: tauri::State<'_, AppState>,
     service: tauri::State<'_, Service>,
     mut config: Config,
@@ -209,9 +210,14 @@ pub async fn save_translation_settings(
     }
     let store = state.store.clone();
     let service = service.inner();
-    // This mutex protects only short local configuration/keychain work, never HTTP.
-    let _guard = service.config_gate.lock().map_err(err)?;
-    let old = store.translation_config()?;
+    let previous_config = {
+        let _guard = service.config_gate.lock().map_err(err)?;
+        store.translation_config()?
+    };
+    let previous_revision = previous_config
+        .as_ref()
+        .map(|config| config.revision.clone());
+    let old = previous_config.as_ref();
     let changed_address = old.as_ref().is_some_and(|x| x.base_url != config.base_url);
     let entry = key_entry()?;
     let key = if !api_key.trim().is_empty() {
@@ -223,6 +229,17 @@ pub async fn save_translation_settings(
     } else {
         None
     };
+    validate_connection_config(&store, &config, key.as_deref().unwrap_or_default()).await?;
+    // Keychain and preference writes stay together after the network check.
+    let _guard = service.config_gate.lock().map_err(err)?;
+    if store
+        .translation_config()?
+        .as_ref()
+        .map(|config| config.revision.clone())
+        != previous_revision
+    {
+        return Err("模型配置已被其他操作更新，请重新保存".into());
+    }
     // Checkpoint distinguishes an absent (legacy) entry from a deletion tombstone.
     // Replacement/clear never needs to authorize an inaccessible legacy item.
     // Saving settings is a user action, so the Keychain may prompt once.
@@ -236,6 +253,7 @@ pub async fn save_translation_settings(
         return Err(error);
     }
     service.cancel_all()?;
+    let _ = tauri::Emitter::emit(&app, "anser-translation-config-changed", ());
     Ok(config)
 }
 #[tauri::command]
@@ -245,6 +263,7 @@ pub fn cancel_translation(service: tauri::State<Service>, request_id: String) ->
 }
 #[tauri::command]
 pub fn clear_translation_cache(
+    app: tauri::AppHandle,
     state: tauri::State<AppState>,
     service: tauri::State<Service>,
 ) -> Result<()> {
@@ -253,7 +272,9 @@ pub fn clear_translation_cache(
         config.revision = uuid::Uuid::new_v4().to_string();
         state.store.put_translation_config(&config)?;
     }
-    service.cancel_all()
+    service.cancel_all()?;
+    let _ = tauri::Emitter::emit(&app, "anser-translation-config-changed", ());
+    Ok(())
 }
 fn validate_parts(parts: &[Part]) -> Result<()> {
     let mut ids = HashSet::new();
@@ -403,6 +424,28 @@ fn client(endpoint: &Url, direct: bool) -> Result<Client> {
     }
     builder.build().map_err(|_| "模型连接初始化失败".into())
 }
+fn structured_request_body(
+    model: &str,
+    endpoint: &Url,
+    system: &str,
+    user: &str,
+) -> serde_json::Value {
+    let mut body = serde_json::json!({"model":model,"stream":false,"messages":[{"role":"system","content":system},{"role":"user","content":user}]});
+    // 翻译与写信等结构化输出不需要高强度推理；专用字段只交给已知的官方接口。
+    if endpoint.scheme() == "https"
+        && endpoint.host_str() == Some("api.deepseek.com")
+        && endpoint.port_or_known_default() == Some(443)
+        && matches!(
+            endpoint.path().trim_end_matches('/'),
+            "/chat/completions" | "/v1/chat/completions"
+        )
+    {
+        body["thinking"] = serde_json::json!({"type": "disabled"});
+        body["response_format"] = serde_json::json!({"type": "json_object"});
+        body["max_tokens"] = 8192.into();
+    }
+    body
+}
 fn request_body(config: &Config, endpoint: &Url, parts: &[Part]) -> Result<serde_json::Value> {
     // Give the complete shape, not a placeholder ID or an open-ended pN_tN
     // example. Models can otherwise invent another inline ID for punctuation.
@@ -436,21 +479,12 @@ fn request_body(config: &Config, endpoint: &Url, parts: &[Part]) -> Result<serde
         config.target_language,
         parts.len(),
     );
-    let mut body = serde_json::json!({"model":config.model,"stream":false,"messages":[{"role":"system","content":prompt},{"role":"user","content":serde_json::to_string(parts).map_err(err)?}]});
-    // 翻译不需要高强度推理；专用字段只交给已知的官方接口，不影响其他兼容服务。
-    if endpoint.scheme() == "https"
-        && endpoint.host_str() == Some("api.deepseek.com")
-        && endpoint.port_or_known_default() == Some(443)
-        && matches!(
-            endpoint.path().trim_end_matches('/'),
-            "/chat/completions" | "/v1/chat/completions"
-        )
-    {
-        body["thinking"] = serde_json::json!({"type": "disabled"});
-        body["response_format"] = serde_json::json!({"type": "json_object"});
-        body["max_tokens"] = 8192.into();
-    }
-    Ok(body)
+    Ok(structured_request_body(
+        &config.model,
+        endpoint,
+        &prompt,
+        &serde_json::to_string(parts).map_err(err)?,
+    ))
 }
 fn transport_error(error: &reqwest::Error, reading: bool) -> String {
     // 不展示底层错误中的 URL、请求头或远端响应，避免泄露密钥和正文。
@@ -492,10 +526,16 @@ fn http_error(status: reqwest::StatusCode) -> String {
 async fn request(config: &Config, key: &str, parts: &[Part]) -> Result<Vec<Part>> {
     let endpoint = config.endpoint()?;
     let body = request_body(config, &endpoint, parts)?;
+    let response = post_completion(&endpoint, key, &body).await?;
+    read_reply(response, parts).await
+}
+async fn post_completion(
+    endpoint: &Url,
+    key: &str,
+    body: &serde_json::Value,
+) -> Result<reqwest::Response> {
     let send = |direct| {
-        let mut request = client(&endpoint, direct)?
-            .post(endpoint.clone())
-            .json(&body);
+        let mut request = client(endpoint, direct)?.post(endpoint.clone()).json(body);
         if !key.is_empty() {
             request = request.bearer_auth(key);
         }
@@ -516,9 +556,12 @@ async fn request(config: &Config, key: &str, parts: &[Part]) -> Result<Vec<Part>
         }
         Err(error) => return Err(transport_error(&error, false)),
     };
-    read_reply(response, parts).await
+    Ok(response)
 }
-async fn read_reply(mut response: reqwest::Response, parts: &[Part]) -> Result<Vec<Part>> {
+async fn read_reply(response: reqwest::Response, parts: &[Part]) -> Result<Vec<Part>> {
+    parse_reply(&read_completion(response).await?, parts)
+}
+async fn read_completion(mut response: reqwest::Response) -> Result<Vec<u8>> {
     if !response.status().is_success() {
         return Err(http_error(response.status()));
     }
@@ -536,7 +579,7 @@ async fn read_reply(mut response: reqwest::Response, parts: &[Part]) -> Result<V
         }
         bytes.extend_from_slice(&chunk);
     }
-    parse_reply(&bytes, parts)
+    Ok(bytes)
 }
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct ModelOption {
@@ -717,6 +760,23 @@ fn connection_test_parts() -> Vec<Part> {
         id: "p0_t0".into(),
         text: "Hello, world.".into(),
     }]
+}
+
+async fn validate_connection_config(store: &Store, config: &Config, key: &str) -> Result<()> {
+    let started = Instant::now();
+    let parts = connection_test_parts();
+    let result = request(config, key, &parts).await.map(|_| ());
+    let outcome = if result.is_ok() { "完成" } else { "失败" };
+    let reason = result
+        .as_ref()
+        .err()
+        .map(|error| format!("；{}", activity_error(error)))
+        .unwrap_or_default();
+    let _ = store.log(&format!(
+        "大模型翻译连接测试{outcome}：1 个文字片段，13 字；模型请求；耗时 {:.1} 秒{reason}",
+        started.elapsed().as_secs_f64(),
+    ));
+    result.map_err(|error| format!("模型连接验证失败，配置未保存：{error}"))
 }
 
 #[tauri::command]
@@ -911,6 +971,8 @@ async fn translate_parts_work(
     service.tasks.lock().map_err(err)?.active.remove(request_id);
     result
 }
+
+pub mod mail_ai;
 
 #[cfg(test)]
 mod tests {
@@ -1172,6 +1234,42 @@ mod tests {
             }
         });
     }
+    #[test]
+    fn candidate_validation_failure_returns_a_safe_error_and_leaves_store_empty() {
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        rt.block_on(async {
+            let (url, received) = server(
+                "401 Unauthorized",
+                serde_json::to_vec(&serde_json::json!({"error":"private response"})).unwrap(),
+                "",
+            );
+            let temp = tempfile::tempdir().unwrap();
+            let store = Store::new(temp.path().into()).unwrap();
+            let error = validate_connection_config(&store, &config(&url), "")
+                .await
+                .unwrap_err();
+            received.recv_timeout(Duration::from_secs(2)).unwrap();
+            assert!(error.contains("配置未保存"));
+            assert!(error.contains("HTTP 401"));
+            assert!(!error.contains("private response"));
+            assert!(store.translation_config().unwrap().is_none());
+            let activity: String = store
+                .db()
+                .unwrap()
+                .query_row(
+                    "SELECT message FROM logs ORDER BY id DESC LIMIT 1",
+                    [],
+                    |row| row.get(0),
+                )
+                .unwrap();
+            assert!(activity.contains("翻译连接测试失败"));
+            assert!(!activity.contains("private response"));
+        });
+    }
+
     #[test]
     fn cancelling_a_waiting_connection_test_releases_task_without_cache() {
         let rt = tokio::runtime::Builder::new_current_thread()

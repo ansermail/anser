@@ -129,6 +129,7 @@ export function prepareEditorCompose(draft: Compose): Compose {
 }
 
 export function textToHtml(text: string) {
+  if (!text.trim()) return "";
   return text
     .split("\n")
     .map(
@@ -186,25 +187,60 @@ function withSignature(editor: Compose) {
     return { body: editor.body, html: editor.html || "" };
   const signature = editor.signature;
   const body = [editor.body, signature.body].filter(Boolean).join("\n\n");
-  if (!editor.html && !signature.html) return { body, html: "" };
+  // Legacy plain drafts can rely on deliveryBody alone. A new rich draft has
+  // neither editor HTML nor body until the user types, but its signature still
+  // needs the rich rendering path so preview lines use the same compact
+  // spacing before and after the first edit.
+  if (!editor.html && editor.body && !signature.html) return { body, html: "" };
+  const authoredHtml = sanitizeComposeHtml(
+    editor.html || textToHtml(editor.body),
+  );
+  const authored = new DOMParser().parseFromString(authoredHtml, "text/html");
+  const hasAuthoredContent =
+    !!htmlToText(authoredHtml).trim() ||
+    !!authored.body.querySelector("img,video,audio,svg,canvas,hr");
+  if (!hasAuthoredContent) authored.body.replaceChildren();
   const doc = new DOMParser().parseFromString(
-    sanitizeComposeHtml(editor.html || textToHtml(editor.body)),
+    authored.documentElement.outerHTML,
     "text/html",
   );
   const part = doc.createElement("div");
-  const content = new DOMParser().parseFromString(
-    sanitizeComposeHtml(signature.html || textToHtml(signature.body)),
-    "text/html",
-  );
-  for (const attribute of content.body.attributes)
-    part.setAttribute(attribute.name, attribute.value);
-  for (const style of content.head.querySelectorAll("style"))
-    doc.head.append(doc.importNode(style, true));
   part.setAttribute("data-anser-signature", "true");
-  part.style.marginTop = "24px";
-  part.replaceChildren(
-    ...[...content.body.childNodes].map((n) => doc.importNode(n, true)),
-  );
+  part.style.marginTop = hasAuthoredContent ? "18px" : "0";
+  part.style.lineHeight = "1.45";
+  if (signature.html) {
+    const content = new DOMParser().parseFromString(
+      sanitizeComposeHtml(signature.html),
+      "text/html",
+    );
+    for (const attribute of content.body.attributes)
+      part.setAttribute(attribute.name, attribute.value);
+    for (const style of content.head.querySelectorAll("style"))
+      doc.head.append(doc.importNode(style, true));
+    part.replaceChildren(
+      ...[...content.body.childNodes].map((node) => doc.importNode(node, true)),
+    );
+    // Imported signatures often use a paragraph per line. Browser-default
+    // paragraph margins make the signature look double-spaced in both the
+    // preview and the delivered message, so compact text blocks inside the
+    // signature without changing the authored border, padding or media.
+    for (const element of part.querySelectorAll<HTMLElement>(
+      "p, div, li, span",
+    )) {
+      if (!element.textContent?.trim()) continue;
+      element.style.setProperty("line-height", "1.45", "important");
+      if (element.matches("p, div, li")) {
+        element.style.setProperty("margin-top", "0", "important");
+        element.style.setProperty("margin-bottom", "0", "important");
+      }
+    }
+  } else {
+    // Plain signatures keep the line breaks shown in signature settings.
+    // Paragraph elements add browser-default margins that made each line look
+    // double-spaced after delivery.
+    part.style.whiteSpace = "pre-wrap";
+    part.textContent = signature.body;
+  }
   doc.body.append(part);
   return { body, html: sanitizeComposeHtml(doc.documentElement.outerHTML) };
 }

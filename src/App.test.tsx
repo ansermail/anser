@@ -6,7 +6,7 @@ import App from "./App";
 import { setInterfaceLanguage } from "./lib/i18n";
 import { enterDemo, leaveDemo, snapshot } from "./lib/api";
 import * as api from "./lib/api";
-import type { Detail, Query, RemoteFolder } from "./lib/types";
+import type { Detail, Preferences, Query, RemoteFolder } from "./lib/types";
 import { toast } from "sonner";
 import { resetThemeForTest } from "./lib/theme";
 const notificationFixture = vi.hoisted(() => ({
@@ -53,6 +53,100 @@ function filter(title: string) {
     ) ?? null
   );
 }
+function sectionTrigger(title: string) {
+  return host.querySelector(
+    `.nav-section-heading button[aria-label="${title}"]`,
+  );
+}
+async function setInputValue(input: HTMLInputElement, value: string) {
+  await act(async () => {
+    Object.getOwnPropertyDescriptor(
+      HTMLInputElement.prototype,
+      "value",
+    )!.set!.call(input, value);
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+}
+it("collapses account, local storage and tag sections from their headings", async () => {
+  for (const [label, content] of [
+    ["我的账号", ".account-nav"],
+    ["保存在这台设备", ".sidebar-folder-nav"],
+    ["标签", ".sidebar-tag-nav"],
+  ]) {
+    const trigger = sectionTrigger(label);
+    expect(trigger?.getAttribute("aria-expanded")).toBe("true");
+    await click(trigger);
+    expect(trigger?.getAttribute("aria-expanded")).toBe("false");
+    expect(host.querySelector(content)?.hasAttribute("hidden")).toBe(true);
+    await click(trigger);
+    expect(trigger?.getAttribute("aria-expanded")).toBe("true");
+    expect(host.querySelector(content)?.hasAttribute("hidden")).toBe(false);
+  }
+});
+it("creates a local tag, assigns it from the reader and filters the list", async () => {
+  await click(host.querySelector('button[aria-label="新增标签"]'));
+  const input = document.querySelector(
+    'input[aria-label="标签名称"]',
+  ) as HTMLInputElement;
+  await setInputValue(input, "重要客户");
+  await click(
+    [...document.querySelectorAll('[role="dialog"] button')].find(
+      (button) => button.textContent === "创建标签",
+    ) || null,
+  );
+  await vi.waitFor(() =>
+    expect(
+      [...host.querySelectorAll("button.tag-item")].some(
+        (button) => button.textContent?.trim() === "重要客户",
+      ),
+    ).toBe(true),
+  );
+
+  await click(host.querySelector("button.mail-row-main"));
+  const more = host.querySelector('[aria-label="更多邮件操作"]')!;
+  await act(async () =>
+    more.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true }),
+    ),
+  );
+  await click(
+    [...document.querySelectorAll('[role="menuitem"]')].find(
+      (item) => item.textContent === "管理标签",
+    ) || null,
+  );
+  const tagRow = [...document.querySelectorAll(".tag-selection-row")].find(
+    (row) => row.textContent?.includes("重要客户"),
+  )!;
+  await click(tagRow.querySelector('[role="checkbox"]'));
+  await click(
+    [...document.querySelectorAll('[role="dialog"] button')].find(
+      (button) => button.textContent === "保存标签",
+    ) || null,
+  );
+  await vi.waitFor(() =>
+    expect(document.querySelector('[role="dialog"]')).toBeNull(),
+  );
+
+  await click(
+    [...host.querySelectorAll("button.tag-item")].find(
+      (button) => button.textContent?.trim() === "重要客户",
+    ) || null,
+  );
+  await vi.waitFor(() =>
+    expect(host.querySelectorAll(".mail-row")).toHaveLength(1),
+  );
+  expect(host.querySelector(".mail-row-tags")?.getAttribute("title")).toContain(
+    "重要客户",
+  );
+  expect(host.querySelector(".tag-item .tag-dot")).not.toBeNull();
+  await click(host.querySelector("button.mail-row-main"));
+  await vi.waitFor(() =>
+    expect(
+      host.querySelector(".message-metadata .message-tags")?.textContent,
+    ).toContain("重要客户"),
+  );
+  expect(host.querySelector(".message-title-row .message-tags")).toBeNull();
+});
 it("explains an empty search without discarding the opened message and offers filter recovery", async () => {
   await click(host.querySelector("button.mail-row-main"));
   const previous = host.querySelector(".message-title-row h1")?.textContent;
@@ -226,6 +320,39 @@ afterEach(async () => {
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
 });
+it("hides the optional workbench and restores it from persisted preferences", async () => {
+  await vi.waitFor(() => expect(nav("工作台")).not.toBeNull());
+  await click(nav("设置与账号"));
+  const preferencesTab = () =>
+    [...host.querySelectorAll('[role="tab"]')].find((element) =>
+      element.textContent?.includes("应用偏好"),
+    ) || null;
+  await click(preferencesTab());
+  const toggle = host.querySelector<HTMLButtonElement>("#show-workbench")!;
+  await vi.waitFor(() => expect(toggle.disabled).toBe(false));
+  await click(toggle);
+  await vi.waitFor(() => {
+    expect(nav("工作台")).toBeNull();
+  });
+  expect((await api.call<Preferences>("get_preferences")).showWorkbench).toBe(
+    false,
+  );
+
+  await act(async () => root.unmount());
+  root = createRoot(host);
+  await act(async () => root.render(<App />));
+  await vi.waitFor(() => expect(nav("工作台")).toBeNull());
+  await click(nav("设置与账号"));
+  await click(preferencesTab());
+  const restoredToggle =
+    host.querySelector<HTMLButtonElement>("#show-workbench")!;
+  await vi.waitFor(() => expect(restoredToggle.disabled).toBe(false));
+  await click(restoredToggle);
+  await vi.waitFor(() => expect(nav("工作台")).not.toBeNull());
+  expect((await api.call<Preferences>("get_preferences")).showWorkbench).toBe(
+    true,
+  );
+});
 it("keeps unsaved translation input when switching settings categories", async () => {
   await click(nav("设置与账号"));
   const tab = (name: string) =>
@@ -307,7 +434,10 @@ it("manually refreshes recent activity without collapsing it", async () => {
     .spyOn(api, "mailPage")
     .mockImplementationOnce(async (query) => ({
       ...(await realPage(query)),
-      logs: ["Fresh manual activity fixture"],
+      logs: [
+        "11-14 16:59  example@example.com Fresh manual activity fixture",
+        "Legacy activity",
+      ],
     }));
   const refresh = host.querySelector(
     '[aria-label="刷新最近活动"]',
@@ -317,6 +447,18 @@ it("manually refreshes recent activity without collapsing it", async () => {
   expect(host.querySelector(".activity-list")?.textContent).toContain(
     "Fresh manual activity fixture",
   );
+  const activity = host.querySelector(".activity-list tbody tr")!;
+  expect(activity.querySelector('[data-column="time"]')?.textContent).toBe(
+    "11-14 16:59",
+  );
+  expect(activity.querySelector('[data-column="account"]')?.textContent).toBe(
+    "example@example.com",
+  );
+  expect(
+    activity
+      .querySelector('[data-column="activity"] span')
+      ?.getAttribute("title"),
+  ).toContain("11-14 16:59  example@example.com");
   expect(trigger.getAttribute("aria-expanded")).toBe("true");
   expect(refresh.getAttribute("aria-busy")).toBe("true");
   expect(refresh.disabled).toBe(true);
@@ -368,7 +510,15 @@ describe("title translation action", () => {
     expect(host.querySelectorAll("[data-anser-translation]")).toHaveLength(1);
     expect(row.querySelector('button[aria-label="隐藏译文"]')).not.toBeNull();
     await click(host.querySelectorAll("button.mail-row-main")[1]);
-    expect(host.querySelectorAll(".message-title-row button")).toHaveLength(1);
+    expect(
+      [...host.querySelectorAll(".message-title-row button")].map((action) => [
+        action.getAttribute("aria-label"),
+        action.textContent,
+      ]),
+    ).toEqual([
+      ["翻译", ""],
+      ["生成邮件摘要", ""],
+    ]);
     expect(
       host.querySelector('.message-title-row button[aria-label="翻译"]'),
     ).not.toBeNull();
@@ -1635,6 +1785,7 @@ describe("reading unread mail within its current category", () => {
   it.each(["回复", "转发"])(
     "%s retains the selected original HTML and sets the expected quoting default",
     async (action) => {
+      await import("./components/rich-editor");
       const originalCall = api.call;
       vi.spyOn(api, "call").mockImplementation(
         async <T,>(
@@ -1659,8 +1810,10 @@ describe("reading unread mail within its current category", () => {
         ) ?? null,
       );
       expect(
-        document.querySelector('button[aria-label="正文格式"]')?.textContent,
-      ).toContain("富文本");
+        document.querySelector(
+          'button[aria-label="正文格式"] svg.lucide-pilcrow',
+        ),
+      ).toBeTruthy();
       await act(async () => {
         await new Promise((resolve) => setTimeout(resolve, 20));
       });
@@ -2412,10 +2565,18 @@ describe("reading unread mail within its current category", () => {
     fail = false;
     await click(host.querySelector(".reader-loading button"));
     expect(host.querySelector(".message-heading")).not.toBeNull();
-    expect(
-      host.querySelector(".message-metadata [data-slot=badge]"),
-    ).toBeNull();
     expect(host.querySelector(".message-metadata time")).not.toBeNull();
+    expect(
+      host.querySelector(".message-title-row [data-slot=badge]"),
+    ).toBeNull();
+    expect(
+      host.querySelector(".message-metadata .message-tags [data-slot=badge]"),
+    ).not.toBeNull();
+    expect(
+      host
+        .querySelector(".message-metadata")
+        ?.firstElementChild?.classList.contains("message-tags"),
+    ).toBe(true);
     expect(host.querySelector(".message-metadata .saved-chip")).not.toBeNull();
   });
   it("expands and restores the current unread reader without remounting its content", async () => {

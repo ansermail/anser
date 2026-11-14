@@ -4,6 +4,7 @@ import { createRoot } from "react-dom/client";
 import { beforeEach, expect, it, vi } from "vitest";
 import { MailTranslationSettings } from "./mail-translation-settings";
 import { toast } from "sonner";
+import { setInterfaceLanguage } from "../lib/i18n";
 const api = vi.hoisted(() => vi.fn());
 vi.mock("../lib/api", () => ({ call: (...args: unknown[]) => api(...args) }));
 vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
@@ -11,7 +12,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
 });
-it("keeps API keys out of public config, clears the input after saving, and tests only fixed synthetic text", async () => {
+it("keeps API keys out of public config and saves the model with backend validation", async () => {
   Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
   const saved = {
     baseUrl: "https://model.example/v1",
@@ -28,8 +29,6 @@ it("keeps API keys out of public config, clears the input after saving, and test
         revision: "r2",
         hasApiKey: true,
       });
-    if (command === "test_translation_settings")
-      return Promise.resolve([{ id: "p0_t0", text: "你好，世界。" }]);
     return Promise.resolve();
   });
   const host = document.createElement("div");
@@ -60,38 +59,13 @@ it("keeps API keys out of public config, clears the input after saving, and test
     expect(savedArgs.apiKey).toBe("synthetic-unit-test-key");
     expect(savedArgs.config).not.toHaveProperty("apiKey");
     expect(input.value).toBe("");
-    await act(async () =>
-      [...host.querySelectorAll("button")]
-        .find((b) => b.textContent === "测试已保存配置")!
-        .click(),
-    );
-    const args = api.mock.calls.find(
-      (c) => c[0] === "test_translation_settings",
-    )![1];
-    expect(args).toEqual({ requestId: expect.any(String), revision: "r2" });
+    expect(
+      api.mock.calls.some((c) => c[0] === "test_translation_settings"),
+    ).toBe(false);
     expect(api.mock.calls.some((c) => c[0] === "translate_mail_parts")).toBe(
       false,
     );
-    expect(toast.success).toHaveBeenCalledWith("连接成功：你好，世界。");
-    vi.mocked(toast.success).mockClear();
-    api.mockImplementation((command: string) =>
-      command === "test_translation_settings"
-        ? Promise.reject(new Error("模型服务返回 HTTP 401"))
-        : Promise.resolve(),
-    );
-    await act(async () =>
-      [...host.querySelectorAll("button")]
-        .find((b) => b.textContent === "测试已保存配置")!
-        .click(),
-    );
-    const tests = api.mock.calls.filter(
-      (c) => c[0] === "test_translation_settings",
-    );
-    expect(tests).toHaveLength(2);
-    expect(tests[1][1].requestId).not.toBe(args.requestId);
-    expect(toast.success).not.toHaveBeenCalled();
-    expect(toast.error).toHaveBeenCalledWith(expect.stringContaining("401"));
-    expect(host.querySelector('[role="alert"]')?.textContent).toContain("401");
+    expect(toast.success).toHaveBeenCalledWith("模型配置已保存");
   } finally {
     await act(async () => root.unmount());
     host.remove();
@@ -120,82 +94,71 @@ function button(host: HTMLElement, text: string) {
   )!;
 }
 
-it.each(["success", "failure"])(
-  "cancels a pending test and ignores its late %s during a new test",
-  async (outcome) => {
-    const first = deferred<{ id: string; text: string }[]>();
-    const second = deferred<{ id: string; text: string }[]>();
-    const cancellation = deferred<void>();
-    let attempts = 0;
-    api.mockImplementation((command: string) => {
-      if (command === "get_translation_settings")
-        return Promise.resolve(savedConfig);
-      if (command === "test_translation_settings")
-        return ++attempts === 1 ? first.promise : second.promise;
-      if (command === "cancel_translation") return cancellation.promise;
-      return Promise.resolve();
+it("keeps a failed model validation unsaved in English", async () => {
+  setInterfaceLanguage("en");
+  api.mockImplementation(async (command: string) => {
+    if (command === "get_translation_settings") return savedConfig;
+    if (command === "save_translation_settings")
+      return Promise.reject(
+        new Error("Model connection failed. Configuration was not saved."),
+      );
+  });
+  const host = document.createElement("div");
+  document.body.append(host);
+  const root = createRoot(host);
+  try {
+    await act(async () => root.render(<MailTranslationSettings />));
+    expect(
+      host.querySelector('[data-slot="badge"]:last-child')?.textContent,
+    ).toBe("Saved");
+    const model = host.querySelector<HTMLInputElement>("#translation-model")!;
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(
+        HTMLInputElement.prototype,
+        "value",
+      )!.set!.call(model, "different-model");
+      model.dispatchEvent(new Event("input", { bubbles: true }));
     });
-    const host = document.createElement("div");
-    document.body.append(host);
-    const root = createRoot(host);
-    try {
-      await act(async () => root.render(<MailTranslationSettings />));
-      await act(async () => button(host, "测试已保存配置").click());
-      const requestId = api.mock.calls.find(
-        (c) => c[0] === "test_translation_settings",
-      )![1].requestId;
-      expect(button(host, "测试中…").disabled).toBe(true);
-      expect(button(host, "保存翻译配置").disabled).toBe(true);
-      expect(host.querySelector('[role="status"]')?.textContent).toContain(
-        "固定测试文本",
-      );
-      await act(async () => button(host, "取消测试").click());
-      expect(api).toHaveBeenCalledWith("cancel_translation", { requestId });
-      expect(button(host, "正在取消…").disabled).toBe(true);
-      await act(async () => cancellation.resolve());
-      expect(host.textContent).toContain("测试已取消");
-      await act(async () => button(host, "测试已保存配置").click());
-      await act(async () => {
-        if (outcome === "success")
-          first.resolve([{ id: "p0_t0", text: "过期结果" }]);
-        else first.reject("过期失败");
-      });
-      expect(button(host, "测试中…").disabled).toBe(true);
-      expect(host.textContent).not.toContain("过期");
-      expect(toast.success).not.toHaveBeenCalled();
-      expect(toast.error).not.toHaveBeenCalled();
-      await act(async () => second.resolve([{ id: "p0_t0", text: "新结果" }]));
-      expect(host.querySelector('[role="status"]')?.textContent).toBe(
-        "连接成功：新结果",
-      );
-      expect(button(host, "测试已保存配置").disabled).toBe(false);
-    } finally {
-      await act(async () => root.unmount());
-      host.remove();
-    }
-  },
-);
+    expect(host.textContent).toContain("Unsaved");
+    await act(async () =>
+      host
+        .querySelector("form")!
+        .dispatchEvent(
+          new Event("submit", { bubbles: true, cancelable: true }),
+        ),
+    );
+    expect(toast.error).toHaveBeenCalledWith(
+      "Error: Model connection failed. Configuration was not saved.",
+    );
+    expect(toast.success).not.toHaveBeenCalled();
+    expect(model.value).toBe("different-model");
+    expect(host.textContent).toContain("Unsaved");
+  } finally {
+    await act(async () => root.unmount());
+    host.remove();
+    setInterfaceLanguage("zh-CN");
+  }
+});
 
-it("cancels on unmount without displaying a late result", async () => {
-  const response = deferred<{ id: string; text: string }[]>();
+it("requires a saved model before translation preferences are enabled", async () => {
   api.mockImplementation((command: string) => {
-    if (command === "get_translation_settings")
-      return Promise.resolve(savedConfig);
-    if (command === "test_translation_settings") return response.promise;
+    if (command === "get_translation_settings") return Promise.resolve(null);
     return Promise.resolve();
   });
   const host = document.createElement("div");
+  document.body.append(host);
   const root = createRoot(host);
-  await act(async () => root.render(<MailTranslationSettings />));
-  await act(async () => button(host, "测试已保存配置").click());
-  const requestId = api.mock.calls.find(
-    (c) => c[0] === "test_translation_settings",
-  )![1].requestId;
-  await act(async () => root.unmount());
-  expect(api).toHaveBeenCalledWith("cancel_translation", { requestId });
-  await act(async () => response.resolve([{ id: "p0_t0", text: "过期结果" }]));
-  expect(toast.success).not.toHaveBeenCalled();
-  expect(toast.error).not.toHaveBeenCalled();
+  try {
+    await act(async () => root.render(<MailTranslationSettings />));
+    expect(
+      host.querySelector<HTMLButtonElement>("#translation-language")!.disabled,
+    ).toBe(true);
+    expect(host.textContent).toContain("请先保存模型配置，再启用邮件翻译。");
+    expect(button(host, "清除翻译缓存").disabled).toBe(true);
+  } finally {
+    await act(async () => root.unmount());
+    host.remove();
+  }
 });
 
 it("discovers the current service models, allows switching IDs, and requires saving before testing the new model", async () => {
@@ -246,7 +209,7 @@ it("discovers the current service models, allows switching IDs, and requires sav
     expect(
       host.querySelector<HTMLInputElement>("#translation-model")!.value,
     ).toBe("other-model");
-    expect(button(host, "测试已保存配置").disabled).toBe(true);
+    expect(button(host, "保存模型配置").disabled).toBe(false);
     expect(host.textContent).toContain("尚未保存");
     await act(async () =>
       host
@@ -259,7 +222,7 @@ it("discovers the current service models, allows switching IDs, and requires sav
       api.mock.calls.find((c) => c[0] === "save_translation_settings")![1]
         .config.model,
     ).toBe("other-model");
-    expect(button(host, "测试已保存配置").disabled).toBe(false);
+    expect(host.textContent).toContain("已保存");
   } finally {
     await act(async () => root.unmount());
     host.remove();

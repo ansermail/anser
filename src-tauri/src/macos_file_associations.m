@@ -4,6 +4,7 @@
 #include <string.h>
 
 static BOOL changing = NO; // Accessed only on the main queue.
+static BOOL changingDefaultClient = NO; // Accessed only on the main queue.
 static NSArray<NSString *> *extensions(void) { return @[@"eml", @"emlx", @"msg"]; }
 static UTType *mailType(NSString *extension) {
     if (![extensions() containsObject:extension]) return nil;
@@ -48,6 +49,24 @@ char *anser_mail_associations_read(void) {
     if (NSThread.isMainThread) read(); else dispatch_sync(dispatch_get_main_queue(),read);
     return answer;
 }
+char *anser_mail_default_client_read(void) {
+    __block char *answer=NULL;
+    void (^read)(void)=^{ @autoreleasepool {
+        NSWorkspace *workspace=NSWorkspace.sharedWorkspace;
+        NSURL *own=NSBundle.mainBundle.bundleURL;
+        NSURL *current=[workspace URLForApplicationToOpenURL:[NSURL URLWithString:@"mailto:"]];
+        BOOL isDefault=sameApp(current,own);
+        answer=json(@{
+            @"supported":@YES,
+            @"busy":@(changingDefaultClient),
+            @"currentName":current?appName(current):@"",
+            @"currentId":current?(isDefault?@"self":appID(current)):@"",
+            @"isDefault":@(isDefault)
+        });
+    }};
+    if (NSThread.isMainThread) read(); else dispatch_sync(dispatch_get_main_queue(),read);
+    return answer;
+}
 char *anser_mail_association_set(const char *fileExtension,const char *applicationID) {
     NSString *extension=[NSString stringWithUTF8String:fileExtension];
     NSString *identifier=[NSString stringWithUTF8String:applicationID];
@@ -85,6 +104,37 @@ char *anser_mail_association_set(const char *fileExtension,const char *applicati
     if (dispatch_semaphore_wait(done,dispatch_time(DISPATCH_TIME_NOW,45*NSEC_PER_SEC))!=0) {
         // The completion owns its response after this return. Arrange deferred
         // cleanup once it signals, without touching the returned pending result.
+        dispatch_async(dispatch_get_global_queue(QOS_CLASS_UTILITY,0),^{dispatch_semaphore_wait(done,DISPATCH_TIME_FOREVER);free(answer);});
+        return json(@{@"error":@"associationPending"});
+    }
+    return answer;
+}
+char *anser_mail_default_client_set(void) {
+    dispatch_semaphore_t done=dispatch_semaphore_create(0);
+    __block char *answer=NULL;
+    dispatch_async(dispatch_get_main_queue(),^{ @autoreleasepool {
+        if (changingDefaultClient) {
+            answer=json(@{@"error":@"associationBusy"});
+            dispatch_semaphore_signal(done);
+            return;
+        }
+        if (@available(macOS 12.0, *)) {
+            NSWorkspace *workspace=NSWorkspace.sharedWorkspace;
+            NSURL *application=NSBundle.mainBundle.bundleURL;
+            changingDefaultClient=YES;
+            [workspace setDefaultApplicationAtURL:application toOpenURLsWithScheme:@"mailto" completionHandler:^(NSError *error) {
+                dispatch_async(dispatch_get_main_queue(),^{
+                    changingDefaultClient=NO;
+                    answer=json(error?@{@"error":@"associationDenied"}:@{});
+                    dispatch_semaphore_signal(done);
+                });
+            }];
+        } else {
+            answer=json(@{@"error":@"unsupportedAssociation"});
+            dispatch_semaphore_signal(done);
+        }
+    }});
+    if (dispatch_semaphore_wait(done,dispatch_time(DISPATCH_TIME_NOW,45*NSEC_PER_SEC))!=0) {
         dispatch_async(dispatch_get_global_queue(QOS_CLASS_UTILITY,0),^{dispatch_semaphore_wait(done,DISPATCH_TIME_FOREVER);free(answer);});
         return json(@{@"error":@"associationPending"});
     }

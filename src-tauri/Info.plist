@@ -13,6 +13,17 @@
     <string>zh-Hans</string>
     <string>en</string>
   </array>
+  <key>CFBundleURLTypes</key>
+  <array>
+    <dict>
+      <key>CFBundleURLName</key>
+      <string>dev.maildesk.desktop.mailto</string>
+      <key>CFBundleURLSchemes</key>
+      <array>
+        <string>mailto</string>
+      </array>
+    </dict>
+  </array>
   <key>UTImportedTypeDeclarations</key>
   <array><dict>
     <key>UTTypeIdentifier</key><string>org.ansermail.outlook-message</string>

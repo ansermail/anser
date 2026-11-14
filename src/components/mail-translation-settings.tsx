@@ -10,7 +10,6 @@ import {
   translationProviders,
   type TranslationModel,
   type TranslationConfig,
-  type TranslationPart,
 } from "@/lib/mail-translation";
 import { Button } from "./ui/button";
 import {
@@ -20,7 +19,14 @@ import {
   CardDescription,
   CardContent,
 } from "./ui/card";
-import { Field, FieldLabel, FieldDescription, FieldGroup } from "./ui/field";
+import {
+  Field,
+  FieldContent,
+  FieldDescription,
+  FieldGroup,
+  FieldLabel,
+  FieldTitle,
+} from "./ui/field";
 import { Input } from "./ui/input";
 import { SelectField, SelectOption } from "./ui/select-field";
 import { Separator } from "./ui/separator";
@@ -55,13 +61,6 @@ export function MailTranslationSettings() {
   const [clearKey, setClearKey] = useState(false);
   const [busy, setBusy] = useState(false);
   const [ready, setReady] = useState(false);
-  const [testResult, setTestResult] = useState<{
-    status: "running" | "success" | "error";
-    message: string;
-  } | null>(null);
-  const [cancelling, setCancelling] = useState(false);
-  const testing = testResult?.status === "running";
-  const activeTest = useRef("");
   const mounted = useRef(true);
   useEffect(() => {
     let live = true;
@@ -79,11 +78,6 @@ export function MailTranslationSettings() {
     return () => {
       live = false;
       mounted.current = false;
-      if (activeTest.current)
-        void call("cancel_translation", {
-          requestId: activeTest.current,
-        }).catch(() => {});
-      activeTest.current = "";
       if (activeModels.current)
         void call("cancel_translation", {
           requestId: activeModels.current,
@@ -92,9 +86,8 @@ export function MailTranslationSettings() {
     };
   }, []);
   async function save() {
-    if (busy || activeTest.current) return;
+    if (busy) return;
     setBusy(true);
-    setTestResult(null);
     try {
       const next = await call<TranslationConfig>("save_translation_settings", {
         config,
@@ -106,82 +99,11 @@ export function MailTranslationSettings() {
       setKey("");
       setClearKey(false);
       window.dispatchEvent(new Event("anser-translation-config-changed"));
-      toast.success(t("Translation settings saved"));
+      toast.success(t("Model settings saved"));
     } catch (e) {
       toast.error(String(e));
     } finally {
       setBusy(false);
-    }
-  }
-  async function test() {
-    if (!saved || busy || activeTest.current) return;
-    const requestId = crypto.randomUUID();
-    activeTest.current = requestId;
-    setBusy(true);
-    setCancelling(false);
-    setTestResult({
-      status: "running",
-      message: t(
-        "Sending fixed test text and waiting for the model (up to 180 seconds). Cancel anytime. No real messages are sent.",
-      ),
-    });
-    try {
-      const parts = await call<TranslationPart[]>("test_translation_settings", {
-        requestId,
-        revision: saved.revision,
-      });
-      if (mounted.current && activeTest.current === requestId) {
-        const message = t("Connection successful: {value0}", {
-          value0: parts[0].text.slice(0, 100),
-        });
-        setTestResult({ status: "success", message });
-        toast.success(message);
-      }
-    } catch (e) {
-      if (mounted.current && activeTest.current === requestId) {
-        setTestResult({ status: "error", message: String(e) });
-        toast.error(String(e));
-      }
-    } finally {
-      if (activeTest.current === requestId) {
-        activeTest.current = "";
-        if (mounted.current) {
-          setBusy(false);
-          setCancelling(false);
-        }
-      }
-    }
-  }
-  async function cancelTest() {
-    const requestId = activeTest.current;
-    if (!requestId || cancelling) return;
-    // 先废弃旧结果，防止取消回执之前的成功/失败覆盖取消状态。
-    activeTest.current = "";
-    setCancelling(true);
-    try {
-      await call("cancel_translation", { requestId });
-      if (mounted.current)
-        setTestResult({
-          status: "success",
-          message: t("Test canceled. No automatic retry was made."),
-        });
-    } catch (e) {
-      if (mounted.current) {
-        setTestResult({
-          status: "error",
-          message: t(
-            "Could not cancel test: {value0}. Wait for the original request to time out.",
-            {
-              value0: String(e),
-            },
-          ),
-        });
-      }
-    } finally {
-      if (mounted.current) {
-        setBusy(false);
-        setCancelling(false);
-      }
     }
   }
   const sameAddress =
@@ -193,9 +115,8 @@ export function MailTranslationSettings() {
     config.targetLanguage !== saved.targetLanguage ||
     !!key ||
     clearKey;
-  const isConnected =
-    testResult?.status === "success" &&
-    testResult.message.startsWith("连接成功");
+  const translationConfigured = !!saved?.baseUrl.trim() && !!saved.model.trim();
+  const controlColumn = "translation-settings-control";
   function changeAddress(baseUrl: string) {
     setConfig((previous) => ({ ...previous, baseUrl }));
     setProvider(translationProvider(baseUrl));
@@ -203,7 +124,6 @@ export function MailTranslationSettings() {
     setClearKey(false);
     setModels([]);
     setModelsError("");
-    setTestResult(null);
   }
   async function fetchModels() {
     if (busy || activeModels.current) return;
@@ -249,30 +169,38 @@ export function MailTranslationSettings() {
   return (
     <Card className="translation-settings-card">
       <CardHeader>
-        <CardTitle>{t("AI translation")}</CardTitle>
+        <CardTitle>{t("AI assistant")}</CardTitle>
         <CardDescription>
           {t(
-            "Keep the original message and show translations below each paragraph. Supports OpenAI-compatible services and local models.",
+            "Translation, email summaries and writing repair share an OpenAI-compatible model configuration.",
           )}
         </CardDescription>
       </CardHeader>
       <CardContent>
-        <div className="translation-settings-grid">
-          <form
-            id="translation-settings"
-            className="flex min-w-0 flex-col gap-5"
-            onSubmit={(event) => {
-              event.preventDefault();
-              void save();
-            }}
-          >
-            <FieldGroup className="gap-4">
-              <Field>
+        <form
+          id="translation-settings"
+          className="flex min-w-0 flex-col gap-6"
+          onSubmit={(event) => {
+            event.preventDefault();
+            void save();
+          }}
+        >
+          <FieldGroup className="gap-5">
+            <Field orientation="responsive">
+              <FieldContent>
                 <FieldLabel htmlFor="translation-provider">
                   {t("Model service")}
                 </FieldLabel>
+                <FieldDescription>
+                  {t(
+                    "Choose an OpenAI-compatible service or enter a custom endpoint.",
+                  )}
+                </FieldDescription>
+              </FieldContent>
+              <div className={controlColumn}>
                 <SelectField
                   id="translation-provider"
+                  className="w-full"
                   value={provider}
                   disabled={!ready || busy}
                   onValueChange={(value) => {
@@ -283,7 +211,6 @@ export function MailTranslationSettings() {
                     setClearKey(false);
                     setModels([]);
                     setModelsError("");
-                    setTestResult(null);
                     if (value !== "custom")
                       setConfig((previous) => ({
                         ...previous,
@@ -301,29 +228,41 @@ export function MailTranslationSettings() {
                     </SelectOption>
                   ))}
                 </SelectField>
-              </Field>
-              <Field>
+              </div>
+            </Field>
+            <Field orientation="responsive">
+              <FieldContent>
                 <FieldLabel htmlFor="translation-url">
                   {t("Service URL")}
                 </FieldLabel>
-                <Input
-                  id="translation-url"
-                  value={config.baseUrl}
-                  placeholder="https://api.example.com/v1"
-                  required
-                  disabled={!ready || busy}
-                  onChange={(event) => changeAddress(event.target.value)}
-                />
                 <FieldDescription>
                   {t(
                     "Enter a base URL or full /chat/completions URL. Local models support HTTP.",
                   )}
                 </FieldDescription>
-              </Field>
-              <Field>
+              </FieldContent>
+              <Input
+                className={controlColumn}
+                id="translation-url"
+                value={config.baseUrl}
+                placeholder="https://api.example.com/v1"
+                required
+                disabled={!ready || busy}
+                onChange={(event) => changeAddress(event.target.value)}
+              />
+            </Field>
+            <Field orientation="responsive">
+              <FieldContent>
                 <FieldLabel htmlFor="translation-key">
                   {t("API key (optional)")}
                 </FieldLabel>
+                <FieldDescription>
+                  {t(
+                    "Keys are stored only in local Keychain. Enter a new key after changing the URL.",
+                  )}
+                </FieldDescription>
+              </FieldContent>
+              <div className={`${controlColumn} flex flex-col gap-2`}>
                 <Input
                   id="translation-key"
                   type="password"
@@ -344,59 +283,42 @@ export function MailTranslationSettings() {
                     setClearKey(false);
                   }}
                 />
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <FieldDescription>
-                    {t(
-                      "Keys are stored only in local Keychain. Enter a new key after changing the URL.",
-                    )}
-                  </FieldDescription>
-                  {sameAddress && saved?.hasApiKey && (
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      disabled={busy}
-                      onClick={() => {
-                        setClearKey(!clearKey);
-                        setKey("");
-                      }}
-                    >
-                      {clearKey ? t("Keep saved key") : t("Clear key on save")}
-                    </Button>
-                  )}
-                </div>
-              </Field>
-              <Field>
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <FieldLabel htmlFor="translation-model">
-                    {t("Model name")}
-                  </FieldLabel>
+                {sameAddress && saved?.hasApiKey && (
                   <Button
                     type="button"
                     variant="ghost"
                     size="sm"
-                    disabled={
-                      !ready ||
-                      (busy && !loadingModels) ||
-                      !config.baseUrl.trim()
-                    }
-                    onClick={() =>
-                      loadingModels ? cancelModels() : void fetchModels()
-                    }
+                    className="self-end"
+                    disabled={busy}
+                    onClick={() => {
+                      setClearKey(!clearKey);
+                      setKey("");
+                    }}
                   >
-                    {loadingModels ? (
-                      <LoaderCircle
-                        data-icon="inline-start"
-                        className="animate-spin"
-                      />
-                    ) : (
-                      <RefreshCw data-icon="inline-start" />
-                    )}
-                    {loadingModels
-                      ? t("Cancel discovery")
-                      : t("Fetch model list")}
+                    {clearKey ? t("Keep saved key") : t("Clear key on save")}
                   </Button>
-                </div>
+                )}
+              </div>
+            </Field>
+            <Field orientation="responsive">
+              <FieldContent>
+                <FieldLabel htmlFor="translation-model">
+                  {t("Model name")}
+                </FieldLabel>
+                <FieldDescription>
+                  {models.length
+                    ? t(
+                        "Found {value0} models. Select one or enter another ID.",
+                        {
+                          value0: models.length,
+                        },
+                      )
+                    : t(
+                        "Fetch available models. Enter an ID manually if the service does not provide a list.",
+                      )}
+                </FieldDescription>
+              </FieldContent>
+              <div className={`${controlColumn} flex flex-col gap-2`}>
                 <div className="flex min-w-0 items-center gap-2">
                   <Input
                     id="translation-model"
@@ -470,184 +392,156 @@ export function MailTranslationSettings() {
                     </PopoverContent>
                   </Popover>
                 </div>
-                <FieldDescription>
-                  {models.length
-                    ? t(
-                        "Found {value0} models. Select one or enter another ID.",
-                        {
-                          value0: models.length,
-                        },
-                      )
-                    : t(
-                        "Fetch available models. Enter an ID manually if the service does not provide a list.",
-                      )}
-                </FieldDescription>
-              </Field>
-            </FieldGroup>
-            {modelsError && (
-              <Alert variant="destructive">
-                <AlertDescription>{modelsError}</AlertDescription>
-              </Alert>
-            )}
-            <div className="flex flex-wrap items-center gap-3">
-              <Button type="submit" disabled={!ready || busy}>
-                {busy && !testing && !loadingModels
-                  ? t("Processing…")
-                  : t("Save translation settings")}
-              </Button>
-              <Badge variant="outline">
-                {dirty ? t("Unsaved") : t("Saved")}
-              </Badge>
-            </div>
-          </form>
-          <Separator
-            orientation="vertical"
-            className="translation-settings-divider"
-          />
-          <section
-            className="translation-settings-test flex min-w-0 flex-col gap-5"
-            aria-label={t("Translation preferences & connection test")}
-          >
-            <FieldGroup className="gap-4">
-              <Field>
-                <FieldLabel htmlFor="translation-language">
-                  {t("Target language")}
-                </FieldLabel>
-                <SelectField
-                  id="translation-language"
-                  value={config.targetLanguage}
-                  disabled={!ready || busy}
-                  onValueChange={(targetLanguage) =>
-                    setConfig({ ...config, targetLanguage })
-                  }
-                >
-                  {Object.entries(translationLanguages).map(
-                    ([value, label]) => (
-                      <SelectOption key={value} value={value}>
-                        {label}
-                      </SelectOption>
-                    ),
-                  )}
-                </SelectField>
-                <FieldDescription>
-                  {t(
-                    "Applies after clicking the translation icon beside a message title.",
-                  )}
-                </FieldDescription>
-              </Field>
-            </FieldGroup>
-            <Separator />
-            <div className="flex flex-col gap-3">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <h4>{t("Connection test")}</h4>
-                <Badge
-                  variant={
-                    testResult?.status === "error"
-                      ? "destructive"
-                      : isConnected
-                        ? "secondary"
-                        : "outline"
-                  }
-                >
-                  {testing
-                    ? t("Testing")
-                    : isConnected
-                      ? t("Connected")
-                      : testResult?.status === "error"
-                        ? t("Connection failed")
-                        : t("Not tested")}
-                </Badge>
-              </div>
-              <p className="text-sm text-muted-foreground">
-                {t(
-                  "Sends only the fixed text “Hello, world.”, never email content.",
-                )}
-              </p>
-              {testResult ? (
-                <Alert
-                  variant={
-                    testResult.status === "error" ? "destructive" : "default"
-                  }
-                  role={testResult.status === "error" ? "alert" : "status"}
-                >
-                  <AlertDescription className="break-words">
-                    {testResult.message}
-                  </AlertDescription>
-                </Alert>
-              ) : (
-                <p className="text-sm text-muted-foreground">
-                  {dirty
-                    ? t(
-                        "Save the current settings before testing the connection.",
-                      )
-                    : t("Settings saved. You can test the current model.")}
-                </p>
-              )}
-              <div className="flex flex-wrap gap-2">
                 <Button
-                  variant="outline"
-                  disabled={!saved || busy || dirty}
-                  onClick={() => void test()}
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="self-end"
+                  disabled={
+                    !ready || (busy && !loadingModels) || !config.baseUrl.trim()
+                  }
+                  onClick={() =>
+                    loadingModels ? cancelModels() : void fetchModels()
+                  }
                 >
-                  {testing && (
+                  {loadingModels ? (
                     <LoaderCircle
                       data-icon="inline-start"
-                      aria-hidden="true"
                       className="animate-spin"
                     />
+                  ) : (
+                    <RefreshCw data-icon="inline-start" />
                   )}
-                  {testing ? t("Testing…") : t("Test saved settings")}
+                  {loadingModels
+                    ? t("Cancel discovery")
+                    : t("Fetch model list")}
                 </Button>
-                {testing && (
-                  <Button
-                    variant="outline"
-                    disabled={cancelling}
-                    onClick={() => void cancelTest()}
-                  >
-                    {cancelling ? t("Canceling…") : t("Cancel test")}
-                  </Button>
-                )}
               </div>
-            </div>
-            <Separator />
-            <div className="flex flex-col items-start gap-3">
+            </Field>
+          </FieldGroup>
+          {modelsError && (
+            <Alert variant="destructive">
+              <AlertDescription>{modelsError}</AlertDescription>
+            </Alert>
+          )}
+          <Separator />
+          <section
+            className="flex flex-col gap-4"
+            aria-labelledby="translation-preferences-title"
+          >
+            <div className="flex flex-col gap-1">
+              <h3
+                id="translation-preferences-title"
+                className="text-sm font-semibold"
+              >
+                {t("Translation preferences")}
+              </h3>
               <p className="text-sm text-muted-foreground">
                 {t(
-                  "Remote requests use the global proxy; local models connect directly. Completed translations are cached locally for reuse.",
+                  "A saved model configuration is required before email translation can be used.",
                 )}
               </p>
-              <Button
-                variant="ghost"
-                disabled={!saved || busy}
-                onClick={() => {
-                  setBusy(true);
-                  setTestResult(null);
-                  void call("clear_translation_cache")
-                    .then(async () => {
-                      const next = await call<TranslationConfig | null>(
-                        "get_translation_settings",
-                      );
-                      setSaved(next);
-                      if (next)
-                        setConfig((previous) => ({
-                          ...previous,
-                          revision: next.revision,
-                          hasApiKey: next.hasApiKey,
-                        }));
-                      window.dispatchEvent(
-                        new Event("anser-translation-config-changed"),
-                      );
-                      toast.success(t("Translation cache cleared"));
-                    })
-                    .catch((error) => toast.error(String(error)))
-                    .finally(() => setBusy(false));
-                }}
-              >
-                {t("Clear translation cache")}
-              </Button>
             </div>
+            <FieldGroup className="gap-5">
+              <Field orientation="responsive">
+                <FieldContent>
+                  <FieldLabel htmlFor="translation-language">
+                    {t("Target language")}
+                  </FieldLabel>
+                  <FieldDescription>
+                    {translationConfigured
+                      ? t(
+                          "Applies after clicking the translation icon beside a message title.",
+                        )
+                      : t(
+                          "Save the model configuration first to enable email translation.",
+                        )}
+                  </FieldDescription>
+                </FieldContent>
+                <div className={controlColumn}>
+                  <SelectField
+                    id="translation-language"
+                    className="w-full"
+                    value={config.targetLanguage}
+                    disabled={!ready || busy || !translationConfigured}
+                    onValueChange={(targetLanguage) =>
+                      setConfig({ ...config, targetLanguage })
+                    }
+                  >
+                    {Object.entries(translationLanguages).map(
+                      ([value, label]) => (
+                        <SelectOption key={value} value={value}>
+                          {label}
+                        </SelectOption>
+                      ),
+                    )}
+                  </SelectField>
+                </div>
+              </Field>
+              <Field orientation="responsive">
+                <FieldContent>
+                  <FieldTitle>{t("Translation cache")}</FieldTitle>
+                  <FieldDescription>
+                    {t("Completed translations are cached locally for reuse.")}
+                  </FieldDescription>
+                </FieldContent>
+                <div className={controlColumn}>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    disabled={!translationConfigured || busy}
+                    onClick={() => {
+                      setBusy(true);
+                      void call("clear_translation_cache")
+                        .then(async () => {
+                          const next = await call<TranslationConfig | null>(
+                            "get_translation_settings",
+                          );
+                          setSaved(next);
+                          if (next)
+                            setConfig((previous) => ({
+                              ...previous,
+                              revision: next.revision,
+                              hasApiKey: next.hasApiKey,
+                            }));
+                          window.dispatchEvent(
+                            new Event("anser-translation-config-changed"),
+                          );
+                          toast.success(t("Translation cache cleared"));
+                        })
+                        .catch((error) => toast.error(String(error)))
+                        .finally(() => setBusy(false));
+                    }}
+                  >
+                    {t("Clear translation cache")}
+                  </Button>
+                </div>
+              </Field>
+            </FieldGroup>
           </section>
-        </div>
+          <Separator />
+          <div className="flex flex-wrap items-center gap-3">
+            <Button
+              type="submit"
+              disabled={
+                !ready || busy || !config.baseUrl.trim() || !config.model.trim()
+              }
+            >
+              {busy && !loadingModels ? (
+                <LoaderCircle
+                  data-icon="inline-start"
+                  className="animate-spin"
+                />
+              ) : null}
+              {busy
+                ? loadingModels
+                  ? t("Fetching model list…")
+                  : t("Testing and saving…")
+                : t("Save model settings")}
+            </Button>
+            <Badge variant="outline">{dirty ? t("Unsaved") : t("Saved")}</Badge>
+          </div>
+        </form>
       </CardContent>
     </Card>
   );
