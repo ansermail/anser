@@ -1,4 +1,11 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type PointerEvent as ReactPointerEvent,
+  type ReactNode,
+} from "react";
 import {
   addDays,
   addMonths,
@@ -10,17 +17,44 @@ import {
 } from "date-fns";
 import {
   CalendarDays,
+  ArrowUpRight,
+  Circle,
+  CircleDashed,
+  CircleDot,
+  Copy,
+  Download,
+  MoreHorizontal,
+  Sparkles,
+  Trash2,
+  Check,
+  Columns3,
+  FileText,
+  Flag,
+  FolderOpen,
+  Grid2X2,
+  LayoutList,
+  Mail,
+  Minus,
+  Pencil,
+  Search,
+  Settings2,
+  RotateCcw,
+  Star,
   ChevronDown,
   ChevronLeft,
   ChevronRight,
+  TriangleAlert,
   Plus,
   X,
+  Zap,
 } from "lucide-react";
 import { toast } from "sonner";
 import { call } from "@/lib/api";
+import { copyText } from "@/lib/clipboard";
 import { printWorkReport } from "@/lib/mail-print";
 import { calendarLocale, dateLocale, interfaceLanguage, t } from "@/lib/i18n";
 import { cancelMailAi, mailAiConfig, mailAiError } from "@/lib/mail-ai";
+import { renderSafeMarkdown } from "@/lib/release-notes";
 import {
   isWorkItemOnDate,
   newWorkItem,
@@ -32,52 +66,98 @@ import {
   workStatus,
   workStatuses,
   type WorkItem,
+  type WorkProject,
+  type WorkbenchData,
   type WorkPriority,
   type WorkStatus,
 } from "@/lib/workbench";
 import { Alert, AlertDescription } from "./ui/alert";
 import { Badge } from "./ui/badge";
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuLabel,
+  ContextMenuRadioGroup,
+  ContextMenuRadioItem,
+  ContextMenuSeparator,
+  ContextMenuSub,
+  ContextMenuSubContent,
+  ContextMenuSubTrigger,
+  ContextMenuTrigger,
+} from "./ui/context-menu";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuGroup,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "./ui/dropdown-menu";
 import { Button } from "./ui/button";
 import { Calendar, CalendarDayButton } from "./ui/calendar";
-import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "./ui/card";
 import { Checkbox } from "./ui/checkbox";
 import {
   Collapsible,
   CollapsibleContent,
   CollapsibleTrigger,
 } from "./ui/collapsible";
+import { WorkbenchTimeline } from "./workbench-timeline";
 import {
   Dialog,
   DialogContent,
   DialogDescription,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from "./ui/dialog";
-import { WorkbenchTimeline } from "./workbench-timeline";
-import { Field, FieldLabel } from "./ui/field";
+import {
+  Field,
+  FieldDescription,
+  FieldLabel,
+  FieldGroup,
+  FieldSet,
+  FieldLegend,
+} from "./ui/field";
 import { Input } from "./ui/input";
-import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
+import {
+  Popover,
+  PopoverContent,
+  PopoverHeader,
+  PopoverTitle,
+  PopoverTrigger,
+} from "./ui/popover";
 import { SelectField, SelectOption } from "./ui/select-field";
 import {
   Sheet,
   SheetContent,
   SheetDescription,
   SheetHeader,
+  SheetFooter,
   SheetTitle,
 } from "./ui/sheet";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "./ui/tabs";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "./ui/table";
 import { Textarea } from "./ui/textarea";
+import { ScrollArea } from "./ui/scroll-area";
+import { ToggleGroup, ToggleGroupItem } from "./ui/toggle-group";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+  TooltipProvider,
+} from "./ui/tooltip";
+import { InputGroup, InputGroupAddon, InputGroupInput } from "./ui/input-group";
+import { TaskDataTable } from "./task-data-table";
+import { WorkbenchProjects } from "./workbench-projects";
 import { useConfirmation } from "@/hooks/use-confirmation";
 
-type CalendarMode = "month" | "week" | "day";
+type CalendarMode = "year" | "month" | "week" | "day";
 
 function WorkbenchMonthNavigation({
   month,
@@ -106,34 +186,38 @@ function WorkbenchMonthNavigation({
   const firstYear = Math.max(1, month.getFullYear() - 3);
   const lastYear = Math.min(9999, month.getFullYear() + 3);
   const step = (direction: number) =>
-    mode === "month"
-      ? addMonths(month, direction)
+    mode === "month" || mode === "year"
+      ? addMonths(month, direction * (mode === "year" ? 12 : 1))
       : addDays(month, direction * (mode === "week" ? 7 : 1));
   const dayLabel = (day: Date) =>
     day.toLocaleDateString(dateLocale(), { dateStyle: "medium" });
   const weekStart = startOfWeek(month, { weekStartsOn: 1 });
   const caption =
-    mode === "month"
-      ? month.toLocaleDateString(dateLocale(), {
-          year: "numeric",
-          month: "long",
-        })
-      : mode === "day"
-        ? dayLabel(month)
-        : `${dayLabel(weekStart)} – ${dayLabel(addDays(weekStart, 6))}`;
+    mode === "year"
+      ? String(month.getFullYear())
+      : mode === "month"
+        ? month.toLocaleDateString(dateLocale(), {
+            year: "numeric",
+            month: "long",
+          })
+        : mode === "day"
+          ? dayLabel(month)
+          : `${dayLabel(weekStart)} – ${dayLabel(addDays(weekStart, 6))}`;
 
   return (
-    <div className="workbench-month-navigation">
+    <div className="workbench-month-navigation" data-mode={mode}>
       <Button
         type="button"
         size="icon-sm"
         variant="ghost"
         aria-label={
-          mode === "month"
-            ? t("Previous month")
-            : mode === "week"
-              ? t("Previous week")
-              : t("Previous day")
+          mode === "year"
+            ? t("Previous year")
+            : mode === "month"
+              ? t("Previous month")
+              : mode === "week"
+                ? t("Previous week")
+                : t("Previous day")
         }
         disabled={step(-1).getFullYear() < 1}
         onClick={() => onMonthChange(step(-1))}
@@ -236,11 +320,13 @@ function WorkbenchMonthNavigation({
           size="icon-sm"
           variant="ghost"
           aria-label={
-            mode === "month"
-              ? t("Next month")
-              : mode === "week"
-                ? t("Next week")
-                : t("Next day")
+            mode === "year"
+              ? t("Next year")
+              : mode === "month"
+                ? t("Next month")
+                : mode === "week"
+                  ? t("Next week")
+                  : t("Next day")
           }
           disabled={step(1).getFullYear() > 9999}
           onClick={() => onMonthChange(step(1))}
@@ -257,8 +343,12 @@ function DatePicker({
   onChange,
   label,
   fallback,
+  children,
+  disabled,
 }: {
   fallback?: string;
+  children?: ReactNode;
+  disabled?: boolean;
   date: string;
   onChange: (date: string) => void;
   label: string;
@@ -268,7 +358,12 @@ function DatePicker({
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
-        <Button type="button" variant="outline" aria-label={label}>
+        <Button
+          type="button"
+          variant="outline"
+          aria-label={label}
+          disabled={disabled}
+        >
           <CalendarDays />
           {date || t("No end date")}
         </Button>
@@ -286,6 +381,7 @@ function DatePicker({
             }
           }}
         />
+        {children}
       </PopoverContent>
     </Popover>
   );
@@ -295,13 +391,17 @@ function StatusSelect({
   value,
   onChange,
   disabled,
+  compact = false,
 }: {
   value: WorkStatus;
   onChange: (value: WorkStatus) => void;
   disabled?: boolean;
+  compact?: boolean;
 }) {
   return (
     <SelectField
+      className={compact ? "wb-status-select-compact" : undefined}
+      data-status={value}
       aria-label={t("Work status")}
       value={value}
       onValueChange={(value) => onChange(value as WorkStatus)}
@@ -309,10 +409,101 @@ function StatusSelect({
     >
       {workStatuses.map((status) => (
         <SelectOption key={status} value={status}>
-          {workStatus(status)}
+          <span className="wb-status-option" data-status={status}>
+            <span className="wb-status-option-dot" />
+            {workStatus(status)}
+          </span>
         </SelectOption>
       ))}
     </SelectField>
+  );
+}
+
+const statusIcons = {
+  todo: Circle,
+  doing: CircleDot,
+  waiting: CircleDashed,
+  done: Check,
+} as const;
+
+const priorityIcons = {
+  low: Flag,
+  normal: Minus,
+  high: TriangleAlert,
+} as const;
+
+function newestWorkItemFirst(a: WorkItem, b: WorkItem) {
+  return (
+    b.date.localeCompare(a.date) ||
+    b.time.localeCompare(a.time) ||
+    a.title.localeCompare(b.title, undefined, { numeric: true })
+  );
+}
+
+function StatusLabel({ status }: { status: WorkStatus }) {
+  const Icon = statusIcons[status];
+  return (
+    <span className="wb-status" data-status={status}>
+      <Icon />
+      {workStatus(status)}
+    </span>
+  );
+}
+
+function PriorityLabel({ priority }: { priority: WorkPriority }) {
+  const Icon = priorityIcons[priority];
+  return (
+    <span className="wb-priority-option" data-priority={priority}>
+      <Icon />
+      {workPriority(priority)}
+    </span>
+  );
+}
+
+function WorkTableStatusBadge({ status }: { status: WorkStatus }) {
+  const Icon = statusIcons[status];
+  const label = workStatus(status);
+  return (
+    <Badge
+      variant="outline"
+      className="wb-table-badge wb-table-status-badge"
+      data-status={status}
+      title={label}
+    >
+      <Icon />
+      <span className="wb-table-badge-label">{label}</span>
+    </Badge>
+  );
+}
+
+function WorkTablePriorityBadge({ priority }: { priority: WorkPriority }) {
+  const Icon = priorityIcons[priority];
+  const label = workPriority(priority);
+  return (
+    <Badge
+      variant="outline"
+      className="wb-table-badge wb-table-priority-badge"
+      data-priority={priority}
+      title={label}
+    >
+      <Icon />
+      <span className="wb-table-badge-label">{label}</span>
+    </Badge>
+  );
+}
+
+function WorkTableFlagBadge({ kind }: { kind: "important" | "urgent" }) {
+  const important = kind === "important";
+  const Icon = important ? Star : Zap;
+  return (
+    <Badge
+      variant="outline"
+      className="wb-table-badge wb-table-flag-badge"
+      data-kind={kind}
+    >
+      <Icon />
+      {important ? t("Important work item") : t("Urgent")}
+    </Badge>
   );
 }
 
@@ -325,7 +516,11 @@ function WorkEditor({
   remove,
   openMail,
   error,
+  projects,
+  manageProjects,
 }: {
+  projects: WorkProject[];
+  manageProjects: () => void;
   error: string;
   item: WorkItem;
   setItem: (item: WorkItem) => void;
@@ -338,323 +533,372 @@ function WorkEditor({
   const [check, setCheck] = useState("");
   const update = (fields: Partial<WorkItem>) => setItem({ ...item, ...fields });
   const [hour = "", minute = "00"] = item.time ? item.time.split(":") : [];
-  const editing = item.revision > 0;
-  const Root = editing ? Sheet : Dialog;
-  const Content = editing ? SheetContent : DialogContent;
-  const Header = editing ? SheetHeader : DialogHeader;
-  const Title = editing ? SheetTitle : DialogTitle;
-  const Description = editing ? SheetDescription : DialogDescription;
   return (
-    <Root
+    <Sheet
       open
       onOpenChange={(open) => {
         if (!open && !busy) close();
       }}
     >
-      <Content
-        className={
-          editing
-            ? "flex w-full flex-col sm:max-w-lg"
-            : "flex max-h-[min(48rem,calc(100dvh-2rem))] w-[calc(100%-2rem)] flex-col gap-0 overflow-hidden p-0 sm:max-w-lg"
-        }
-      >
-        <Header className="px-4 py-3 text-start">
-          <Title>
-            {item.revision ? t("Edit work item") : t("Add work record")}
-          </Title>
-          <Description>
-            {t("Work items are shared across the workbench views.")}
-          </Description>
-        </Header>
+      <SheetContent className="wb-editor">
+        <SheetHeader>
+          <SheetTitle>
+            {item.revision ? t("Work record") : t("Add work record")}
+          </SheetTitle>
+          <SheetDescription>
+            {item.date} · {t("Saved on this device")}
+          </SheetDescription>
+        </SheetHeader>
         <form
-          className="flex min-h-0 flex-1 flex-col"
+          className="wb-editor-form"
           onSubmit={(event) => {
             event.preventDefault();
-            save();
+            if (!busy) save();
           }}
         >
-          <div className="grid flex-1 gap-4 overflow-y-auto px-4 pb-4">
-            <Field>
-              <FieldLabel htmlFor="work-title">{t("Work item")}</FieldLabel>
-              <Input
-                id="work-title"
-                required
-                maxLength={200}
-                value={item.title}
-                onChange={(e) => update({ title: e.target.value })}
-              />
-            </Field>
-            <div className="grid grid-cols-2 gap-3">
+          <ScrollArea className="wb-editor-scroll">
+            <FieldGroup>
               <Field>
-                <FieldLabel>{t("Work status")}</FieldLabel>
-                <StatusSelect
-                  value={item.status}
-                  onChange={(status) => update({ status })}
-                />
-              </Field>
-              <Field>
-                <FieldLabel htmlFor="work-priority">
-                  {t("Work priority")}
+                <FieldLabel htmlFor="work-title">
+                  {t("Record title")}
                 </FieldLabel>
-                <SelectField
-                  id="work-priority"
-                  value={item.priority}
-                  onValueChange={(v) => update({ priority: v as WorkPriority })}
-                >
-                  {workPriorities.map((priority) => (
-                    <SelectOption key={priority} value={priority}>
-                      {workPriority(priority)}
-                    </SelectOption>
-                  ))}
-                </SelectField>
-              </Field>
-            </div>
-            <div className="flex flex-wrap gap-4">
-              <FieldLabel>
-                <Checkbox
-                  checked={!!item.important}
-                  onCheckedChange={(value) =>
-                    update({ important: value === true })
-                  }
-                />
-                {t("Important work item")}
-              </FieldLabel>
-              <FieldLabel>
-                <Checkbox
-                  checked={!!item.urgent}
-                  onCheckedChange={(value) =>
-                    update({ urgent: value === true })
-                  }
-                />
-                {t("Urgent")}
-              </FieldLabel>
-            </div>
-            <Field>
-              <FieldLabel htmlFor="work-project">{t("Project")}</FieldLabel>
-              <Input
-                id="work-project"
-                maxLength={80}
-                value={item.project}
-                onChange={(e) => update({ project: e.target.value })}
-              />
-            </Field>
-            <div className="flex flex-wrap items-end gap-3">
-              <Field className="w-auto">
-                <FieldLabel>{t("Work date")}</FieldLabel>
-                <DatePicker
-                  date={item.date}
-                  label={t("Work date")}
-                  onChange={(date) =>
-                    update({
-                      date,
-                      endDate:
-                        item.endDate && item.endDate < date ? "" : item.endDate,
-                    })
-                  }
+                <Input
+                  id="work-title"
+                  required
+                  maxLength={200}
+                  placeholder={t("What would you like to record?")}
+                  value={item.title}
+                  disabled={busy}
+                  onChange={(event) => update({ title: event.target.value })}
                 />
               </Field>
-              <Field className="w-auto">
-                <FieldLabel>{t("End date")}</FieldLabel>
-                <div className="flex items-center gap-1">
-                  <DatePicker
-                    date={item.endDate || ""}
-                    fallback={item.date}
-                    label={t("End date")}
-                    onChange={(endDate) => update({ endDate })}
+              <div className="wb-form-pair">
+                <Field>
+                  <FieldLabel>{t("Record status")}</FieldLabel>
+                  <StatusSelect
+                    value={item.status}
+                    disabled={busy}
+                    onChange={(status) => update({ status })}
                   />
-                  {!!item.endDate && (
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon-sm"
-                      aria-label={t("Clear end date")}
-                      onClick={() => update({ endDate: "" })}
-                    >
-                      <X />
-                    </Button>
-                  )}
-                </div>
-              </Field>
-              <Field className="w-auto">
-                <FieldLabel htmlFor="work-hour">
-                  {t("Reminder hour")}
-                </FieldLabel>
-                <SelectField
-                  id="work-hour"
-                  value={hour || "none"}
-                  onValueChange={(h) =>
-                    update({ time: h === "none" ? "" : h + ":" + minute })
-                  }
-                >
-                  <SelectOption value="none">{t("No time")}</SelectOption>
-                  {Array.from({ length: 24 }, (_, i) =>
-                    String(i).padStart(2, "0"),
-                  ).map((h) => (
-                    <SelectOption key={h} value={h}>
-                      {h}
-                    </SelectOption>
-                  ))}
-                </SelectField>
-              </Field>
-              {!!hour && (
-                <Field className="w-auto">
-                  <FieldLabel htmlFor="work-minute">
-                    {t("Reminder minute")}
+                </Field>
+                <Field>
+                  <FieldLabel htmlFor="work-priority">
+                    {t("Work priority")}
                   </FieldLabel>
                   <SelectField
-                    id="work-minute"
-                    value={minute}
-                    onValueChange={(m) => update({ time: hour + ":" + m })}
+                    id="work-priority"
+                    value={item.priority}
+                    disabled={busy}
+                    onValueChange={(priority) =>
+                      update({ priority: priority as WorkPriority })
+                    }
                   >
-                    {Array.from({ length: 60 }, (_, i) =>
-                      String(i).padStart(2, "0"),
-                    ).map((m) => (
-                      <SelectOption key={m} value={m}>
-                        {m}
+                    {workPriorities.map((priority) => (
+                      <SelectOption key={priority} value={priority}>
+                        {workPriority(priority)}
                       </SelectOption>
                     ))}
                   </SelectField>
                 </Field>
-              )}
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <Field>
-                <FieldLabel htmlFor="work-estimate">
-                  {t("Estimated minutes")}
-                </FieldLabel>
-                <Input
-                  id="work-estimate"
-                  type="number"
-                  min={0}
-                  max={100000}
-                  value={item.estimatedMinutes}
-                  onChange={(e) =>
-                    update({ estimatedMinutes: +e.target.value })
-                  }
-                />
-              </Field>
-              <Field>
-                <FieldLabel htmlFor="work-actual">
-                  {t("Actual minutes")}
-                </FieldLabel>
-                <Input
-                  id="work-actual"
-                  type="number"
-                  min={0}
-                  max={100000}
-                  value={item.actualMinutes}
-                  onChange={(e) => update({ actualMinutes: +e.target.value })}
-                />
-              </Field>
-            </div>
-            <Field>
-              <FieldLabel htmlFor="work-notes">{t("Work notes")}</FieldLabel>
-              <Textarea
-                id="work-notes"
-                maxLength={4000}
-                value={item.notes}
-                onChange={(e) => update({ notes: e.target.value })}
-              />
-            </Field>
-            <Field>
-              <FieldLabel htmlFor="work-check">{t("Checklist")}</FieldLabel>
-              {item.checklist.map((entry, i) => (
-                <div key={i} className="flex items-center gap-2">
-                  <Checkbox
-                    aria-label={entry.text}
-                    checked={entry.done}
-                    onCheckedChange={(done) =>
+              </div>
+              <div className="wb-form-pair">
+                <Field>
+                  <FieldLabel>{t("Record date")}</FieldLabel>
+                  <DatePicker
+                    date={item.date}
+                    label={t("Work date")}
+                    disabled={busy}
+                    onChange={(date) =>
                       update({
-                        checklist: item.checklist.map((c, j) =>
-                          i === j ? { ...c, done: done === true } : c,
-                        ),
-                      })
-                    }
-                  />
-                  <span className="flex-1 break-words">{entry.text}</span>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon-sm"
-                    aria-label={t("Remove checklist item")}
-                    onClick={() =>
-                      update({
-                        checklist: item.checklist.filter((_, j) => j !== i),
+                        date,
+                        endDate:
+                          item.endDate && item.endDate < date
+                            ? ""
+                            : item.endDate,
                       })
                     }
                   >
-                    <X />
-                  </Button>
-                </div>
-              ))}
-              <div className="flex gap-2">
-                <Input
-                  id="work-check"
-                  maxLength={200}
-                  value={check}
-                  onChange={(e) => setCheck(e.target.value)}
-                />
+                    <Field className="wb-date-range-field">
+                      <FieldLabel>{t("End date")}</FieldLabel>
+                      <div className="flex items-center gap-1">
+                        <DatePicker
+                          date={item.endDate || ""}
+                          fallback={item.date}
+                          label={t("End date")}
+                          disabled={busy}
+                          onChange={(endDate) => update({ endDate })}
+                        />
+                        {item.endDate && (
+                          <Button
+                            type="button"
+                            size="icon-sm"
+                            variant="ghost"
+                            aria-label={t("Clear end date")}
+                            disabled={busy}
+                            onClick={() => update({ endDate: "" })}
+                          >
+                            <X />
+                          </Button>
+                        )}
+                      </div>
+                    </Field>
+                  </DatePicker>
+                  {item.endDate && (
+                    <span className="wb-end-date-note">
+                      {t("Through {value0}", { value0: item.endDate })}
+                    </span>
+                  )}
+                </Field>
+                <Field>
+                  <FieldLabel htmlFor="work-hour">
+                    {t("Specific time")}
+                  </FieldLabel>
+                  <div className="wb-time-controls">
+                    <SelectField
+                      id="work-hour"
+                      aria-label={t("Schedule hour")}
+                      disabled={busy}
+                      value={hour || "none"}
+                      onValueChange={(next) =>
+                        update({
+                          time: next === "none" ? "" : `${next}:${minute}`,
+                        })
+                      }
+                    >
+                      <SelectOption value="none">{t("All day")}</SelectOption>
+                      {Array.from({ length: 24 }, (_, index) =>
+                        String(index).padStart(2, "0"),
+                      ).map((value) => (
+                        <SelectOption key={value} value={value}>
+                          {value}
+                        </SelectOption>
+                      ))}
+                    </SelectField>
+                    {hour && (
+                      <>
+                        <span>:</span>
+                        <SelectField
+                          id="work-minute"
+                          aria-label={t("Schedule minute")}
+                          disabled={busy}
+                          value={minute}
+                          onValueChange={(next) =>
+                            update({ time: `${hour}:${next}` })
+                          }
+                        >
+                          {Array.from({ length: 60 }, (_, index) =>
+                            String(index).padStart(2, "0"),
+                          ).map((value) => (
+                            <SelectOption key={value} value={value}>
+                              {value}
+                            </SelectOption>
+                          ))}
+                        </SelectField>
+                      </>
+                    )}
+                  </div>
+                </Field>
+              </div>
+              <Field>
+                <FieldLabel htmlFor="work-project">
+                  {t("Work project")}
+                </FieldLabel>
+                <SelectField
+                  key={projects
+                    .map((project) => project.id + project.name)
+                    .join("\0")}
+                  id="work-project"
+                  value={item.project}
+                  disabled={busy}
+                  onValueChange={(project) => update({ project })}
+                >
+                  <SelectOption value="">{t("No project")}</SelectOption>
+                  {item.project &&
+                    !projects.some(
+                      (project) => project.name === item.project,
+                    ) && (
+                      <SelectOption value={item.project}>
+                        {item.project}
+                      </SelectOption>
+                    )}
+                  {projects.map((project) => (
+                    <SelectOption key={project.id} value={project.name}>
+                      {project.name}
+                    </SelectOption>
+                  ))}
+                </SelectField>
                 <Button
                   type="button"
-                  variant="outline"
-                  disabled={!check.trim() || item.checklist.length >= 50}
-                  onClick={() => {
-                    update({
-                      checklist: [
-                        ...item.checklist,
-                        { text: check.trim(), done: false },
-                      ],
-                    });
-                    setCheck("");
-                  }}
+                  variant="ghost"
+                  size="sm"
+                  className="wb-project-manage-link"
+                  disabled={busy}
+                  onClick={manageProjects}
                 >
-                  <Plus />
-                  {t("Add subtask")}
+                  <Settings2 />
+                  {t("New or manage project")}
                 </Button>
-              </div>
-            </Field>
-            {item.mailId && (
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => openMail(item.mailId)}
-              >
-                {t("Open linked email")}
-              </Button>
-            )}
-          </div>
-          {item.endDate && item.endDate < item.date && (
-            <Alert variant="destructive" className="mx-4 w-auto">
-              <AlertDescription>
-                {t("End date must be on or after the work date.")}
-              </AlertDescription>
-            </Alert>
-          )}
-          {error && (
-            <Alert variant="destructive" className="mx-4 w-auto">
-              <AlertDescription>{error}</AlertDescription>
-            </Alert>
-          )}
-          <div className="flex flex-wrap justify-end gap-2 border-t p-4">
-            {item.revision > 0 && (
-              <Button
-                type="button"
-                variant="destructive"
-                className="mr-auto"
-                disabled={busy}
-                onClick={remove}
-              >
-                {t("Delete work item")}
-              </Button>
-            )}
-            <Button
-              type="button"
-              variant="outline"
-              disabled={busy}
-              onClick={close}
-            >
-              {t("Cancel")}
-            </Button>
+              </Field>
+              <FieldSet>
+                <FieldLegend variant="label">{t("Four quadrants")}</FieldLegend>
+                <div className="wb-form-checks">
+                  <FieldLabel>
+                    <Checkbox
+                      checked={!!item.important}
+                      disabled={busy}
+                      onCheckedChange={(value) =>
+                        update({ important: value === true })
+                      }
+                    />
+                    {t("Important work item")}
+                  </FieldLabel>
+                  <FieldLabel>
+                    <Checkbox
+                      checked={!!item.urgent}
+                      disabled={busy}
+                      onCheckedChange={(value) =>
+                        update({ urgent: value === true })
+                      }
+                    />
+                    {t("Urgent")}
+                  </FieldLabel>
+                </div>
+              </FieldSet>
+              <Field>
+                <FieldLabel htmlFor="work-notes">
+                  {t("Work content")}
+                </FieldLabel>
+                <Textarea
+                  id="work-notes"
+                  rows={5}
+                  maxLength={4000}
+                  placeholder={t(
+                    "Write down progress, decisions or follow-up questions…",
+                  )}
+                  value={item.notes}
+                  disabled={busy}
+                  onChange={(event) => update({ notes: event.target.value })}
+                />
+              </Field>
+              <Field>
+                <FieldLabel htmlFor="work-check">{t("Subtasks")}</FieldLabel>
+                {item.checklist.map((entry, index) => (
+                  <div className="wb-checklist" key={index}>
+                    <Checkbox
+                      aria-label={entry.text}
+                      disabled={busy}
+                      checked={entry.done}
+                      onCheckedChange={(done) =>
+                        update({
+                          checklist: item.checklist.map((check, n) =>
+                            n === index
+                              ? { ...check, done: done === true }
+                              : check,
+                          ),
+                        })
+                      }
+                    />
+                    <span>{entry.text}</span>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon-sm"
+                      aria-label={t("Remove checklist item")}
+                      disabled={busy}
+                      onClick={() =>
+                        update({
+                          checklist: item.checklist.filter(
+                            (_, n) => n !== index,
+                          ),
+                        })
+                      }
+                    >
+                      <X />
+                    </Button>
+                  </div>
+                ))}
+                <Input
+                  id="work-check"
+                  aria-label={t("Add subtask")}
+                  maxLength={200}
+                  placeholder={t("Add a subtask, press Enter to confirm")}
+                  value={check}
+                  disabled={busy || item.checklist.length >= 50}
+                  onChange={(event) => setCheck(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (
+                      event.key !== "Enter" ||
+                      event.nativeEvent.isComposing ||
+                      event.keyCode === 229
+                    )
+                      return;
+                    event.preventDefault();
+                    if (check.trim()) {
+                      update({
+                        checklist: [
+                          ...item.checklist,
+                          { text: check.trim(), done: false },
+                        ],
+                      });
+                      setCheck("");
+                    }
+                  }}
+                />
+              </Field>
+              {item.mailId && (
+                <Field>
+                  <FieldLabel>{t("Linked email")}</FieldLabel>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="wb-source-mail"
+                    onClick={() => openMail(item.mailId)}
+                  >
+                    <Mail />
+                    {t("Open linked email")}
+                    <ArrowUpRight />
+                  </Button>
+                </Field>
+              )}
+              {item.endDate && item.endDate < item.date && (
+                <Alert variant="destructive">
+                  <AlertDescription>
+                    {t("End date must be on or after the work date.")}
+                  </AlertDescription>
+                </Alert>
+              )}
+              {error && (
+                <Alert variant="destructive">
+                  <AlertDescription>{error}</AlertDescription>
+                </Alert>
+              )}
+            </FieldGroup>
+          </ScrollArea>
+          <SheetFooter>
+            <div className="wb-editor-footer-note">
+              <span>
+                {item.revision
+                  ? t("Changes are shared across all views.")
+                  : t("New records appear in the calendar and work items.")}
+              </span>
+              {item.revision > 0 && (
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon-sm"
+                      aria-label={t("Delete work item")}
+                      disabled={busy}
+                      onClick={remove}
+                    >
+                      <Trash2 />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>{t("Delete work item")}</TooltipContent>
+                </Tooltip>
+              )}
+            </div>
             <Button
               type="submit"
               disabled={
@@ -663,40 +907,57 @@ function WorkEditor({
                 !!(item.endDate && item.endDate < item.date)
               }
             >
-              {t("Save")}
+              <Check />
+              {t("Save record")}
             </Button>
-          </div>
+          </SheetFooter>
         </form>
-      </Content>
-    </Root>
+      </SheetContent>
+    </Sheet>
   );
 }
 
-function hoursLabel(items: WorkItem[]) {
-  const total = totals(items);
-  return t("Estimated {value0} min · Actual {value1} min", {
-    value0: total.estimated,
-    value1: total.actual,
-  });
-}
+const reportPromptStorageKey = "anser-work-report-prompt";
+const reportPromptLimit = 2000;
 
 function WorkReport({
   items,
   writeMail,
+  from,
+  to,
+  setFrom,
+  setTo,
+  projectSelection,
 }: {
   items: WorkItem[];
+  from: string;
+  to: string;
+  setFrom: (value: string) => void;
+  setTo: (value: string) => void;
+  projectSelection: ReactNode;
   writeMail: (subject: string, body: string) => void;
 }) {
   const today = new Date();
-  const [from, setFrom] = useState(
-    workDate(startOfWeek(today, { weekStartsOn: 1 })),
-  );
-  const [to, setTo] = useState(workDate(endOfWeek(today, { weekStartsOn: 1 })));
   const [report, setReport] = useState("");
   const [processing, setProcessing] = useState(false);
+  const [reportPrompt, setReportPrompt] = useState(() => {
+    try {
+      return localStorage.getItem(reportPromptStorageKey) ?? "";
+    } catch {
+      return "";
+    }
+  });
+  const [promptOpen, setPromptOpen] = useState(false);
+  const [promptDraft, setPromptDraft] = useState(reportPrompt);
   const request = useRef("");
   const filtered = useMemo(
-    () => items.filter((item) => item.date >= from && item.date <= to),
+    () =>
+      items
+        .filter((item) => item.date >= from && item.date <= to)
+        .sort(
+          (a, b) =>
+            b.date.localeCompare(a.date) || b.time.localeCompare(a.time),
+        ),
     [items, from, to],
   );
   useEffect(() => {
@@ -723,21 +984,11 @@ function WorkReport({
     value1: to,
   });
   const total = totals(filtered);
-  const projects = new Map<string, { estimated: number; actual: number }>();
-  for (const item of filtered) {
-    const project = item.project || t("No project");
-    const group = projects.get(project) ?? { estimated: 0, actual: 0 };
-    group.estimated += item.estimatedMinutes;
-    group.actual += item.actualMinutes;
-    projects.set(project, group);
-  }
   const rows = filtered.map((item) => [
     item.date,
     item.title,
     workStatus(item.status),
     item.project,
-    item.estimatedMinutes,
-    item.actualMinutes,
   ]);
   const itemsByDate = new Map<string, WorkItem[]>();
   for (const item of filtered) {
@@ -746,14 +997,14 @@ function WorkReport({
     else itemsByDate.set(item.date, [item]);
   }
   const dateGroups = Array.from(itemsByDate).sort(([a], [b]) =>
-    a.localeCompare(b),
+    b.localeCompare(a),
   );
   const workLines = (heading: string) =>
     dateGroups.flatMap(([date, entries]) => [
       heading + date,
       ...entries.map(
         (item, index) =>
-          `${index + 1}. ${[item.title, workStatus(item.status), item.project, hoursLabel([item])].filter(Boolean).join(" · ")}`,
+          `${index + 1}. ${[item.title, workStatus(item.status), item.project].filter(Boolean).join(" · ")}`,
       ),
       "",
     ]);
@@ -762,21 +1013,13 @@ function WorkReport({
     t("Work item"),
     t("Work status"),
     t("Project"),
-    t("Estimated minutes"),
-    t("Actual minutes"),
   ];
   const overview = [
     subject,
-    hoursLabel(filtered),
     t("{value0} of {value1} checklist items completed", {
       value0: total.checked,
       value1: total.checklist,
     }),
-    ...Array.from(
-      projects,
-      ([project, group]) =>
-        `${project} · ${t("Estimated {value0} min · Actual {value1} min", { value0: group.estimated, value1: group.actual })}`,
-    ),
   ];
   const markdown = [
     `# ${subject}`,
@@ -824,7 +1067,7 @@ function WorkReport({
     try {
       const config = await mailAiConfig();
       if (request.current !== id) return;
-      if (!config) {
+      if (!config || config.revision === "demo") {
         toast.error(t("Set up a model to use mail AI."));
         return;
       }
@@ -832,7 +1075,6 @@ function WorkReport({
       const body = JSON.stringify({
         period: [from, to],
         total,
-        projects: Array.from(projects, ([name, work]) => ({ name, ...work })),
         linkedMailNotes: filtered
           .filter((item) => item.mailId && item.notes)
           .map((item) => ({
@@ -843,7 +1085,6 @@ function WorkReport({
           title: item.title,
           project: item.project,
           notes: item.notes,
-          actualMinutes: item.actualMinutes,
         })),
         open: filtered
           .filter((item) => item.status !== "done")
@@ -864,9 +1105,12 @@ function WorkReport({
           kind: "report",
           body,
           language: interfaceLanguage(),
+          instructions: reportPrompt || undefined,
         },
       });
-      if (request.current === id) setReport(reply.text);
+      if (request.current === id) {
+        setReport(reply.text);
+      }
     } catch (error) {
       if (request.current === id) toast.error(mailAiError(error));
     } finally {
@@ -876,137 +1120,379 @@ function WorkReport({
       }
     }
   }
+  function savePrompt() {
+    const next = promptDraft.trim();
+    try {
+      if (next) localStorage.setItem(reportPromptStorageKey, next);
+      else localStorage.removeItem(reportPromptStorageKey);
+    } catch {
+      // Keep the prompt for this session when local persistence is unavailable.
+    }
+    setReportPrompt(next);
+    setPromptDraft(next);
+    setPromptOpen(false);
+    setReport("");
+    toast.success(
+      t(next ? "AI report prompt saved." : "AI report prompt reset."),
+    );
+  }
+  const period =
+    from === workDate(today) && to === from
+      ? "today"
+      : from === workDate(startOfWeek(today, { weekStartsOn: 1 })) &&
+          to === workDate(endOfWeek(today, { weekStartsOn: 1 }))
+        ? "week"
+        : from === workDate(startOfMonth(today)) &&
+            to === workDate(endOfMonth(today))
+          ? "month"
+          : "custom";
+  const title =
+    period === "today"
+      ? t("Today's work report")
+      : period === "week"
+        ? t("This week's work report")
+        : period === "month"
+          ? t("This month's work report")
+          : t("Work report");
   return (
-    <Card className="shadow-none">
-      <CardHeader>
-        <CardTitle>{t("Work report")}</CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-4">
-        <div className="flex flex-wrap gap-2">
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={() => range(today, today)}
-          >
-            {t("Today")}
-          </Button>
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={() =>
-              range(
-                startOfWeek(today, { weekStartsOn: 1 }),
-                endOfWeek(today, { weekStartsOn: 1 }),
-              )
-            }
-          >
-            {t("This week")}
-          </Button>
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={() => range(startOfMonth(today), endOfMonth(today))}
-          >
-            {t("This month")}
-          </Button>
-          <DatePicker date={from} label={t("Start date")} onChange={setFrom} />
-          <DatePicker date={to} label={t("End date")} onChange={setTo} />
-        </div>
-        <p>
-          {t("{value0} of {value1} work items completed", {
-            value0: total.done,
-            value1: filtered.length,
-          })}{" "}
-          · {hoursLabel(filtered)}
-        </p>
-        <div className="flex flex-wrap gap-2">
-          <Button
-            size="sm"
-            disabled={from > to || !filtered.length}
-            onClick={() => {
-              if (processing) {
-                cancelMailAi(request.current);
-                request.current = "";
-                setProcessing(false);
-              } else void generate();
-            }}
-          >
-            {processing ? t("Stop generating") : t("Generate AI work report")}
-          </Button>
-          <Button
-            size="sm"
-            variant="outline"
-            disabled={!filtered.length}
-            onClick={() => download("csv")}
-          >
-            {t("Export CSV")}
-          </Button>
-          <Button
-            size="sm"
-            variant="outline"
-            disabled={!filtered.length}
-            onClick={() => download("md")}
-          >
-            {t("Export Markdown")}
-          </Button>
-          <Button
-            size="sm"
-            variant="outline"
-            disabled={!filtered.length}
-            onClick={() =>
-              void printWorkReport(
-                subject,
-                [...overview.slice(1), "", report, "", ...workLines("")].join(
-                  "\n",
-                ),
-              ).catch(() => toast.error(t("Could not print work report.")))
-            }
-          >
-            {t("Print / Save as PDF")}
-          </Button>
-          <Button
-            size="sm"
-            variant="outline"
-            disabled={!filtered.length}
-            onClick={() => writeMail(subject, markdown)}
-          >
-            {t("Open as email draft")}
-          </Button>
-        </div>
-        {report && (
-          <Textarea
-            aria-label={t("Work report")}
-            value={report}
-            onChange={(e) => setReport(e.target.value)}
-            rows={8}
-          />
-        )}
-        {!!projects.size && (
-          <ul className="space-y-1 text-muted-foreground">
-            {overview.slice(3).map((line, index) => (
-              <li key={index}>{line}</li>
-            ))}
-          </ul>
-        )}
-        <div className="space-y-4">
-          {dateGroups.map(([date, entries]) => (
-            <section key={date} className="space-y-2">
-              <h3 className="font-semibold tabular-nums">{date}</h3>
-              <ol className="list-decimal space-y-1 pl-5">
-                {entries.map((item) => (
-                  <li key={item.id} className="break-words">
-                    {item.title}{" "}
-                    <span className="text-muted-foreground">
-                      · {workStatus(item.status)}
-                    </span>
-                  </li>
-                ))}
-              </ol>
-            </section>
-          ))}
-        </div>
-      </CardContent>
-    </Card>
+    <>
+      <div className="wb-report-layout">
+        <Card className="wb-report-options">
+          <CardHeader>
+            <CardTitle>{t("Report range")}</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <FieldGroup>
+              <Field>
+                <div className="wb-report-range-label">
+                  <FieldLabel>{t("Date range")}</FieldLabel>
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon-sm"
+                        aria-label={t("Custom report period")}
+                      >
+                        <CalendarDays />
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent
+                      align="end"
+                      className="wb-report-range-popover w-80 max-w-[calc(100vw-2rem)] p-4"
+                    >
+                      <PopoverHeader>
+                        <PopoverTitle>{t("Custom report period")}</PopoverTitle>
+                      </PopoverHeader>
+                      <FieldGroup className="wb-report-range-fields">
+                        <Field>
+                          <FieldLabel>{t("Start date")}</FieldLabel>
+                          <DatePicker
+                            date={from}
+                            label={t("Start date")}
+                            onChange={setFrom}
+                          />
+                        </Field>
+                        <Field>
+                          <FieldLabel>{t("End date")}</FieldLabel>
+                          <DatePicker
+                            date={to}
+                            label={t("End date")}
+                            onChange={setTo}
+                          />
+                        </Field>
+                      </FieldGroup>
+                    </PopoverContent>
+                  </Popover>
+                </div>
+                <ToggleGroup
+                  type="single"
+                  value={period}
+                  aria-label={t("Report range")}
+                  onValueChange={(value) => {
+                    if (value === "today") range(today, today);
+                    if (value === "week")
+                      range(
+                        startOfWeek(today, { weekStartsOn: 1 }),
+                        endOfWeek(today, { weekStartsOn: 1 }),
+                      );
+                    if (value === "month")
+                      range(startOfMonth(today), endOfMonth(today));
+                  }}
+                >
+                  <ToggleGroupItem value="today">{t("Today")}</ToggleGroupItem>
+                  <ToggleGroupItem value="week">
+                    {t("This week")}
+                  </ToggleGroupItem>
+                  <ToggleGroupItem value="month">
+                    {t("This month")}
+                  </ToggleGroupItem>
+                </ToggleGroup>
+              </Field>
+              <Field>
+                <FieldLabel>{t("Work project")}</FieldLabel>
+                {projectSelection}
+              </Field>
+              <Field>
+                <FieldLabel>{t("AI report prompt")}</FieldLabel>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="wb-report-prompt-trigger"
+                  onClick={() => {
+                    setPromptDraft(reportPrompt);
+                    setPromptOpen(true);
+                  }}
+                >
+                  <Settings2 />
+                  <span>{t("Custom prompt")}</span>
+                  {reportPrompt && (
+                    <Badge variant="secondary">{t("Customized")}</Badge>
+                  )}
+                </Button>
+                <FieldDescription>
+                  {t(
+                    "Set the report structure and wording. Leave blank to use the default.",
+                  )}
+                </FieldDescription>
+              </Field>
+            </FieldGroup>
+            <div className="wb-report-numbers">
+              <span>
+                {t("Work records")}
+                <strong>{filtered.length}</strong>
+              </span>
+              <span>
+                {t("Completed")}
+                <strong>{total.done}</strong>
+              </span>
+            </div>
+            <Button
+              variant="outline"
+              disabled={processing || !filtered.length || from > to}
+              onClick={() => void generate()}
+            >
+              <Sparkles />
+              {processing ? t("Generating report…") : t("Generate AI report")}
+            </Button>
+            {processing && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  cancelMailAi(request.current);
+                  request.current = "";
+                  setProcessing(false);
+                }}
+              >
+                {t("Cancel")}
+              </Button>
+            )}
+          </CardContent>
+        </Card>
+        <Card className="wb-report-paper">
+          <CardHeader>
+            <div className="wb-report-heading">
+              <div>
+                <CardTitle>{title}</CardTitle>
+                <CardDescription>
+                  {from} — {to}
+                </CardDescription>
+              </div>
+              <div className="wb-report-actions">
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="icon-sm"
+                      disabled={!filtered.length}
+                      aria-label={t("Copy report")}
+                      onClick={() =>
+                        void navigator.clipboard
+                          .writeText(markdown)
+                          .then(() => toast.success(t("Report copied.")))
+                          .catch(() => toast.error(t("Could not copy report.")))
+                      }
+                    >
+                      <Copy />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>{t("Copy report")}</TooltipContent>
+                </Tooltip>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="icon-sm"
+                      disabled={!filtered.length}
+                      aria-label={t("Download Markdown")}
+                      onClick={() => download("md")}
+                    >
+                      <Download />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>{t("Download Markdown")}</TooltipContent>
+                </Tooltip>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="icon-sm"
+                      aria-label={t("More report actions")}
+                      disabled={!filtered.length}
+                    >
+                      <MoreHorizontal />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end">
+                    <DropdownMenuGroup>
+                      <DropdownMenuItem onSelect={() => download("csv")}>
+                        {t("Export CSV")}
+                      </DropdownMenuItem>
+                      <DropdownMenuItem
+                        onSelect={() =>
+                          void printWorkReport(
+                            subject,
+                            [
+                              ...overview.slice(1),
+                              "",
+                              report,
+                              "",
+                              ...workLines(""),
+                            ].join("\n"),
+                          ).catch(() =>
+                            toast.error(t("Could not print work report.")),
+                          )
+                        }
+                      >
+                        {t("Print / Save as PDF")}
+                      </DropdownMenuItem>
+                      <DropdownMenuItem
+                        onSelect={() => writeMail(subject, markdown)}
+                      >
+                        {t("Open as email draft")}
+                      </DropdownMenuItem>
+                    </DropdownMenuGroup>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </div>
+            </div>
+          </CardHeader>
+          <ScrollArea className="wb-report-scroll">
+            <CardContent>
+              {report && (
+                <section className="wb-report-summary">
+                  <h3>
+                    <Sparkles />
+                    {t("AI work summary")}
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon-sm"
+                          className="wb-report-summary-copy"
+                          aria-label={t("Copy summary")}
+                          onClick={() =>
+                            void copyText(report).then((copied) =>
+                              copied
+                                ? toast.success(t("Summary copied"))
+                                : toast.error(t("Could not copy summary.")),
+                            )
+                          }
+                        >
+                          <Copy />
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent>{t("Copy summary")}</TooltipContent>
+                    </Tooltip>
+                  </h3>
+                  <div
+                    className="wb-report-summary-text"
+                    dangerouslySetInnerHTML={{
+                      __html: renderSafeMarkdown(report, true),
+                    }}
+                  />
+                </section>
+              )}
+              {dateGroups.map(([date, entries]) => (
+                <section className="wb-report-date" key={date}>
+                  <h3>
+                    {parseISO(date).toLocaleDateString(dateLocale(), {
+                      month: "long",
+                      day: "numeric",
+                    })}{" "}
+                    ·{" "}
+                    {parseISO(date).toLocaleDateString(dateLocale(), {
+                      weekday: "long",
+                    })}
+                  </h3>
+                  <ol>
+                    {entries.map((item) => (
+                      <li key={item.id}>
+                        <div>
+                          <strong>{item.title}</strong>
+                          <StatusLabel status={item.status} />
+                        </div>
+                        <p>{item.notes || item.project}</p>
+                      </li>
+                    ))}
+                  </ol>
+                </section>
+              ))}
+              {!filtered.length && (
+                <p className="wb-empty">{t("No work items in this period.")}</p>
+              )}
+            </CardContent>
+          </ScrollArea>
+        </Card>
+      </div>
+      <Dialog open={promptOpen} onOpenChange={setPromptOpen}>
+        <DialogContent className="wb-report-prompt-dialog">
+          <DialogHeader>
+            <DialogTitle>{t("Customize AI report prompt")}</DialogTitle>
+            <DialogDescription>
+              {t(
+                "Add formatting, section and wording requirements. These instructions are combined with the default factual and response rules.",
+              )}
+            </DialogDescription>
+          </DialogHeader>
+          <Field>
+            <FieldLabel htmlFor="work-report-prompt">
+              {t("Additional report instructions")}
+            </FieldLabel>
+            <Textarea
+              id="work-report-prompt"
+              value={promptDraft}
+              maxLength={reportPromptLimit}
+              placeholder={t(
+                "For example: Group by project, then list completed work, risks and next steps. Use concise Markdown with headings and short bullet points.",
+              )}
+              onChange={(event) => setPromptDraft(event.target.value)}
+            />
+            <FieldDescription className="wb-report-prompt-count">
+              {t("{value0} / {value1} characters", {
+                value0: promptDraft.length,
+                value1: reportPromptLimit,
+              })}
+            </FieldDescription>
+          </Field>
+          <DialogFooter className="wb-report-prompt-actions">
+            <Button
+              type="button"
+              variant="ghost"
+              onClick={() => setPromptDraft("")}
+            >
+              <RotateCcw />
+              {t("Use default prompt")}
+            </Button>
+            <Button type="button" onClick={savePrompt}>
+              {t("Save prompt")}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }
 
@@ -1022,27 +1508,62 @@ export function Workbench({
   writeMail: (subject: string, body: string) => void;
 }) {
   const [items, setItems] = useState<WorkItem[]>([]);
+  const [projects, setProjects] = useState<WorkProject[]>([]);
+  const [projectsOpen, setProjectsOpen] = useState(false);
+  const [projectFilter, setProjectFilter] = useState("");
+  const [query, setQuery] = useState("");
+  const [statusFilter, setStatusFilter] = useState("");
+  const [layout, setLayout] = useState("table");
   const [selected, setSelected] = useState(
     seed ? parseISO(seed.date) : new Date(),
+  );
+  const [reportFrom, setReportFrom] = useState(() =>
+    workDate(startOfWeek(new Date(), { weekStartsOn: 1 })),
+  );
+  const [reportTo, setReportTo] = useState(() =>
+    workDate(endOfWeek(new Date(), { weekStartsOn: 1 })),
   );
   const [month, setMonth] = useState(selected);
   const [view, setView] = useState("calendar");
   const [calendarMode, setCalendarMode] = useState<CalendarMode>("month");
   const [quick, setQuick] = useState("");
   const [editing, setEditing] = useState<WorkItem>();
+  const [contextItemId, setContextItemId] = useState<string | null>(null);
   const [error, setError] = useState("");
   const mutation = useRef(false);
   const [busy, setBusy] = useState(false);
   const [loading, setLoading] = useState(true);
   const [reload, setReload] = useState(0);
-  const [groupBy, setGroupBy] = useState("status");
+  const [groupBy, setGroupBy] = useState("none");
+  const [draggingItemId, setDraggingItemId] = useState<string | null>(null);
+  const [dragOverQuadrant, setDragOverQuadrant] = useState<number | null>(null);
+  const [matrixDragGhost, setMatrixDragGhost] = useState<{
+    title: string;
+    x: number;
+    y: number;
+    width: number;
+  } | null>(null);
+  const matrixDragSession = useRef<{
+    pointerId: number;
+    item: WorkItem;
+    startX: number;
+    startY: number;
+    offsetX: number;
+    offsetY: number;
+    active: boolean;
+  } | null>(null);
+  const suppressedTaskClick = useRef<string | null>(null);
   const { askConfirmation, confirmationDialog } = useConfirmation();
   useEffect(() => {
     let active = true;
-    void call<WorkItem[]>("list_work_items")
-      .then((value) => {
+    void Promise.all([
+      call<WorkItem[]>("list_work_items"),
+      call<WorkProject[]>("list_work_projects"),
+    ])
+      .then(([value, projectList]) => {
         if (active) {
           setItems(value);
+          setProjects(projectList);
           setError("");
         }
       })
@@ -1064,15 +1585,50 @@ export function Workbench({
       onSeedConsumed();
     }
   }, [seed, onSeedConsumed]);
+  const activeProject = projects.find(
+    (project) => project.id === projectFilter,
+  );
+  const visible = useMemo(
+    () =>
+      items
+        .filter(
+          (item) =>
+            (!projectFilter ||
+              (projectFilter === "__none__"
+                ? !item.project
+                : item.project === activeProject?.name)) &&
+            (view !== "items" ||
+              ((!statusFilter || item.status === statusFilter) &&
+                `${item.title} ${item.project} ${item.notes} ${item.mailSubject ?? ""}`
+                  .toLocaleLowerCase()
+                  .includes(query.trim().toLocaleLowerCase()))),
+        )
+        .sort(newestWorkItemFirst),
+    [items, projectFilter, activeProject, view, statusFilter, query],
+  );
+  const projectTone = (name: string) => {
+    if (!name) return "none";
+    const index = projects.findIndex((project) => project.name === name);
+    return index < 0 ? "none" : String(index % 6);
+  };
   const calendarComponents = useMemo(
     () => ({
       DayButton: (props: React.ComponentProps<typeof CalendarDayButton>) => {
         const day = workDate(props.day.date);
-        const entries = items.filter((item) => isWorkItemOnDate(item, day));
+        const entries = visible
+          .filter((item) => isWorkItemOnDate(item, day))
+          .sort(
+            (a, b) =>
+              a.time.localeCompare(b.time) || a.title.localeCompare(b.title),
+          );
         return (
           <CalendarDayButton
             {...props}
-            className="workbench-day"
+            className={`workbench-day ${
+              props.modifiers.outside
+                ? "workbench-day-outside"
+                : "workbench-day-current-month"
+            }`}
             aria-label={t("{value0} · {value1} work items", {
               value0: day,
               value1: entries.length,
@@ -1082,26 +1638,51 @@ export function Workbench({
               className="workbench-day-number"
               data-today={props.modifiers.today || undefined}
             >
-              {props.children}
+              {props.day.date.getDate()}
             </span>
             <span className="workbench-day-items">
               {entries.slice(0, 2).map((item) => (
-                <span key={item.id} data-work-status={item.status}>
-                  {item.title}
+                <span
+                  className="workbench-day-event"
+                  key={item.id}
+                  data-project-tone={projectTone(item.project)}
+                  data-work-status={item.status}
+                >
+                  <span className="workbench-project-dot" />
+                  {item.time && <small>{item.time}</small>}
+                  <span>{item.title}</span>
                 </span>
               ))}
-              {entries.length > 2 && <small>+{entries.length - 2}</small>}
+              {entries.length > 2 && (
+                <small className="workbench-day-more">
+                  +{entries.length - 2}
+                </small>
+              )}
             </span>
           </CalendarDayButton>
         );
       },
     }),
-    [items],
+    [visible, projects],
   );
   const date = workDate(selected);
-  const daily = items.filter((item) => isWorkItemOnDate(item, date));
+  const daily = visible
+    .filter((item) => isWorkItemOnDate(item, date))
+    .sort((a, b) => a.time.localeCompare(b.time));
+  const activeDaily = daily.filter((item) => item.status !== "done");
+  async function copyDailyWorkItems() {
+    const value = [
+      date.replaceAll("-", "/"),
+      ...daily.flatMap((item, index) => [
+        `${index + 1}.${item.title}`,
+        ...item.checklist.map((entry) => `  -- ${entry.text}`),
+      ]),
+    ].join("\n");
+    if (await copyText(value)) toast.success(t("Daily work records copied."));
+    else toast.error(t("Could not copy daily work records."));
+  }
   const groups = new Map<string, WorkItem[]>();
-  for (const item of items) {
+  for (const item of visible) {
     const label =
       groupBy === "project"
         ? item.project || t("No project")
@@ -1163,424 +1744,1277 @@ export function Workbench({
       setBusy(false);
     }
   }
-  function itemCard(item: WorkItem) {
+  function moveToQuadrant(item: WorkItem, important: boolean, urgent: boolean) {
+    if (!!item.important === important && !!item.urgent === urgent) return;
+    void save({ ...item, important, urgent });
+  }
+  function quadrantAtPoint(x: number, y: number) {
+    const quadrant = document
+      .elementFromPoint?.(x, y)
+      ?.closest<HTMLElement>(".wb-matrix-quadrant");
+    const index = Number(quadrant?.dataset.quadrant);
+    return Number.isInteger(index) && index >= 0 && index < workQuadrants.length
+      ? index
+      : null;
+  }
+  function resetMatrixDrag() {
+    matrixDragSession.current = null;
+    setDraggingItemId(null);
+    setDragOverQuadrant(null);
+    setMatrixDragGhost(null);
+  }
+  function beginMatrixDrag(
+    event: ReactPointerEvent<HTMLDivElement>,
+    item: WorkItem,
+  ) {
+    if (
+      !event.isPrimary ||
+      (event.pointerType === "mouse" && event.button !== 0) ||
+      (event.target as Element | null)?.closest(
+        'input, textarea, select, [contenteditable="true"], [data-slot="checkbox"]',
+      )
+    )
+      return;
+    const bounds = event.currentTarget.getBoundingClientRect();
+    matrixDragSession.current = {
+      pointerId: event.pointerId,
+      item,
+      startX: event.clientX,
+      startY: event.clientY,
+      offsetX: event.clientX - bounds.left,
+      offsetY: event.clientY - bounds.top,
+      active: false,
+    };
+    event.currentTarget.setPointerCapture?.(event.pointerId);
+  }
+  function updateMatrixDrag(event: ReactPointerEvent<HTMLDivElement>) {
+    const session = matrixDragSession.current;
+    if (!session || session.pointerId !== event.pointerId) return;
+    if (
+      !session.active &&
+      Math.hypot(
+        event.clientX - session.startX,
+        event.clientY - session.startY,
+      ) < 5
+    )
+      return;
+    if (!session.active) {
+      session.active = true;
+      suppressedTaskClick.current = session.item.id;
+      window.setTimeout(() => {
+        if (suppressedTaskClick.current === session.item.id)
+          suppressedTaskClick.current = null;
+      }, 0);
+    }
+    event.preventDefault();
+    const quadrant = quadrantAtPoint(event.clientX, event.clientY);
+    setDraggingItemId(session.item.id);
+    setDragOverQuadrant(quadrant);
+    setMatrixDragGhost({
+      title: session.item.title,
+      x: event.clientX - session.offsetX,
+      y: event.clientY - session.offsetY,
+      width: event.currentTarget.getBoundingClientRect().width,
+    });
+  }
+  function finishMatrixDrag(
+    event: ReactPointerEvent<HTMLDivElement>,
+    cancelled = false,
+  ) {
+    const session = matrixDragSession.current;
+    if (!session || session.pointerId !== event.pointerId) return;
+    const quadrant = cancelled
+      ? null
+      : quadrantAtPoint(event.clientX, event.clientY);
+    const shouldMove = session.active && quadrant !== null;
+    if (session.active) event.preventDefault();
+    resetMatrixDrag();
+    event.currentTarget.releasePointerCapture?.(event.pointerId);
+    if (shouldMove) {
+      const target = workQuadrants[quadrant];
+      moveToQuadrant(session.item, target.important, target.urgent);
+    }
+  }
+  async function changeProject(project: WorkProject, deleting: boolean) {
+    if (mutation.current || loading) return false;
+    const name = project.name.trim();
+    if (!deleting && (!name || name.length > 80)) {
+      toast.error(t("Enter a project name."));
+      return false;
+    }
+    if (
+      !deleting &&
+      projects.some(
+        (entry) =>
+          entry.id !== project.id &&
+          entry.name.toLocaleLowerCase() === name.toLocaleLowerCase(),
+      )
+    ) {
+      toast.error(t("A project with this name already exists."));
+      return false;
+    }
+    mutation.current = true;
+    setBusy(true);
+    try {
+      const previous = projects.find((entry) => entry.id === project.id);
+      const data = await call<WorkbenchData>(
+        deleting ? "delete_work_project" : "save_work_project",
+        deleting
+          ? { id: project.id, revision: project.revision }
+          : { project: { ...project, name } },
+      );
+      setProjects(data.projects);
+      setItems(data.items);
+      if (deleting && projectFilter === project.id) setProjectFilter("");
+      setEditing((draft) => {
+        if (!draft) return draft;
+        if (!previous) return { ...draft, project: name };
+        if (draft.project !== previous.name) return draft;
+        const current = data.items.find((item) => item.id === draft.id);
+        const original = items.find((item) => item.id === draft.id);
+        const revision =
+          original?.project === previous.name &&
+          original.revision === draft.revision &&
+          (deleting || previous.name !== name) &&
+          current?.revision === draft.revision + 1
+            ? current.revision
+            : draft.revision;
+        return { ...draft, project: deleting ? "" : name, revision };
+      });
+      setError("");
+      return true;
+    } catch {
+      toast.error(t("Could not save work project. Reload and try again."));
+      setError(t("Could not save work project. Reload and try again."));
+      return false;
+    } finally {
+      mutation.current = false;
+      setBusy(false);
+    }
+  }
+  const saveProject = (project: WorkProject) => changeProject(project, false);
+  async function removeProject(project: WorkProject) {
+    if (busy || loading) return;
+    if (
+      await askConfirmation({
+        title: t("Delete project {value0}", { value0: project.name }),
+        description: t(
+          "The {value0} linked work records will be kept without a project.",
+          {
+            value0: items.filter((item) => item.project === project.name)
+              .length,
+          },
+        ),
+        action: t("Delete"),
+        destructive: true,
+      })
+    )
+      await changeProject(project, true);
+  }
+  function taskRow(item: WorkItem, compact = false, quadrantIndex?: number) {
+    const draggable = quadrantIndex !== undefined && !busy && !loading;
     return (
-      <Card key={item.id} className="gap-2 px-3 py-3 shadow-none">
+      <div
+        className={[
+          "wb-task-row",
+          compact && "wb-task-compact",
+          quadrantIndex !== undefined && "wb-matrix-task",
+        ]
+          .filter(Boolean)
+          .join(" ")}
+        key={item.id}
+        aria-grabbed={draggable ? draggingItemId === item.id : undefined}
+        data-dragging={draggingItemId === item.id || undefined}
+        title={
+          quadrantIndex !== undefined
+            ? t("Drag to another quadrant to update importance and urgency")
+            : undefined
+        }
+        onPointerDown={
+          draggable ? (event) => beginMatrixDrag(event, item) : undefined
+        }
+        onPointerMove={draggable ? updateMatrixDrag : undefined}
+        onPointerUp={draggable ? finishMatrixDrag : undefined}
+        onPointerCancel={
+          draggable ? (event) => finishMatrixDrag(event, true) : undefined
+        }
+        onLostPointerCapture={draggable ? resetMatrixDrag : undefined}
+      >
+        <Checkbox
+          aria-label={item.title}
+          checked={item.status === "done"}
+          disabled={busy || loading}
+          onCheckedChange={(checked) =>
+            void save({ ...item, status: checked ? "done" : "todo" })
+          }
+        />
         <Button
           variant="ghost"
-          className="h-auto justify-start px-1 text-left whitespace-normal"
-          onClick={() => setEditing(item)}
+          className="wb-task-title"
+          title={item.title}
+          data-done={item.status === "done"}
+          onClick={(event) => {
+            if (suppressedTaskClick.current === item.id) {
+              suppressedTaskClick.current = null;
+              event.preventDefault();
+              return;
+            }
+            setEditing(item);
+          }}
         >
-          {item.title}
-        </Button>
-        <div className="flex flex-wrap gap-1">
-          <Badge variant="secondary" data-work-status={item.status}>
-            {workStatus(item.status)}
-          </Badge>
-          {view === "quadrants" && (
-            <Badge variant="outline">
-              {item.date}
-              {item.endDate && item.endDate !== item.date
-                ? ` – ${item.endDate}`
-                : ""}
-            </Badge>
+          <span>{item.title}</span>
+          {!compact && (
+            <small>
+              <span
+                className="wb-task-project"
+                data-project-tone={projectTone(item.project)}
+              >
+                <span className="workbench-project-dot" />
+                <span>{item.project || t("No project")}</span>
+              </span>
+              {item.checklist.length > 0 && (
+                <span>
+                  <Check />
+                  {item.checklist.filter((entry) => entry.done).length}/
+                  {item.checklist.length}
+                </span>
+              )}
+            </small>
           )}
-          {item.time && <Badge variant="outline">{item.time}</Badge>}
-          {item.project && <Badge variant="outline">{item.project}</Badge>}
-        </div>
-        {view === "board" && (
-          <StatusSelect
-            value={item.status}
-            disabled={busy}
-            onChange={(status) => void save({ ...item, status })}
-          />
+        </Button>
+        {item.priority === "high" && <Flag className="wb-priority" />}
+        {compact && (
+          <span className="wb-row-date">
+            {item.time ||
+              parseISO(item.date).toLocaleDateString(dateLocale(), {
+                month: "2-digit",
+                day: "2-digit",
+              })}
+          </span>
         )}
-        {item.mailId && (
-          <Button
-            size="sm"
-            variant="link"
-            className="self-start px-0"
-            onClick={() => openMail(item.mailId)}
-          >
-            {t("Open linked email")}
-          </Button>
-        )}
-      </Card>
+      </div>
     );
   }
-  return (
-    <div className="workbench px-4 pb-4">
-      {error && (
-        <Alert variant="destructive" className="mb-3">
-          <AlertDescription>
-            {error}
+  const tableRows = (entries: WorkItem[]) =>
+    entries.map((item) => ({
+      id: item.id,
+      complete: (
+        <Checkbox
+          aria-label={item.title}
+          checked={item.status === "done"}
+          disabled={busy}
+          onCheckedChange={(checked) =>
+            void save({ ...item, status: checked ? "done" : "todo" })
+          }
+        />
+      ),
+      work: (
+        <Button
+          variant="ghost"
+          className="wb-table-title"
+          title={item.title}
+          onClick={() => setEditing(item)}
+        >
+          <span className="truncate">{item.title}</span>
+        </Button>
+      ),
+      status: <WorkTableStatusBadge status={item.status} />,
+      priority: <WorkTablePriorityBadge priority={item.priority} />,
+      important: item.important ? (
+        <WorkTableFlagBadge kind="important" />
+      ) : null,
+      urgent: item.urgent ? <WorkTableFlagBadge kind="urgent" /> : null,
+      linkedMail: item.mailId ? (
+        <Tooltip>
+          <TooltipTrigger asChild>
             <Button
-              size="sm"
+              type="button"
               variant="ghost"
-              disabled={busy || loading}
-              onClick={() => {
-                setLoading(true);
-                setReload((v) => v + 1);
-              }}
+              size="sm"
+              className="wb-table-mail-link"
+              aria-label={
+                item.mailSubject
+                  ? t("Open linked email: {value0}", {
+                      value0: item.mailSubject,
+                    })
+                  : t("Open linked email")
+              }
+              title={item.mailSubject || t("Open linked email")}
+              onClick={() => openMail(item.mailId)}
             >
-              {t("Reload")}
+              <Mail />
+              <span>{item.mailSubject || t("Open linked email")}</span>
             </Button>
-          </AlertDescription>
-        </Alert>
-      )}
-      <Tabs value={view} onValueChange={setView}>
-        <div className="mb-3 flex flex-wrap justify-between gap-2">
-          <TabsList>
-            <TabsTrigger value="calendar">{t("Calendar")}</TabsTrigger>
-            <TabsTrigger value="quadrants">{t("Four quadrants")}</TabsTrigger>
-            <TabsTrigger value="table">{t("Work table")}</TabsTrigger>
-            <TabsTrigger value="board">{t("Status board")}</TabsTrigger>
-            <TabsTrigger value="report">{t("Work report")}</TabsTrigger>
-          </TabsList>
-          <Button
-            size="sm"
-            disabled={loading}
-            onClick={() => setEditing(newWorkItem(date))}
-          >
-            <Plus />
-            {t("Add work record")}
-          </Button>
-        </div>
-        <TabsContent value="calendar">
-          <Tabs
-            value={calendarMode}
-            onValueChange={(value) => {
-              if (
-                calendarMode === "month" &&
-                workDate(month).slice(0, 7) !== date.slice(0, 7)
-              )
-                setSelected(startOfMonth(month));
-              if (value === "month" && calendarMode !== "month")
-                setMonth(selected);
-              setCalendarMode(value as CalendarMode);
-            }}
-          >
-            <TabsList className="mb-2" aria-label={t("Calendar view")}>
-              <TabsTrigger value="month">{t("Month view")}</TabsTrigger>
-              <TabsTrigger value="week">{t("Week view")}</TabsTrigger>
-              <TabsTrigger value="day">{t("Day view")}</TabsTrigger>
-            </TabsList>
-            {calendarMode !== "month" && (
-              <TabsContent value={calendarMode}>
-                <Card className="min-w-0 gap-2 p-2 shadow-none">
-                  <WorkbenchMonthNavigation
-                    month={selected}
-                    mode={calendarMode}
-                    onMonthChange={setSelected}
-                    onToday={() => setSelected(new Date())}
-                  />
-                  <WorkbenchTimeline
-                    mode={calendarMode}
-                    selected={selected}
-                    items={items}
-                    disabled={loading || busy}
-                    onSelect={setSelected}
-                    onOpen={setEditing}
-                    onAdd={(day, time) =>
-                      setEditing({ ...newWorkItem(day), time })
-                    }
-                  />
-                </Card>
-              </TabsContent>
-            )}
-            <TabsContent value="month">
-              <div className="workbench-calendar-layout">
-                <Card className="workbench-calendar-card block min-w-0 gap-0 p-2 shadow-none">
-                  <WorkbenchMonthNavigation
-                    month={month}
-                    mode="month"
-                    onMonthChange={(next) => {
-                      setMonth(next);
-                      setSelected(startOfMonth(next));
-                    }}
-                    onToday={() => {
-                      const today = new Date();
-                      setMonth(today);
-                      setSelected(today);
-                    }}
-                  />
-                  <Calendar
-                    className="workbench-calendar bg-transparent"
-                    classNames={{ month_caption: "sr-only" }}
-                    hideNavigation
-                    showOutsideDays={false}
-                    locale={calendarLocale()}
-                    weekStartsOn={1}
-                    fixedWeeks
-                    month={month}
-                    onMonthChange={setMonth}
-                    mode="single"
-                    selected={selected}
-                    onSelect={(day) => {
-                      if (day) setSelected(day);
-                    }}
-                    components={calendarComponents}
-                  />
-                </Card>
-                <Card className="gap-3 shadow-none">
-                  <CardHeader>
-                    <CardTitle>
-                      {selected.toLocaleDateString(dateLocale(), {
-                        dateStyle: "full",
-                      })}
-                    </CardTitle>
-                    <p className="text-sm text-muted-foreground">
-                      {hoursLabel(daily)}
-                    </p>
-                  </CardHeader>
-                  <CardContent className="grid gap-2">
-                    <form
-                      className="flex gap-2"
-                      onSubmit={(e) => {
-                        e.preventDefault();
-                        void save({ ...newWorkItem(date), title: quick }, () =>
-                          setQuick(""),
-                        );
+          </TooltipTrigger>
+          <TooltipContent className="max-w-80 whitespace-normal break-words">
+            {item.mailSubject || t("Open linked email")}
+          </TooltipContent>
+        </Tooltip>
+      ) : null,
+      project: item.project ? (
+        <span
+          className="wb-table-project"
+          data-project-tone={projectTone(item.project)}
+          title={item.project}
+        >
+          <span className="workbench-project-dot" />
+          {item.project}
+        </span>
+      ) : null,
+      workDate: (
+        <span
+          className="block truncate"
+          title={[item.date, item.endDate, item.time]
+            .filter(Boolean)
+            .join(" · ")}
+        >
+          {item.date}
+          {item.time && ` · ${item.time}`}
+          {item.endDate && ` – ${item.endDate}`}
+        </span>
+      ),
+    }));
+  const renderTable = (entries: WorkItem[]) => {
+    const entriesById = new Map(entries.map((item) => [item.id, item]));
+    return (
+      <TaskDataTable
+        label={t("Work table")}
+        rows={tableRows(entries)}
+        fields={[
+          "complete",
+          "work",
+          "status",
+          "project",
+          "workDate",
+          "priority",
+          "important",
+          "urgent",
+          "linkedMail",
+        ]}
+        pageSize={14}
+        keepEmptyFields
+        showRecordCount
+        empty={t("No matching work items.")}
+        selectedRowId={contextItemId}
+        renderRow={(row, rowElement) => {
+          const item = entriesById.get(row.id);
+          if (!item) return rowElement;
+          return (
+            <ContextMenu
+              onOpenChange={(open) => setContextItemId(open ? item.id : null)}
+            >
+              <ContextMenuTrigger asChild>{rowElement}</ContextMenuTrigger>
+              <ContextMenuContent className="wb-work-item-menu">
+                <ContextMenuLabel className="wb-work-item-menu-label">
+                  {item.title}
+                </ContextMenuLabel>
+                <ContextMenuSeparator />
+                <ContextMenuItem
+                  disabled={busy || loading}
+                  onSelect={() => setEditing(item)}
+                >
+                  <Pencil />
+                  <span className="wb-context-label">
+                    {t("Edit work item")}
+                  </span>
+                </ContextMenuItem>
+                <ContextMenuSub>
+                  <ContextMenuSubTrigger disabled={busy || loading}>
+                    <CircleDot />
+                    <span className="wb-context-label">{t("Work status")}</span>
+                  </ContextMenuSubTrigger>
+                  <ContextMenuSubContent className="wb-work-item-menu">
+                    <ContextMenuRadioGroup
+                      value={item.status}
+                      onValueChange={(status) =>
+                        void save({
+                          ...item,
+                          status: status as WorkStatus,
+                        })
+                      }
+                    >
+                      {workStatuses.map((status) => (
+                        <ContextMenuRadioItem
+                          key={status}
+                          value={status}
+                          disabled={busy || loading}
+                        >
+                          <StatusLabel status={status} />
+                        </ContextMenuRadioItem>
+                      ))}
+                    </ContextMenuRadioGroup>
+                  </ContextMenuSubContent>
+                </ContextMenuSub>
+                <ContextMenuSub>
+                  <ContextMenuSubTrigger disabled={busy || loading}>
+                    <FolderOpen />
+                    <span className="wb-context-label">{t("Project")}</span>
+                  </ContextMenuSubTrigger>
+                  <ContextMenuSubContent className="wb-work-item-menu wb-project-context-menu">
+                    <ContextMenuRadioGroup
+                      value={item.project || "__none__"}
+                      onValueChange={(project) =>
+                        void save({
+                          ...item,
+                          project: project === "__none__" ? "" : project,
+                        })
+                      }
+                    >
+                      <ContextMenuRadioItem
+                        value="__none__"
+                        disabled={busy || loading}
+                      >
+                        <span
+                          className="wb-table-project"
+                          data-project-tone="none"
+                        >
+                          <span className="workbench-project-dot" />
+                          {t("No project")}
+                        </span>
+                      </ContextMenuRadioItem>
+                      {item.project &&
+                        !projects.some(
+                          (project) => project.name === item.project,
+                        ) && (
+                          <ContextMenuRadioItem
+                            value={item.project}
+                            disabled={busy || loading}
+                          >
+                            <span
+                              className="wb-table-project"
+                              data-project-tone="none"
+                            >
+                              <span className="workbench-project-dot" />
+                              {item.project}
+                            </span>
+                          </ContextMenuRadioItem>
+                        )}
+                      {projects.map((project, index) => (
+                        <ContextMenuRadioItem
+                          key={project.id}
+                          value={project.name}
+                          disabled={busy || loading}
+                        >
+                          <span
+                            className="wb-table-project"
+                            data-project-tone={index % 6}
+                          >
+                            <span className="workbench-project-dot" />
+                            {project.name}
+                          </span>
+                        </ContextMenuRadioItem>
+                      ))}
+                    </ContextMenuRadioGroup>
+                  </ContextMenuSubContent>
+                </ContextMenuSub>
+                <ContextMenuSub>
+                  <ContextMenuSubTrigger disabled={busy || loading}>
+                    <Flag />
+                    <span className="wb-context-label">
+                      {t("Work priority")}
+                    </span>
+                  </ContextMenuSubTrigger>
+                  <ContextMenuSubContent className="wb-work-item-menu">
+                    <ContextMenuRadioGroup
+                      value={item.priority}
+                      onValueChange={(priority) =>
+                        void save({
+                          ...item,
+                          priority: priority as WorkPriority,
+                        })
+                      }
+                    >
+                      {workPriorities.map((priority) => (
+                        <ContextMenuRadioItem
+                          key={priority}
+                          value={priority}
+                          disabled={busy || loading}
+                        >
+                          <PriorityLabel priority={priority} />
+                        </ContextMenuRadioItem>
+                      ))}
+                    </ContextMenuRadioGroup>
+                  </ContextMenuSubContent>
+                </ContextMenuSub>
+                <ContextMenuSub>
+                  <ContextMenuSubTrigger disabled={busy || loading}>
+                    <Grid2X2 />
+                    <span className="wb-context-label">
+                      {t("Four quadrants")}
+                    </span>
+                  </ContextMenuSubTrigger>
+                  <ContextMenuSubContent className="wb-work-item-menu">
+                    <ContextMenuRadioGroup
+                      value={String(
+                        workQuadrants.findIndex(
+                          (quadrant) =>
+                            quadrant.important === !!item.important &&
+                            quadrant.urgent === !!item.urgent,
+                        ),
+                      )}
+                      onValueChange={(quadrant) => {
+                        const target = workQuadrants[Number(quadrant)];
+                        if (!target) return;
+                        void save({
+                          ...item,
+                          important: target.important,
+                          urgent: target.urgent,
+                        });
                       }}
                     >
-                      <Input
+                      {workQuadrants.map(
+                        ({ important, urgent, label }, index) => (
+                          <ContextMenuRadioItem
+                            key={index}
+                            value={String(index)}
+                            disabled={busy || loading}
+                          >
+                            <span
+                              className="wb-quadrant-option"
+                              data-quadrant={index}
+                            >
+                              <span className="wb-quadrant-dot" />
+                              {label()}
+                            </span>
+                          </ContextMenuRadioItem>
+                        ),
+                      )}
+                    </ContextMenuRadioGroup>
+                  </ContextMenuSubContent>
+                </ContextMenuSub>
+                {item.mailId && (
+                  <>
+                    <ContextMenuSeparator />
+                    <ContextMenuItem
+                      disabled={busy || loading}
+                      onSelect={() => openMail(item.mailId)}
+                    >
+                      <Mail />
+                      <span className="wb-context-label">
+                        {t("Open linked email")}
+                      </span>
+                    </ContextMenuItem>
+                  </>
+                )}
+              </ContextMenuContent>
+            </ContextMenu>
+          );
+        }}
+      />
+    );
+  };
+  const renderBoard = (entries: WorkItem[], hideEmpty = false) => {
+    const statuses = hideEmpty
+      ? workStatuses.filter((status) =>
+          entries.some((item) => item.status === status),
+        )
+      : workStatuses;
+    return (
+      <div
+        className="workbench-board"
+        data-columns={Math.max(1, statuses.length)}
+      >
+        {statuses.map((status) => {
+          const statusEntries = entries.filter(
+            (item) => item.status === status,
+          );
+          return (
+            <section key={status} data-status={status}>
+              <h3>
+                <StatusLabel status={status} />
+                <span>{statusEntries.length}</span>
+              </h3>
+              {statusEntries.map((item) => (
+                <Card
+                  className="wb-board-item"
+                  data-status={item.status}
+                  key={item.id}
+                >
+                  <CardContent>
+                    {taskRow(item)}
+                    <div className="wb-board-footer">
+                      <div className="wb-board-meta">
+                        <span>{item.date}</span>
+                        {item.time && <span>{item.time}</span>}
+                      </div>
+                      <div className="wb-board-actions">
+                        {item.mailId && (
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <Button
+                                variant="ghost"
+                                size="icon-sm"
+                                aria-label={t("Open linked email")}
+                                onClick={() => openMail(item.mailId)}
+                              >
+                                <Mail />
+                              </Button>
+                            </TooltipTrigger>
+                            <TooltipContent>
+                              {t("Open linked email")}
+                            </TooltipContent>
+                          </Tooltip>
+                        )}
+                        <StatusSelect
+                          compact
+                          value={item.status}
+                          disabled={busy}
+                          onChange={(status) => void save({ ...item, status })}
+                        />
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+            </section>
+          );
+        })}
+      </div>
+    );
+  };
+  const projectSelection = (
+    <SelectField
+      aria-label={t("Filter work projects")}
+      value={projectFilter}
+      onValueChange={setProjectFilter}
+      disabled={loading}
+    >
+      <SelectOption value="">{t("All projects")}</SelectOption>
+      <SelectOption value="__none__">{t("No project")}</SelectOption>
+      {projects.map((project) => (
+        <SelectOption key={project.id} value={project.id}>
+          {project.name}
+        </SelectOption>
+      ))}
+    </SelectField>
+  );
+  return (
+    <TooltipProvider>
+      <div className="workbench">
+        {error && (
+          <Alert variant="destructive">
+            <AlertDescription>
+              {error}
+              <Button
+                size="sm"
+                variant="ghost"
+                disabled={busy || loading}
+                onClick={() => {
+                  setLoading(true);
+                  setReload((value) => value + 1);
+                }}
+              >
+                {t("Reload")}
+              </Button>
+            </AlertDescription>
+          </Alert>
+        )}
+        <Tabs value={view} onValueChange={setView} className="wb-tabs">
+          <div className="wb-navigation">
+            <TabsList variant="line" aria-label={t("Workbench view")}>
+              <TabsTrigger value="calendar">
+                <CalendarDays />
+                {t("Calendar")}
+              </TabsTrigger>
+              <TabsTrigger value="quadrants">
+                <Grid2X2 />
+                {t("Four quadrants")}
+              </TabsTrigger>
+              <TabsTrigger value="items">
+                <LayoutList />
+                {t("Work items")}
+              </TabsTrigger>
+              <TabsTrigger value="report">
+                <FileText />
+                {t("Work report")}
+              </TabsTrigger>
+            </TabsList>
+            <Button
+              size="sm"
+              disabled={loading || busy}
+              onClick={() =>
+                setEditing({
+                  ...newWorkItem(date),
+                  project: activeProject?.name || "",
+                })
+              }
+            >
+              <Plus />
+              {t("Add work record")}
+            </Button>
+          </div>
+          <div className="wb-toolbar">
+            <div className="wb-toolbar-left">
+              {view === "calendar" ? (
+                <WorkbenchMonthNavigation
+                  month={
+                    calendarMode === "month" || calendarMode === "year"
+                      ? month
+                      : selected
+                  }
+                  mode={calendarMode}
+                  onMonthChange={(next) => {
+                    setMonth(next);
+                    setSelected(next);
+                  }}
+                  onToday={() => {
+                    const today = new Date();
+                    setMonth(today);
+                    setSelected(today);
+                  }}
+                />
+              ) : (
+                <h2>
+                  {view === "items"
+                    ? t("Work items")
+                    : view === "quadrants"
+                      ? t("Importance and urgency")
+                      : t("Work report")}
+                </h2>
+              )}
+              {view === "quadrants" && (
+                <span className="wb-toolbar-caption">
+                  {selected.toLocaleDateString(dateLocale(), {
+                    month: "long",
+                    day: "numeric",
+                  })}
+                  {" · "}
+                  {t("{value0} work records", { value0: activeDaily.length })}
+                </span>
+              )}
+              {view === "report" && (
+                <span className="wb-toolbar-caption">
+                  {reportFrom} — {reportTo}
+                </span>
+              )}
+            </div>
+            <div className="wb-toolbar-right">
+              {projectSelection}
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon-sm"
+                    aria-label={t("Manage work projects")}
+                    disabled={loading || busy}
+                    onClick={() => setProjectsOpen(true)}
+                  >
+                    <Settings2 />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>{t("Manage work projects")}</TooltipContent>
+              </Tooltip>
+              {view === "calendar" && (
+                <ToggleGroup
+                  type="single"
+                  value={calendarMode}
+                  aria-label={t("Calendar view")}
+                  onValueChange={(value) => {
+                    if (value) {
+                      if (
+                        (calendarMode === "month" || calendarMode === "year") &&
+                        workDate(month).slice(0, 7) !== date.slice(0, 7)
+                      )
+                        setSelected(startOfMonth(month));
+                      if (value === "month" || value === "year")
+                        setMonth(selected);
+                      setCalendarMode(value as CalendarMode);
+                    }
+                  }}
+                >
+                  <ToggleGroupItem value="year">
+                    {t("Year view")}
+                  </ToggleGroupItem>
+                  <ToggleGroupItem value="month">
+                    {t("Month view")}
+                  </ToggleGroupItem>
+                  <ToggleGroupItem value="week">
+                    {t("Week view")}
+                  </ToggleGroupItem>
+                  <ToggleGroupItem value="day">{t("Day view")}</ToggleGroupItem>
+                </ToggleGroup>
+              )}
+              {view === "items" && (
+                <ToggleGroup
+                  type="single"
+                  value={layout}
+                  aria-label={t("Work item layout")}
+                  onValueChange={(value) => {
+                    if (value) setLayout(value);
+                  }}
+                >
+                  <ToggleGroupItem value="table" aria-label={t("Work table")}>
+                    <LayoutList />
+                  </ToggleGroupItem>
+                  <ToggleGroupItem value="board" aria-label={t("Status board")}>
+                    <Columns3 />
+                  </ToggleGroupItem>
+                </ToggleGroup>
+              )}
+            </div>
+          </div>
+          <TabsContent
+            value="calendar"
+            className="wb-content wb-calendar-content"
+          >
+            <div className="workbench-calendar-layout">
+              <Card
+                className={`workbench-calendar-card${
+                  calendarMode === "month"
+                    ? " workbench-calendar-card-current-month"
+                    : ""
+                }`}
+              >
+                <CardContent className="wb-calendar-main">
+                  {calendarMode === "year" ? (
+                    <ScrollArea className="wb-year-scroll">
+                      <div className="wb-year-grid">
+                        {Array.from({ length: 12 }, (_, index) => {
+                          const first = new Date(month);
+                          first.setFullYear(month.getFullYear(), index, 1);
+                          return (
+                            <Calendar
+                              key={index}
+                              className="wb-year-calendar"
+                              locale={calendarLocale()}
+                              mode="single"
+                              weekStartsOn={1}
+                              fixedWeeks
+                              showOutsideDays={false}
+                              month={first}
+                              selected={selected}
+                              hideNavigation
+                              modifiers={{
+                                hasWork: (day) =>
+                                  visible.some((item) =>
+                                    isWorkItemOnDate(item, workDate(day)),
+                                  ),
+                              }}
+                              modifiersClassNames={{
+                                hasWork: "wb-year-has-work",
+                              }}
+                              onSelect={(day) => {
+                                if (day) {
+                                  setSelected(day);
+                                  setMonth(day);
+                                  setCalendarMode("month");
+                                }
+                              }}
+                            />
+                          );
+                        })}
+                      </div>
+                    </ScrollArea>
+                  ) : calendarMode === "month" ? (
+                    <Calendar
+                      className="workbench-calendar"
+                      hideNavigation
+                      showOutsideDays
+                      locale={calendarLocale()}
+                      weekStartsOn={1}
+                      fixedWeeks
+                      month={month}
+                      onMonthChange={setMonth}
+                      mode="single"
+                      selected={selected}
+                      onSelect={(day) => {
+                        if (!day) return;
+                        setSelected(day);
+                        if (
+                          day.getFullYear() !== month.getFullYear() ||
+                          day.getMonth() !== month.getMonth()
+                        ) {
+                          setMonth(startOfMonth(day));
+                        }
+                      }}
+                      components={calendarComponents}
+                    />
+                  ) : (
+                    <WorkbenchTimeline
+                      mode={calendarMode}
+                      selected={selected}
+                      items={visible}
+                      disabled={loading || busy}
+                      onSelect={setSelected}
+                      onOpen={setEditing}
+                      projectTone={projectTone}
+                      onAdd={(day, time) =>
+                        setEditing({
+                          ...newWorkItem(day),
+                          time,
+                          project: activeProject?.name || "",
+                        })
+                      }
+                    />
+                  )}
+                </CardContent>
+              </Card>
+              <Card className="wb-agenda">
+                <CardHeader>
+                  <p>
+                    {selected.toLocaleDateString(dateLocale(), {
+                      weekday: "long",
+                    })}
+                  </p>
+                  <div className="flex items-center justify-between">
+                    <CardTitle>
+                      {selected.toLocaleDateString(dateLocale(), {
+                        month: "long",
+                        day: "numeric",
+                      })}
+                    </CardTitle>
+                    <div className="flex items-center gap-1">
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Button
+                            size="icon-sm"
+                            variant="ghost"
+                            aria-label={t("Copy daily work records")}
+                            disabled={loading || busy || !daily.length}
+                            onClick={() => void copyDailyWorkItems()}
+                          >
+                            <Copy />
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent>
+                          {t("Copy daily work records")}
+                        </TooltipContent>
+                      </Tooltip>
+                      <Button
+                        size="icon-sm"
+                        variant="ghost"
+                        aria-label={t("Add work record")}
+                        disabled={loading || busy}
+                        onClick={() =>
+                          setEditing({
+                            ...newWorkItem(date),
+                            project: activeProject?.name || "",
+                          })
+                        }
+                      >
+                        <Plus />
+                      </Button>
+                    </div>
+                  </div>
+                  <p>
+                    {t("{value0} of {value1} work items completed", {
+                      value0: totals(daily).done,
+                      value1: daily.length,
+                    })}
+                  </p>
+                </CardHeader>
+                <CardContent className="wb-agenda-body">
+                  <form
+                    className="wb-quick"
+                    onSubmit={(event) => {
+                      event.preventDefault();
+                      void save(
+                        {
+                          ...newWorkItem(date),
+                          title: quick,
+                          project: activeProject?.name || "",
+                        },
+                        () => setQuick(""),
+                      );
+                    }}
+                  >
+                    <InputGroup>
+                      <InputGroupAddon>
+                        <Plus />
+                      </InputGroupAddon>
+                      <InputGroupInput
                         aria-label={t("Quick add work item")}
                         placeholder={t("Quick add work item")}
                         maxLength={200}
                         value={quick}
-                        onChange={(e) => setQuick(e.target.value)}
+                        disabled={loading || busy}
+                        onChange={(event) => setQuick(event.target.value)}
                       />
-                      <Button
-                        type="submit"
-                        disabled={busy || loading || !quick.trim()}
-                        size="icon"
-                        aria-label={t("New work item")}
-                      >
-                        <Plus />
-                      </Button>
-                    </form>
-                    {daily.map(itemCard)}
-                    {!daily.length && (
-                      <p className="text-muted-foreground">
-                        {t("No work items for this day.")}
-                      </p>
-                    )}
-                  </CardContent>
-                </Card>
-              </div>
-            </TabsContent>
-          </Tabs>
-        </TabsContent>
-        <TabsContent value="quadrants">
-          <div className="workbench-quadrants">
-            {workQuadrants.map(({ important, urgent, label }, index) => {
-              const entries = items.filter(
-                (item) =>
-                  !!item.important === important && !!item.urgent === urgent,
-              );
-              return (
-                <Card
-                  key={index}
-                  className="workbench-quadrant min-w-0 gap-3 py-3 shadow-none"
-                  data-quadrant={index}
-                >
-                  <CardHeader className="flex flex-wrap items-center justify-between gap-2 px-3">
-                    <CardTitle>
-                      {label()}{" "}
-                      <Badge variant="outline">{entries.length}</Badge>
-                    </CardTitle>
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="outline"
-                      disabled={loading || busy}
-                      aria-label={t("Add work record in {value0}", {
-                        value0: label(),
-                      })}
-                      onClick={() =>
-                        setEditing({ ...newWorkItem(date), important, urgent })
-                      }
-                    >
-                      <Plus />
-                      {t("Add work record")}
-                    </Button>
-                  </CardHeader>
-                  <CardContent className="grid gap-2 px-3">
-                    {entries.map(itemCard)}
-                    {!entries.length && (
-                      <p className="text-muted-foreground">
-                        {t("No work items in this quadrant.")}
-                      </p>
-                    )}
-                  </CardContent>
-                </Card>
-              );
-            })}
-          </div>
-        </TabsContent>
-        <TabsContent value="table">
-          <div className="mb-3 flex items-center gap-2">
-            <span>{t("Group work items by")}</span>
-            <SelectField
-              value={groupBy}
-              onValueChange={setGroupBy}
-              aria-label={t("Group work items by")}
-            >
-              <SelectOption value="status">{t("Work status")}</SelectOption>
-              <SelectOption value="project">{t("Project")}</SelectOption>
-              <SelectOption value="priority">{t("Work priority")}</SelectOption>
-              <SelectOption value="date">{t("Work date")}</SelectOption>
-            </SelectField>
-          </div>
-          <div className="grid gap-3">
-            {Array.from(groups, ([label, group]) => (
-              <Collapsible key={label} defaultOpen>
-                <Card className="gap-3 py-3 shadow-none">
-                  <CardHeader>
-                    <CollapsibleTrigger asChild>
-                      <Button variant="ghost" className="justify-start">
-                        {label} · {group.length} · {hoursLabel(group)}
-                      </Button>
-                    </CollapsibleTrigger>
-                  </CardHeader>
-                  <CollapsibleContent>
-                    <CardContent>
-                      <Table className="w-full text-left text-sm">
-                        <TableHeader>
-                          <TableRow>
-                            {[
-                              t("Work item"),
-                              t("Work status"),
-                              t("Work priority"),
-                              t("Project"),
-                              t("Work date"),
-                              t("Estimated minutes"),
-                              t("Actual minutes"),
-                            ].map((heading) => (
-                              <TableHead
-                                className="px-2 py-1 font-medium"
-                                key={heading}
+                    </InputGroup>
+                  </form>
+                  <ScrollArea className="wb-agenda-scroll">
+                    <div className="wb-agenda-entries">
+                      {daily
+                        .filter((item) => item.status !== "done")
+                        .map((item) => (
+                          <div className="wb-agenda-entry" key={item.id}>
+                            <div className="wb-agenda-meta">
+                              <span>
+                                {item.date === date
+                                  ? item.time || t("All day")
+                                  : t("Continued")}
+                              </span>
+                              <StatusLabel status={item.status} />
+                            </div>
+                            {taskRow(item)}
+                            {item.mailId && (
+                              <Button
+                                className="wb-mail-link"
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => openMail(item.mailId)}
                               >
-                                {heading}
-                              </TableHead>
-                            ))}
-                          </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                          {group.map((item) => (
-                            <TableRow key={item.id} className="border-t">
-                              <TableCell className="px-2 py-1">
-                                <Checkbox
-                                  aria-label={item.title}
-                                  checked={item.status === "done"}
-                                  disabled={busy}
-                                  onCheckedChange={(checked) =>
-                                    void save({
-                                      ...item,
-                                      status: checked ? "done" : "todo",
-                                    })
-                                  }
-                                />
-                                <Button
-                                  variant="link"
-                                  onClick={() => setEditing(item)}
-                                >
-                                  {item.title}
-                                </Button>
-                              </TableCell>
-                              <TableCell className="px-2">
-                                <StatusSelect
-                                  value={item.status}
-                                  disabled={busy}
-                                  onChange={(status) =>
-                                    void save({ ...item, status })
-                                  }
-                                />
-                              </TableCell>
-                              <TableCell className="px-2">
-                                <SelectField
-                                  aria-label={t("Work priority")}
-                                  value={item.priority}
-                                  disabled={busy}
-                                  onValueChange={(priority) =>
-                                    void save({
-                                      ...item,
-                                      priority: priority as WorkPriority,
-                                    })
-                                  }
-                                >
-                                  {workPriorities.map((value) => (
-                                    <SelectOption key={value} value={value}>
-                                      {workPriority(value)}
-                                    </SelectOption>
-                                  ))}
-                                </SelectField>
-                              </TableCell>
-                              <TableCell className="px-2">
-                                {item.project}
-                              </TableCell>
-                              <TableCell className="px-2">
-                                {item.date}
-                              </TableCell>
-                              <TableCell className="px-2">
-                                {item.estimatedMinutes}
-                              </TableCell>
-                              <TableCell className="px-2">
-                                {item.actualMinutes}
-                              </TableCell>
-                            </TableRow>
-                          ))}
-                        </TableBody>
-                      </Table>
-                    </CardContent>
-                  </CollapsibleContent>
+                                <Mail />
+                                {t("Open linked email")}
+                              </Button>
+                            )}
+                          </div>
+                        ))}
+                      {daily.some((item) => item.status === "done") && (
+                        <div className="wb-done-group">
+                          <p className="text-xs text-muted-foreground">
+                            <Check />
+                            {t("Completed")} · {totals(daily).done}
+                          </p>
+                          {daily
+                            .filter((item) => item.status === "done")
+                            .map((item) => taskRow(item))}
+                        </div>
+                      )}
+                      {!daily.length && (
+                        <p className="wb-empty">
+                          {loading
+                            ? t("Loading…")
+                            : t("No work items for this day.")}
+                        </p>
+                      )}
+                    </div>
+                  </ScrollArea>
+                </CardContent>
+              </Card>
+            </div>
+          </TabsContent>
+          <TabsContent value="items" className="wb-content">
+            <ScrollArea className="wb-view-scroll">
+              <div className="wb-items-tools">
+                <InputGroup>
+                  <InputGroupAddon>
+                    <Search />
+                  </InputGroupAddon>
+                  <InputGroupInput
+                    aria-label={t("Search work items")}
+                    placeholder={t("Search work items")}
+                    value={query}
+                    onChange={(event) => setQuery(event.target.value)}
+                  />
+                </InputGroup>
+                <SelectField
+                  aria-label={t("Filter work status")}
+                  value={statusFilter}
+                  onValueChange={setStatusFilter}
+                >
+                  <SelectOption value="">{t("All work statuses")}</SelectOption>
+                  {workStatuses.map((status) => (
+                    <SelectOption key={status} value={status}>
+                      {workStatus(status)}
+                    </SelectOption>
+                  ))}
+                </SelectField>
+                <SelectField
+                  aria-label={t("Group work items by")}
+                  value={groupBy}
+                  onValueChange={setGroupBy}
+                >
+                  <SelectOption value="none">{t("No grouping")}</SelectOption>
+                  <SelectOption value="status">{t("Work status")}</SelectOption>
+                  <SelectOption value="project">{t("Project")}</SelectOption>
+                  <SelectOption value="priority">
+                    {t("Work priority")}
+                  </SelectOption>
+                  <SelectOption value="date">{t("Work date")}</SelectOption>
+                </SelectField>
+              </div>
+              {layout === "table" ? (
+                <Card className="wb-items-card">
+                  <CardContent>
+                    {groupBy === "none" ? (
+                      renderTable(visible)
+                    ) : (
+                      <div className="flex flex-col gap-4">
+                        {Array.from(groups, ([label, entries]) => (
+                          <Collapsible key={label} defaultOpen>
+                            <CollapsibleTrigger asChild>
+                              <Button
+                                variant="ghost"
+                                className="mb-2 justify-start"
+                              >
+                                <ChevronDown />
+                                {label} · {entries.length}
+                              </Button>
+                            </CollapsibleTrigger>
+                            <CollapsibleContent>
+                              {renderTable(entries)}
+                            </CollapsibleContent>
+                          </Collapsible>
+                        ))}
+                      </div>
+                    )}
+                  </CardContent>
                 </Card>
-              </Collapsible>
-            ))}
-          </div>
-          <p className="mt-3 text-muted-foreground">
-            {t("{value0} of {value1} work items completed", {
-              value0: totals(items).done,
-              value1: items.length,
-            })}{" "}
-            · {hoursLabel(items)}
-          </p>
-        </TabsContent>
-        <TabsContent value="board">
-          <div className="workbench-board">
-            {workStatuses.map((status) => (
-              <section key={status} className="grid content-start gap-2">
-                <div className="flex items-center gap-2">
-                  <Badge data-work-status={status} variant="secondary">
-                    {workStatus(status)}
-                  </Badge>
-                  <span>
-                    {items.filter((item) => item.status === status).length}
-                  </span>
+              ) : groupBy === "none" ? (
+                renderBoard(visible)
+              ) : (
+                <div className="wb-board-groups">
+                  {Array.from(groups, ([label, entries]) => (
+                    <Collapsible
+                      className="wb-board-group"
+                      key={label}
+                      defaultOpen
+                    >
+                      <CollapsibleTrigger asChild>
+                        <Button
+                          variant="ghost"
+                          className="wb-board-group-trigger"
+                        >
+                          <ChevronDown />
+                          <span>{label}</span>
+                          <Badge variant="secondary">{entries.length}</Badge>
+                        </Button>
+                      </CollapsibleTrigger>
+                      <CollapsibleContent>
+                        {renderBoard(entries, true)}
+                      </CollapsibleContent>
+                    </Collapsible>
+                  ))}
                 </div>
-                {items.filter((item) => item.status === status).map(itemCard)}
-              </section>
-            ))}
-          </div>
-        </TabsContent>
-        <TabsContent value="report">
-          <WorkReport items={items} writeMail={writeMail} />
-        </TabsContent>
-      </Tabs>
-      {editing && (
-        <WorkEditor
-          key={editing.id}
-          error={error}
-          item={editing}
-          setItem={setEditing}
+              )}
+            </ScrollArea>
+          </TabsContent>
+          <TabsContent value="quadrants" className="wb-content">
+            <ScrollArea className="wb-view-scroll wb-quadrants-scroll">
+              <div className="workbench-matrix">
+                <div className="workbench-matrix-plane">
+                  <span
+                    className="wb-matrix-axis-line wb-matrix-axis-line-y"
+                    aria-hidden="true"
+                  />
+                  <span
+                    className="wb-matrix-axis-line wb-matrix-axis-line-x"
+                    aria-hidden="true"
+                  />
+                  <div className="workbench-matrix-grid">
+                    {workQuadrants.map(
+                      ({ important, urgent, label }, index) => {
+                        const entries = activeDaily.filter(
+                          (item) =>
+                            !!item.important === important &&
+                            !!item.urgent === urgent,
+                        );
+                        return (
+                          <section
+                            className="wb-matrix-quadrant"
+                            data-quadrant={index}
+                            data-drop-target={
+                              dragOverQuadrant === index || undefined
+                            }
+                            key={index}
+                            aria-label={label()}
+                          >
+                            <header className="wb-matrix-quadrant-header">
+                              <div className="wb-matrix-quadrant-title">
+                                <span className="wb-quadrant-dot" />
+                                <span className="wb-quadrant-code">
+                                  Q{index + 1}
+                                </span>
+                                <span>{label()}</span>
+                                <Badge variant="secondary" className="wb-count">
+                                  {entries.length}
+                                </Badge>
+                              </div>
+                              <Button
+                                variant="ghost"
+                                size="icon-sm"
+                                aria-label={t("Add work record in {value0}", {
+                                  value0: label(),
+                                })}
+                                disabled={loading || busy}
+                                onClick={() =>
+                                  setEditing({
+                                    ...newWorkItem(date),
+                                    important,
+                                    urgent,
+                                    project: activeProject?.name || "",
+                                  })
+                                }
+                              >
+                                <Plus />
+                              </Button>
+                            </header>
+                            <ScrollArea className="wb-matrix-quadrant-scroll">
+                              <div className="wb-matrix-quadrant-items">
+                                {entries.map((item) =>
+                                  taskRow(item, true, index),
+                                )}
+                                {!entries.length && (
+                                  <p className="wb-matrix-empty">
+                                    {t(
+                                      "Drag work anywhere in this area or add a new item.",
+                                    )}
+                                  </p>
+                                )}
+                              </div>
+                            </ScrollArea>
+                          </section>
+                        );
+                      },
+                    )}
+                    <span className="wb-matrix-origin" aria-hidden="true" />
+                  </div>
+                </div>
+              </div>
+              {matrixDragGhost && (
+                <div
+                  className="wb-matrix-drag-ghost"
+                  style={{
+                    width: matrixDragGhost.width,
+                    transform: `translate3d(${matrixDragGhost.x}px, ${matrixDragGhost.y}px, 0)`,
+                  }}
+                  aria-hidden="true"
+                >
+                  <span />
+                  {matrixDragGhost.title}
+                </div>
+              )}
+            </ScrollArea>
+          </TabsContent>
+          <TabsContent value="report" className="wb-content wb-report-content">
+            <WorkReport
+              items={visible}
+              writeMail={writeMail}
+              from={reportFrom}
+              to={reportTo}
+              setFrom={setReportFrom}
+              setTo={setReportTo}
+              projectSelection={projectSelection}
+            />
+          </TabsContent>
+        </Tabs>
+        {editing && (
+          <WorkEditor
+            key={editing.id}
+            item={editing}
+            setItem={setEditing}
+            projects={projects}
+            manageProjects={() => setProjectsOpen(true)}
+            error={error}
+            busy={busy}
+            close={() => setEditing(undefined)}
+            save={() => void save(editing, () => setEditing(undefined))}
+            remove={() => void remove(editing)}
+            openMail={openMail}
+          />
+        )}
+        <WorkbenchProjects
+          open={projectsOpen}
+          onOpenChange={setProjectsOpen}
+          projects={projects}
+          items={items}
           busy={busy}
-          close={() => setEditing(undefined)}
-          save={() => void save(editing, () => setEditing(undefined))}
-          remove={() => void remove(editing)}
-          openMail={openMail}
+          save={saveProject}
+          remove={(project) => void removeProject(project)}
         />
-      )}
-      {confirmationDialog}
-    </div>
+        {confirmationDialog}
+      </div>
+    </TooltipProvider>
   );
 }

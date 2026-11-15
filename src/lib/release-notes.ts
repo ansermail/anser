@@ -30,9 +30,9 @@ const tags = [
   "ul",
 ];
 
-export function renderReleaseNotes(markdown: string): string {
+export function renderSafeMarkdown(markdown: string, breaks = false): string {
   const html = DOMPurify.sanitize(
-    marked.parse(markdown, { async: false, gfm: true }),
+    marked.parse(markdown, { async: false, gfm: true, breaks }),
     { ALLOWED_TAGS: tags, ALLOWED_ATTR: ["href", "src", "alt", "title"] },
   );
   const template = document.createElement("template");
@@ -51,6 +51,10 @@ export function renderReleaseNotes(markdown: string): string {
     if (!src || !externalUrl(src, false)) image.remove();
   }
   return template.innerHTML;
+}
+
+export function renderReleaseNotes(markdown: string): string {
+  return renderSafeMarkdown(markdown);
 }
 
 export function externalUrl(value: string, allowMailto = true): string | null {

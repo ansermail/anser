@@ -820,3 +820,11 @@ macOS 系统默认应用与格式关联通过 NSWorkspace/UTType 在主队列读
 `work_items` 使用本机 SQLite，按事项日期建立索引，以版本保护编辑与删除。月历、分组表格、状态看板和报告读取同一份记录。邮件摘要和提醒使用同一次模型请求。提醒输出必须匹配原文证据，通过日期和时间校验后才显示。用户确认保存后，以本机邮件 ID 关联邮箱内的源邮件。报告沿用同一模型配置，CSV 对可执行单元格前缀转义，PDF 复用现有 A4 打印入口。
 
 工作事项 JSON 新增可选结束日期和重要、紧急布尔字段，使用反序列化缺省值兼容旧数据。原日期索引继续以开始日期为键，结束日期由后端验证为合法日期且不早于开始日期。
+
+2026-11-15 按用户要求取消预计与实际工时。前后端 WorkItem 类型、创建默认值、验证、表单、表格、统计、报告 CSV/Markdown 与 AI 请求移除对应字段。工时原来保存在 `work_items.data` 的 JSON 属性中，初始化使用单条有条件的 `json_remove` 更新清除 `estimatedMinutes`、`actualMinutes`。迁移保持 `revision`、索引日期、其他属性和未知扩展属性，可重复运行。新后端兼容带旧工时属性的输入，保存结果统一输出当前字段。UI 原型的布局研究与实际产品接入进度见 WORKBENCH_WORKING.md。
+
+2026-11-15 按已确认的 UI 原型接入四个工作台入口。`workbench-timeline.tsx` 使用日期/全天固定头和小时独立 ScrollArea，保留跨日续项。事项表格组合公共 `TaskDataTable`/TanStack 分页，视图共用过滤后的 WorkItem。新增 `work_projects(id,revision,name)` 目录，初始化从历史 JSON 项目提取名称。`save_work_project`/`delete_work_project` 在即时 SQLite 事务中核对项目版本，校验重名，并用 `json_set` 只改关联事项项目与版本，保留未知 JSON 属性，返回同一事务中的项目/事项快照。事项旧版本保存与删除继续拒绝。无关联事项的项目可独立持久保存。演示模式补齐对应接口并继续隔离真实存储。
+
+事项列表由 `work_items` 左连接 `messages` 读取派生邮件主题，并按 `work_date DESC`、具体时间倒序及 ID 稳定排列；前端共用同一 `newestWorkItemFirst` 规则恢复默认顺序。`mailSubject` 只作为查询结果的可选字段返回，保存前先清空，避免写进事项 JSON，保存后再从邮件表重新解析。前端关联邮件列使用 shadcn `Button`、`Tooltip` 和 `Mail` 图标直接展示主题并打开源邮件，长主题单行省略且悬停显示全文；状态、优先级、重要和紧急使用紧凑 shadcn `Badge`。AI 工作摘要不再显示模型来源，复制按钮输出原始 Markdown 报告。
+
+周/日时间线事件改为统一紧凑卡片，按 WorkItem 状态设置语义色变量，显示时间、状态、项目色点、标题和高优先级标记。报告页附加提示词保存为 WebView 本地偏好，并以 `Input::Report.instructions` 随工作报告请求发送。后端把该字段视为可信用户格式要求，追加在固定事实边界与 JSON 返回协议之后，长度上限 12,000 字节，用户输入不能用它替换工作记录不可信数据边界。返回的 `text` 仍做长度、占位内容和控制字符校验，前端再通过现有 DOMPurify Markdown 入口渲染标题、列表、表格、代码与安全链接。
