@@ -301,6 +301,64 @@ it("uses a shadcn confirmation for an empty subject and cancellation keeps the d
   expect(document.body.textContent).not.toContain("撤销发送 · 8s");
 });
 
+describe("attachment reminder", () => {
+  it("shows when the authored body mentions an attachment and hides after selecting a file", async () => {
+    seed = { ...seed, id: "attachment-warning" };
+    await renderHarness();
+    await input(
+      'textarea[aria-label="邮件正文"]',
+      "详细内容参见附件，我会附上最新报告。",
+    );
+    const reminder = document.querySelector(".compose-attachment-reminder");
+    expect(reminder?.parentElement?.classList.contains("compose-footer")).toBe(
+      true,
+    );
+    expect(reminder?.textContent).toContain("没有添加附件");
+    expect(reminder?.textContent).toContain("参见附件");
+    await click("关闭提醒");
+    expect(document.querySelector(".compose-attachment-reminder")).toBeNull();
+
+    seed = {
+      ...seed,
+      id: "attachment-present",
+      body: "详细内容参见附件。",
+      attachments: ["/tmp/report.pdf"],
+    };
+    await renderHarness();
+    expect(document.querySelector(".compose-attachment-reminder")).toBeNull();
+  });
+
+  it("requires confirmation before scheduling a message without the mentioned file", async () => {
+    seed = {
+      ...seed,
+      id: "attachment-confirmation",
+      body: "请查收附件中的报价单。",
+    };
+    await renderHarness();
+    expect(
+      document.querySelector(".compose-attachment-reminder"),
+    ).not.toBeNull();
+    await click("关闭提醒");
+    expect(document.querySelector(".compose-attachment-reminder")).toBeNull();
+    await click("定时发送");
+    await click("确认定时发送");
+    expect(
+      document.querySelector('[role="alertdialog"]')?.textContent,
+    ).toContain("附件提醒");
+    expect(
+      document.querySelector('[role="alertdialog"]')?.textContent,
+    ).toContain("请查收附件");
+    const cancel = [
+      ...document.querySelectorAll('[role="alertdialog"] button'),
+    ].find(
+      (button) => button.textContent?.trim() === "取消",
+    ) as HTMLButtonElement;
+    await act(async () => cancel.click());
+    expect(await call<OutboxRecord[]>("list_outbox")).toHaveLength(0);
+    expect(document.querySelector(".compose-dialog")).toBeTruthy();
+  });
+});
+
 describe("signature composition", () => {
   it("loads the account signature, saves a disabled choice and retains the draft snapshot", async () => {
     await call("save_mail_signature", {

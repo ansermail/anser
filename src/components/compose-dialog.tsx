@@ -27,6 +27,10 @@ import {
   mergeAttachmentPaths,
   insideComposeDrop,
 } from "@/lib/compose-attachments";
+import {
+  composeHasIncludedAttachment,
+  detectAttachmentReminder,
+} from "@/lib/attachment-reminder";
 import { SelectField, SelectOption } from "@/components/ui/select-field";
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -121,6 +125,8 @@ export function ComposeDialog({
   interactionLocked.current = sending || closing;
   const [signatureReload, setSignatureReload] = useState(0);
   const [suggestions, setSuggestions] = useState<Address[]>([]);
+  const [dismissedAttachmentReminder, setDismissedAttachmentReminder] =
+    useState("");
   const [deliveryPreview, setDeliveryPreview] = useState(false);
   const deliveryPreviewTrigger = useRef<HTMLButtonElement>(null);
   const previewContent = useMemo(
@@ -316,6 +322,7 @@ export function ComposeDialog({
     setPlanning(false);
     setDeliveryPreview(false);
     setPlanTime(localDateTime());
+    setDismissedAttachmentReminder("");
   }, [draft, cancelConfirmation]);
   useEffect(() => {
     if (!value?.accountId || value.signature?.accountId === value.accountId)
@@ -383,6 +390,15 @@ export function ComposeDialog({
   function update(p: Partial<Compose>) {
     setValue((v) => (v ? { ...v, ...p } : null));
   }
+  const attachmentReminder = useMemo(
+    () => (value ? detectAttachmentReminder(value) : null),
+    [value],
+  );
+  const attachmentReminderNeedsConfirmation =
+    !!value && !!attachmentReminder && !composeHasIncludedAttachment(value);
+  const attachmentReminderVisible =
+    attachmentReminderNeedsConfirmation &&
+    dismissedAttachmentReminder !== attachmentReminder.key;
   async function close() {
     if (sending || closingNow.current) return;
     if (imageBusy.current) {
@@ -467,6 +483,18 @@ export function ComposeDialog({
         title: t("Empty subject"),
         description: t(
           "This message has no subject. Send or schedule it anyway?",
+        ),
+        action: t("Continue"),
+      }))
+    )
+      return false;
+    if (
+      attachmentReminderNeedsConfirmation &&
+      !(await askConfirmation({
+        title: t("Attachment reminder"),
+        description: t(
+          "The message mentions “{value0}”, but no attachment is included. Continue anyway?",
+          { value0: attachmentReminder.keywords.join(" / ") },
         ),
         action: t("Continue"),
       }))
@@ -1221,6 +1249,41 @@ export function ComposeDialog({
                 >
                   <Paperclip size={18} />
                 </Button>
+                {attachmentReminderVisible && attachmentReminder && (
+                  <Alert role="status" className="compose-attachment-reminder">
+                    <AlertDescription className="compose-attachment-reminder-content">
+                      <Paperclip aria-hidden="true" />
+                      <span title={attachmentReminder.keywords.join(" / ")}>
+                        {t(
+                          "The message mentions “{value0}”, but no file is attached.",
+                          {
+                            value0: attachmentReminder.keywords.join(" / "),
+                          },
+                        )}
+                      </span>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => void attach()}
+                      >
+                        {t("Add attachment")}
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon-sm"
+                        aria-label={t("Dismiss reminder")}
+                        title={t("Dismiss reminder")}
+                        onClick={() =>
+                          setDismissedAttachmentReminder(attachmentReminder.key)
+                        }
+                      >
+                        <X />
+                      </Button>
+                    </AlertDescription>
+                  </Alert>
+                )}
                 <span>
                   {hasContent && saved && <Check size={13} />}{" "}
                   {closing

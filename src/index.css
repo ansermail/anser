@@ -2107,6 +2107,48 @@ kbd {
   overflow: auto;
   overscroll-behavior: contain;
 }
+.compose-attachment-reminder {
+  width: auto;
+  max-width: min(100%, 460px);
+  min-width: 0;
+  margin: 0;
+  padding: 4px 5px 4px 9px;
+  border-color: #e2c34a;
+  background: #fff6bf;
+  color: #493b00;
+  font-size: 12px;
+  line-height: 1.35;
+}
+.dark .compose-attachment-reminder {
+  border-color: #665820;
+  background: #3b3315;
+  color: #f3e6a5;
+}
+.compose-attachment-reminder-content {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  gap: 6px;
+}
+.compose-attachment-reminder-content > svg {
+  flex: 0 0 auto;
+  width: 14px;
+  height: 14px;
+}
+.compose-attachment-reminder-content > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.compose-attachment-reminder-content [data-slot="button"] {
+  flex: 0 0 auto;
+  height: 24px;
+  font-size: 12px;
+}
+.compose-attachment-reminder-content [data-slot="button"]:not([aria-label]) {
+  padding-inline: 6px;
+}
 .compose-row {
   flex-shrink: 0;
   display: flex;
