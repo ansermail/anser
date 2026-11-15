@@ -8,7 +8,7 @@
 
 九资源大小/SHA-256、三个更新签名、标准 latest 清单、Mac 双架构 App 版本/架构/标识/语言/关联/许可/固定签名、DMG 与更新归档一致性及匿名公开下载均通过。[Homebrew 43717403327](https://github.com/ansermail/anser/actions/runs/43717403327) 成功，配方提交 `0f63a6e` 只更新 `Casks/anser.rb`，双 DMG 摘要与正式资源一致。[Windows validation 43717702282](https://github.com/ansermail/anser/actions/runs/43717702282) 已完成前端、Rust、安装器、安装启动与托盘恢复验证。[Preview Pages 43717702827](https://github.com/ansermail/anser/actions/runs/43717702827) 已部署，线上模块为 0.1.42，Windows EXE 与两个 DMG 链接均返回 HTTP 200。
 
-本机 `/Applications/雁信.app` 保持 0.1.41，开发预览与测试实例已停止，由用户自行使用应用内更新升级；正式包原位升级、Windows/Intel 实机长期使用和更多邮件模板仍需单独验收。完整证据见 [0.1.42 发布工作点](RELEASE_0_1_42_WORKING.md)，说明见 [v0.1.42](releases/v0.1.42.md)。
+本机开发预览与测试实例已停止；恢复检查时 `/Applications/雁信.app` 为 0.1.41，用户随后自行完成应用内升级，最终复核为 0.1.42、签名与 designated requirement 有效且应用正在运行。升级操作本身未旁观，Windows/Intel 实机长期使用和更多邮件模板仍需单独验收。完整证据见 [0.1.42 发布工作点](RELEASE_0_1_42_WORKING.md)，说明见 [v0.1.42](releases/v0.1.42.md)。
 
 ## 前一正式版本：0.1.41（2026-11-11）
 

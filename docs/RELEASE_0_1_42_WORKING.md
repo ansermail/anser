@@ -32,4 +32,4 @@
 
 ## 真实验收边界
 
-本轮未替换 `/Applications/雁信.app`，未执行正式包原位升级。发布收尾后已停止 `npm run desktop` 开发预览、测试 Vite 与无头 Chrome，释放 1420/1433 端口；安装版仍为 0.1.41、标识 `dev.maildesk.desktop`，签名有效，等待用户自行使用应用内更新升级。Windows 正式安装、启动与托盘恢复已由 CI runner 冒烟，Windows 实机长期使用、Intel 实机与更多邮件模板仍需单独验收。
+本轮未由自动化替换 `/Applications/雁信.app`。发布收尾后已停止 `npm run desktop` 开发预览、测试 Vite 与无头 Chrome，释放 1420/1433 端口；恢复检查时安装版为 0.1.41。用户随后于 20:40 自行完成应用内升级，最终复核 `/Applications/雁信.app` 为 0.1.42、标识 `dev.maildesk.desktop`，严格签名和 designated requirement 有效，应用正在运行。升级操作本身未由本轮旁观，Windows 实机长期使用、Intel 实机与更多邮件模板仍需单独验收。
