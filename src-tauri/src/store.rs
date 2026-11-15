@@ -64,6 +64,7 @@ impl Store {
         db.execute_batch("CREATE TABLE IF NOT EXISTS folder_mappings(account_id TEXT PRIMARY KEY,data TEXT NOT NULL); CREATE TABLE IF NOT EXISTS remote_folders(account_id TEXT NOT NULL,name TEXT NOT NULL,data TEXT NOT NULL,PRIMARY KEY(account_id,name)); CREATE TABLE IF NOT EXISTS contacts(id TEXT PRIMARY KEY,name TEXT NOT NULL,email TEXT NOT NULL COLLATE NOCASE UNIQUE); CREATE TABLE IF NOT EXISTS preferences(key TEXT PRIMARY KEY,data TEXT NOT NULL);")
             .map_err(err)?;
         db.execute_batch("CREATE TABLE IF NOT EXISTS work_items(id TEXT PRIMARY KEY, revision INTEGER NOT NULL, work_date TEXT NOT NULL, data TEXT NOT NULL); CREATE INDEX IF NOT EXISTS work_items_date ON work_items(work_date,id);").map_err(err)?;
+        crate::work_items::initialize(&db)?;
         db.execute_batch("CREATE TABLE IF NOT EXISTS translation_cache(key TEXT PRIMARY KEY,data TEXT NOT NULL,updated_at INTEGER NOT NULL)").map_err(err)?;
         for (column, definition) in [
             ("error", "TEXT NOT NULL DEFAULT ''"),

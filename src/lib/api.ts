@@ -1,4 +1,4 @@
-import type { WorkItem } from "@/lib/workbench";
+import type { WorkItem, WorkProject } from "@/lib/workbench";
 import { t } from "./i18n";
 import { memoryStorage } from "./demo-storage";
 import { DemoPager } from "./mail-pages";
@@ -30,6 +30,19 @@ const demoStorage = publicPreview ? memoryStorage() : localStorage;
 const key = "mail-desktop-demo-v1";
 let demo: Snapshot | null = null;
 const demoPager = new DemoPager();
+function workItemForStorage(item: WorkItem) {
+  const stored = { ...item };
+  delete stored.mailSubject;
+  return stored;
+}
+function withWorkMailSubjects(items: WorkItem[]) {
+  return items.map((item) => ({
+    ...item,
+    mailSubject: item.mailId
+      ? (demo?.messages.find((mail) => mail.id === item.mailId)?.subject ?? "")
+      : "",
+  }));
+}
 const translationActivityCommands = new Set([
   "translate_mail_parts",
   "test_translation_settings",
@@ -61,6 +74,7 @@ export function leaveDemo() {
   demoStorage.removeItem(key + "-auto-start");
   demoStorage.removeItem(key + "-translation");
   demoStorage.removeItem(key + "-work-items");
+  demoStorage.removeItem(key + "-work-projects");
   for (let i = demoStorage.length - 1; i >= 0; i--) {
     const stored = demoStorage.key(i);
     if (stored?.startsWith(key + "-signature-")) demoStorage.removeItem(stored);
@@ -1031,8 +1045,87 @@ export async function call<T = void>(
         );
         demo.logs = demo.logs.slice(0, 30);
         break;
+      case "list_work_projects": {
+        const projects: WorkProject[] = JSON.parse(
+          demoStorage.getItem(key + "-work-projects") || "[]",
+        );
+        const items: WorkItem[] = JSON.parse(
+          demoStorage.getItem(key + "-work-items") || "[]",
+        );
+        for (const item of items) {
+          if (item.project && !projects.some((p) => p.name === item.project))
+            projects.push({
+              id: crypto.randomUUID(),
+              revision: 1,
+              name: item.project,
+            });
+        }
+        demoStorage.setItem(key + "-work-projects", JSON.stringify(projects));
+        result = projects;
+        break;
+      }
+      case "save_work_project":
+      case "delete_work_project": {
+        const projects: WorkProject[] = JSON.parse(
+          demoStorage.getItem(key + "-work-projects") || "[]",
+        );
+        const project = args.project as WorkProject | undefined;
+        const existing = projects.find(
+          (p) => p.id === (project?.id ?? args.id),
+        );
+        if (
+          (existing?.revision ?? 0) !== (project?.revision ?? args.revision) ||
+          (!project && !existing)
+        )
+          throw new Error(t("Work project changed. Reload and try again."));
+        const name = project?.name.trim() ?? "";
+        if (project && (!name || name.length > 80))
+          throw new Error(t("Enter a project name."));
+        if (
+          project &&
+          projects.some(
+            (p) =>
+              p.id !== project.id &&
+              p.name.toLocaleLowerCase() === name.toLocaleLowerCase(),
+          )
+        )
+          throw new Error(t("A project with this name already exists."));
+        const items: WorkItem[] = JSON.parse(
+          demoStorage.getItem(key + "-work-items") || "[]",
+        );
+        const nextItems = items.map((item) =>
+          existing && item.project === existing.name && existing.name !== name
+            ? workItemForStorage({
+                ...item,
+                project: name,
+                revision: item.revision + 1,
+              })
+            : workItemForStorage(item),
+        );
+        const nextProjects = projects.filter(
+          (p) => p.id !== (project?.id ?? args.id),
+        );
+        if (project)
+          nextProjects.push({
+            ...project,
+            name,
+            revision: project.revision + 1,
+          });
+        demoStorage.setItem(
+          key + "-work-projects",
+          JSON.stringify(nextProjects),
+        );
+        demoStorage.setItem(key + "-work-items", JSON.stringify(nextItems));
+        result = {
+          projects: nextProjects,
+          items: withWorkMailSubjects(nextItems),
+        };
+        break;
+      }
       case "list_work_items":
-        result = JSON.parse(demoStorage.getItem(key + "-work-items") || "[]");
+        result = withWorkMailSubjects(
+          JSON.parse(demoStorage.getItem(key + "-work-items") || "[]"),
+        );
         break;
       case "save_work_item":
       case "delete_work_item": {
@@ -1046,9 +1139,12 @@ export async function call<T = void>(
           throw new Error(t("Work item changed. Reload and try again."));
         const remaining = items.filter((entry) => entry.id !== id);
         if (item) {
-          const saved = { ...item, revision: item.revision + 1 };
+          const saved = workItemForStorage({
+            ...item,
+            revision: item.revision + 1,
+          });
           remaining.push(saved);
-          result = saved;
+          result = withWorkMailSubjects([saved])[0];
         }
         demoStorage.setItem(key + "-work-items", JSON.stringify(remaining));
         break;
@@ -1062,8 +1158,11 @@ export async function call<T = void>(
           instructions?: string[];
         };
         if (input.kind === "report") {
-          result = { text: t("This is a simulated work report.") };
-          break;
+          throw new Error(
+            t(
+              "AI work reports require the desktop app and a configured model.",
+            ),
+          );
         }
         const instruction = input.instructions?.at(-1) ?? "";
         const existing = input.paragraphs?.[0] ?? "";

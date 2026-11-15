@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { Fragment, useEffect, useState, type ReactNode } from "react";
 import {
   createColumnHelper,
   createPaginatedRowModel,
@@ -19,6 +19,14 @@ import {
 } from "./ui/table";
 
 const headers = {
+  complete: () => "",
+  work: () => t("Work item"),
+  project: () => t("Project"),
+  priority: () => t("Work priority"),
+  workDate: () => t("Work date"),
+  important: () => t("Importance"),
+  urgent: () => t("Urgency"),
+  linkedMail: () => t("Linked email"),
   task: () => t("Subject"),
   recipient: () => t("Recipient"),
   rule: () => t("Rule name"),
@@ -93,6 +101,14 @@ export function TaskCellText({
 }
 
 const widths: Partial<Record<TaskColumn, number>> = {
+  complete: 3,
+  work: 20,
+  project: 10,
+  priority: 8,
+  workDate: 13,
+  important: 6,
+  urgent: 6,
+  linkedMail: 9,
   task: 13,
   recipient: 13,
   rule: 10,
@@ -122,6 +138,10 @@ export function TaskDataTable({
   fields,
   actionsWidth = 9,
   pageSize = 10,
+  keepEmptyFields = false,
+  showRecordCount = false,
+  selectedRowId,
+  renderRow,
 }: {
   label: string;
   rows: TaskTableRow[];
@@ -129,12 +149,18 @@ export function TaskDataTable({
   fields: readonly TaskColumn[];
   actionsWidth?: number;
   pageSize?: number;
+  keepEmptyFields?: boolean;
+  showRecordCount?: boolean;
+  selectedRowId?: string | null;
+  renderRow?: (row: TaskTableRow, rowElement: ReactNode) => ReactNode;
 }) {
-  const visibleFields = rows.length
-    ? fields.filter((field) =>
-        rows.some((row) => row[field] != null && row[field] !== ""),
-      )
-    : fields.slice(0, 1);
+  const visibleFields = keepEmptyFields
+    ? fields
+    : rows.length
+      ? fields.filter((field) =>
+          rows.some((row) => row[field] != null && row[field] !== ""),
+        )
+      : fields.slice(0, 1);
   const columns = visibleFields.map((field) => columnsById[field]);
   const widthFor = (field: TaskColumn) =>
     field === "actions" ? actionsWidth : widths[field];
@@ -185,19 +211,31 @@ export function TaskDataTable({
           </TableHeader>
           <TableBody>
             {rows.length ? (
-              table.getRowModel().rows.map((row) => (
-                <TableRow key={row.id} data-row-id={row.id}>
-                  {row.getAllCells().map((cell) => (
-                    <TableCell
-                      key={cell.id}
-                      data-column={cell.column.id}
-                      className="h-9 px-2.5 py-1.5 align-middle"
-                    >
-                      <table.FlexRender cell={cell} />
-                    </TableCell>
-                  ))}
-                </TableRow>
-              ))
+              table.getRowModel().rows.map((row) => {
+                const rowElement = (
+                  <TableRow
+                    data-row-id={row.id}
+                    data-state={
+                      selectedRowId === row.id ? "selected" : undefined
+                    }
+                  >
+                    {row.getAllCells().map((cell) => (
+                      <TableCell
+                        key={cell.id}
+                        data-column={cell.column.id}
+                        className="h-9 px-2.5 py-1.5 align-middle"
+                      >
+                        <table.FlexRender cell={cell} />
+                      </TableCell>
+                    ))}
+                  </TableRow>
+                );
+                return (
+                  <Fragment key={row.id}>
+                    {renderRow?.(row.original, rowElement) ?? rowElement}
+                  </Fragment>
+                );
+              })
             ) : (
               <TableRow>
                 <TableCell
@@ -211,32 +249,44 @@ export function TaskDataTable({
           </TableBody>
         </Table>
       </div>
-      {pageCount > 1 && (
-        <div className="flex items-center justify-end gap-2">
-          <span className="text-xs text-muted-foreground tabular-nums">
-            {t("Page {page} of {total}", {
-              page: pageIndex + 1,
-              total: pageCount,
-            })}
-          </span>
-          <Button
-            variant="outline"
-            size="icon-sm"
-            aria-label={t("Previous page")}
-            disabled={!table.getCanPreviousPage()}
-            onClick={() => setPage(pageIndex - 1)}
-          >
-            <ChevronLeft />
-          </Button>
-          <Button
-            variant="outline"
-            size="icon-sm"
-            aria-label={t("Next page")}
-            disabled={!table.getCanNextPage()}
-            onClick={() => setPage(pageIndex + 1)}
-          >
-            <ChevronRight />
-          </Button>
+      {(showRecordCount || pageCount > 1) && (
+        <div className="task-data-table-footer">
+          {showRecordCount && (
+            <span>{t("{value0} records", { value0: rows.length })}</span>
+          )}
+          <div className="task-data-table-pagination">
+            {pageCount > 1 && (
+              <>
+                <span className="tabular-nums">
+                  {t("Page {page} of {total}", {
+                    page: pageIndex + 1,
+                    total: pageCount,
+                  })}
+                </span>
+                <Button
+                  variant="outline"
+                  size="icon-sm"
+                  aria-label={t("Previous page")}
+                  disabled={!table.getCanPreviousPage()}
+                  onClick={() => setPage(pageIndex - 1)}
+                >
+                  <ChevronLeft />
+                </Button>
+                <Button
+                  variant="outline"
+                  size="icon-sm"
+                  aria-label={t("Next page")}
+                  disabled={!table.getCanNextPage()}
+                  onClick={() => setPage(pageIndex + 1)}
+                >
+                  <ChevronRight />
+                </Button>
+              </>
+            )}
+            {showRecordCount && (
+              <span>{t("{value0} per page", { value0: pageSize })}</span>
+            )}
+          </div>
         </div>
       )}
     </div>

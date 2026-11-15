@@ -27,6 +27,7 @@ export async function mailAiConfig() {
   if (!config && !isDemo()) return null;
   return {
     revision: config?.revision ?? "demo",
+    model: config?.model ?? "",
     targetLanguage: config?.targetLanguage ?? interfaceLanguage(),
   };
 }

@@ -5,6 +5,9 @@ export const workStatuses = ["todo", "doing", "waiting", "done"] as const;
 export const workPriorities = ["low", "normal", "high"] as const;
 export type WorkStatus = (typeof workStatuses)[number];
 export type WorkPriority = (typeof workPriorities)[number];
+export type WorkProject = { id: string; revision: number; name: string };
+export type WorkbenchData = { projects: WorkProject[]; items: WorkItem[] };
+
 export type WorkItem = {
   id: string;
   revision: number;
@@ -17,16 +20,15 @@ export type WorkItem = {
   endDate?: string;
   important?: boolean;
   urgent?: boolean;
-  estimatedMinutes: number;
-  actualMinutes: number;
   checklist: { text: string; done: boolean }[];
   mailId: string;
+  mailSubject?: string;
   notes: string;
 };
 
 export function workStatus(status: WorkStatus) {
   return {
-    todo: t("To do"),
+    todo: t("Not started"),
     doing: t("In progress"),
     waiting: t("Waiting for reply"),
     done: t("Completed"),
@@ -58,10 +60,9 @@ export function newWorkItem(date: string): WorkItem {
     endDate: "",
     important: false,
     urgent: false,
-    estimatedMinutes: 0,
-    actualMinutes: 0,
     checklist: [],
     mailId: "",
+    mailSubject: "",
     notes: "",
   };
 }
@@ -70,13 +71,11 @@ export function totals(items: WorkItem[]) {
   return items.reduce(
     (sum, item) => ({
       done: sum.done + Number(item.status === "done"),
-      estimated: sum.estimated + item.estimatedMinutes,
-      actual: sum.actual + item.actualMinutes,
       checklist: sum.checklist + item.checklist.length,
       checked:
         sum.checked + item.checklist.filter((check) => check.done).length,
     }),
-    { done: 0, estimated: 0, actual: 0, checklist: 0, checked: 0 },
+    { done: 0, checklist: 0, checked: 0 },
   );
 }
 
