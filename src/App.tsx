@@ -263,7 +263,17 @@ function savedListMode(): "conversations" | "messages" {
 function queryScope(query: Query) {
   return JSON.stringify({ ...query, limit: 0 });
 }
-export default function App() {
+export default function App({
+  initialPage = "mail",
+  initialSettingsSection = "accounts",
+  initialMailId = "",
+  initialDraft = null,
+}: {
+  initialPage?: "mail" | "settings" | "rules";
+  initialSettingsSection?: "accounts" | "archive";
+  initialMailId?: string;
+  initialDraft?: Compose | null;
+} = {}) {
   useLanguage();
   const updates = useAppUpdate();
   const { askConfirmation, confirmationDialog } = useConfirmation();
@@ -292,10 +302,12 @@ export default function App() {
       Record<string, RemoteFolder[]>
     >({}),
     [serverFolders, setServerFolders] = useState<RemoteFolder[]>([]),
-    [page, setPage] = useState("mail"),
-    [settingsSection, setSettingsSection] = useState("accounts"),
+    [page, setPage] = useState<string>(initialPage),
+    [settingsSection, setSettingsSection] = useState<string>(
+      initialSettingsSection,
+    ),
     [sidebarOpen, setSidebarOpen] = useState(true),
-    [selected, setSelected] = useState(""),
+    [selected, setSelected] = useState(initialMailId),
     [readerExpanded, setReaderExpanded] = useState(false),
     [detail, setDetail] = useState<Detail | null>(null),
     [headerMail, setHeaderMail] = useState<Mail | null>(null),
@@ -314,7 +326,7 @@ export default function App() {
     [retentionIntro, setRetentionIntro] = useState(false),
     [archiving, setArchiving] = useState(false),
     [contactSeed, setContactSeed] = useState<Address | null>(null),
-    [draft, setDraft] = useState<Compose | null>(null),
+    [draft, setDraft] = useState<Compose | null>(initialDraft),
     [workSeed, setWorkSeed] = useState<WorkItem>(),
     [drafts, setDrafts] = useState<Compose[]>([]),
     [clearingDrafts, setClearingDrafts] = useState(false),

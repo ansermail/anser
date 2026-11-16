@@ -4961,14 +4961,25 @@ body.site-body #root {
   background: #141414;
   box-shadow: 0 48px 100px #0006;
 }
-.site-screen img {
+.site-demo-frame {
   display: block;
   width: 100%;
-  height: auto;
-  aspect-ratio: 1.6;
-  object-fit: cover;
-  object-position: top;
-  image-rendering: auto;
+  height: clamp(620px, 62vw, 775px);
+  border: 0;
+}
+.site-demo-compact {
+  display: none;
+}
+@media (max-width: 859px) {
+  .site-demo-frame {
+    display: none;
+  }
+  .site-demo-compact {
+    display: grid;
+    min-height: 104px;
+    place-items: center;
+    padding: 20px;
+  }
 }
 .site-screen-caption {
   display: flex;

@@ -2,7 +2,7 @@ import { t } from "@/lib/i18n";
 import { useEffect, useRef, useState } from "react";
 import { AlertCircle, FileUp, X } from "lucide-react";
 import { toast } from "sonner";
-import { call } from "@/lib/api";
+import { call, publicPreview } from "@/lib/api";
 import type { Account, MailSignature } from "@/lib/types";
 import {
   emptySignature,
@@ -206,7 +206,7 @@ export function MailSignatures({ accounts }: { accounts: Account[] }) {
                   <Button
                     variant="outline"
                     size="sm"
-                    disabled={!accountId || busy || loading}
+                    disabled={publicPreview || !accountId || busy || loading}
                     onClick={() => file.current?.click()}
                   >
                     <FileUp data-icon="inline-start" />
@@ -241,14 +241,14 @@ export function MailSignatures({ accounts }: { accounts: Account[] }) {
                     type="file"
                     className="sr-only"
                     aria-label={t("Import signature file")}
-                    disabled={!accountId || busy || loading}
+                    disabled={publicPreview || !accountId || busy || loading}
                     accept=".txt,.html,.htm,.png,.jpg,.jpeg,.gif,.webp"
                     onChange={(e) => {
                       const input = e.target.files?.[0],
                         id = accountId;
                       const fileEpoch = ++fileRevision.current;
                       e.target.value = "";
-                      if (input)
+                      if (input && !publicPreview)
                         void importSignature(input)
                           .then((value) => {
                             if (

@@ -611,6 +611,8 @@ GitHub CI 和两架构发布工作流已推送；首次 Checks 已成功，Relea
 
 原预览以 `preview/` 为 Vite 根目录，Tailwind 自动扫描未覆盖 `src/` 业务组件，公开 CSS 缺少 flex/grid/gap 等布局工具类。`src/index.css` 明确声明 `@source "./"`，预览入口改为渲染共用 App，删除重复 PreviewApp。Vite 预览构建将 Tauri core/app/event/updater/dialog 导入替换为静态禁用桥；API 使用内存示例存储，无法退出到真实模式，连接/收发及本机操作明确报错。`scripts/check-preview.mjs` 在每次预览构建检查共享布局 CSS、基路径与无原生 IPC 实现；Preview Pages 自动跟随 main 相关修改。
 
+官网展示区通过同源 iframe 按需加载 `/demo/`，通过 `view` 与 `lang` 参数选择共用 App 的首屏和界面语言。每次加载独立初始化虚构数据，iframe 内的菜单、正文和写信窗口均由 App 渲染。官网与独立演示随同一个 Pages 构建发布，展示区无需更新截图。窄屏保留对应场景的独立入口。
+
 `eml_files` 是独立内存状态，接收 macOS Opened、启动/单实例路径参数及选择器请求；订阅后排空待打开队列，防止启动事件丢失。读取限制为 64 MiB，正文/日期/附件复用 archive MIME 解析，原始字节只保留于当前文件快照，不走 Store、收取、规则或凭据接口。外部文件现由主窗口创建 `external-mail-<token>` 独立 Tauri WebviewWindow，使用 macOS 原生窗口控件和 Overlay 标题栏；`main.tsx` 按窗口标签渲染普通主界面或外部邮件阅读页。窗口按令牌读取同一只读快照，上一封/下一封禁用，回复/转发/打印/附件沿用普通阅读能力。附件用当前令牌提取，预览复用私有缓存与可执行文件保护，另存禁止覆盖源文件。图片/CSS/字体 URI 协议仅允许 `main` 与受控外部窗口；外部窗口使用独立最小 capability。窗口销毁清理令牌；打开另一份文件先销毁上一外部窗口。bundle.fileAssociations 声明单封邮件 Viewer/Alternate；稳定开发包从同一配置生成 CFBundleDocumentTypes，不改变应用/钥匙串标识或默认打开方式。
 
 ## RULES-03：持久规则链与完整保存（2026-10-10）

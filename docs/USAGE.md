@@ -445,7 +445,7 @@ DeepSeek 官方地址的翻译请求使用非思考模式及 JSON 输出；这�
 
 ## 产品官网与 Web 演示
 
-[官网](https://ansermail.github.io/anser/) 提供功能说明、双架构下载和宣传片。[Web 演示](https://ansermail.github.io/anser/demo/) 共用桌面 App，使用隔离内存中的虚构数据；左上角可返回官网，不连接邮箱、不发送邮件、不读取本机账号和存档。
+[官网](https://ansermail.github.io/anser/) 首页可直接体验收件、本地留存、自动归类和写信。窄屏可通过「全页体验」打开选中场景。[Web 演示](https://ansermail.github.io/anser/demo/) 共用桌面 App，使用隔离内存中的虚构数据；左上角可返回官网，不连接邮箱、不发送邮件、不读取本机账号和存档。
 
 ### Windows 主窗口与系统托盘（0.1.35 草稿修正）
 

@@ -59,7 +59,7 @@ import {
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { Textarea } from "./ui/textarea";
-import { call, native, isDemo } from "@/lib/api";
+import { call, native, isDemo, publicPreview } from "@/lib/api";
 import type { Account, Address, Compose, ForwardFile } from "@/lib/types";
 import {
   textToHtml,
@@ -572,6 +572,7 @@ export function ComposeDialog({
     }
   }
   async function importSource(file: File) {
+    if (publicPreview) return;
     try {
       if (file.size > 10 * 1024 * 1024)
         throw new Error(
@@ -667,6 +668,7 @@ export function ComposeDialog({
             variant="ghost"
             size="icon-sm"
             aria-label={t("Import body…")}
+            disabled={publicPreview}
             onClick={() => sourceFile.current?.click()}
           >
             <FileUp />
@@ -991,6 +993,7 @@ export function ComposeDialog({
                         accept=".html,.htm,.md,.markdown"
                         className="sr-only"
                         aria-label={t("Import body file")}
+                        disabled={publicPreview}
                         onChange={(e) => {
                           const file = e.target.files?.[0];
                           e.target.value = "";

@@ -35,10 +35,6 @@ import {
 import zh from "@/locales/site.zh-CN.json";
 import en from "@/locales/site.en.json";
 import pkg from "../../package.json";
-import inboxImage from "../../preview/site/inbox-dark.png";
-import archiveImage from "../../preview/site/archive.png";
-import rulesImage from "../../preview/site/rules.png";
-import composeImage from "../../preview/site/compose.png";
 import filmPoster from "../../preview/site/film-poster.jpg";
 import filmURL from "../../preview/site/anser-film.mp4";
 import {
@@ -47,10 +43,6 @@ import {
 } from "./download-platform";
 const base = import.meta.env.BASE_URL;
 const media: Record<string, string> = {
-  "inbox-dark.png": inboxImage,
-  "archive.png": archiveImage,
-  "rules.png": rulesImage,
-  "compose.png": composeImage,
   "film-poster.jpg": filmPoster,
   "anser-film.mp4": filmURL,
 };
@@ -107,33 +99,25 @@ export function Website() {
       id: "inbox",
       name: copy.tabInbox,
       caption: copy.capInbox,
-      alt: copy.inboxAlt,
       icon: Inbox,
-      image: "inbox-dark.png",
     },
     {
       id: "archive",
       name: copy.tabArchive,
       caption: copy.capArchive,
-      alt: copy.archiveAlt,
       icon: Archive,
-      image: "archive.png",
     },
     {
       id: "rules",
       name: copy.tabRules,
       caption: copy.capRules,
-      alt: copy.rulesAlt,
       icon: Wand2,
-      image: "rules.png",
     },
     {
       id: "compose",
       name: copy.tabCompose,
       caption: copy.capCompose,
-      alt: copy.composeAlt,
       icon: Mail,
-      image: "compose.png",
     },
   ];
   return (
@@ -246,7 +230,7 @@ export function Website() {
                 size="lg"
                 className="site-secondary"
               >
-                <a href={`${base}demo/`}>
+                <a href={`${base}demo/?lang=${language}`}>
                   {copy.demo}
                   <ArrowRight size={18} />
                 </a>
@@ -273,28 +257,45 @@ export function Website() {
                   </TabsTrigger>
                 ))}
               </TabsList>
-              <a className="site-preview-link" href={`${base}demo/`}>
+              <a
+                className="site-preview-link"
+                href={`${base}demo/?lang=${language}`}
+              >
                 {copy.navDemo}
                 <ArrowUpRight size={14} />
               </a>
             </div>
-            {views.map((v) => (
-              <TabsContent key={v.id} value={v.id}>
-                <div className="site-screen">
-                  <img
-                    src={asset(v.image)}
-                    alt={v.alt}
-                    width={2880}
-                    height={1800}
-                    fetchPriority={v.id === "inbox" ? "high" : "auto"}
-                  />
-                </div>
-                <div className="site-screen-caption">
-                  <p>{v.caption}</p>
-                  <span>{copy.sample}</span>
-                </div>
-              </TabsContent>
-            ))}
+            {views.map((v) => {
+              const demoUrl = `${base}demo/?view=${v.id}&lang=${language}`;
+              return (
+                <TabsContent key={v.id} value={v.id}>
+                  <div className="site-screen">
+                    <iframe
+                      className="site-demo-frame"
+                      src={`${demoUrl}&embed=1`}
+                      title={v.name}
+                      loading="lazy"
+                    />
+                    <div className="site-demo-compact">
+                      <Button
+                        asChild
+                        variant="outline"
+                        className="site-secondary"
+                      >
+                        <a href={demoUrl}>
+                          {copy.openDemoView}
+                          <ArrowUpRight size={16} />
+                        </a>
+                      </Button>
+                    </div>
+                  </div>
+                  <div className="site-screen-caption">
+                    <p>{v.caption}</p>
+                    <span>{copy.sample}</span>
+                  </div>
+                </TabsContent>
+              );
+            })}
           </Tabs>
         </section>
         <section id="features" className="site-container site-archive-section">
@@ -379,7 +380,10 @@ export function Website() {
             <p className="site-eyebrow">LESS SORTING. MORE DOING.</p>
             <h2>{copy.rulesTitle}</h2>
             <p className="site-section-body">{copy.rulesBody}</p>
-            <a href={`${base}demo/`} className="site-text-link">
+            <a
+              href={`${base}demo/?lang=${language}`}
+              className="site-text-link"
+            >
               {copy.demo}
               <ArrowUpRight size={16} />
             </a>

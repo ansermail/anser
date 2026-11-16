@@ -40,20 +40,13 @@ const enSite = JSON.parse(await readFile("src/locales/site.en.json", "utf8"));
 assert.deepEqual(Object.keys(zhSite).sort(), Object.keys(enSite).sort());
 for (const key of Object.keys(zhSite))
   assert.ok(enSite[key]?.trim(), `Missing website translation: ${key}`);
-for (const image of [
-  "inbox-dark.png",
-  "archive.png",
-  "rules.png",
-  "compose.png",
-]) {
-  const filename = files.find(
-    (file) =>
-      file.startsWith(image.replace(".png", "-")) && file.endsWith(".png"),
-  );
-  assert.ok(filename, `Missing website image: ${image}`);
-  const bytes = await readFile(join(root, "assets", filename));
-  assert.ok(bytes.readUInt32BE(16) >= 2880, `${image} must use Retina source`);
-}
+assert.ok(js.includes("site-demo-frame"), "官网展示区必须嵌入共用演示");
+assert.ok(
+  !files.some((file) =>
+    /^(inbox-dark|archive|rules|compose)-.*\.png$/.test(file),
+  ),
+  "官网不得打包旧展示截图",
+);
 console.log(
-  "Website checks passed: home/demo entries, return navigation, bilingual resources and Retina screenshots.",
+  "Website checks passed: embedded demo, return navigation and bilingual resources.",
 );

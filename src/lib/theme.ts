@@ -85,10 +85,10 @@ export function subscribeToTheme(listener: () => void) {
   };
 }
 
-export function setThemeMode(mode: ThemeMode) {
+export function setThemeMode(mode: ThemeMode, persist = true) {
   memoryMode = mode;
   try {
-    localStorage.setItem(storageKey, mode);
+    if (persist) localStorage.setItem(storageKey, mode);
   } catch {
     // The in-memory preference still works when storage is unavailable.
   }
