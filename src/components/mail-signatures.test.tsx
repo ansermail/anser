@@ -6,7 +6,10 @@ import { MailSignatures } from "./mail-signatures";
 import type { Account, MailSignature } from "@/lib/types";
 import { emptySignature } from "@/lib/signatures";
 const mocks = vi.hoisted(() => ({ call: vi.fn() }));
-vi.mock("@/lib/api", () => ({ call: mocks.call }));
+vi.mock("@/lib/api", () => ({
+  publicPreview: false,
+  call: mocks.call,
+}));
 vi.mock("./mail-content", () => ({ MailContent: () => null }));
 let host: HTMLDivElement, root: Root;
 let configurations: Record<string, MailSignature>;

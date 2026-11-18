@@ -14,6 +14,7 @@ import { Workbench } from "./workbench";
 const backend = vi.hoisted(() => ({
   items: [] as WorkItem[],
   projects: [] as WorkProject[],
+  failDelete: false,
   reportCalls: 0,
   reportInstructions: "",
   reportText:
@@ -71,6 +72,13 @@ vi.mock("@/lib/api", () => ({
         });
       return { items: [...backend.items], projects: [...backend.projects] };
     }
+    if (command === "delete_work_item") {
+      if (backend.failDelete) throw new Error("delete failed");
+      const item = backend.items.find((entry) => entry.id === args.id);
+      if (!item || item.revision !== args.revision) throw new Error("stale");
+      backend.items = backend.items.filter((entry) => entry.id !== args.id);
+      return;
+    }
     if (command === "save_work_item") {
       const item = { ...args.item, revision: args.item.revision + 1 };
       backend.items = [
@@ -82,6 +90,7 @@ vi.mock("@/lib/api", () => ({
   },
 }));
 afterEach(() => {
+  backend.failDelete = false;
   backend.projects = [];
   backend.reportCalls = 0;
   backend.reportInstructions = "";
@@ -827,6 +836,22 @@ it("places timed and multi-day items in the week, then opens a new record in a d
   }
 });
 
+const pointerEvent = (type: string, x: number, y: number) => {
+  const event = new MouseEvent(type, {
+    bubbles: true,
+    cancelable: true,
+    button: 0,
+    clientX: x,
+    clientY: y,
+  });
+  Object.defineProperties(event, {
+    isPrimary: { value: true },
+    pointerId: { value: 1 },
+    pointerType: { value: "mouse" },
+  });
+  return event;
+};
+
 it("classifies older records and moves them between quadrants with pointer dragging", async () => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   vi.stubGlobal(
@@ -879,21 +904,6 @@ it("classifies older records and moves them between quadrants with pointer dragg
     expect(host.querySelector('[data-quadrant="2"]')?.textContent).toContain(
       "Urgent request",
     );
-    const pointerEvent = (type: string, x: number, y: number) => {
-      const event = new MouseEvent(type, {
-        bubbles: true,
-        cancelable: true,
-        button: 0,
-        clientX: x,
-        clientY: y,
-      });
-      Object.defineProperties(event, {
-        isPrimary: { value: true },
-        pointerId: { value: 1 },
-        pointerType: { value: "mouse" },
-      });
-      return event;
-    };
     const source = host.querySelector<HTMLElement>(
       '[data-quadrant="2"] .wb-matrix-task',
     )!;
@@ -1390,3 +1400,232 @@ it("sends and renders a customized AI report prompt", async () => {
     host.remove();
   }
 });
+
+it("moves a board item into an empty status column and keeps its other fields", async () => {
+  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+  vi.stubGlobal(
+    "ResizeObserver",
+    class {
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    },
+  );
+  const item = {
+    ...newWorkItem(workDate(new Date())),
+    title: "Board move",
+    important: true,
+    time: "09:15",
+    revision: 3,
+  };
+  backend.items = [item];
+  const host = document.createElement("div");
+  document.body.append(host);
+  const root = createRoot(host);
+  const elementFromPoint = Object.getOwnPropertyDescriptor(
+    document,
+    "elementFromPoint",
+  );
+  try {
+    await act(async () =>
+      root.render(
+        <Workbench
+          onSeedConsumed={() => {}}
+          openMail={() => {}}
+          writeMail={() => {}}
+        />,
+      ),
+    );
+    const itemsTab = [...host.querySelectorAll('[role="tab"]')].find(
+      (node) => node.textContent === "事项",
+    )!;
+    await act(async () =>
+      itemsTab.dispatchEvent(
+        new MouseEvent("mousedown", { bubbles: true, button: 0 }),
+      ),
+    );
+    await act(async () =>
+      host.querySelector<HTMLButtonElement>('[aria-label="状态看板"]')!.click(),
+    );
+    const source = host.querySelector<HTMLElement>(".wb-board-item")!;
+    const waiting = host.querySelector<HTMLElement>(
+      '.wb-board-column[data-status="waiting"]',
+    )!;
+    Object.defineProperty(document, "elementFromPoint", {
+      configurable: true,
+      value: () => waiting,
+    });
+    await act(async () => {
+      source.dispatchEvent(pointerEvent("pointerdown", 100, 100));
+      source.dispatchEvent(pointerEvent("pointermove", 145, 140));
+      source.dispatchEvent(pointerEvent("pointercancel", 145, 140));
+    });
+    expect(backend.items).toEqual([item]);
+    await act(async () => {
+      source.dispatchEvent(pointerEvent("pointerdown", 100, 100));
+      source.dispatchEvent(pointerEvent("pointermove", 145, 140));
+      source.dispatchEvent(pointerEvent("pointerup", 145, 140));
+    });
+    expect(backend.items).toEqual([
+      { ...item, status: "waiting", revision: 4 },
+    ]);
+    expect(waiting.querySelector(".wb-board-item")?.textContent).toContain(
+      item.title,
+    );
+
+    await act(async () =>
+      host
+        .querySelector<HTMLButtonElement>(
+          '.wb-board-column[data-status="done"] .wb-board-add',
+        )!
+        .click(),
+    );
+    const dialog = document.querySelector('[role="dialog"]')!;
+    expect(
+      dialog.querySelector('[aria-label="工作状态"]')?.textContent,
+    ).toContain("已完成");
+  } finally {
+    if (elementFromPoint)
+      Object.defineProperty(document, "elementFromPoint", elementFromPoint);
+    else Reflect.deleteProperty(document, "elementFromPoint");
+    await act(async () => root.unmount());
+    host.remove();
+  }
+});
+
+it.each([
+  ["month", ".workbench-day-event"],
+  ["agenda", ".wb-task-row"],
+  ["completed", ".wb-done-group .wb-task-row"],
+  ["week", ".wb-timed-event"],
+  ["day", ".wb-timed-event"],
+  ["all-day", ".wb-all-day-event"],
+  ["quadrants", ".wb-matrix-task"],
+  ["board", ".wb-board-item"],
+  ["table", "tbody tr[data-row-id]"],
+  ["failure", ".wb-task-row"],
+])(
+  "deletes the exact work item from the %s context menu after confirmation",
+  async (view, selector) => {
+    vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+    vi.stubGlobal(
+      "ResizeObserver",
+      class {
+        observe() {}
+        unobserve() {}
+        disconnect() {}
+      },
+    );
+    const item = {
+      ...newWorkItem(workDate(new Date())),
+      title: "Context record",
+      status: view === "completed" ? ("done" as const) : ("todo" as const),
+      time: view === "week" || view === "day" ? "10:00" : "",
+      revision: 7,
+    };
+    const other = {
+      ...item,
+      id: item.id + "-other",
+      date: workDate(addDays(new Date(), -45)),
+    };
+    backend.items = [item, other];
+    backend.failDelete = view === "failure";
+    const host = document.createElement("div");
+    document.body.append(host);
+    const root = createRoot(host);
+    try {
+      await act(async () =>
+        root.render(
+          <Workbench
+            onSeedConsumed={() => {}}
+            openMail={() => {}}
+            writeMail={() => {}}
+          />,
+        ),
+      );
+      const tab = async (label: string) => {
+        const node = [...host.querySelectorAll('[role="tab"]')].find(
+          (el) => el.textContent === label,
+        )!;
+        await act(async () =>
+          node.dispatchEvent(
+            new MouseEvent("mousedown", { bubbles: true, button: 0 }),
+          ),
+        );
+      };
+      if (view === "quadrants") await tab("四象限");
+      if (view === "board" || view === "table") {
+        await tab("事项");
+        if (view === "board")
+          await act(async () =>
+            host
+              .querySelector<HTMLButtonElement>('[aria-label="状态看板"]')!
+              .click(),
+          );
+      }
+      if (view === "week" || view === "day" || view === "all-day")
+        await act(async () =>
+          [...host.querySelectorAll<HTMLButtonElement>('[role="radio"]')]
+            .find((el) => el.textContent === (view === "day" ? "日" : "周"))!
+            .click(),
+        );
+      const openDelete = async () => {
+        const trigger = host.querySelector<HTMLElement>(selector)!;
+        expect(trigger).toBeTruthy();
+        await act(async () =>
+          trigger.dispatchEvent(
+            new MouseEvent("contextmenu", {
+              bubbles: true,
+              cancelable: true,
+              button: 2,
+              clientX: 100,
+              clientY: 100,
+            }),
+          ),
+        );
+        expect(document.querySelector(".wb-editor")).toBeNull();
+        const action = [
+          ...document.querySelectorAll<HTMLElement>('[role="menuitem"]'),
+        ].find((el) => el.textContent === "删除工作事项")!;
+        expect(action).toBeTruthy();
+        await act(async () =>
+          action.dispatchEvent(
+            new KeyboardEvent("keydown", { bubbles: true, key: "Enter" }),
+          ),
+        );
+        const dialog = document.querySelector('[role="alertdialog"]')!;
+        expect(dialog.textContent).toContain(item.title);
+        return dialog;
+      };
+      const cancelled = await openDelete();
+      await act(async () =>
+        [...cancelled.querySelectorAll<HTMLButtonElement>("button")]
+          .find((el) => el.textContent === "取消")!
+          .click(),
+      );
+      expect(backend.items).toEqual([item, other]);
+
+      const confirmed = await openDelete();
+      await act(async () =>
+        [...confirmed.querySelectorAll<HTMLButtonElement>("button")]
+          .find((el) => el.textContent === "删除")!
+          .click(),
+      );
+      if (view === "failure") {
+        expect(backend.items).toEqual([item, other]);
+        expect(host.querySelector('[role="alert"]')?.textContent).toContain(
+          "无法保存",
+        );
+      } else {
+        expect(backend.items).toEqual([other]);
+        expect(host.querySelectorAll(selector)).toHaveLength(
+          view === "board" || view === "table" ? 1 : 0,
+        );
+      }
+      expect(document.querySelector(".wb-editor")).toBeNull();
+    } finally {
+      await act(async () => root.unmount());
+      host.remove();
+    }
+  },
+);

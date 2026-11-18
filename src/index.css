@@ -17,7 +17,7 @@
   --color-muted-foreground: var(--muted);
   --color-accent: var(--secondary);
   --color-accent-foreground: var(--foreground);
-  --color-destructive: #bd4f4a;
+  --color-destructive: var(--destructive);
   --color-border: var(--border);
   --color-input: var(--border);
   --color-ring: var(--primary);
@@ -41,6 +41,7 @@
   --card: oklch(1 0 0);
   --primary: oklch(0.205 0 0);
   --primary-foreground: oklch(0.985 0 0);
+  --destructive: #bd4f4a;
   --secondary: oklch(0.97 0 0);
   --muted: oklch(0.48 0 0);
   --border: oklch(0.922 0 0);
@@ -6180,7 +6181,12 @@ body.site-body #root {
   gap: 10px;
   min-width: 0;
 }
+.wb-toolbar[data-view="items"] .wb-toolbar-right {
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
 .wb-toolbar-left h2 {
+  white-space: nowrap;
   font-size: 15px;
   font-weight: 600;
 }
@@ -6879,19 +6885,85 @@ body.site-body #root {
   font-size: 12px;
   color: var(--muted);
 }
+.wb-agenda-empty[data-slot="empty"] {
+  padding: clamp(28px, 7vh, 78px) 10px 24px;
+  color: var(--muted-foreground);
+}
+.wb-agenda-empty [data-slot="empty-title"] {
+  font-size: 12px;
+  color: var(--foreground);
+}
+.wb-agenda-empty [data-slot="empty-description"] {
+  font-size: 11px;
+}
 .wb-year-scroll {
+  container: workbench-year / inline-size;
   height: 100%;
   min-height: 0;
 }
+.wb-year-scroll > [data-slot="scroll-area-viewport"] > div {
+  display: block !important;
+}
 .wb-year-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(205px, 1fr));
-  gap: 20px 14px;
-  padding: 14px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+  padding: 12px;
 }
 .wb-year-calendar {
   width: 100%;
+  min-width: 0;
+  padding: 6px 4px;
   --cell-size: 27px;
+}
+.wb-year-calendar .rdp-month {
+  gap: 4px;
+}
+.wb-year-calendar .rdp-month_caption {
+  padding: 0;
+}
+.wb-year-calendar .rdp-caption_label {
+  font-size: 12px;
+  white-space: nowrap;
+}
+.wb-year-calendar[data-current-month] .rdp-caption_label {
+  color: var(--item-selected-indicator);
+  font-weight: 700;
+}
+.wb-year-calendar .rdp-weekday {
+  font-size: 10px;
+}
+.wb-year-calendar .rdp-week {
+  margin-top: 1px;
+}
+.wb-year-calendar .rdp-day {
+  aspect-ratio: auto;
+  height: var(--cell-size);
+}
+.wb-year-calendar .rdp-day button {
+  width: min(100%, var(--cell-size));
+  height: var(--cell-size);
+  min-width: 0;
+  margin-inline: auto;
+  border-radius: 50%;
+  font-size: 11px;
+}
+.wb-year-calendar .wb-year-today button {
+  box-shadow: inset 0 0 0 1px var(--item-selected-indicator);
+}
+.wb-year-calendar .wb-year-today button:not([data-selected-single="true"]) {
+  color: var(--item-selected-indicator);
+  font-weight: 700;
+}
+@container workbench-year (max-width: 760px) {
+  .wb-year-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+@container workbench-year (max-width: 530px) {
+  .wb-year-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 .wb-year-calendar .rdp-months,
 .wb-year-calendar .rdp-month {
@@ -6949,6 +7021,29 @@ body.site-body #root {
 .wb-week-day button {
   font-size: 17px !important;
   border-radius: 50%;
+}
+.wb-week-day [aria-current="date"] {
+  box-shadow: inset 0 0 0 1px var(--item-selected-indicator);
+  color: var(--item-selected-indicator);
+  font-weight: 650;
+}
+.wb-now-indicator {
+  position: absolute;
+  z-index: 2;
+  inset-inline: 0;
+  height: 1px;
+  background: var(--destructive);
+  pointer-events: none;
+}
+.wb-now-indicator::before {
+  content: "";
+  position: absolute;
+  inset-inline-start: 0;
+  top: -3px;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: inherit;
 }
 .wb-week-day [aria-pressed="true"] {
   background: var(--item-selected-background);
@@ -7157,19 +7252,12 @@ body.site-body #root {
   color: var(--muted);
   border-bottom: 1px solid var(--border);
 }
-.wb-items-tools {
-  display: flex;
-  gap: 10px;
-  margin-bottom: 16px;
-  flex-wrap: wrap;
-  align-items: center;
-}
-.wb-items-tools > [data-slot="input-group"] {
-  width: min(320px, 100%);
-  height: 32px;
+.wb-items-search[data-slot="input-group"] {
+  width: min(240px, 100%);
+  height: 30px;
   box-shadow: none;
 }
-.wb-items-tools input {
+.wb-items-search input {
   font-size: 12px;
 }
 .workbench .wb-items-card > [data-slot="card-content"] {
@@ -7292,17 +7380,25 @@ body.site-body #root {
 }
 .workbench-board > section {
   min-width: 0;
+  min-height: 144px;
   display: flex;
   flex-direction: column;
   gap: 8px;
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: color-mix(in srgb, var(--secondary) 40%, var(--card));
 }
-.workbench-board h3 {
+.workbench-board > section[data-drop-target] {
+  border-color: var(--item-selected-indicator);
+  background: var(--item-selected-background);
+}
+.wb-board-column-heading {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
   min-height: 30px;
-  padding: 4px 2px 7px;
-  border-bottom: 1px solid var(--border);
+  padding: 0 2px 4px;
   color: var(--foreground);
   font-size: 12px;
   font-weight: 600;
@@ -7310,11 +7406,21 @@ body.site-body #root {
 .workbench-board h3 .wb-status {
   color: var(--wb-status-accent);
 }
-.workbench-board h3 > span {
+.wb-board-add {
   margin-inline-start: auto;
-  color: var(--muted);
-  font-size: 10px;
-  font-variant-numeric: tabular-nums;
+}
+.wb-board-empty {
+  padding: 18px 4px;
+  text-align: center;
+  color: var(--muted-foreground);
+  font-size: 11px;
+}
+.wb-board-item {
+  cursor: grab;
+  user-select: none;
+}
+.wb-board-item[data-dragging] {
+  opacity: 0.48;
 }
 .workbench .wb-board-item {
   border: 1px solid var(--border);
@@ -7502,6 +7608,11 @@ body.site-body #root {
 .dark .wb-quadrant-option[data-quadrant="3"] {
   --wb-quadrant-accent: #aab5bf;
 }
+.wb-quadrant-date {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
 .wb-toolbar-caption {
   font-size: 11px;
   color: var(--muted);
@@ -7518,7 +7629,7 @@ body.site-body #root {
   grid-template-rows: minmax(0, 1fr);
   width: 100%;
   min-height: min(72vh, 760px);
-  padding: 9px 10px 3px 3px;
+  padding: 25px 13px 3px 3px;
 }
 .workbench-matrix-plane {
   position: relative;
@@ -7554,6 +7665,22 @@ body.site-body #root {
   inset-block-start: 50%;
   inset-inline: 0;
   height: 1px;
+}
+.wb-matrix-axis-label {
+  position: absolute;
+  color: var(--muted-foreground);
+  font-size: 11px;
+  line-height: 1;
+  pointer-events: none;
+}
+.wb-matrix-axis-label-y {
+  inset-block-start: -17px;
+  inset-inline-start: 50%;
+  transform: translateX(-50%);
+}
+.wb-matrix-axis-label-x {
+  inset-block-start: calc(50% - 16px);
+  inset-inline-end: 8px;
 }
 .wb-matrix-axis-line::after {
   content: "";
@@ -7640,8 +7767,7 @@ body.site-body #root {
 .wb-matrix-quadrant-header {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 8px;
+  gap: 5px;
   min-height: 46px;
   padding: 11px 13px 5px 16px;
 }
@@ -7853,6 +7979,7 @@ body.site-body #root {
   min-height: 0;
 }
 .wb-report-content {
+  padding-top: 10px;
   overflow: hidden;
 }
 .workbench .wb-report-options [data-slot="card-content"] {
@@ -8285,21 +8412,25 @@ body.site-body #root {
   min-width: 0;
   overflow-wrap: anywhere;
 }
-.wb-editor .wb-project-manage-link {
+.wb-editor-field-heading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  column-gap: 8px;
+}
+.wb-editor .wb-project-manage-link,
+.wb-editor .wb-end-date-add {
   width: fit-content;
-  align-self: flex-end;
+  align-self: flex-start;
   padding: 0 3px;
-  height: 25px;
-  color: var(--muted);
+  height: 24px;
+  color: var(--muted-foreground);
   font-size: 12px;
 }
-.wb-date-range-field {
-  padding: 12px;
-  border-top: 1px solid var(--border);
-}
-.wb-end-date-note {
-  font-size: 10px;
-  color: var(--muted);
+.wb-editor .wb-end-date-field,
+.wb-editor .wb-end-date-add {
+  margin-top: -7px;
 }
 .wb-editor .wb-source-mail {
   justify-content: flex-start;
@@ -8366,6 +8497,10 @@ body.site-body #root {
   }
   .wb-toolbar-left {
     flex-wrap: wrap;
+  }
+  .wb-toolbar[data-view="items"] .wb-toolbar-right {
+    width: 100%;
+    justify-content: flex-start;
   }
   .wb-toolbar-caption {
     white-space: normal;

@@ -1,4 +1,5 @@
 import { addDays, startOfWeek } from "date-fns";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Flag, Plus } from "lucide-react";
 import { dateLocale, t } from "@/lib/i18n";
 import {
@@ -8,6 +9,7 @@ import {
   type WorkItem,
 } from "@/lib/workbench";
 import { Button } from "./ui/button";
+import { WorkItemContextMenu } from "./work-item-context-menu";
 import { ScrollArea } from "./ui/scroll-area";
 
 const hours = Array.from(
@@ -23,6 +25,7 @@ export function WorkbenchTimeline({
   onSelect,
   onAdd,
   onOpen,
+  onDelete,
   projectTone,
 }: {
   mode: "week" | "day";
@@ -32,8 +35,35 @@ export function WorkbenchTimeline({
   onSelect: (date: Date) => void;
   onAdd: (date: string, time: string) => void;
   onOpen: (item: WorkItem) => void;
+  onDelete: (item: WorkItem) => void;
   projectTone: (name: string) => string;
 }) {
+  const viewport = useRef<HTMLDivElement>(null);
+  const [now, setNow] = useState(() => new Date());
+  useEffect(() => {
+    const update = () => setNow(new Date());
+    const timer = window.setInterval(update, 30_000);
+    window.addEventListener("focus", update);
+    return () => {
+      window.clearInterval(timer);
+      window.removeEventListener("focus", update);
+    };
+  }, []);
+  const today = workDate(now);
+  const nowHour = hours[now.getHours()];
+  const firstDate = workDate(
+    mode === "day" ? selected : startOfWeek(selected, { weekStartsOn: 1 }),
+  );
+  useLayoutEffect(() => {
+    const area = viewport.current;
+    const start = area?.querySelector('[data-hour-label="08:00"]');
+    if (area && start)
+      area.scrollTop =
+        start.getBoundingClientRect().top -
+        area.getBoundingClientRect().top +
+        area.scrollTop;
+  }, [mode, firstDate]);
+
   const days = (
     mode === "day"
       ? [selected]
@@ -71,41 +101,55 @@ export function WorkbenchTimeline({
     >
       <div className="wb-slot-entries">
         {entries.map((item) => (
-          <Button
+          <WorkItemContextMenu
             key={item.id}
-            type="button"
-            variant="ghost"
-            className={time ? "wb-timed-event" : "wb-all-day-event"}
-            title={`${item.title} · ${workStatus(item.status)}`}
-            aria-label={`${item.title}. ${workStatus(item.status)}. ${
-              time || t("All day")
-            }`}
-            data-work-status={item.status}
-            data-project-tone={projectTone(item.project)}
-            onClick={() => onOpen(item)}
+            item={item}
+            disabled={disabled}
+            onOpen={onOpen}
+            onDelete={onDelete}
           >
-            <span className="wb-event-meta">
-              <span className="wb-event-status-dot" />
-              <span className="wb-event-time">
-                {time ? item.time : t("All day")}
+            <Button
+              type="button"
+              variant="ghost"
+              className={time ? "wb-timed-event" : "wb-all-day-event"}
+              title={`${item.title} · ${workStatus(item.status)}`}
+              aria-label={`${item.title}. ${workStatus(item.status)}. ${
+                time || t("All day")
+              }`}
+              data-work-status={item.status}
+              data-project-tone={projectTone(item.project)}
+              onClick={() => onOpen(item)}
+            >
+              <span className="wb-event-meta">
+                <span className="wb-event-status-dot" />
+                <span className="wb-event-time">
+                  {time ? item.time : t("All day")}
+                </span>
+                <span className="wb-event-status-label">
+                  {workStatus(item.status)}
+                </span>
+                {item.date !== date && (
+                  <span className="wb-event-continued">{t("Continued")}</span>
+                )}
+                {item.priority === "high" && (
+                  <Flag className="wb-event-priority" />
+                )}
               </span>
-              <span className="wb-event-status-label">
-                {workStatus(item.status)}
+              <span className="wb-event-title">
+                <span className="workbench-project-dot" />
+                <span className="wb-event-title-text">{item.title}</span>
               </span>
-              {item.date !== date && (
-                <span className="wb-event-continued">{t("Continued")}</span>
-              )}
-              {item.priority === "high" && (
-                <Flag className="wb-event-priority" />
-              )}
-            </span>
-            <span className="wb-event-title">
-              <span className="workbench-project-dot" />
-              <span className="wb-event-title-text">{item.title}</span>
-            </span>
-          </Button>
+            </Button>
+          </WorkItemContextMenu>
         ))}
       </div>
+      {date === today && time === nowHour && (
+        <span
+          className="wb-now-indicator"
+          style={{ top: `${(now.getMinutes() / 60) * 100}%` }}
+          aria-hidden="true"
+        />
+      )}
       <Button
         type="button"
         variant="ghost"
@@ -152,6 +196,7 @@ export function WorkbenchTimeline({
                 variant="ghost"
                 size="icon-sm"
                 aria-label={date}
+                aria-current={date === today ? "date" : undefined}
                 aria-pressed={date === workDate(selected)}
                 onClick={() => onSelect(day)}
               >
@@ -162,11 +207,13 @@ export function WorkbenchTimeline({
           <div className="wb-all-day-label">{t("All day")}</div>
           {days.map(({ date, allDay }) => slot(date, "", allDay))}
         </div>
-        <ScrollArea className="wb-hours" type="always">
+        <ScrollArea className="wb-hours" type="always" viewportRef={viewport}>
           <div className="wb-timeline-hours" style={grid}>
             {hours.map((hour) => (
               <div className="wb-hour-row" key={hour}>
-                <div className="wb-time-label">{hour}</div>
+                <div className="wb-time-label" data-hour-label={hour}>
+                  {hour}
+                </div>
                 {days.map(({ date, timed }) =>
                   slot(date, hour, timed.get(hour) ?? []),
                 )}
