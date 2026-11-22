@@ -68,7 +68,7 @@ export function TableOperations({
     ],
   ] as const;
   const dimensions = currentTableDimensions(editor);
-  return (
+  const operationGroups = (
     <>
       {operations.map((group) => (
         <div key={group[0][0]} role="group">
@@ -84,6 +84,10 @@ export function TableOperations({
           ))}
         </div>
       ))}
+    </>
+  );
+  const footerActions = (
+    <>
       <Separator />
       <Item disabled={!dimensions} onSelect={onResize}>
         {t("Table dimensions…")}
@@ -101,6 +105,17 @@ export function TableOperations({
       >
         {t("Delete table")}
       </Item>
+    </>
+  );
+  return context ? (
+    <>
+      {operationGroups}
+      {footerActions}
+    </>
+  ) : (
+    <>
+      <div className="rich-table-menu-groups">{operationGroups}</div>
+      <div className="rich-table-menu-footer">{footerActions}</div>
     </>
   );
 }
@@ -143,7 +158,7 @@ export function RichTableMenu({
         <TooltipContent>{t("Table")}</TooltipContent>
       </Tooltip>
       <DropdownMenuContent
-        className="rich-format-menu"
+        className="rich-format-menu rich-table-menu"
         align="start"
         onCloseAutoFocus={(event) => {
           event.preventDefault();

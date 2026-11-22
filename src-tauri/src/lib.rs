@@ -1422,6 +1422,21 @@ async fn preview_attachment(
     .map_err(err)?
 }
 #[tauri::command]
+async fn attachment_thumbnail(
+    state: tauri::State<'_, AppState>,
+    id: String,
+    index: usize,
+) -> Result<String> {
+    let store = state.store.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let mail = store.mail(&id)?;
+        let raw = store.message_raw(&mail)?;
+        attachment_preview::thumbnail(&raw, &store.account_for_mail(&mail), index)
+    })
+    .await
+    .map_err(err)?
+}
+#[tauri::command]
 async fn backup_archive(state: tauri::State<'_, AppState>, path: String) -> Result<String> {
     let store = state.store.clone();
     let gate = state.gate.clone();
@@ -2209,6 +2224,7 @@ pub fn run() {
             set_default_mail_client,
             save_attachment,
             preview_attachment,
+            attachment_thumbnail,
             backup_archive,
             archive_deletion_preview,
             delete_local_archives,

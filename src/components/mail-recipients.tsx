@@ -1,20 +1,21 @@
-import { Fragment } from "react";
+import { Fragment, useState } from "react";
 import { t } from "@/lib/i18n";
 import { addressTokens, parseAddresses } from "@/lib/addresses";
 import type { Address } from "@/lib/types";
+import { Button } from "./ui/button";
 import { ContactAddress } from "./contact-address";
 
-/** Split a stored header into independently actionable address chips. */
-export function RecipientAddresses({
-  value,
+const VISIBLE_RECIPIENTS = 3;
+
+function AddressTokenList({
+  tokens,
   onComposeAddress,
   onAddContact,
 }: {
-  value: string;
+  tokens: string[];
   onComposeAddress?: (address: Address) => void;
   onAddContact?: (address: Address) => void;
 }) {
-  const tokens = addressTokens(value).filter(Boolean);
   return tokens.map((token, index) => {
     const address = parseAddresses(token)[0];
     return (
@@ -33,6 +34,76 @@ export function RecipientAddresses({
       </Fragment>
     );
   });
+}
+
+/** Split a stored header into independently actionable address chips. */
+export function RecipientAddresses({
+  value,
+  onComposeAddress,
+  onAddContact,
+}: {
+  value: string;
+  onComposeAddress?: (address: Address) => void;
+  onAddContact?: (address: Address) => void;
+}) {
+  const tokens = addressTokens(value).filter(Boolean);
+  return (
+    <AddressTokenList
+      tokens={tokens}
+      onComposeAddress={onComposeAddress}
+      onAddContact={onAddContact}
+    />
+  );
+}
+
+export function RecipientAddressSummary({
+  value,
+  onComposeAddress,
+  onAddContact,
+}: {
+  value: string;
+  onComposeAddress?: (address: Address) => void;
+  onAddContact?: (address: Address) => void;
+}) {
+  const tokens = addressTokens(value).filter(Boolean);
+  const [expanded, setExpanded] = useState(false);
+  const remaining = tokens.length - VISIBLE_RECIPIENTS;
+  const visibleTokens =
+    expanded || tokens.length <= VISIBLE_RECIPIENTS
+      ? tokens
+      : tokens.slice(0, VISIBLE_RECIPIENTS);
+  return (
+    <div
+      className={`recipient-address-summary${expanded ? " is-expanded" : ""}`}
+    >
+      <span className="recipient-address-list">
+        <AddressTokenList
+          tokens={visibleTokens}
+          onComposeAddress={onComposeAddress}
+          onAddContact={onAddContact}
+        />
+      </span>
+      {tokens.length > VISIBLE_RECIPIENTS && (
+        <Button
+          type="button"
+          variant="secondary"
+          size="sm"
+          className={`recipient-overflow-control${expanded ? " recipient-overflow-toggle" : ""}`}
+          aria-expanded={expanded}
+          aria-label={
+            expanded
+              ? t("Collapse")
+              : t("Show {value0} more recipients", {
+                  value0: String(remaining),
+                })
+          }
+          onClick={() => setExpanded((current) => !current)}
+        >
+          {expanded ? t("Collapse") : `+${remaining}`}
+        </Button>
+      )}
+    </div>
+  );
 }
 
 /** One aligned row per header field; empty Cc/Bcc rows stay hidden. */
@@ -60,8 +131,8 @@ export function MailRecipients({
       {rows.map((row) => (
         <Fragment key={row.label}>
           <dt>{row.label}</dt>
-          <dd title={row.value} aria-label={row.value}>
-            <RecipientAddresses
+          <dd>
+            <RecipientAddressSummary
               value={row.value}
               onComposeAddress={onComposeAddress}
               onAddContact={onAddContact}

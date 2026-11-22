@@ -627,7 +627,11 @@ describe("draft list after composing", () => {
   it("removes a successfully scheduled draft from the visible list", async () => {
     const draft = await openDraft();
     await click(composeButton("定时发送"));
-    await click(composeButton("确认定时发送"));
+    await click(
+      [...document.querySelectorAll("button")].find(
+        (button) => button.textContent?.trim() === "确认定时发送",
+      ) ?? null,
+    );
     expect(document.querySelector(".compose-dialog")).toBeNull();
     expect(host.querySelector(".draft-card")).toBeNull();
     expect(host.textContent).toContain("暂时没有草稿");

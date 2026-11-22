@@ -16,7 +16,13 @@ import { RetentionBudgetView } from "./retention-budget";
 import { RetentionSummaryView } from "./retention-summary";
 import { Alert, AlertDescription } from "./ui/alert";
 import { Skeleton } from "./ui/skeleton";
-import { Field, FieldGroup, FieldLabel, FieldDescription } from "./ui/field";
+import {
+  Field,
+  FieldContent,
+  FieldDescription,
+  FieldGroup,
+  FieldLabel,
+} from "./ui/field";
 import {
   Select,
   SelectTrigger,
@@ -363,10 +369,21 @@ export function RetentionDialog({
             )}
             {settings && (
               <FieldGroup className="gap-4">
-                <Field data-invalid={!validDays}>
-                  <FieldLabel htmlFor="server-retention-days">
-                    {t("Server retention (days, optional)")}
-                  </FieldLabel>
+                <Field orientation="horizontal" data-invalid={!validDays}>
+                  <FieldContent>
+                    <FieldLabel htmlFor="server-retention-days">
+                      {t("Server retention (days, optional)")}
+                    </FieldLabel>
+                    <FieldDescription>
+                      {validDays
+                        ? t(
+                            "Used for saving reminders only; server deletion rules are unchanged. Enter 1–3650 days. Only fully downloaded messages have local copies.",
+                          )
+                        : t(
+                            "Enter an integer from 1 to 3650, or leave blank if unknown.",
+                          )}
+                    </FieldDescription>
+                  </FieldContent>
                   <Input
                     id="server-retention-days"
                     type="number"
@@ -378,16 +395,8 @@ export function RetentionDialog({
                     aria-invalid={!validDays}
                     placeholder={t("For example: 3. Leave blank if unknown.")}
                     onChange={(e) => setDays(e.target.value)}
+                    className="w-40 shrink-0"
                   />
-                  <FieldDescription>
-                    {validDays
-                      ? t(
-                          "Used for saving reminders only; server deletion rules are unchanged. Enter 1–3650 days. Only fully downloaded messages have local copies.",
-                        )
-                      : t(
-                          "Enter an integer from 1 to 3650, or leave blank if unknown.",
-                        )}
-                  </FieldDescription>
                 </Field>
                 {folders.map((folder, i) => (
                   <Field key={folder.name} orientation="horizontal">

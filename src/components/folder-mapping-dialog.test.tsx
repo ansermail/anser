@@ -102,6 +102,14 @@ afterEach(async () => {
   vi.restoreAllMocks();
 });
 describe("special folder settings", () => {
+  it("keeps detection status in the third aligned column", async () => {
+    await render();
+    const field = document
+      .querySelector("#folder-role-sent")!
+      .closest('[data-slot="field"]')!;
+    expect(field.children).toHaveLength(3);
+    expect(field.children[2].textContent).toBe("已识别：已发送");
+  });
   it("saves manual targets and disabled roles using server paths, excluding INBOX and nonselectable parents", async () => {
     await render();
     await select("已发送", "父目录/自定义");

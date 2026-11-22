@@ -1,5 +1,5 @@
 import { t } from "@/lib/i18n";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   ArrowDownToLine,
   FileArchive,
@@ -15,18 +15,91 @@ import { call, native } from "../lib/api";
 import { formatSize } from "../lib/providers";
 import type { Detail } from "../lib/types";
 
+const THUMBNAIL_MIMES = new Set([
+  "image/png",
+  "image/jpeg",
+  "image/gif",
+  "image/webp",
+]);
+const MAX_THUMBNAIL_SOURCE_BYTES = 20 * 1024 * 1024;
+
+export function MailAttachmentNotice({ reported }: { reported: boolean }) {
+  if (!reported) return null;
+  return (
+    <Alert className="mail-attachment-notice">
+      <FileText />
+      <AlertDescription>
+        {t(
+          "This message reports attachments, but no separate files are available. Inline images appear in the message body.",
+        )}
+      </AlertDescription>
+    </Alert>
+  );
+}
+
+function AttachmentThumbnail({
+  mailId,
+  demo,
+  attachment,
+  Icon,
+}: {
+  mailId: string;
+  demo: boolean;
+  attachment: Detail["attachments"][number];
+  Icon: typeof FileImage;
+}) {
+  const [thumbnail, setThumbnail] = useState("");
+  const canLoadThumbnail =
+    native &&
+    !demo &&
+    !attachment.error &&
+    THUMBNAIL_MIMES.has(attachment.mime) &&
+    attachment.size <= MAX_THUMBNAIL_SOURCE_BYTES;
+
+  useEffect(() => {
+    if (!canLoadThumbnail) return;
+    let active = true;
+    void call<string>("attachment_thumbnail", {
+      id: mailId,
+      index: attachment.index,
+    })
+      .then((value) => {
+        if (active && value.startsWith("data:image/png;base64,")) {
+          setThumbnail(value);
+        }
+      })
+      .catch(() => {});
+    return () => {
+      active = false;
+    };
+  }, [attachment.index, canLoadThumbnail, mailId]);
+
+  return (
+    <span className="attachment-thumb" aria-hidden="true">
+      {thumbnail ? (
+        <img
+          src={thumbnail}
+          alt=""
+          draggable={false}
+          onError={() => setThumbnail("")}
+        />
+      ) : (
+        <Icon className="attachment-type size-5" />
+      )}
+    </span>
+  );
+}
+
 export function MailAttachments({
   mailId,
   demo = false,
   attachments,
-  reportedAttachments = false,
   onDownload,
   onPreview,
 }: {
   mailId: string;
   demo?: boolean;
   attachments: Detail["attachments"];
-  reportedAttachments?: boolean;
   onDownload: (index: number, name: string) => Promise<void>;
   onPreview?: (index: number, name: string) => Promise<void>;
 }) {
@@ -63,17 +136,7 @@ export function MailAttachments({
       });
     }
   }
-  if (!attachments.length)
-    return reportedAttachments ? (
-      <Alert className="mail-attachment-notice">
-        <FileText />
-        <AlertDescription>
-          {t(
-            "This message reports attachments, but no separate files are available. Inline images appear in the message body.",
-          )}
-        </AlertDescription>
-      </Alert>
-    ) : null;
+  if (!attachments.length) return null;
   return (
     <div className="attachment-list" aria-label={t("Message attachments")}>
       {attachments.map((attachment) => {
@@ -88,7 +151,7 @@ export function MailAttachments({
         return (
           <Card
             className="mail-attachment"
-            key={attachment.index}
+            key={`${mailId}:${attachment.index}`}
             aria-busy={!!busy}
           >
             <Button
@@ -108,7 +171,12 @@ export function MailAttachments({
                 void act(attachment.index, attachment.name, "preview")
               }
             >
-              <Icon className="attachment-type size-5" />
+              <AttachmentThumbnail
+                mailId={mailId}
+                demo={demo}
+                attachment={attachment}
+                Icon={Icon}
+              />
               <span className="attachment-info">
                 <strong>
                   <span className="truncate">

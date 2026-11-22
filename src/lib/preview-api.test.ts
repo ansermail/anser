@@ -36,6 +36,7 @@ it("public preview ignores persisted mailbox data and blocks real operations", a
     "schedule_mail",
     "save_attachment",
     "preview_attachment",
+    "attachment_thumbnail",
     "move_archive_location",
     "delete_local_archives",
     "test_notification",

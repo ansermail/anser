@@ -33,6 +33,36 @@ describe("untrusted email rendering", () => {
       iframe.remove();
     }
   });
+  it("keeps a multi-row authored footer around a compact wordmark image light", () => {
+    const iframe = document.createElement("iframe");
+    document.body.append(iframe);
+    const doc = iframe.contentDocument!;
+    const footerCopy =
+      "The voice platform for every language. Build accurate, low-latency speech recognition and translation experiences for products across web, mobile, and the contact center. " +
+      "Soniox combines speech-to-text, text-to-speech, and real-time translation in one API so teams can ship voice features without assembling multiple vendors.";
+    expect(footerCopy.length).toBeGreaterThan(320);
+    try {
+      doc.open();
+      doc.write(
+        safeMailHtml(
+          `<table><tr><td id="main" style="background-color:#fff"><h1>Readable message</h1></td></tr><tr><td id="footer" style="padding:24px;background-color:#f4f4f4;border-radius:18px"><table><tr><td><img alt="Soniox" title="Soniox" width="100"><p style="color:rgba(13,13,13,0.7)">${footerCopy}</p></td></tr><tr><td>Website · Docs · Console</td></tr><tr><td>© 2026 Soniox, Inc. · Unsubscribe</td></tr></table></td></tr></table>`,
+        ),
+      );
+      doc.close();
+      applyMailColorScheme(doc, "dark");
+      const computed = (id: string) =>
+        doc.defaultView!.getComputedStyle(doc.getElementById(id)!);
+      expect(computed("main").backgroundColor).toBe("rgb(28, 28, 30)");
+      expect(computed("footer").backgroundColor).toBe("rgb(244, 244, 244)");
+      expect(
+        doc
+          .getElementById("footer")!
+          .hasAttribute("data-anser-light-image-surface"),
+      ).toBe(true);
+    } finally {
+      iframe.remove();
+    }
+  });
   it("shows fallback text while remote email fonts are still loading", () => {
     const html = safeMailHtml(
       `<style>@font-face { font-family: Mail; src: url(https://cdn.example/mail.woff2); }</style><p>Readable now</p>`,

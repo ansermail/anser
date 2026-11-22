@@ -177,7 +177,15 @@ export function ServerOperations({
                   )}
                 </div>
                 <TaskDataTable
-                  actionsWidth={7}
+                  actionsWidth={9}
+                  columnWidths={{
+                    task: 10,
+                    account: 9,
+                    folder: 7,
+                    operation: 5.5,
+                    status: 8,
+                    reason: 8,
+                  }}
                   label={t("Server sync tasks")}
                   empty={t("No sync tasks")}
                   fields={[

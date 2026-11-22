@@ -269,6 +269,43 @@ fn attachment_preview_keeps_names_and_bytes_isolated_from_archive() {
 }
 
 #[test]
+fn attachment_thumbnail_only_decodes_supported_images_into_a_small_data_url() {
+    use base64::{engine::general_purpose::STANDARD, Engine as _};
+    let png = include_bytes!("../icons/32x32.png");
+    let image_raw = format!(
+        concat!(
+            "From: Alice <alice@example.com>\r\n",
+            "To: test@example.com\r\n",
+            "Subject: Logo\r\n",
+            "MIME-Version: 1.0\r\n",
+            "Content-Type: multipart/mixed; boundary=thumbnail\r\n",
+            "\r\n",
+            "--thumbnail\r\n",
+            "Content-Type: text/plain; charset=utf-8\r\n",
+            "\r\n",
+            "Logo attached.\r\n",
+            "--thumbnail\r\n",
+            "Content-Type: image/png; name=logo.png\r\n",
+            "Content-Disposition: attachment; filename=logo.png\r\n",
+            "Content-Transfer-Encoding: base64\r\n",
+            "\r\n",
+            "{}\r\n",
+            "--thumbnail--\r\n"
+        ),
+        STANDARD.encode(png)
+    );
+    let image_bytes = crate::archive::attachment(image_raw.as_bytes(), 1).unwrap();
+    assert_eq!(image_bytes, png);
+    assert_eq!(&image_bytes[..8], b"\x89PNG\r\n\x1a\n");
+    let thumbnail =
+        crate::attachment_preview::thumbnail(image_raw.as_bytes(), &account(), 1).unwrap();
+    assert!(thumbnail.starts_with("data:image/png;base64,"));
+    assert!(thumbnail.len() < 1024 * 1024);
+    assert!(crate::attachment_preview::thumbnail(&raw(), &account(), 1).is_err());
+    assert!(crate::attachment_preview::thumbnail(image_raw.as_bytes(), &account(), 99).is_err());
+}
+
+#[test]
 fn preview_does_not_launch_programs_and_only_prunes_owned_expired_cache() {
     let temp = tempfile::tempdir().unwrap();
     let cache = temp.path().join("preview");

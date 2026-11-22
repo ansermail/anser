@@ -1,9 +1,18 @@
 use crate::{archive, models::*};
+use base64::{engine::general_purpose::STANDARD, Engine as _};
+use image::ImageFormat;
 use std::{
     fs,
+    io::Cursor,
     path::{Path, PathBuf},
     time::{Duration, SystemTime},
 };
+
+const MAX_THUMBNAIL_SOURCE_BYTES: usize = 20 * 1024 * 1024;
+const MAX_THUMBNAIL_OUTPUT_BYTES: usize = 1024 * 1024;
+const MAX_IMAGE_EDGE: u32 = 8192;
+const MAX_IMAGE_PIXELS: u64 = 64 * 1024 * 1024;
+const THUMBNAIL_EDGE: u32 = 112;
 
 // Keep previews separate from the durable MIME archive and user downloads.
 fn filename(name: &str, mime: &str) -> String {
@@ -235,4 +244,59 @@ pub fn prepare(cache: &Path, raw: &[u8], account: &Account, index: usize) -> Res
     // Refresh the directory age on every open, including a reused preview.
     fs::write(folder.join(".last-opened"), []).map_err(err)?;
     Ok(path)
+}
+
+fn thumbnail_format(mime: &str) -> Option<ImageFormat> {
+    match mime {
+        "image/png" => Some(ImageFormat::Png),
+        "image/jpeg" => Some(ImageFormat::Jpeg),
+        "image/gif" => Some(ImageFormat::Gif),
+        "image/webp" => Some(ImageFormat::WebP),
+        _ => None,
+    }
+}
+
+fn thumbnail_data_url(mime: &str, bytes: &[u8]) -> Result<String> {
+    let format = thumbnail_format(mime).ok_or("该附件类型不支持生成缩略图")?;
+    if bytes.len() > MAX_THUMBNAIL_SOURCE_BYTES {
+        return Err("图片过大，未生成缩略图".into());
+    }
+    let (width, height) = image::ImageReader::with_format(Cursor::new(bytes), format)
+        .into_dimensions()
+        .map_err(|_| "图片内容损坏，未生成缩略图")?;
+    if width == 0
+        || height == 0
+        || width > MAX_IMAGE_EDGE
+        || height > MAX_IMAGE_EDGE
+        || u64::from(width) * u64::from(height) > MAX_IMAGE_PIXELS
+    {
+        return Err("图片尺寸过大，未生成缩略图".into());
+    }
+    let image = image::load_from_memory_with_format(bytes, format)
+        .map_err(|_| "图片内容损坏，未生成缩略图")?;
+    let thumbnail = image.thumbnail(THUMBNAIL_EDGE, THUMBNAIL_EDGE);
+    let mut output = Cursor::new(Vec::new());
+    thumbnail
+        .write_to(&mut output, ImageFormat::Png)
+        .map_err(|_| "无法生成图片缩略图")?;
+    let encoded = output.into_inner();
+    if encoded.len() > MAX_THUMBNAIL_OUTPUT_BYTES {
+        return Err("图片缩略图过大，已保留原文件".into());
+    }
+    Ok(format!(
+        "data:image/png;base64,{}",
+        STANDARD.encode(encoded)
+    ))
+}
+
+pub fn thumbnail(raw: &[u8], account: &Account, index: usize) -> Result<String> {
+    let (_, _, attachments) = archive::parse(raw, account, "")?;
+    let attachment = attachments
+        .iter()
+        .find(|attachment| attachment.index == index)
+        .ok_or("附件不存在")?;
+    if !attachment.error.is_empty() {
+        return Err(attachment.error.clone());
+    }
+    thumbnail_data_url(&attachment.mime, &archive::attachment(raw, index)?)
 }

@@ -228,3 +228,45 @@ it("shows the delegating sender only when the message carries one", async () => 
   );
   expect(host.querySelector(".turn-sender-via")).toBeNull();
 });
+
+it("places reported-only attachment guidance before the message body", async () => {
+  const mail = {
+    ...selected.mail,
+    hasAttachments: true,
+    conversationCount: 1,
+  };
+  backend.call.mockImplementation((command: string) =>
+    Promise.resolve(
+      command === "mail_conversation"
+        ? [mail]
+        : { ...selected, mail, attachments: [] },
+    ),
+  );
+  const noop = vi.fn();
+  await act(async () =>
+    root.render(
+      <ConversationReader
+        selected={{ ...selected, mail, attachments: [] }}
+        singleMessage
+        revision={[]}
+        accounts={[]}
+        demo
+        editorOpen={false}
+        scrollRef={scrollRef}
+        translationActions={null}
+        onReply={noop}
+        onReedit={noop}
+        onEdit={noop}
+        onSent={noop}
+        onExport={noop}
+        onAttachment={async () => {}}
+        onAction={noop}
+        onLink={noop}
+      />,
+    ),
+  );
+
+  const notice = host.querySelector(".mail-attachment-notice");
+  expect(notice?.textContent).toContain("邮件标记了附件");
+  expect(notice?.nextElementSibling?.textContent).toBe(mail.body);
+});

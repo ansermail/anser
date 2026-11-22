@@ -351,18 +351,7 @@ describe("compose formats and scheduling", () => {
         ["发送小时", selectedTime.slice(11, 13)],
         ["发送分钟", selectedTime.slice(14, 16)],
       ]) {
-        await act(async () => {
-          document
-            .querySelector(`button[aria-label="${label}"]`)!
-            .dispatchEvent(
-              new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true }),
-            );
-        });
-        const option = [...document.querySelectorAll('[role="option"]')].find(
-          (e) => e.textContent?.trim() === time,
-        );
-        expect(option).toBeTruthy();
-        await act(async () => (option as HTMLElement).click());
+        await input(`input[aria-label="${label}"]`, time);
       }
       await click("确认定时发送");
       const records = await call<OutboxRecord[]>("list_outbox");

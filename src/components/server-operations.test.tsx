@@ -134,6 +134,10 @@ describe("server operation feedback", () => {
   it("dismisses a removed account's exact task revision and refreshes the blocked count", async () => {
     fixture.retired = ["failed"];
     await render();
+    const table = host.querySelector<HTMLTableElement>(
+      'table[aria-label="服务器同步任务"]',
+    )!;
+    expect(parseFloat(table.style.minWidth)).toBeLessThanOrEqual(58);
     expect(host.textContent).not.toContain("重试");
     await act(async () =>
       [...host.querySelectorAll("button")]

@@ -2,7 +2,7 @@
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { beforeEach, afterEach, expect, it, vi } from "vitest";
-import { MailAttachments } from "./mail-attachments";
+import { MailAttachmentNotice, MailAttachments } from "./mail-attachments";
 import { call } from "../lib/api";
 import { toast } from "sonner";
 vi.mock("../lib/api", () => ({ native: true, call: vi.fn() }));
@@ -46,6 +46,34 @@ it("opens the indexed attachment directly and keeps Save As a separate action", 
   await act(async () => button("下载附件 合同.pdf").click());
   expect(download).toHaveBeenCalledExactlyOnceWith(4, "合同.pdf");
   expect(call).toHaveBeenCalledTimes(1);
+});
+
+it("uses a bounded real thumbnail for supported image attachments", async () => {
+  vi.mocked(call).mockResolvedValue("data:image/png;base64,AA==");
+  await act(async () =>
+    root.render(
+      <MailAttachments
+        mailId="image-message"
+        attachments={[
+          {
+            index: 7,
+            name: "logo-188.png",
+            size: 32 * 1024,
+            mime: "image/png",
+          },
+        ]}
+        onDownload={async () => {}}
+      />,
+    ),
+  );
+  expect(call).toHaveBeenCalledExactlyOnceWith("attachment_thumbnail", {
+    id: "image-message",
+    index: 7,
+  });
+  expect(host.querySelector(".attachment-thumb img")?.getAttribute("src")).toBe(
+    "data:image/png;base64,AA==",
+  );
+  expect(host.querySelector(".attachment-thumb .attachment-type")).toBeNull();
 });
 
 it("prevents duplicate opens while loading and lets the user retry after an error", async () => {
@@ -104,4 +132,10 @@ it("does not open a damaged attachment or invoke native commands from demo data"
   await act(async () => button("预览附件 合同.pdf").click());
   expect(call).not.toHaveBeenCalled();
   expect(toast.info).toHaveBeenCalled();
+});
+
+it("shows a reported-only attachment notice without pretending a file exists", async () => {
+  await act(async () => root.render(<MailAttachmentNotice reported />));
+  expect(host.textContent).toContain("邮件标记了附件");
+  expect(host.querySelector("button")).toBeNull();
 });

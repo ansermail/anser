@@ -232,6 +232,7 @@ export async function call<T = void>(
       "export_mail",
       "save_attachment",
       "preview_attachment",
+      "attachment_thumbnail",
       "backup_archive",
       "restore_archive",
       "set_file_association",

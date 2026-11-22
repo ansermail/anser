@@ -244,6 +244,9 @@ it("supports POP retention reminders and blocks invalid day values", async () =>
   const input = document.querySelector(
     "#server-retention-days",
   ) as HTMLInputElement;
+  expect(
+    input.closest('[data-slot="field"]')?.getAttribute("data-orientation"),
+  ).toBe("horizontal");
   async function value(text: string) {
     await act(async () => {
       Object.getOwnPropertyDescriptor(

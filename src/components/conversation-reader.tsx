@@ -37,10 +37,10 @@ import { MailBodySkeleton } from "./mail-skeleton";
 import { Alert, AlertTitle, AlertDescription } from "./ui/alert";
 import { TranslatableMailBody } from "./translatable-mail-body";
 import { MailSummaryLayer } from "./mail-summary";
-import { MailAttachments } from "./mail-attachments";
+import { MailAttachmentNotice, MailAttachments } from "./mail-attachments";
 import { MailStorageStatus } from "./mail-storage-status";
 import { SenderIdentity } from "./contact-address";
-import { RecipientAddresses } from "./mail-recipients";
+import { RecipientAddressSummary } from "./mail-recipients";
 import { call, newDraft } from "../lib/api";
 import {
   displayAddresses,
@@ -93,8 +93,8 @@ function TurnRecipients({
       {to && (
         <>
           <dt>{t("To: ")}</dt>
-          <dd title={to}>
-            <RecipientAddresses
+          <dd>
+            <RecipientAddressSummary
               value={to}
               onComposeAddress={onComposeAddress}
               onAddContact={onAddContact}
@@ -105,8 +105,8 @@ function TurnRecipients({
       {cc && (
         <>
           <dt>{t("Cc: ")}</dt>
-          <dd title={cc}>
-            <RecipientAddresses
+          <dd>
+            <RecipientAddressSummary
               value={cc}
               onComposeAddress={onComposeAddress}
               onAddContact={onAddContact}
@@ -117,8 +117,8 @@ function TurnRecipients({
       {bcc && (
         <>
           <dt>{t("Bcc: ")}</dt>
-          <dd title={bcc}>
-            <RecipientAddresses
+          <dd>
+            <RecipientAddressSummary
               value={bcc}
               onComposeAddress={onComposeAddress}
               onAddContact={onAddContact}
@@ -313,6 +313,11 @@ function Turn({
           onAddContact={onAddContact}
         />
         {detail && <ParseWarnings mail={detail.mail} />}
+        <MailAttachmentNotice
+          reported={
+            !!detail?.mail.hasAttachments && !detail?.attachments.length
+          }
+        />
         {!detail ? (
           error ? (
             <div role="alert" className="turn-error">
@@ -347,7 +352,6 @@ function Turn({
           mailId={mail.id}
           demo={demo}
           attachments={detail?.attachments || []}
-          reportedAttachments={!!detail?.mail.hasAttachments}
           onPreview={
             onAttachmentPreview
               ? (index, name) => onAttachmentPreview(mail, index, name)
@@ -810,6 +814,11 @@ export function ConversationReader({
           >
             <div className="reader-scroll-content">
               <ParseWarnings mail={selected.mail} />
+              <MailAttachmentNotice
+                reported={
+                  !!selected.mail.hasAttachments && !selected.attachments.length
+                }
+              />
               <TranslatableMailBody
                 key={`${selected.mail.id}:${selected.mail.hash}`}
                 mailId={selected.mail.id}
@@ -826,7 +835,6 @@ export function ConversationReader({
                 mailId={selected.mail.id}
                 demo={demo}
                 attachments={selected.attachments}
-                reportedAttachments={selected.mail.hasAttachments}
                 onPreview={
                   onAttachmentPreview
                     ? (index, name) =>

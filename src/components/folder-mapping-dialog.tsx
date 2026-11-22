@@ -200,7 +200,7 @@ export function FolderMappingDialog({
                   return (
                     <Field
                       key={role}
-                      className="grid items-start gap-2 sm:grid-cols-[minmax(0,1fr)_minmax(0,2fr)] sm:gap-4"
+                      className="grid items-center gap-2 sm:grid-cols-[5.5rem_minmax(0,1.35fr)_minmax(7.5rem,1fr)] sm:gap-3"
                       data-invalid={invalid}
                       data-disabled={loading || saving}
                     >
@@ -210,66 +210,72 @@ export function FolderMappingDialog({
                       >
                         {t(label)}
                       </FieldLabel>
-                      <div className="flex min-w-0 flex-1 flex-col gap-1">
-                        <Select
-                          value={value}
-                          onValueChange={(v) =>
-                            setValues((prev) => ({ ...prev, [role]: v }))
-                          }
-                          disabled={loading || saving}
+                      <Select
+                        value={value}
+                        onValueChange={(v) =>
+                          setValues((prev) => ({ ...prev, [role]: v }))
+                        }
+                        disabled={loading || saving}
+                      >
+                        <SelectTrigger
+                          id={`folder-role-${role}`}
+                          aria-label={t(label)}
+                          aria-invalid={invalid}
+                          className="w-full"
                         >
-                          <SelectTrigger
-                            id={`folder-role-${role}`}
-                            aria-label={t(label)}
-                            aria-invalid={invalid}
-                            className="w-full"
-                          >
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectGroup>
-                              <SelectItem value={AUTO}>
-                                {t("Detect automatically")}
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectGroup>
+                            <SelectItem value={AUTO}>
+                              {t("Detect automatically")}
+                            </SelectItem>
+                            <SelectItem value={NONE}>
+                              {t("Unassigned")}
+                            </SelectItem>
+                            {invalid && (
+                              <SelectItem value={value} disabled>
+                                {t("Configured folder unavailable")}
                               </SelectItem>
-                              <SelectItem value={NONE}>
-                                {t("Unassigned")}
-                              </SelectItem>
-                              {invalid && (
-                                <SelectItem value={value} disabled>
-                                  {t("Configured folder unavailable")}
-                                </SelectItem>
-                              )}
-                              {selectable.map((f) => (
-                                <SelectItem
-                                  key={f.name}
-                                  value={PREFIX + f.name}
-                                >
-                                  {f.displayName}
-                                </SelectItem>
-                              ))}
-                            </SelectGroup>
-                          </SelectContent>
-                        </Select>
-                        {invalid ? (
-                          <FieldError>
-                            {t(
-                              "The folder was removed or cannot hold messages. Select another.",
                             )}
-                          </FieldError>
-                        ) : (
-                          value === AUTO && (
-                            <FieldDescription>
-                              {detected.length
-                                ? t("Detected: {value0}", {
-                                    value0: detected
-                                      .map((f) => f.displayName)
-                                      .join("、"),
-                                  })
-                                : t("No folder detected for this purpose")}
-                            </FieldDescription>
-                          )
-                        )}
-                      </div>
+                            {selectable.map((f) => (
+                              <SelectItem key={f.name} value={PREFIX + f.name}>
+                                {f.displayName}
+                              </SelectItem>
+                            ))}
+                          </SelectGroup>
+                        </SelectContent>
+                      </Select>
+                      {invalid ? (
+                        <FieldError className="min-w-0">
+                          {t(
+                            "The folder was removed or cannot hold messages. Select another.",
+                          )}
+                        </FieldError>
+                      ) : value === AUTO ? (
+                        <FieldDescription
+                          className="min-w-0 truncate text-xs leading-5"
+                          title={
+                            detected.length
+                              ? t("Detected: {value0}", {
+                                  value0: detected
+                                    .map((f) => f.displayName)
+                                    .join("、"),
+                                })
+                              : t("No folder detected for this purpose")
+                          }
+                        >
+                          {detected.length
+                            ? t("Detected: {value0}", {
+                                value0: detected
+                                  .map((f) => f.displayName)
+                                  .join("、"),
+                              })
+                            : t("No folder detected for this purpose")}
+                        </FieldDescription>
+                      ) : (
+                        <span aria-hidden="true" />
+                      )}
                     </Field>
                   );
                 })}

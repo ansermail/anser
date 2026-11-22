@@ -235,9 +235,14 @@ function preserveLightImageSurfaces(doc: Document, view: Window) {
     )
       continue;
     const source = image.getAttribute("src") || "";
-    const brandImage = /logo|wordmark/i.test(
-      `${image.alt} ${image.title} ${source.length < 2048 ? source : ""}`,
+    const width = parseFloat(
+      image.style.width || image.getAttribute("width") || "",
     );
+    const compactImage = Number.isFinite(width) && width > 1 && width <= 240;
+    const brandImage =
+      /logo|wordmark/i.test(
+        `${image.alt} ${image.title} ${source.length < 2048 ? source : ""}`,
+      ) || compactImage;
     for (
       let parent: HTMLElement | null = image;
       parent && parent !== doc.body;
@@ -255,16 +260,25 @@ function preserveLightImageSurfaces(doc: Document, view: Window) {
         brandImage ||
         parent.matches('footer,[role="contentinfo"]') ||
         /footer|branding/i.test(`${parent.id} ${parent.className}`);
+      const nestedTable = [...parent.querySelectorAll("table")].some((table) =>
+        table.querySelector("table"),
+      );
+      // A compact wordmark can anchor a longer legal footer. Keep the authored
+      // light card with its brand colors instead of letting the dark-mode
+      // neutralizer repaint the whole footer surface.
+      const maxTextLength = brandRegion ? (compactImage ? 1200 : 320) : 0;
 
       // Keep the nearest authored backing for an image tile or a compact
-      // logo with its caption. A mail-wide table can also contain a logo.
+      // brand footer. Footers are often a multi-row presentation table, while
+      // their text still belongs to the same authored light card.
       if (
         neutral(color) &&
         luminance(color) > 0.78 &&
         !parent.matches("main,article") &&
-        !parent.querySelector("table table, h1, h2, h3, h4, h5, h6") &&
-        parent.querySelectorAll("tr").length <= 1 &&
-        (parent.textContent?.trim().length ?? 0) <= (brandRegion ? 320 : 0)
+        !nestedTable &&
+        !parent.querySelector("h1, h2, h3, h4, h5, h6") &&
+        parent.querySelectorAll("tr").length <= (brandRegion ? 4 : 1) &&
+        (parent.textContent?.trim().length ?? 0) <= maxTextLength
       )
         parent.setAttribute("data-anser-light-image-surface", "");
       break;

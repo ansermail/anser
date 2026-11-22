@@ -74,6 +74,7 @@ import {
 } from "@/lib/compose-format";
 import { localDateTime, scheduledIso } from "@/lib/schedule-time";
 import { SchedulePicker } from "./schedule-picker";
+import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
 const RichEditor = lazy(() =>
   import("./rich-editor").then((m) => ({ default: m.RichEditor })),
 );
@@ -1237,15 +1238,6 @@ export function ComposeDialog({
                   </div>
                 </div>
               </fieldset>
-              {planning && (
-                <SchedulePicker
-                  value={planTime}
-                  onChange={setPlanTime}
-                  onConfirm={(time) => void schedule(time)}
-                  onCancel={() => setPlanning(false)}
-                  busy={sending || closing}
-                />
-              )}
               <div className="compose-footer">
                 <Button
                   disabled={
@@ -1267,22 +1259,44 @@ export function ComposeDialog({
                   )}{" "}
                   {sending ? t("Preparing to send…") : t("Send message")}
                 </Button>
-                <Button
-                  variant="outline"
-                  disabled={
-                    sending ||
-                    closing ||
-                    forwardLoading ||
-                    imageLoading ||
-                    !!value.forwardSource ||
-                    !!value.externalForwardToken ||
-                    (!native && !isDemo())
-                  }
-                  onClick={() => setPlanning(!planning)}
+                <Popover
+                  open={planning}
+                  onOpenChange={setPlanning}
+                  modal={false}
                 >
-                  <Clock3 size={16} />
-                  {t("Schedule send")}
-                </Button>
+                  <PopoverTrigger asChild>
+                    <Button
+                      variant="outline"
+                      disabled={
+                        sending ||
+                        closing ||
+                        forwardLoading ||
+                        imageLoading ||
+                        !!value.forwardSource ||
+                        !!value.externalForwardToken ||
+                        (!native && !isDemo())
+                      }
+                    >
+                      <Clock3 size={16} />
+                      {t("Schedule send")}
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent
+                    side="top"
+                    align="start"
+                    sideOffset={10}
+                    collisionPadding={16}
+                    className="compose-schedule-popover w-auto p-0"
+                  >
+                    <SchedulePicker
+                      value={planTime}
+                      onChange={setPlanTime}
+                      onConfirm={(time) => void schedule(time)}
+                      onCancel={() => setPlanning(false)}
+                      busy={sending || closing}
+                    />
+                  </PopoverContent>
+                </Popover>
                 {value.signature &&
                   value.signature.accountId === value.accountId &&
                   (value.signature.body || value.signature.html) && (

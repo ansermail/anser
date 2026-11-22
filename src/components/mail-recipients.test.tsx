@@ -49,6 +49,56 @@ it("hides headers the original message did not contain", async () => {
   expect(host.textContent).not.toContain("密送");
 });
 
+it("expands long recipient groups inline and can collapse them again", async () => {
+  const addresses = (prefix: string, count: number) =>
+    Array.from(
+      { length: count },
+      (_, index) => `${prefix}${index + 1}@example.com`,
+    ).join(", ");
+  await act(async () =>
+    root.render(
+      <MailRecipients
+        to={addresses("to", 4)}
+        cc={addresses("cc", 7)}
+        bcc={addresses("bcc", 5)}
+      />,
+    ),
+  );
+
+  const rows = host.querySelectorAll("dd");
+  for (const row of rows) {
+    expect(row.querySelectorAll(".contact-address")).toHaveLength(3);
+    expect(row.hasAttribute("title")).toBe(false);
+  }
+  const ccTrigger = rows[1].querySelector<HTMLButtonElement>(
+    'button[aria-label="再显示 4 位收件人"]',
+  )!;
+  expect(ccTrigger.textContent).toBe("+4");
+  expect(ccTrigger.getAttribute("aria-expanded")).toBe("false");
+
+  await act(async () => ccTrigger.click());
+  expect(rows[1].querySelectorAll(".contact-address")).toHaveLength(7);
+  expect(
+    rows[1].querySelector(".recipient-address-summary")?.className,
+  ).toContain("is-expanded");
+  expect(ccTrigger.textContent).toBe("收起");
+  expect(ccTrigger.getAttribute("aria-expanded")).toBe("true");
+  expect(rows[0].querySelectorAll(".contact-address")).toHaveLength(3);
+  expect(rows[2].querySelectorAll(".contact-address")).toHaveLength(3);
+  expect(document.querySelector('[data-slot="popover-content"]')).toBeNull();
+
+  const bccTrigger = rows[2].querySelector<HTMLButtonElement>(
+    'button[aria-label="再显示 2 位收件人"]',
+  )!;
+  await act(async () => bccTrigger.click());
+  expect(rows[2].querySelectorAll(".contact-address")).toHaveLength(5);
+  expect(rows[0].querySelectorAll(".contact-address")).toHaveLength(3);
+
+  await act(async () => ccTrigger.click());
+  expect(rows[1].querySelectorAll(".contact-address")).toHaveLength(3);
+  expect(ccTrigger.textContent).toBe("+4");
+});
+
 it("opens supported address actions from an individual recipient", async () => {
   const onComposeAddress = vi.fn();
   const onAddContact = vi.fn();
