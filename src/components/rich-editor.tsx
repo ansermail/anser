@@ -1,5 +1,6 @@
 import { createPortal } from "react-dom";
 import { t } from "@/lib/i18n";
+import { composeCanvasCss, composeEditorCss } from "@/lib/compose-presentation";
 import {
   Dialog,
   DialogContent,
@@ -25,6 +26,12 @@ import type { Editor } from "@tiptap/core";
 import { richExtensions } from "@/lib/rich-extensions";
 import { RichToolbar } from "./rich-toolbar";
 import { RichImageControls } from "./rich-image-controls";
+import {
+  RichTableDialog,
+  RichTableMenu,
+  type TableDialogKind,
+  type TableDialogTarget,
+} from "./rich-table-controls";
 import type { Transaction } from "@tiptap/pm/state";
 import DOMPurify from "dompurify";
 import { Button } from "./ui/button";
@@ -93,6 +100,10 @@ export function RichEditor({
   const repairToggle = useRef<HTMLButtonElement>(null);
   const [imageBusy, setImageBusy] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
+  const tableDialog = useRef<TableDialogTarget | null>(null);
+  const [tableTarget, setTableTarget] = useState<TableDialogTarget | null>(
+    null,
+  );
   const latest = useRef({ disabled, onBusy, readImages });
   latest.current = { disabled, onBusy, readImages };
   const busy = useRef(false);
@@ -110,9 +121,13 @@ export function RichEditor({
     editorProps: {
       attributes: {
         class: "rich-body",
+        style: composeCanvasCss(dark),
         role: "textbox",
         "aria-label": t("Message body"),
         "aria-multiline": "true",
+        "aria-placeholder": t(
+          "Write your email. You can type Markdown, insert tables or drop images.",
+        ),
       },
       handleKeyDown: (_view, event) => {
         if (
@@ -131,10 +146,15 @@ export function RichEditor({
       },
       transformPastedHTML: (html) => DOMPurify.sanitize(html),
       handlePaste: (_view, event) => {
-        const files = [...(event.clipboardData?.files || [])].filter((file) =>
+        const clipboard = event.clipboardData;
+        const files = [...(clipboard?.files || [])].filter((file) =>
           file.type.startsWith("image/"),
         );
         if (!files.length) return false;
+        // Some clipboard formats include an image alongside the copied text.
+        // In the sample viewer, keep that text available to the paste rules.
+        if ((!native || isDemo()) && clipboard?.getData("text/plain").trim())
+          return false;
         if (
           files.length > 20 ||
           files.reduce((sum, file) => sum + file.size, 0) > 50 * 1024 * 1024
@@ -179,7 +199,11 @@ export function RichEditor({
   async function insertImages(load: () => Promise<BodyImage[]>, pos?: number) {
     const editor = instance.current;
     if (!native || isDemo()) {
-      toast.info(t("Insert body images in the desktop app"));
+      toast.info(
+        isDemo() && native
+          ? t("Body image insertion is unavailable in sample mode.")
+          : t("Insert body images in the desktop app"),
+      );
       return;
     }
     if (
@@ -277,11 +301,30 @@ export function RichEditor({
     return true;
   }
   if (!editor) return null;
+  function openTableDialog(kind: TableDialogKind) {
+    if (!editor || !editor.isEditable || disabled || imageBusy) return;
+    const target = {
+      kind,
+      doc: editor.state.doc,
+      selection: editor.state.selection,
+    };
+    tableDialog.current = target;
+    setTableTarget(target);
+  }
   return (
     <TooltipProvider>
       <div className="rich-editor">
+        <style>{composeEditorCss(dark)}</style>
         <RichToolbar
           bodyActions={bodyActions}
+          tableAction={
+            <RichTableMenu
+              editor={editor}
+              disabled={disabled || imageBusy}
+              dialog={tableDialog}
+              onDialog={openTableDialog}
+            />
+          }
           assistantAction={
             assistantHost && (
               <Tooltip>
@@ -345,8 +388,24 @@ export function RichEditor({
           }
         />
         <div className="rich-editor-content">
-          <RichImageControls editor={editor} disabled={disabled || imageBusy} />
+          <RichImageControls
+            editor={editor}
+            disabled={disabled || imageBusy}
+            tableDialog={tableDialog}
+            onResizeTable={() => openTableDialog("resize")}
+          />
         </div>
+        {tableTarget && (
+          <RichTableDialog
+            editor={editor}
+            target={tableTarget}
+            disabled={disabled || imageBusy}
+            onClose={() => {
+              tableDialog.current = null;
+              setTableTarget(null);
+            }}
+          />
+        )}
         {repairOpen &&
           assistantHost &&
           createPortal(

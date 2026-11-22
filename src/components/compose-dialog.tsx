@@ -59,6 +59,7 @@ import {
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { Textarea } from "./ui/textarea";
+import { Toggle } from "./ui/toggle";
 import { call, native, isDemo, publicPreview } from "@/lib/api";
 import type { Account, Address, Compose, ForwardFile } from "@/lib/types";
 import {
@@ -66,6 +67,7 @@ import {
   composeFormat,
   hasDraftContent,
   compileSource,
+  htmlToMarkdown,
   prepareCompose,
   prepareEditorCompose,
   type ComposeFormat,
@@ -81,6 +83,7 @@ import { toast } from "sonner";
 import { isImagePath, type BodyImage } from "@/lib/rich-body";
 import type { RichEditorHandle } from "./rich-editor";
 import { RichEditorBoundary } from "./rich-editor-boundary";
+import { composePaper } from "@/lib/compose-presentation";
 export function ComposeDialog({
   draft,
   onClose,
@@ -113,6 +116,8 @@ export function ComposeDialog({
   const [imageLoading, setImageLoading] = useState(false);
   const imageBusy = useRef(false);
   const richEditor = useRef<RichEditorHandle>(null);
+  const [markdownSource, setMarkdownSource] = useState(false);
+  const [editorRevision, setEditorRevision] = useState(0);
   const [forwardReload, setForwardReload] = useState(0);
   const [sessionReload, setSessionReload] = useState(0);
   const sessionChain = useRef<Promise<void>>(Promise.resolve());
@@ -130,8 +135,8 @@ export function ComposeDialog({
   const [deliveryPreview, setDeliveryPreview] = useState(false);
   const deliveryPreviewTrigger = useRef<HTMLButtonElement>(null);
   const previewContent = useMemo(
-    () => (deliveryPreview && value ? prepareCompose(value) : null),
-    [deliveryPreview, value],
+    () => (deliveryPreview && value ? prepareCompose(value, dark) : null),
+    [dark, deliveryPreview, value],
   );
   const [expanded, setExpanded] = useState(false),
     [planning, setPlanning] = useState(false),
@@ -310,7 +315,12 @@ export function ComposeDialog({
     cancelConfirmation();
     closingNow.current = false;
     setClosing(false);
-    setValue(draft);
+    setValue(
+      draft && composeFormat(draft) === "markdown"
+        ? prepareEditorCompose(draft)
+        : draft,
+    );
+    setMarkdownSource(false);
     setSaved(false);
     setSignatureError("");
     setForwardError("");
@@ -508,7 +518,7 @@ export function ComposeDialog({
     setSending(true);
     try {
       await persistence.current;
-      await call("queue_send", { draft: prepareCompose(latest.current) });
+      await call("queue_send", { draft: prepareCompose(latest.current, dark) });
       toast.success(
         t("Added to send history. Cancel or send now within 8 seconds."),
       );
@@ -535,7 +545,7 @@ export function ComposeDialog({
     try {
       await persistence.current;
       await call("schedule_mail", {
-        draft: prepareCompose(latest.current),
+        draft: prepareCompose(latest.current, dark),
         scheduledAt,
       });
       toast.success(
@@ -554,6 +564,7 @@ export function ComposeDialog({
   function changeFormat(format: ComposeFormat) {
     if (!value || imageBusy.current) return;
     const prepared = prepareEditorCompose(value);
+    setMarkdownSource(false);
     if (format === "plain")
       update({ format, body: prepared.body, html: "", source: "" });
     else if (format === "rich")
@@ -567,19 +578,31 @@ export function ComposeDialog({
       const source =
         format === "html"
           ? prepared.html || textToHtml(prepared.body)
-          : prepared.body;
+          : prepared.html
+            ? htmlToMarkdown(prepared.html)
+            : prepared.body;
       update({ format, source, ...compileSource(source, format) });
     }
   }
   async function importSource(file: File) {
-    if (publicPreview) return;
+    const id = latest.current?.id;
+    if (publicPreview || !id || imageBusy.current || interactionLocked.current)
+      return;
     try {
       if (file.size > 10 * 1024 * 1024)
         throw new Error(
           t("Body file exceeds 10 MB. Reduce its size before importing."),
         );
       const source = await file.text();
+      if (
+        id !== latest.current?.id ||
+        interactionLocked.current ||
+        imageBusy.current
+      )
+        return;
       const format = /\.html?$/i.test(file.name) ? "html" : "markdown";
+      setMarkdownSource(false);
+      setEditorRevision((revision) => revision + 1);
       update({ format, source, ...compileSource(source, format) });
       toast.success(t("Imported {value0}", { value0: file.name }));
     } catch (e) {
@@ -595,11 +618,14 @@ export function ComposeDialog({
   const formatChoices = {
     plain: { icon: Text, label: t("Plain text") },
     rich: { icon: Pilcrow, label: t("Rich text") },
-    markdown: { icon: Code2, label: "Markdown" },
+    markdown: { icon: Code2, label: t("Markdown") },
     html: { icon: FileCode2, label: t("HTML source") },
   };
   const FormatIcon = formatChoices[format].icon;
-  const sourceMode = format === "markdown" || format === "html";
+  const richMode =
+    format === "rich" || (format === "markdown" && !markdownSource);
+  const sourceMode =
+    format === "html" || (format === "markdown" && markdownSource);
   const bodyActions = (
     <div
       className="compose-body-actions"
@@ -636,6 +662,34 @@ export function ComposeDialog({
           </SelectGroup>
         </SelectContent>
       </Select>
+      {format === "markdown" && (
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Toggle
+              id="compose-markdown-source"
+              type="button"
+              size="sm"
+              aria-label={t("Markdown source")}
+              pressed={markdownSource}
+              disabled={sending || closing || imageLoading}
+              onPressedChange={(pressed) => {
+                richEditor.current?.closeAssistant();
+                setMarkdownSource(pressed);
+                requestAnimationFrame(() => {
+                  dialogElement.current
+                    ?.querySelector<HTMLElement>("#compose-markdown-source")
+                    ?.focus({ preventScroll: true });
+                });
+              }}
+            >
+              <FileCode2 />
+            </Toggle>
+          </TooltipTrigger>
+          <TooltipContent>
+            {markdownSource ? t("Visual editor") : t("Markdown source")}
+          </TooltipContent>
+        </Tooltip>
+      )}
       <Tooltip>
         <TooltipTrigger asChild>
           <Button
@@ -863,12 +917,14 @@ export function ComposeDialog({
                   </div>
                   <TooltipProvider delayDuration={300}>
                     <Card className="compose-body-card">
-                      {format !== "rich" && (
+                      {!richMode && (
                         <div className="format-toolbar">{bodyActions}</div>
                       )}
                       <div className="compose-editor">
-                        {format === "rich" ? (
-                          <RichEditorBoundary key={value.id}>
+                        {richMode ? (
+                          <RichEditorBoundary
+                            key={`${value.id}-${editorRevision}`}
+                          >
                             <Suspense
                               fallback={
                                 <div className="rich-editor">
@@ -909,9 +965,15 @@ export function ComposeDialog({
                                   setDeliveryPreview(false)
                                 }
                                 bodyActions={bodyActions}
-                                onChange={(body, html) =>
-                                  update({ body, html })
-                                }
+                                onChange={(body, html) => {
+                                  if (format === "markdown")
+                                    update({
+                                      body,
+                                      html,
+                                      source: htmlToMarkdown(html),
+                                    });
+                                  else update({ body, html });
+                                }}
                                 onBusy={(busy) => {
                                   imageBusy.current = busy;
                                   setImageLoading(busy);
@@ -973,7 +1035,10 @@ export function ComposeDialog({
                             onChange={(e) =>
                               update({
                                 source: e.target.value,
-                                ...compileSource(e.target.value, format),
+                                ...compileSource(
+                                  e.target.value,
+                                  format === "markdown" ? "markdown" : "html",
+                                ),
                               })
                             }
                           />
@@ -1327,8 +1392,19 @@ export function ComposeDialog({
                 <X />
               </Button>
             </header>
-            <div className="delivery-preview-body">
+            <div
+              className="delivery-preview-body"
+              data-visual={
+                format === "rich" || format === "markdown" || undefined
+              }
+              style={
+                format === "rich" || format === "markdown"
+                  ? { backgroundColor: composePaper(dark) }
+                  : undefined
+              }
+            >
               <MailContent
+                originalColors
                 title={t("Outgoing message body preview")}
                 html={
                   previewContent.deliveryHtml ||

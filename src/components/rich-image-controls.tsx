@@ -1,7 +1,9 @@
 import { t } from "@/lib/i18n";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type RefObject } from "react";
 import { EditorContent, type Editor } from "@tiptap/react";
 import type { Transaction } from "@tiptap/pm/state";
+import { CellSelection } from "@tiptap/pm/tables";
+import { TableOperations, type TableDialogTarget } from "./rich-table-controls";
 import { Scaling, RotateCcw } from "lucide-react";
 import {
   ContextMenu,
@@ -34,10 +36,15 @@ import { toast } from "sonner";
 export function RichImageControls({
   editor,
   disabled,
+  tableDialog,
+  onResizeTable,
 }: {
   editor: Editor;
   disabled: boolean;
+  tableDialog: RefObject<TableDialogTarget | null>;
+  onResizeTable: () => void;
 }) {
+  const [tableMenu, setTableMenu] = useState(false);
   const target = useRef<ImageTarget | null>(null);
   const ratio = useRef(1);
   const dialogOpen = useRef(false);
@@ -99,16 +106,46 @@ export function RichImageControls({
           <EditorContent
             editor={editor}
             onContextMenuCapture={(event) => {
-              const image =
-                event.target instanceof HTMLElement
-                  ? event.target.closest("img[src]")
-                  : null;
+              const element =
+                event.target instanceof Element ? event.target : null;
+              const image = element?.closest("img[src]");
+              const cell = element?.closest("td,th");
               if (
-                !(image instanceof HTMLImageElement) ||
-                !editor.view.dom.contains(image) ||
+                !element ||
+                !editor.view.dom.contains(element) ||
                 disabled ||
                 !editor.isEditable
               ) {
+                event.stopPropagation();
+                return;
+              }
+              if (!(image instanceof HTMLImageElement)) {
+                if (cell) {
+                  const pos = editor.view.posAtDOM(cell, 0) - 1;
+                  const { selection } = editor.state;
+                  let selected = false;
+                  if (selection instanceof CellSelection)
+                    selection.forEachCell((_cell, cellPos) => {
+                      if (cellPos === pos) selected = true;
+                    });
+                  if (!selected) {
+                    const click = editor.view.posAtCoords({
+                      left: event.clientX,
+                      top: event.clientY,
+                    });
+                    const cellNode = editor.state.doc.nodeAt(pos);
+                    const inside =
+                      click &&
+                      cellNode &&
+                      click.pos > pos &&
+                      click.pos < pos + cellNode.nodeSize;
+                    editor.commands.setTextSelection(
+                      inside ? click.pos : pos + 2,
+                    );
+                  }
+                  setTableMenu(true);
+                  return;
+                }
                 // Leave normal text/browser context menus available.
                 event.stopPropagation();
                 return;
@@ -119,6 +156,7 @@ export function RichImageControls({
                 event.stopPropagation();
                 return;
               }
+              setTableMenu(false);
               editor.commands.setNodeSelection(pos);
               target.current = {
                 bookmark: editor.state.selection.getBookmark(),
@@ -162,29 +200,37 @@ export function RichImageControls({
         <ContextMenuContent
           onCloseAutoFocus={(event) => {
             event.preventDefault();
-            if (!dialogOpen.current && !editor.isDestroyed)
+            if (
+              !dialogOpen.current &&
+              !tableDialog.current &&
+              !editor.isDestroyed
+            )
               editor.commands.focus();
           }}
         >
-          <ContextMenuGroup>
-            <ContextMenuItem
-              disabled={disabled}
-              onSelect={() => changeOpen(true)}
-            >
-              <Scaling />
-              {t("Resize image")}
-            </ContextMenuItem>
-            <ContextMenuItem
-              disabled={disabled}
-              onSelect={() => {
-                if (!apply(null, null))
-                  toast.error(t("The image changed. Select it again."));
-              }}
-            >
-              <RotateCcw />
-              {t("Restore original size")}
-            </ContextMenuItem>
-          </ContextMenuGroup>
+          {tableMenu ? (
+            <TableOperations editor={editor} context onResize={onResizeTable} />
+          ) : (
+            <ContextMenuGroup>
+              <ContextMenuItem
+                disabled={disabled}
+                onSelect={() => changeOpen(true)}
+              >
+                <Scaling />
+                {t("Resize image")}
+              </ContextMenuItem>
+              <ContextMenuItem
+                disabled={disabled}
+                onSelect={() => {
+                  if (!apply(null, null))
+                    toast.error(t("The image changed. Select it again."));
+                }}
+              >
+                <RotateCcw />
+                {t("Restore original size")}
+              </ContextMenuItem>
+            </ContextMenuGroup>
+          )}
         </ContextMenuContent>
       </ContextMenu>
       <Dialog open={open} onOpenChange={changeOpen}>

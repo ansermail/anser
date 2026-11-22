@@ -5,6 +5,7 @@ import {
   composeFormat,
   hasDraftContent,
   hexColorStyles,
+  htmlToMarkdown,
   prepareCompose,
   prepareEditorCompose,
 } from "./compose-format";
@@ -18,7 +19,7 @@ describe("mail source formats", () => {
     expect(content.html).toContain("<h1>周报</h1>");
     expect(content.html).toContain("<strong>完成</strong>");
     expect(content.html).toContain("<ul>");
-    expect(content.html).toContain("<table style=");
+    expect(content.html).toContain("<table>");
     expect(content.body).toContain("收信\t完成");
     expect(content.body).toContain("const value = 1");
     expect(content.body).not.toContain("**");
@@ -110,7 +111,11 @@ describe("mail source formats", () => {
         html: "<table><tr><td>原文</td></tr></table>",
       },
     });
-    expect(result.deliveryHtml).toContain("<strong>回复内容</strong>");
+    expect(
+      new DOMParser()
+        .parseFromString(result.deliveryHtml!, "text/html")
+        .querySelector("[data-anser-authored] strong")?.textContent,
+    ).toBe("回复内容");
     expect(result.deliveryHtml).toContain("<table>");
     expect(result.deliveryBody).toContain("原文");
     expect(result.deliveryBody).not.toContain("收件人：");
@@ -307,5 +312,91 @@ describe("rich text colors", () => {
     expect(result).toContain("rgba(255, 0, 0, 0.4)");
     expect(result).toContain("rgb(1, 2, 3)");
     expect(result).toContain("color: #c5221f");
+  });
+});
+
+describe("Markdown visual editing round trips", () => {
+  it("serializes nested formatting, aligned GFM tables and checked tasks", () => {
+    const input = [
+      "## Report",
+      "",
+      "**Strong** and *emphasis* with ~~old~~ `code` and [mail](mailto:qa@example.test)",
+      "",
+      "> A quote",
+      "",
+      "4. Start",
+      "5. Continue",
+      "",
+      "- [x] Done",
+      "  - [ ] Nested",
+      "- [ ] Next",
+      "",
+      "| Project | State |",
+      "| :--- | ---: |",
+      "| Anser | **Ready** |",
+      "",
+      "```ts",
+      "const ticks = '```';",
+      "```",
+    ].join("\n");
+    const initial = compileSource(input, "markdown").html;
+    const serialized = htmlToMarkdown(initial);
+    expect(serialized).toContain("## Report");
+    expect(serialized).toContain("4. Start");
+    expect(serialized).toContain("- [x] Done\n  - [ ] Nested\n- [ ] Next");
+    expect(serialized).toContain("| :--- | ---: |");
+    expect(serialized).toContain("````ts\nconst ticks");
+    const { html, body } = compileSource(serialized, "markdown");
+    expect(html).toContain("<strong>Strong</strong>");
+    expect(html).toContain("<em>emphasis</em>");
+    expect(html).toContain("<del>old</del>");
+    expect(html).toContain('href="mailto:qa@example.test"');
+    expect(body).toContain("Anser\tReady");
+    expect(body).toContain("const ticks");
+  });
+
+  it("uses sanitized HTML for merged, resized tables and snapshot images", () => {
+    const html =
+      '<table style="width:640px"><tr style="height:96px"><th colspan="2" data-colwidth="210,270" style="width:480px;height:96px"><p>Header</p><span class="column-resize-handle"></span></th></tr><tr><td><p>Body</p></td><td><p data-placeholder="editor-only">Result</p></td></tr></table><p><img src="data:image/png;base64,aGVsbG8=" alt="snapshot" style="width:128px"></p>';
+    const source = htmlToMarkdown(html);
+    expect(source).toContain('<th colspan="2" data-colwidth="210,270"');
+    expect(source).not.toMatch(/resize-handle|data-placeholder/);
+    const draft = prepareCompose({
+      ...newDraft("demo"),
+      format: "markdown",
+      source,
+    });
+    const doc = new DOMParser().parseFromString(
+      draft.deliveryHtml || "",
+      "text/html",
+    );
+    const table = doc.querySelector("table")!;
+    expect(table.style.width).toBe("640px");
+    expect(table.style.borderRadius).toBe("8px");
+    expect(table.style.getPropertyValue("clip-path")).toBe(
+      "inset(0 round 8px)",
+    );
+    expect(table.style.borderCollapse).toBe("collapse");
+    expect(table.rows[0].style.height).toBe("96px");
+    expect(table.rows[0].cells[0].style.width).toBe("480px");
+    expect(table.rows[0].cells[0].style.height).toBe("96px");
+    expect(doc.querySelector("img")?.style.width).toBe("128px");
+    expect(doc.querySelector("img")?.src).toContain("data:image/png;");
+  });
+
+  it("retains explicit Markdown blank content only when it contains a real block or media", () => {
+    expect(htmlToMarkdown("<p><br></p>")).toBe("");
+    expect(
+      hasDraftContent({
+        ...newDraft("demo"),
+        html: "<table><tr><td></td></tr></table>",
+      }),
+    ).toBe(true);
+    const { html } = compileSource(
+      "[ok](https://example.test) [invalid](tel:123) <a href='ftp://example.test'>FTP</a>",
+      "markdown",
+    );
+    expect(html).toContain('href="https://example.test"');
+    expect(html).not.toMatch(/href="(?:tel|ftp):/);
   });
 });

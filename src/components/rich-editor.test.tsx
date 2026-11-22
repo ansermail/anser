@@ -3,6 +3,15 @@ import { createRoot, type Root } from "react-dom/client";
 import { act } from "react";
 import { beforeEach, afterEach, it, expect, vi } from "vitest";
 import { RichEditor } from "./rich-editor";
+import { Editor } from "@tiptap/core";
+import { closeHistory } from "@tiptap/pm/history";
+import { richExtensions } from "@/lib/rich-extensions";
+import { currentTableDimensions, resizeTable } from "@/lib/rich-table";
+import {
+  compileSource,
+  htmlToMarkdown,
+  sanitizeComposeHtml,
+} from "@/lib/compose-format";
 import { toast } from "sonner";
 const mode = vi.hoisted(() => ({
   demo: false,
@@ -60,11 +69,11 @@ afterEach(async () => {
   host.remove();
   vi.unstubAllGlobals();
 });
-async function paste() {
+async function paste(text = "") {
   const event = new Event("paste", { bubbles: true, cancelable: true });
   Object.defineProperty(event, "clipboardData", {
     value: {
-      getData: () => "",
+      getData: (format: string) => (format === "text/plain" ? text : ""),
       files: [
         new File(
           [Uint8Array.from(atob(png), (c) => c.charCodeAt(0))],
@@ -174,7 +183,7 @@ it("preview rejects real clipboard files and disables the native image picker", 
   await paste();
   expect(change).not.toHaveBeenCalled();
   expect(read).not.toHaveBeenCalled();
-  expect(toast.info).toHaveBeenCalled();
+  expect(toast.info).toHaveBeenCalledWith("演示模式暂不支持插入正文图片。");
   expect(
     (
       document.querySelector(
@@ -182,6 +191,12 @@ it("preview rejects real clipboard files and disables the native image picker", 
       ) as HTMLButtonElement
     ).disabled,
   ).toBe(true);
+
+  vi.mocked(toast.info).mockClear();
+  await paste("# Markdown\n\n正文内容");
+  expect(document.querySelector(".rich-body h1")?.textContent).toBe("Markdown");
+  expect(document.querySelector(".rich-body img")).toBeNull();
+  expect(toast.info).not.toHaveBeenCalled();
 });
 
 it("right-clicks only the target image, locks proportions, supports independent sizes and cancel", async () => {
@@ -419,4 +434,233 @@ it("shows a specific repair failure without assistant-ui's loading dot", async (
     "模型返回内容格式不正确，请重试或换用支持 JSON 输出的模型。",
   );
   expect(host.textContent).not.toContain("●");
+});
+
+it("keeps resized columns after merge, draft serialization and undo", () => {
+  const editor = new Editor({ element: host, extensions: richExtensions() });
+  try {
+    editor.commands.insertTable({ rows: 2, cols: 2, withHeaderRow: true });
+    expect(resizeTable(editor, { width: 640, column: 210, row: 96 })).toBe(
+      true,
+    );
+    expect(currentTableDimensions(editor)).toEqual({
+      width: 640,
+      column: 210,
+      row: 96,
+    });
+    editor.commands.goToNextCell();
+    expect(resizeTable(editor, { column: 270, row: 96 })).toBe(true);
+    editor.commands.setCellSelection({ anchorCell: 2, headCell: 6 });
+    expect(editor.commands.mergeCells()).toBe(true);
+    const html = sanitizeComposeHtml(editor.getHTML());
+    expect(html).toContain('data-colwidth="210,270"');
+    expect(html).toMatch(/width:\s*480px/);
+    expect(html).not.toContain("resize-handle");
+    editor.commands.setContent(
+      compileSource(htmlToMarkdown(html), "markdown").html,
+    );
+    expect(editor.getHTML()).toContain('data-colwidth="210,270"');
+    editor.commands.setTextSelection(4);
+    editor.view.dispatch(closeHistory(editor.state.tr));
+    expect(resizeTable(editor, { width: 800, column: 240, row: 120 })).toBe(
+      true,
+    );
+    expect(editor.commands.undo()).toBe(true);
+    expect(currentTableDimensions(editor)).toEqual({
+      width: 640,
+      column: 210,
+      row: 96,
+    });
+  } finally {
+    editor.destroy();
+  }
+});
+
+it("builds a table with an editable data row and accepts a typed alignment line", () => {
+  const editor = new Editor({
+    element: host,
+    content: "<p>| Item | State |</p>",
+    extensions: richExtensions(),
+  });
+  const enter = () =>
+    editor.view.dom.dispatchEvent(
+      new KeyboardEvent("keydown", {
+        key: "Enter",
+        bubbles: true,
+        cancelable: true,
+      }),
+    );
+  try {
+    editor.commands.setTextSelection(editor.state.doc.content.size - 1);
+    enter();
+    expect(editor.view.dom.querySelectorAll("tr")).toHaveLength(2);
+    expect(editor.state.selection.$from.node(-1).type.name).toBe("tableCell");
+    editor.commands.insertContent("| :--- | ---: |");
+    enter();
+    expect(editor.view.dom.querySelector("th")?.style.textAlign).toBe("left");
+    expect(
+      editor.view.dom.querySelector<HTMLTableCellElement>("td:last-child")
+        ?.style.textAlign,
+    ).toBe("right");
+    expect(editor.view.dom.textContent).not.toContain("---");
+    editor.commands.setContent("<p>| Single |</p>");
+    editor.commands.setTextSelection(editor.state.doc.content.size - 1);
+    enter();
+    expect(editor.view.dom.querySelector("th")?.textContent).toBe("Single");
+    expect(editor.view.dom.querySelectorAll("td")).toHaveLength(1);
+  } finally {
+    editor.destroy();
+  }
+});
+
+it("offers real task checkboxes after smart Markdown paste while preserving code and links", () => {
+  const editor = new Editor({ element: host, extensions: richExtensions() });
+  try {
+    const event = new Event("paste", { bubbles: true, cancelable: true });
+    Object.defineProperty(event, "clipboardData", {
+      value: {
+        files: [],
+        getData: (format: string) =>
+          format === "text/plain"
+            ? "## Update\n\n- [x] Done\n\n> Quoted\n\n`code` and [Docs](https://example.test)"
+            : "",
+      },
+    });
+    editor.view.dom.dispatchEvent(event);
+    expect(editor.view.dom.querySelector("h2")?.textContent).toBe("Update");
+    expect(
+      editor.view.dom.querySelector<HTMLInputElement>(
+        'li[data-type="taskItem"] input',
+      )?.checked,
+    ).toBe(true);
+    expect(editor.view.dom.querySelector("blockquote")?.textContent).toBe(
+      "Quoted",
+    );
+    expect(editor.view.dom.querySelector("code")?.textContent).toBe("code");
+    expect(editor.view.dom.querySelector("a")?.href).toBe(
+      "https://example.test/",
+    );
+  } finally {
+    editor.destroy();
+  }
+});
+
+it("turns typed Markdown into marks and keeps unsafe link syntax as text", () => {
+  const editor = new Editor({ element: host, extensions: richExtensions() });
+  function type(text: string) {
+    for (const character of text) {
+      const { state, view } = editor;
+      const { from, to } = state.selection;
+      const insert = () => state.tr.insertText(character, from, to);
+      if (
+        !view.someProp("handleTextInput", (handler) =>
+          handler(view, from, to, character, insert),
+        )
+      )
+        view.dispatch(insert());
+    }
+  }
+  try {
+    type(
+      "**bold** *italic* ~~old~~ `code` ==highlight== [Docs](https://example.test) [unsafe](javascript:alert)",
+    );
+    expect(editor.getHTML()).toMatch(
+      /<strong>bold<\/strong>.*<em>italic<\/em>.*<s>old<\/s>.*<code>code<\/code>.*<mark[^>]*>highlight<\/mark>/,
+    );
+    expect(editor.view.dom.querySelector("a")?.textContent).toBe("Docs");
+    expect(editor.getHTML()).toContain("[unsafe](javascript:alert)");
+  } finally {
+    editor.destroy();
+  }
+});
+
+it("drags either side of a divider and resizes the whole table at the outer edge", () => {
+  const editor = new Editor({
+    element: host,
+    extensions: richExtensions(),
+    content:
+      "<table><tr><td>A</td><td>B</td></tr><tr><td>C</td><td>D</td></tr></table>",
+  });
+  try {
+    const dom = editor.view.dom;
+    let leftWidth = 300,
+      rightWidth = 300;
+    dom.setPointerCapture = vi.fn();
+    const rect = (element: Element, x: number, width: number) => {
+      element.getBoundingClientRect = () => new DOMRect(x, 10, width, 80);
+    };
+    function layout() {
+      const table = dom.querySelector("table")!;
+      rect(table, 10, leftWidth + rightWidth);
+      for (const row of table.rows) {
+        rect(row.cells[0], 10, leftWidth);
+        rect(row.cells[1], 10 + leftWidth, rightWidth);
+      }
+      return [...table.rows[0].cells];
+    }
+
+    function pointer(target: Element, type: string, x: number) {
+      const event = new MouseEvent(type, {
+        button: 0,
+        clientX: x,
+        clientY: 30,
+        bubbles: true,
+        cancelable: true,
+      });
+      Object.defineProperties(event, {
+        pointerType: { value: "mouse" },
+        pointerId: { value: 1 },
+      });
+      target.dispatchEvent(event);
+      return event;
+    }
+    function drag(
+      cell: Element,
+      start: number,
+      end: number,
+      type = "pointerup",
+    ) {
+      expect(pointer(cell, "pointerdown", start).defaultPrevented).toBe(true);
+      pointer(dom, "pointermove", end);
+      pointer(dom, type, end);
+    }
+
+    drag(layout()[1], 310, 210);
+    expect(editor.getHTML()).toContain('data-colwidth="200"');
+    expect(editor.getHTML()).toContain('data-colwidth="400"');
+    expect(editor.getHTML()).toMatch(/<table style="[^"]*width:\s*100%/);
+    expect(editor.getHTML()).not.toContain("resize-handle");
+    leftWidth = 200;
+    rightWidth = 400;
+
+    drag(layout()[0], 209, 259);
+    expect(editor.getHTML()).toContain('data-colwidth="250"');
+    expect(editor.getHTML()).toContain('data-colwidth="350"');
+    leftWidth = 250;
+    rightWidth = 350;
+
+    drag(layout()[1], 609, 469);
+    expect(editor.getHTML()).toMatch(/<table style="[^"]*width:\s*460px/);
+    expect(editor.getHTML()).toContain('data-colwidth="192"');
+    expect(editor.getHTML()).toContain('data-colwidth="268"');
+    expect(editor.commands.undo()).toBe(true);
+    expect(editor.getHTML()).toMatch(/<table style="[^"]*width:\s*100%/);
+    expect(editor.getHTML()).toContain('data-colwidth="250"');
+
+    drag(layout()[1], 609, 649, "pointercancel");
+    expect(editor.getHTML()).toMatch(/<table style="[^"]*width:\s*100%/);
+    drag(layout()[1], 609, 649);
+    expect(editor.getHTML()).toMatch(/<table style="[^"]*width:\s*640px/);
+    expect(editor.getHTML()).toContain('data-colwidth="267"');
+    expect(editor.getHTML()).toContain('data-colwidth="373"');
+    editor.commands.setTextSelection(4);
+    expect(resizeTable(editor, { width: null, column: null, row: null })).toBe(
+      true,
+    );
+    const reset = dom.querySelector("col")!;
+    expect(reset.style.width).toBe("");
+    expect(editor.getHTML()).toMatch(/<table style="[^"]*width:\s*100%/);
+  } finally {
+    editor.destroy();
+  }
 });

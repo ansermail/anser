@@ -5,6 +5,7 @@ import { Editor } from "@tiptap/core";
 import { expect, it, vi } from "vitest";
 import { richExtensions } from "../lib/rich-extensions";
 import { RichToolbar } from "./rich-toolbar";
+import { RichTableMenu } from "./rich-table-controls";
 import { TooltipProvider } from "./ui/tooltip";
 
 it("applies a low-frequency format only to the preserved selection and returns focus to the body", async () => {
@@ -68,5 +69,60 @@ it("applies a low-frequency format only to the preserved selection and returns f
     toolbar.remove();
     Range.prototype.getBoundingClientRect = originalRect;
     Range.prototype.getClientRects = originalRects;
+  }
+});
+
+it("inserts the table selected from the toolbar grid and edits its row", async () => {
+  Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
+  const target = document.createElement("div");
+  const toolbar = document.createElement("div");
+  document.body.append(target, toolbar);
+  const editor = new Editor({ element: target, extensions: richExtensions() });
+  const root = createRoot(toolbar);
+  const menu = () =>
+    toolbar
+      .querySelector('[aria-label="表格"]')!
+      .dispatchEvent(
+        new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true }),
+      );
+  const choose = (label: string) => {
+    const item = [
+      ...document.querySelectorAll<HTMLElement>('[role="menuitem"]'),
+    ].find(
+      (node) =>
+        (node.getAttribute("aria-label") || node.textContent?.trim()) === label,
+    );
+    expect(item).toBeTruthy();
+    item!.click();
+  };
+  try {
+    await act(async () =>
+      root.render(
+        <TooltipProvider>
+          <RichTableMenu
+            editor={editor}
+            disabled={false}
+            dialog={{ current: null }}
+            onDialog={() => {}}
+          />
+        </TooltipProvider>,
+      ),
+    );
+    await act(async () => {
+      menu();
+    });
+    await act(async () => choose("插入 2 行 × 3 列"));
+    expect(target.querySelectorAll("tr")).toHaveLength(2);
+    expect(target.querySelectorAll("th")).toHaveLength(3);
+    await act(async () => {
+      menu();
+    });
+    await act(async () => choose("在下方插入行"));
+    expect(target.querySelectorAll("tr")).toHaveLength(3);
+  } finally {
+    await act(async () => root.unmount());
+    editor.destroy();
+    target.remove();
+    toolbar.remove();
   }
 });

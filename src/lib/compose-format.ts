@@ -2,6 +2,17 @@ import { marked } from "marked";
 import DOMPurify from "dompurify";
 import { dateLocale, t } from "./i18n";
 import type { Compose } from "./types";
+import {
+  applyComposePresentation,
+  composeTaskStyle,
+  composeTaskSymbol,
+  styleComposeCanvas,
+} from "./compose-presentation";
+import {
+  ComposeMarkdownRenderer,
+  composeLinkAllowed,
+  serializeMarkdown,
+} from "./markdown-serialization";
 
 export type ComposeFormat = NonNullable<Compose["format"]>;
 export function composeFormat(draft: Compose): ComposeFormat {
@@ -31,12 +42,13 @@ export function hasDraftContent(draft: Compose): boolean {
   if (htmlToText(draft.html).trim()) return true;
   const doc = new DOMParser().parseFromString(draft.html, "text/html");
   return !!doc.body.querySelector(
-    "img,video,audio,svg,canvas,object,embed,iframe,hr",
+    "img,video,audio,svg,canvas,object,embed,iframe,hr,table",
   );
 }
 
 export function sanitizeComposeHtml(source: string) {
-  return DOMPurify.sanitize(source, {
+  // Resize handles are decorations, but also discard stray copies from pasted markup.
+  const document = DOMPurify.sanitize(source, {
     WHOLE_DOCUMENT: true,
     FORBID_TAGS: [
       "script",
@@ -54,8 +66,13 @@ export function sanitizeComposeHtml(source: string) {
       "meta",
       "link",
     ],
-    FORBID_ATTR: ["action", "formaction"],
-  });
+    FORBID_ATTR: ["action", "formaction", "data-placeholder"],
+    RETURN_DOM: true,
+  }) as HTMLElement;
+  document
+    .querySelectorAll(".column-resize-handle,.row-resize-handle")
+    .forEach((handle) => handle.remove());
+  return document.outerHTML;
 }
 export function htmlToText(html: string) {
   const doc = new DOMParser().parseFromString(html, "text/html");
@@ -75,52 +92,43 @@ export function htmlToText(html: string) {
     .forEach((e) => e.append("\n"));
   return (doc.body.textContent || "").replace(/\n{3,}/g, "\n\n").trim();
 }
-export function compileSource(source: string, format: "markdown" | "html") {
-  const markup =
-    format === "markdown"
-      ? marked.parse(source, { async: false, gfm: true, breaks: true })
-      : source;
-  let html = sanitizeComposeHtml(markup);
-  if (format === "markdown") {
-    const doc = new DOMParser().parseFromString(html, "text/html");
-    doc.body.style.cssText =
-      "font-family:-apple-system,BlinkMacSystemFont,Arial,sans-serif;font-size:14px;line-height:1.7;color:#242424";
-    doc
-      .querySelectorAll("table")
-      .forEach((e) =>
-        e.setAttribute(
-          "style",
-          "border-collapse:collapse;max-width:100%;margin:12px 0",
-        ),
-      );
-    doc
-      .querySelectorAll("th,td")
-      .forEach((e) =>
-        e.setAttribute(
-          "style",
-          "border:1px solid #ddd;padding:8px 12px;text-align:left",
-        ),
-      );
-    doc
-      .querySelectorAll("pre")
-      .forEach((e) =>
-        e.setAttribute(
-          "style",
-          "padding:12px;background:#f5f5f5;white-space:pre-wrap",
-        ),
-      );
-    doc
-      .querySelectorAll("blockquote")
-      .forEach((e) =>
-        e.setAttribute(
-          "style",
-          "border-left:3px solid #ddd;margin-left:0;padding-left:12px;color:#666",
-        ),
-      );
-    html = doc.documentElement.outerHTML;
+export function markdownMarkup(source: string) {
+  const markup = marked.parse(source, {
+    async: false,
+    gfm: true,
+    breaks: true,
+    renderer: new ComposeMarkdownRenderer(),
+  });
+  const doc = new DOMParser().parseFromString(
+    sanitizeComposeHtml(markup),
+    "text/html",
+  );
+  for (const link of doc.querySelectorAll("a[href]")) {
+    if (!composeLinkAllowed(link.getAttribute("href") || ""))
+      link.removeAttribute("href");
   }
+  return doc;
+}
+
+export function htmlToMarkdown(html: string): string {
+  const doc = new DOMParser().parseFromString(
+    sanitizeComposeHtml(html),
+    "text/html",
+  );
+  return serializeMarkdown(doc.body);
+}
+
+export function compileSource(source: string, format: "markdown" | "html") {
+  if (format === "html") {
+    const html = sanitizeComposeHtml(source);
+    return { html, body: htmlToText(html) };
+  }
+  const doc = markdownMarkup(source);
+  normalizeColors(doc);
+  const html = doc.documentElement.outerHTML;
   return { html, body: htmlToText(html) };
 }
+
 export function prepareEditorCompose(draft: Compose): Compose {
   const format = composeFormat(draft);
   if (format === "markdown" || format === "html")
@@ -153,15 +161,22 @@ const hexColor = (value: string) => {
 
 // ProseMirror renders inline styles through CSSOM, so editor colors come back
 // as rgb(). Store hex instead; desktop mail clients prefer it.
-export function hexColorStyles(html: string) {
-  const doc = new DOMParser().parseFromString(html, "text/html");
-  for (const element of doc.querySelectorAll("[style]")) {
+function normalizeColors(container: Document | HTMLElement) {
+  const elements = [...container.querySelectorAll("[style]")];
+  if (container instanceof HTMLElement && container.hasAttribute("style"))
+    elements.unshift(container);
+  for (const element of elements) {
     const style = element.getAttribute("style") || "";
     element.setAttribute(
       "style",
       style.replace(/rgba?\([^)]+\)/g, (value) => hexColor(value)),
     );
   }
+}
+
+export function hexColorStyles(html: string) {
+  const doc = new DOMParser().parseFromString(html, "text/html");
+  normalizeColors(doc);
   return doc.body.innerHTML;
 }
 
@@ -198,7 +213,7 @@ function withSignature(editor: Compose) {
   const authored = new DOMParser().parseFromString(authoredHtml, "text/html");
   const hasAuthoredContent =
     !!htmlToText(authoredHtml).trim() ||
-    !!authored.body.querySelector("img,video,audio,svg,canvas,hr");
+    !!authored.body.querySelector("img,video,audio,svg,canvas,hr,table");
   if (!hasAuthoredContent) authored.body.replaceChildren();
   const doc = new DOMParser().parseFromString(
     authored.documentElement.outerHTML,
@@ -245,38 +260,87 @@ function withSignature(editor: Compose) {
   return { body, html: sanitizeComposeHtml(doc.documentElement.outerHTML) };
 }
 
-function staticTaskMarkup(html: string): string {
-  if (!html.includes("taskItem")) return html;
+function firstContent(container: Element) {
+  return [...container.childNodes].find(
+    (node) => node.nodeType === Node.ELEMENT_NODE || node.textContent?.trim(),
+  );
+}
+
+function deliveryMarkup(html: string, visual: boolean, dark: boolean): string {
+  if (!html || (!visual && !html.includes("taskItem"))) return html;
   const doc = new DOMParser().parseFromString(html, "text/html");
-  for (const item of doc.querySelectorAll('li[data-type="taskItem"]')) {
+  if (visual) applyComposePresentation(doc, dark);
+  for (const item of doc.querySelectorAll<HTMLLIElement>(
+    'li[data-type="taskItem"]',
+  )) {
     item.querySelector(":scope > label")?.remove();
-    const paragraph = item.querySelector(":scope > div > p") || item;
-    if (paragraph.querySelector("[data-anser-task-prefix]")) continue;
+    item.style.listStyleType = "none";
+    const content = item.querySelector(":scope > div") || item;
+    // In rich text there is a paragraph inside the wrapper. A tight Markdown
+    // list can have inline content directly in it.
+    const first = firstContent(content);
+    const line = first instanceof HTMLParagraphElement ? first : content;
+    if (line.querySelector(":scope > [data-anser-task-prefix]")) continue;
     const marker = doc.createElement("span");
     marker.setAttribute("data-anser-task-prefix", "true");
-    marker.textContent =
-      item.getAttribute("data-checked") === "true" ? "☑ " : "☐ ";
-    paragraph.prepend(marker);
+    if (visual) marker.style.cssText = composeTaskStyle(dark);
+    const checked = item.getAttribute("data-checked") === "true";
+    marker.textContent = `${checked ? composeTaskSymbol.checked : composeTaskSymbol.unchecked}\u00a0`;
+    line.prepend(marker);
   }
+  normalizeColors(doc);
   return doc.documentElement.outerHTML;
 }
 
+function authoredContent(
+  target: Document,
+  source: Document,
+  visual: boolean,
+  dark: boolean,
+) {
+  const content = target.createElement("div");
+  content.setAttribute("data-anser-authored", "true");
+  for (const attribute of source.body.attributes)
+    content.setAttribute(attribute.name, attribute.value);
+  if (visual) styleComposeCanvas(content, dark);
+  else {
+    content.style.fontFamily ||=
+      "-apple-system,BlinkMacSystemFont,Arial,sans-serif";
+    content.style.fontSize ||= "14px";
+    content.style.lineHeight ||= "1.7";
+    content.style.color ||= "#242424";
+  }
+  content.append(...source.body.childNodes);
+  return content;
+}
+
 // Preserve the editable text separately; scheduling/cancellation must not quote twice.
-export function prepareCompose(draft: Compose): Compose {
+export function prepareCompose(draft: Compose, dark = false): Compose {
   const editor = prepareEditorCompose(draft);
+  const format = composeFormat(editor);
+  const visual = format === "rich" || format === "markdown";
   // Task checkboxes are editor controls. Mail gets static checked/unchecked
   // markers before sanitization removes inputs; the draft stays editable.
-  const taskHtml = staticTaskMarkup(editor.html || "");
+  const html = deliveryMarkup(editor.html || "", visual, dark);
   const signed = withSignature({
     ...editor,
-    html: taskHtml,
+    html,
     body: editor.html?.includes("taskItem")
-      ? htmlToText(taskHtml)
+      ? htmlToText(html).replace(/([☑☐])\u00a0/g, "$1 ")
       : editor.body,
   });
   const ownHtml = signed.html ? sanitizeComposeHtml(signed.html) : "";
-  if (!draft.quote?.included)
-    return { ...editor, deliveryBody: signed.body, deliveryHtml: ownHtml };
+  const parser = new DOMParser();
+  if (!draft.quote?.included) {
+    let deliveryHtml = ownHtml;
+    if (ownHtml && visual) {
+      const doc = parser.parseFromString(ownHtml, "text/html");
+      doc.body.append(authoredContent(doc, doc, visual, dark));
+      normalizeColors(doc);
+      deliveryHtml = doc.documentElement.outerHTML;
+    }
+    return { ...editor, deliveryBody: signed.body, deliveryHtml };
+  }
   const quote = draft.quote;
   const header = quoteHeader(draft);
   const deliveryBody = [
@@ -288,7 +352,6 @@ export function prepareCompose(draft: Compose): Compose {
     .join("\n\n");
   if (!quote.html && !ownHtml)
     return { ...editor, deliveryBody, deliveryHtml: "" };
-  const parser = new DOMParser();
   const original = parser.parseFromString(
     sanitizeComposeHtml(quote.html || textToHtml(quote.body)),
     "text/html",
@@ -297,21 +360,8 @@ export function prepareCompose(draft: Compose): Compose {
     ownHtml || textToHtml(signed.body),
     "text/html",
   );
-  const content = original.createElement("div");
-  content.setAttribute("data-anser-authored", "true");
-  for (const attribute of authored.body.attributes)
-    content.setAttribute(attribute.name, attribute.value);
-  content.style.fontFamily ||=
-    "-apple-system,BlinkMacSystemFont,Arial,sans-serif";
-  content.style.fontSize ||= "14px";
-  content.style.lineHeight ||= "1.7";
-  content.style.color ||= "#242424";
+  const content = authoredContent(original, authored, visual, dark);
   content.style.marginBottom = "24px";
-  content.append(
-    ...[...authored.body.childNodes].map((node) =>
-      original.importNode(node, true),
-    ),
-  );
   for (const style of authored.head.querySelectorAll("style"))
     original.head.append(original.importNode(style, true));
   const heading = original.createElement("div");
@@ -320,6 +370,7 @@ export function prepareCompose(draft: Compose): Compose {
     "white-space:pre-wrap;font-family:Arial,sans-serif;font-size:13px;line-height:1.7;color:#666;border-top:1px solid #ddd;padding-top:12px;margin-bottom:16px";
   heading.textContent = header;
   original.body.prepend(content, heading);
+  if (visual) normalizeColors(content);
   return {
     ...editor,
     deliveryBody,

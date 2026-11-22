@@ -200,14 +200,65 @@ describe("compose formats and scheduling", () => {
     ).toBe("Still here");
   });
   it("updates the side preview from Markdown and saves the original source", async () => {
+    await act(async () => {
+      await import("./rich-editor");
+    });
     await format("markdown");
     const source = 'textarea[aria-label="Markdown 源码"]';
+    await vi.waitFor(() =>
+      expect(document.querySelector(".rich-body")).toBeTruthy(),
+    );
+    expect(document.querySelector(source)).toBeNull();
     expect(document.querySelector(".compose-body-card iframe")).toBeNull();
     expect(document.querySelector(".compose-preview-panel")).toBeNull();
+    await click("Markdown 源码");
     await click("发送预览");
-    await input(source, "# Heading\n\n**bold**");
+    await input(
+      source,
+      "# Heading\n\n**bold** with `sample.id`\n\n- [x] 已完成\n- [ ] 待处理\n\n```ts\nconst x = 1\n```\n\n> Quote\n\n| Title | Status |\n|---|---|\n| Example | Ready |",
+    );
     const frame = document.querySelector('iframe[title="发送效果预览正文"]');
-    expect(frame?.getAttribute("srcdoc")).toContain("<strong>bold</strong>");
+    const preview = new DOMParser().parseFromString(
+      frame?.getAttribute("srcdoc") || "",
+      "text/html",
+    );
+    expect(preview.querySelector("h1")?.style.marginTop).toBe("0px");
+    expect(preview.querySelector("h1")?.style.fontSize).toBe("1.75em");
+    expect(preview.querySelector("pre")?.style.borderRadius).toBe("8px");
+    expect(preview.querySelector("pre code")?.textContent).toBe("const x = 1");
+    expect(
+      preview.querySelector<HTMLElement>("pre code")?.style.backgroundColor,
+    ).toBe("");
+    const badge = preview.querySelector<HTMLElement>("p code")!;
+    expect(badge.style.borderRadius).toBe("4px");
+    expect(badge.style.padding).toBe("2px 4px");
+    expect(badge.style.backgroundColor).toBe("rgb(38, 38, 38)");
+    const quoteRail = preview.querySelector<HTMLElement>(
+      "blockquote > [data-anser-quote-rail]",
+    );
+    expect(quoteRail?.style.borderRadius).toBe("999px");
+    expect(quoteRail?.style.backgroundColor).toBe("rgb(168, 203, 189)");
+    expect(preview.querySelector("th")?.style.backgroundColor).toBe(
+      "rgb(37, 37, 37)",
+    );
+    expect(
+      preview.querySelector<HTMLElement>("[data-anser-authored]")?.style
+        .backgroundColor,
+    ).toBe("rgb(24, 24, 24)");
+    expect(preview.querySelector("strong")?.textContent).toBe("bold");
+    expect(
+      [...preview.querySelectorAll("li")].map((item) => item.textContent),
+    ).toEqual(["☑\u00a0已完成", "☐\u00a0待处理"]);
+    expect(preview.querySelector("input")).toBeNull();
+    await click("Markdown 源码");
+    await vi.waitFor(() =>
+      expect(document.querySelector(".rich-body h1")?.textContent).toBe(
+        "Heading",
+      ),
+    );
+    expect(document.querySelector(".rich-body strong")?.textContent).toBe(
+      "bold",
+    );
     expect(document.querySelector(".compose-body-card iframe")).toBeNull();
     await click("保存草稿并关闭");
     const drafts = await call<Compose[]>("list_drafts");
@@ -215,71 +266,127 @@ describe("compose formats and scheduling", () => {
     expect(drafts[0].source).toContain("**bold**");
     expect(drafts[0].body).not.toContain("**");
   });
-  it("creates a frozen demo plan and cancellation returns a new editable draft", async () => {
-    seed = {
-      ...seed,
-      id: "scheduled-quote",
-      quote: {
-        kind: "forward",
-        included: true,
-        sender: "lin@example.com",
-        recipients: "",
-        date: "2026-10-01T10:00:00Z",
-        subject: "Report",
-        body: "original quote",
-        html: "<p>original quote</p>",
-      },
-    };
-    await renderHarness();
-    await format("html");
-    await input(
-      'textarea[aria-label="HTML 源码"]',
-      "<style>td{color:red}</style><table><tr><td>planned</td></tr></table>",
+  it("renders a Markdown file on the canvas and preserves its original source", async () => {
+    await act(async () => {
+      await import("./rich-editor");
+    });
+    const source = "## Imported\n\n- [x] Reviewed";
+    const file = new File([source], "notes.md", { type: "text/markdown" });
+    const picker = document.querySelector(
+      'input[aria-label="导入正文文件"]',
+    ) as HTMLInputElement;
+    Object.defineProperty(picker, "files", {
+      value: [file],
+      configurable: true,
+    });
+    await act(async () =>
+      picker.dispatchEvent(new Event("change", { bubbles: true })),
     );
-    await click("定时发送");
-    const selectedTime = localDateTime(new Date(Date.now() + 86400000));
-    await click("选择发送日期");
-    const nextDay = new Date(selectedTime);
-    const day = document.querySelector(
-      `[data-day="${nextDay.toLocaleDateString()}"]`,
-    ) as HTMLButtonElement;
-    expect(day).toBeTruthy();
-    await act(async () => day.click());
-    for (const [label, time] of [
-      ["发送小时", selectedTime.slice(11, 13)],
-      ["发送分钟", selectedTime.slice(14, 16)],
-    ]) {
-      await act(async () => {
-        document
-          .querySelector(`button[aria-label="${label}"]`)!
-          .dispatchEvent(
-            new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true }),
-          );
-      });
-      const option = [...document.querySelectorAll('[role="option"]')].find(
-        (e) => e.textContent?.trim() === time,
+    await act(async () => {
+      await vi.waitFor(() =>
+        expect(document.querySelector(".rich-body h2")?.textContent).toBe(
+          "Imported",
+        ),
       );
-      expect(option).toBeTruthy();
-      await act(async () => (option as HTMLElement).click());
-    }
-    await click("确认定时发送");
-    const records = await call<OutboxRecord[]>("list_outbox");
-    expect(records).toHaveLength(1);
-    expect(records[0].status).toBe("scheduled");
-    expect(records[0].scheduledAt).toBe(new Date(selectedTime).toISOString());
-    expect(records[0].draft.html).toContain("td{color:red}");
-    expect(records[0].draft.deliveryHtml).toContain("original quote");
-    expect(records[0].draft.html).not.toContain("original quote");
-    expect(await call<Compose[]>("list_drafts")).toHaveLength(0);
-    const restored = await call<Compose>("cancel_schedule", { id: seed.id });
-    expect(restored.id).not.toBe(seed.id);
-    expect(restored.source).toContain("<table>");
-    expect(restored.quote?.included).toBe(true);
-    expect(restored.quote?.html).toBe("<p>original quote</p>");
-    expect((await call<OutboxRecord[]>("list_outbox"))[0].status).toBe(
-      "cancelled",
-    );
+    });
+    expect(
+      document.querySelector<HTMLInputElement>(
+        '.rich-body input[type="checkbox"]',
+      )?.checked,
+    ).toBe(true);
+    await click("Markdown 源码");
+    expect(
+      document.querySelector<HTMLTextAreaElement>(
+        'textarea[aria-label="Markdown 源码"]',
+      )?.value,
+    ).toBe(source);
   });
+  it.each(["html", "markdown"] as const)(
+    "freezes the %s preview in the demo plan and restores the editable source on cancellation",
+    async (bodyFormat) => {
+      seed = {
+        ...seed,
+        id: "scheduled-quote",
+        quote: {
+          kind: "forward",
+          included: true,
+          sender: "lin@example.com",
+          recipients: "",
+          date: "2026-10-01T10:00:00Z",
+          subject: "Report",
+          body: "original quote",
+          html: "<p>original quote</p>",
+        },
+      };
+      await renderHarness();
+      await format(bodyFormat);
+      if (bodyFormat === "markdown") await click("Markdown 源码");
+      const authoredSource =
+        bodyFormat === "html"
+          ? "<style>td{color:red}</style><table><tr><td>planned</td></tr></table>"
+          : "# Planned\n\nUse `sample.id`.\n\n> Sample quote";
+      await input(
+        `textarea[aria-label="${bodyFormat === "html" ? "HTML" : "Markdown"} 源码"]`,
+        authoredSource,
+      );
+      await click("发送预览");
+      const previewFrame = document.querySelector<HTMLIFrameElement>(
+        'iframe[title="发送效果预览正文"]',
+      );
+      const parser = new DOMParser();
+      const preview = parser.parseFromString(
+        previewFrame?.srcdoc || "",
+        "text/html",
+      );
+      await click("定时发送");
+      const selectedTime = localDateTime(new Date(Date.now() + 86400000));
+      await click("选择发送日期");
+      const nextDay = new Date(selectedTime);
+      const day = document.querySelector(
+        `[data-day="${nextDay.toLocaleDateString()}"]`,
+      ) as HTMLButtonElement;
+      expect(day).toBeTruthy();
+      await act(async () => day.click());
+      for (const [label, time] of [
+        ["发送小时", selectedTime.slice(11, 13)],
+        ["发送分钟", selectedTime.slice(14, 16)],
+      ]) {
+        await act(async () => {
+          document
+            .querySelector(`button[aria-label="${label}"]`)!
+            .dispatchEvent(
+              new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true }),
+            );
+        });
+        const option = [...document.querySelectorAll('[role="option"]')].find(
+          (e) => e.textContent?.trim() === time,
+        );
+        expect(option).toBeTruthy();
+        await act(async () => (option as HTMLElement).click());
+      }
+      await click("确认定时发送");
+      const records = await call<OutboxRecord[]>("list_outbox");
+      expect(records).toHaveLength(1);
+      expect(records[0].status).toBe("scheduled");
+      expect(records[0].scheduledAt).toBe(new Date(selectedTime).toISOString());
+      const delivery = parser.parseFromString(
+        records[0].draft.deliveryHtml || "",
+        "text/html",
+      );
+      expect(delivery.body.innerHTML).toBe(preview.body.innerHTML);
+      expect(records[0].draft.deliveryHtml).toContain("original quote");
+      expect(records[0].draft.html).not.toContain("original quote");
+      expect(await call<Compose[]>("list_drafts")).toHaveLength(0);
+      const restored = await call<Compose>("cancel_schedule", { id: seed.id });
+      expect(restored.id).not.toBe(seed.id);
+      expect(restored.source).toBe(authoredSource);
+      expect(restored.quote?.included).toBe(true);
+      expect(restored.quote?.html).toBe("<p>original quote</p>");
+      expect((await call<OutboxRecord[]>("list_outbox"))[0].status).toBe(
+        "cancelled",
+      );
+    },
+  );
 });
 
 it("uses a shadcn confirmation for an empty subject and cancellation keeps the draft", async () => {

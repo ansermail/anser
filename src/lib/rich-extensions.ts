@@ -12,13 +12,18 @@ import Superscript from "@tiptap/extension-superscript";
 import TextAlign from "@tiptap/extension-text-align";
 import { TaskList, TaskItem } from "@tiptap/extension-list";
 import {
-  Table,
-  TableRow,
-  TableHeader,
-  TableCell,
-} from "@tiptap/extension-table";
+  MailTable,
+  MailTableRow,
+  MailTableHeader,
+  MailTableCell,
+  MailTableResize,
+} from "./rich-table";
 import FindAndReplace from "@tiptap/extension-find-and-replace";
-import { mergeAttributes } from "@tiptap/core";
+import { Extension, mergeAttributes } from "@tiptap/core";
+import { Plugin } from "@tiptap/pm/state";
+import { Decoration, DecorationSet } from "@tiptap/pm/view";
+import { RichMarkdown } from "./rich-markdown";
+import { t } from "./i18n";
 import { imageDimension } from "./rich-image-size";
 
 // Retain the official Image node and attributes. Inline sizes override the
@@ -58,10 +63,41 @@ const MailImage = Image.extend({
   },
 });
 
+const BodyPlaceholder = Extension.create({
+  name: "mailBodyPlaceholder",
+  addProseMirrorPlugins() {
+    return [
+      new Plugin({
+        props: {
+          decorations(state) {
+            const node = state.doc.firstChild;
+            if (
+              state.doc.childCount !== 1 ||
+              node?.type.name !== "paragraph" ||
+              node.content.size
+            )
+              return null;
+            return DecorationSet.create(state.doc, [
+              Decoration.node(0, node.nodeSize, {
+                "data-placeholder": t(
+                  "Write your email. You can type Markdown, insert tables or drop images.",
+                ),
+              }),
+            ]);
+          },
+        },
+      }),
+    ];
+  },
+});
+
 export function richExtensions() {
   return [
     StarterKit.configure({
-      link: { openOnClick: false, protocols: ["http", "https", "mailto"] },
+      link: {
+        openOnClick: false,
+        protocols: ["http", "https", "mailto"],
+      },
       heading: { levels: [1, 2, 3, 4] },
     }),
     MailImage.configure({
@@ -79,29 +115,24 @@ export function richExtensions() {
     Subscript.extend({ excludes: "superscript" }),
     Superscript.extend({ excludes: "subscript" }),
     TextAlign.configure({ types: ["heading", "paragraph"] }),
-    TaskList.configure({
-      HTMLAttributes: { style: "list-style:none;padding-left:0" },
-    }),
-    TaskItem.configure({ nested: true }),
-    Table.configure({
-      resizable: false,
-      HTMLAttributes: {
-        style: "border-collapse:collapse;width:100%;margin:12px 0",
+    TaskList,
+    TaskItem.configure({
+      nested: true,
+      HTMLAttributes: { "data-type": "taskItem" },
+      a11y: {
+        checkboxLabel: (node, checked) =>
+          t(checked ? "Mark {task} incomplete" : "Mark {task} complete", {
+            task: node.textContent || t("Task"),
+          }),
       },
     }),
-    TableRow,
-    TableHeader.configure({
-      HTMLAttributes: {
-        style:
-          "border:1px solid #d0d0d0;padding:6px 10px;background:#f6f6f6;text-align:left;vertical-align:top",
-      },
-    }),
-    TableCell.configure({
-      HTMLAttributes: {
-        style:
-          "border:1px solid #d0d0d0;padding:6px 10px;text-align:left;vertical-align:top",
-      },
-    }),
+    MailTable,
+    MailTableRow,
+    MailTableHeader,
+    MailTableCell,
+    MailTableResize,
+    RichMarkdown,
+    BodyPlaceholder,
     FindAndReplace.configure({ searchDebounceMs: 0, injectCSS: false }),
   ];
 }

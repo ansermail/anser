@@ -27,18 +27,28 @@ describe("rich body snapshots", () => {
     const delivered = prepareCompose(draft);
     expect(delivered.html).toBe(html);
     for (const token of [
-      "<h4>",
       "<s>",
       "<sup>",
       "<sub>",
       "<mark",
       "text-align: center",
-      "<pre><code>",
       "☑",
       "☐",
     ])
       expect(delivered.deliveryHtml).toContain(token);
     expect(delivered.deliveryHtml).not.toContain("<input");
+    const body = new DOMParser().parseFromString(
+      delivered.deliveryHtml!,
+      "text/html",
+    );
+    expect(body.querySelector("h4")?.textContent).toBe("标题四");
+    expect(body.querySelector("h4")?.style.marginTop).toBe("0px");
+    expect(body.querySelector("pre > code")?.textContent).toBe("const n = 1;");
+    expect(
+      [...body.querySelectorAll("li > div > p")].map(
+        (line) => line.textContent,
+      ),
+    ).toEqual(["☑\u00a0已完成", "☐\u00a0待处理"]);
     expect(delivered.deliveryBody).toContain("☑ 已完成");
     expect(delivered.deliveryBody).toContain("☐ 待处理");
     editor.commands.setTextSelection(2);

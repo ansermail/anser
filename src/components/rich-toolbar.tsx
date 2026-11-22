@@ -153,6 +153,7 @@ export function RichToolbar({
   onToggleTheme,
   assistantAction,
   bodyActions,
+  tableAction,
 }: {
   editor: Editor;
   disabled: boolean;
@@ -166,6 +167,7 @@ export function RichToolbar({
   onToggleTheme?: () => void;
   assistantAction?: React.ReactNode;
   bodyActions?: React.ReactNode;
+  tableAction?: React.ReactNode;
 }) {
   const state = useEditorState({
     editor,
@@ -524,6 +526,7 @@ export function RichToolbar({
             </DropdownMenuGroup>
           </DropdownMenuContent>
         </DropdownMenu>
+        {tableAction}
         <Tooltip>
           <TooltipTrigger asChild>
             <Toggle

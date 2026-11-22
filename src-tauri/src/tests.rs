@@ -998,6 +998,8 @@ pub(super) fn draft() -> Compose {
 #[test]
 fn rich_mime_preserves_plain_alternative_and_bcc_only_in_envelope() {
     let mut d = draft();
+    let delivery_html = r##"<div style="background-color:#181818;color:#ededed;line-height:1.75"><p>Hello <strong>Alex</strong>, see <code style="background-color:#262626;border-radius:4px;padding:2px 4px">report.id</code></p><blockquote style="position:relative;padding-left:17px"><span aria-hidden="true" style="position:absolute;width:3px;border-radius:999px;background-color:#a8cbbd"></span><p>Sample quote</p></blockquote></div>"##;
+    d.delivery_html = Some(delivery_html.to_owned());
     d.to.push_str(", ");
     let message = crate::network::build_message(&account(), &d).unwrap();
     assert_eq!(message.envelope().to().len(), 3);
@@ -1009,6 +1011,11 @@ fn rich_mime_preserves_plain_alternative_and_bcc_only_in_envelope() {
     assert!(html.contains("<strong>Alex</strong>"));
     let mut parts = vec![];
     archive::leaves(&parsed, &mut parts);
+    let html_part = parts
+        .iter()
+        .find(|part| part.ctype.mimetype == "text/html")
+        .unwrap();
+    assert_eq!(html_part.get_body().unwrap().trim_end(), delivery_html);
     assert!(parts
         .iter()
         .any(|p| p.ctype.mimetype == "text/plain" && p.get_body().unwrap().contains("Hello Alex")));
