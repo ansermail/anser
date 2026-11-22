@@ -171,6 +171,7 @@ import {
 } from "./components/ui/dialog";
 import { Toaster, toast } from "sonner";
 import { AccountDialog } from "./components/account-dialog";
+import { MailProviderIcon } from "./components/mail-provider-icon";
 import { RulesPanel } from "./components/rules-panel";
 import { ComposeDialog } from "./components/compose-dialog";
 import { mailShortcut } from "./lib/mail-shortcuts";
@@ -2683,11 +2684,9 @@ export default function App({
                       </Button>
                     </div>
                     <div className="settings-accounts">
-                      {data.accounts.map((a, i) => (
+                      {data.accounts.map((a) => (
                         <Card className="settings-account-card" key={a.id}>
-                          <span className={`account-avatar color-${i % 4}`}>
-                            {a.name[0]}
-                          </span>
+                          <MailProviderIcon provider={a.provider} />
                           <div className="settings-account-details">
                             <h3>
                               {a.name}

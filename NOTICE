@@ -25,5 +25,8 @@ parts, not to separately licensed upstream work. Dependency metadata and the
 vendored license files identify those upstream components; this notice is not
 a substitute for their full license terms.
 
+The mail provider icons identify compatible services. The marks belong to
+their respective owners, including Google, Microsoft, Tencent, and NetEase.
+
 Commercial authorization contact:
  https://github.com/ansermail/anser/issues

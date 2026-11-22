@@ -29,6 +29,7 @@ import { makeAccount, providers } from "@/lib/providers";
 import type { Account } from "@/lib/types";
 import { toast } from "sonner";
 import { AccountEmailField } from "./account-email-field";
+import { MailProviderIcon } from "./mail-provider-icon";
 export function AccountDialog({
   open,
   onOpenChange,
@@ -191,9 +192,7 @@ export function AccountDialog({
                     setAdvanced(p.id === "custom");
                   }}
                 >
-                  <span style={{ color: p.color, background: p.color + "12" }}>
-                    {p.letter}
-                  </span>
+                  <MailProviderIcon provider={p.id} />
                   <strong>{t(p.name)}</strong>
                   <ArrowRight size={15} />
                 </Button>

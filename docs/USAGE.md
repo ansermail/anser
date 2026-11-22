@@ -161,6 +161,8 @@ Homebrew 配方与源码共用 `ansermail/anser` 仓库。首次运行 `brew tap
 
 ## 连接真实邮箱前
 
+「添加账号」和「设置与账号 → 邮箱账号」中的服务商标识可离线显示。自定义邮箱使用通用信封图标。
+
 QQ、网易等通常需在邮箱官网启用 IMAP/POP3/SMTP 并获取授权码。企业服务器配置及权限取决于管理员；这些预设尚未逐服务商联调。
 
 Gmail / Microsoft 的 OAuth 需要注册属于本产品的应用。可以在账号高级设置填写 Client ID，或构建前设置 `MAIL_GOOGLE_CLIENT_ID`、`MAIL_MICROSOFT_CLIENT_ID`；Google 桌面应用如需 client secret，可设置 `MAIL_GOOGLE_CLIENT_SECRET`。不要提交实际凭据。原生应用中的 client secret 不是可保密的服务端秘密。

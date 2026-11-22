@@ -1,5 +1,12 @@
 # 实施与验收状态
 
+## 邮箱服务商图标（2026-11-21）
+
+添加账号的预设按钮与设置页账号卡片共用 `MailProviderIcon`，按已保存的服务商 ID 匹配。Vite 将各标识作为本地资源打包，自定义或未知服务商使用 Lucide 信封。
+
+- Gmail 为 Google Workspace 产品页的新版矢量图，Outlook 为微软官网使用的矢量图，Microsoft 365 为 Office CDN 的方形应用图标。 [Gmail SVG](https://storage.googleapis.com/gweb-workspace-assets/uploads/7uffzv9dk4sn-2Z6U76m8Jyp5R8zasALBYo-f424d5e7938a254785029e8369249702-gmail_2026-192px.optimized.svg) · [Outlook SVG](https://www.microsoft.com/content/dam/microsoft/bade/images/icons/en-us/456100-icon-outlook-17x17.svg) · [Microsoft 365 SVG](https://res-1.cdn.office.net/files/fabric-cdn-prod_20230815.002/assets/brand-icons/product/svg/m365_48x1.svg)
+- QQ 邮箱使用 96px 官网 PNG，腾讯企业邮箱使用 32px 官网 ICO 的无损 PNG 转存。网易个人和企业邮箱共用官网同款网易标识，取个人邮箱站点的 48px 版本。 [QQ 邮箱图标](https://res.wx.qq.com/t/webmail/webmail/res/images/qqmail_favicon_96h.8d124a7.png) · [腾讯企业邮箱图标](https://exmail.qq.com/exmail_logo.ico) · [网易邮箱图标](https://mail.163.com/favicon.ico) · [网易企业邮箱图标](https://qiye.163.com/favicon.ico)
+
 ## 写信编辑器的表格与 Markdown（2026-11-20）
 
 富文本与 Markdown 视觉模式共用 Tiptap 文档模型。表格沿用 ProseMirror 表格扩展，行高、列分隔线和最右外框共用 Pointer Events，在释放鼠标时提交可撤销的事务。分隔线拖拽在相邻列之间重新分配宽度，外框拖拽保存表格总宽并按比例缩放各列。命中检测取按下点和实际单元格边界，TableMap 对应合并单元格的逻辑列。尺寸弹窗和拖拽都把尺寸写入节点属性。表格、行及单元格输出内联样式，完整列宽额外输出比例列组，合并单元格同时保留分列宽度。拖拽线、查找和 AI Diff 只在画布显示。

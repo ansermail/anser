@@ -1582,15 +1582,21 @@ kbd {
   border-color: var(--border);
   background: var(--secondary);
 }
-.provider > span {
+.mail-provider-icon {
   width: 34px;
   height: 34px;
+  flex: none;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 18px;
   border-radius: 8px;
-  font-weight: 550;
+  background: var(--secondary);
+  color: var(--muted-foreground);
+}
+.mail-provider-icon > :is(img, svg) {
+  width: 22px;
+  height: 22px;
+  object-fit: contain;
 }
 .provider strong {
   flex: 1;
@@ -1773,16 +1779,6 @@ kbd {
   display: flex;
   align-items: center;
   gap: 14px;
-}
-.account-avatar {
-  width: 39px;
-  height: 39px;
-  border-radius: 11px;
-  color: var(--muted);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 14px;
 }
 .account-card > div {
   flex: 1;
@@ -4574,8 +4570,14 @@ kbd {
   gap: 16px;
   padding: 20px 24px;
 }
-.settings-account-card .account-avatar {
-  flex-shrink: 0;
+.settings-account-card .mail-provider-icon {
+  width: 39px;
+  height: 39px;
+  border-radius: 11px;
+}
+.settings-account-card .mail-provider-icon > :is(img, svg) {
+  width: 24px;
+  height: 24px;
 }
 .settings-account-details {
   flex: 1;
