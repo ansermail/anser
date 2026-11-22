@@ -27,10 +27,27 @@
 
 ## 云端发布与分发
 
-- 待提交并推送 `main`，创建与候选源码一致的注释标签 `v0.1.44`，触发 Release desktop。
-- 待核对 Release desktop 的检查、双架构 macOS、Windows x64 和草稿汇总；九份资源齐全后才公开为 latest。
-- 待核验资源大小与 SHA-256、说明原文、三份更新签名、Mac 包元数据与固定签名、DMG/更新归档一致性、Windows 安装启动冒烟及匿名下载。
-- 正式 Release 公开后等待 Homebrew 自动更新，核对配方版本与双 DMG 摘要，再触发 Preview Pages 并检查首页版本与三个安装器链接。
+2026-11-22 已提交并推送 `main`，固定源码 `aa8ed1d019952b2868b711cc1186df1a35d3b27f`，创建与源码一致的注释标签 `v0.1.44`。远端保护分支拒绝本地合并提交后，将历史线性化，候选文件树保持不变，未产生错误 Release。[Checks 45015594342](https://github.com/ansermail/anser/actions/runs/45015594342)、[Windows validation 45015594364](https://github.com/ansermail/anser/actions/runs/45015594364) 和 [Release desktop 45015608793](https://github.com/ansermail/anser/actions/runs/45015608793) 全部成功，Release desktop 的检查、Apple Silicon、Intel Mac、Windows x64 与草稿汇总均通过。
+
+正式 [Release v0.1.44](https://github.com/ansermail/anser/releases/tag/v0.1.44)，ID `454405997`，于 2026-11-22 19:48:37（Asia/Shanghai）公开为 latest。九份资源均已匿名下载并与 Actions 产物及审计结果逐字节一致：
+
+| 资源                                  |     字节 | SHA-256                                                            |
+| ------------------------------------- | -------: | ------------------------------------------------------------------ |
+| `Anser_0.1.44_aarch64.app.tar.gz`     | 13890127 | `c090c4ba5b23edd1a0dbbd334709dbbd529c3e5798b96f838c01a2d3381d64ad` |
+| `Anser_0.1.44_aarch64.app.tar.gz.sig` |      424 | `39219fda5728ac9b3a4fa853f5ac700ef1a88573deec8e6cde1d1cb1914559a6` |
+| `Anser_0.1.44_aarch64.dmg`            | 14417676 | `d6f64dda39f53e38394f18921350b793f4a9a048195b7e4c2f0817ac452b9f22` |
+| `Anser_0.1.44_x86_64-setup.exe`       | 10917246 | `bfbdc34ba79f4c3d1da2c789cedb6c489798a7243582bbac496d63ee4cb19f80` |
+| `Anser_0.1.44_x86_64-setup.exe.sig`   |      436 | `8eedc53201b523920274ea3cdda93e2cc444a905b7c51ee6c8d483df7373d78a` |
+| `Anser_0.1.44_x86_64.app.tar.gz`      | 14545338 | `e260ff5778155b0351e14c0942dc1467766cbc7e7b33d29615095ef5b2444bf8` |
+| `Anser_0.1.44_x86_64.app.tar.gz.sig`  |      424 | `c07255bb6e0b6e94edeaf7dbd44ab2a1f18522f0b7b53ed0ea06bc9cabd0e0a8` |
+| `Anser_0.1.44_x86_64.dmg`             | 15182365 | `6649c1b68aaa6dae7592f8489af020c5eb79700a5e71fe636ec64c895834c30d` |
+| `latest.json`                         |     3379 | `add9ce61eec11a8963bb04a58cf3c1c96a423898bc29e1b162c68aae2d87abe1` |
+
+`latest.json` 的版本、平台 URL 与三份更新签名匹配，Release 正文、清单 notes 和 [发布说明](releases/v0.1.44.md) 原文一致。Mac 双架构 App 版本、架构、标识、macOS 12.0、`zh-Hans/en`、EML/EMLX/MSG 关联、许可、严格签名与精确 designated requirement 通过。Windows 冒烟覆盖 GUI 子系统、无原生菜单、最小化到托盘、托盘恢复、外部邮件窗口、原生外链、协议注册及受保护关联不变，全部为真。三个安装器匿名访问返回 HTTP 200，标准更新端点 `releases/latest/download/latest.json` 返回 200 且与草稿版清单逐字节一致。
+
+[Homebrew 45019129529](https://github.com/ansermail/anser/actions/runs/45019129529) 成功，`main` 远端产生配方提交 `36c69b3`，只修改 `Casks/anser.rb`。配方版本为 `0.1.44`，Apple Silicon 与 Intel DMG 摘要分别为 `d6f64d…` 和 `6649c1…`，与公开资源一致。
+
+首次 [Preview Pages 45015594375](https://github.com/ansermail/anser/actions/runs/45015594375) 在安装器公开前主动取消，官网保持 0.1.43。安装器公开后触发 [Preview Pages 45019437445](https://github.com/ansermail/anser/actions/runs/45019437445)，部署成功。线上首页 bundle 版本为 `0.1.44`，Apple Silicon DMG、Intel DMG 与 Windows x64 安装器链接指向公开的 `v0.1.44` 资源，三个链接均返回 HTTP 200。
 
 ## 验证边界
 

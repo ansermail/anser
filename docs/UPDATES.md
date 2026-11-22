@@ -1,6 +1,14 @@
 # 发布与应用内更新
 
-## 当前版本：0.1.43（2026-11-18）
+## 当前版本：0.1.44（2026-11-22）
+
+0.1.44 Alpha 于 2026-11-22 19:48:37（Asia/Shanghai）公开为 [latest](https://github.com/ansermail/anser/releases/tag/v0.1.44)，固定源码 `aa8ed1d019952b2868b711cc1186df1a35d3b27f`、注释标签 `v0.1.44`、Release ID `454405997`。本版为富文本与 Markdown 写信加入可视化表格编辑，定时发送改为悬浮面板并限制过去时间，长收件人与抄送列表可显示 `+N` 并在行内展开，附件恢复紧凑卡片与真实缩略图，同时补齐官方邮箱服务商图标、深色品牌页脚保留、WebView Backspace 防护和多项布局修正。完整说明见 [v0.1.44](releases/v0.1.44.md)。
+
+本地门槛为前端 77 文件 601 项、Rust 473 项通过且 5 项既有条件忽略、桌面脚本 37 项、vendored IMAP 39 项，生产与 Pages 构建、UI 铁律、1,863 条双语键、TypeScript、Prettier、Rust 格式、发布资源及差异检查通过。[Checks 45015594342](https://github.com/ansermail/anser/actions/runs/45015594342)、[Windows validation 45015594364](https://github.com/ansermail/anser/actions/runs/45015594364) 和 [Release desktop 45015608793](https://github.com/ansermail/anser/actions/runs/45015608793) 全部成功，后者完成检查、Apple Silicon、Intel Mac、Windows x64 与草稿汇总。
+
+九份资源大小/SHA-256、三份更新签名、标准 latest 清单、Mac 双架构元数据与固定签名、DMG/更新归档一致性、Actions 产物逐字节比较及匿名公开下载均通过。八份安装与更新文件及签名和云端产物一致，三个正式安装器匿名访问返回 HTTP 200，标准更新端点 `releases/latest/download/latest.json` 返回 200 且内容与公开清单一致。[Homebrew 45019129529](https://github.com/ansermail/anser/actions/runs/45019129529) 成功，配方提交 `36c69b3` 只更新 `Casks/anser.rb`，版本 `0.1.44` 与双 DMG 摘要匹配。首次 Preview Pages 在安装器公开前主动取消，官网保持 0.1.43；公开后重新触发 [Preview Pages 45019437445](https://github.com/ansermail/anser/actions/runs/45019437445)，部署成功，线上 bundle 为 0.1.44，Apple Silicon、Intel 与 Windows 三个安装器链接均返回 HTTP 200。本机安装的正式客户端未替换，由用户自行验证升级。Windows/Intel 实机长期使用与原位升级仍需单独验收，发布与分发证据见 [0.1.44 发布工作点](RELEASE_0_1_44_WORKING.md)。
+
+## 前一正式版本：0.1.43（2026-11-18）
 
 0.1.43 Alpha 于 2026-11-18 11:43:45（Asia/Shanghai）公开为 latest，固定源码 `a5c6545dce7f110ec3b45383361558a65c3787ba`，Release ID `449495466`。本版改善工作台日历、四象限、看板、报告与编辑抽屉，并提供各视图右键删除。完整说明见 [v0.1.43](releases/v0.1.43.md)。
 
