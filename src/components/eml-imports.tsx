@@ -37,8 +37,8 @@ import { Alert, AlertDescription } from "./ui/alert";
 import { Progress } from "./ui/progress";
 import { ScrollArea } from "./ui/scroll-area";
 import { Card, CardContent } from "./ui/card";
-import { Collapsible, CollapsibleContent } from "./ui/collapsible";
-import { TaskPanelHeader } from "./task-panel-header";
+import { CollapsibleContent } from "./ui/collapsible";
+import { TaskPanelHeader, TaskPanelCollapsible } from "./task-panel-header";
 
 export type ImportJob = {
   id: string;
@@ -117,12 +117,14 @@ export function EmlImports({
   onView,
   onChanged,
   taskPanel = false,
+  rememberExpansion = false,
 }: {
   accounts: Account[];
   folders: string[];
   onView: (accountId: string, folder: string) => void;
   onChanged: () => Promise<void>;
   taskPanel?: boolean;
+  rememberExpansion?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const [accountId, setAccountId] = useState("");
@@ -352,7 +354,9 @@ export function EmlImports({
   return (
     <>
       {taskPanel ? (
-        <Collapsible asChild>
+        <TaskPanelCollapsible
+          remember={rememberExpansion ? "imports" : undefined}
+        >
           <Card>
             <TaskPanelHeader
               title={t("Mail import tasks")}
@@ -369,7 +373,14 @@ export function EmlImports({
                   </Alert>
                 )}
                 <TaskDataTable
-                  actionsWidth={8}
+                  actionsWidth={9}
+                  columnWidths={{
+                    folder: 5.5,
+                    account: 7,
+                    status: 7.5,
+                    progress: 5.5,
+                    reason: 5,
+                  }}
                   label={t("Mail import tasks")}
                   empty={t("No mail imports yet.")}
                   fields={[
@@ -399,6 +410,8 @@ export function EmlImports({
                     ),
                     status: (
                       <Badge
+                        className="inline-block max-w-full truncate align-middle"
+                        title={stateText(current.status)}
                         variant={
                           current.status === "interrupted"
                             ? "destructive"
@@ -479,7 +492,7 @@ export function EmlImports({
               </CardContent>
             </CollapsibleContent>
           </Card>
-        </Collapsible>
+        </TaskPanelCollapsible>
       ) : (
         <Button
           variant="outline"

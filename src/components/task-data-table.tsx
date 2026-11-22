@@ -137,6 +137,7 @@ export function TaskDataTable({
   empty,
   fields,
   actionsWidth = 9,
+  columnWidths,
   pageSize = 10,
   keepEmptyFields = false,
   showRecordCount = false,
@@ -148,6 +149,7 @@ export function TaskDataTable({
   empty: string;
   fields: readonly TaskColumn[];
   actionsWidth?: number;
+  columnWidths?: Partial<Record<TaskColumn, number>>;
   pageSize?: number;
   keepEmptyFields?: boolean;
   showRecordCount?: boolean;
@@ -163,7 +165,8 @@ export function TaskDataTable({
       : fields.slice(0, 1);
   const columns = visibleFields.map((field) => columnsById[field]);
   const widthFor = (field: TaskColumn) =>
-    field === "actions" ? actionsWidth : widths[field];
+    columnWidths?.[field] ??
+    (field === "actions" ? actionsWidth : widths[field]);
   const minWidth = visibleFields.reduce(
     (sum, field) => sum + (widthFor(field) ?? 8),
     0,
@@ -195,7 +198,7 @@ export function TaskDataTable({
                     key={header.id}
                     scope="col"
                     data-column={header.column.id}
-                    className="h-8 px-2.5"
+                    className="h-8 truncate px-2.5"
                     title={headers[header.column.id as TaskColumn]()}
                     style={{
                       width:

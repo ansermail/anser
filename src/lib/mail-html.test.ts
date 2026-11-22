@@ -8,6 +8,31 @@ import {
   interceptMailLinks,
 } from "./mail-html";
 describe("untrusted email rendering", () => {
+  it("keeps a light backing for the brand footer while adapting the main mail and tiny analytics images", () => {
+    const iframe = document.createElement("iframe");
+    document.body.append(iframe);
+    const doc = iframe.contentDocument!;
+    try {
+      doc.open();
+      doc.write(
+        safeMailHtml(
+          '<div id="main" style="background-color:#fff"><h1>Readable message</h1><div id="footer" style="background-color:#f4f4f4"><img alt="Company logo" width="64" height="20"><span style="color:#222">Caption</span></div></div><p id="analytics" style="background-color:#fff"><img width="1" height="1"></p>',
+        ),
+      );
+      doc.close();
+      applyMailColorScheme(doc, "dark");
+      const computed = (id: string) =>
+        doc.defaultView!.getComputedStyle(doc.getElementById(id)!);
+      expect(computed("main").backgroundColor).toBe("rgb(28, 28, 30)");
+      expect(computed("footer").backgroundColor).toBe("rgb(244, 244, 244)");
+      expect(computed("analytics").backgroundColor).toBe("rgb(28, 28, 30)");
+      expect(
+        doc.getElementById("footer")!.querySelector("span")!.style.color,
+      ).toBe("rgb(34, 34, 34)");
+    } finally {
+      iframe.remove();
+    }
+  });
   it("shows fallback text while remote email fonts are still loading", () => {
     const html = safeMailHtml(
       `<style>@font-face { font-family: Mail; src: url(https://cdn.example/mail.woff2); }</style><p>Readable now</p>`,

@@ -3,6 +3,7 @@ import { useConfirmation } from "@/hooks/use-confirmation";
 import { useEffect, useState } from "react";
 import { Plus, Search, UserRound, Pencil, Trash2, Mail } from "lucide-react";
 import { call } from "@/lib/api";
+import { hasAddressName } from "@/lib/addresses";
 import type { Address, Contact } from "@/lib/types";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
@@ -70,8 +71,9 @@ export function ContactsPanel({
             <h1>{t("Contacts")}</h1>
           </div>
           <p>
-            {contacts.length}
-            {t(" local contacts")}
+            {contacts.length === 1
+              ? t("1 local contact")
+              : t("{value0} local contacts", { value0: contacts.length })}
           </p>
         </div>
         <Button
@@ -99,8 +101,10 @@ export function ContactsPanel({
               <UserRound size={19} />
             </span>
             <div>
-              <strong>{c.name || c.email}</strong>
-              <p title={c.email}>{c.email}</p>
+              <strong title={hasAddressName(c) ? c.name : c.email}>
+                {hasAddressName(c) ? c.name : c.email}
+              </strong>
+              {hasAddressName(c) && <p title={c.email}>{c.email}</p>}
             </div>
             <Button
               variant="ghost"

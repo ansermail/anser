@@ -1,7 +1,7 @@
 import { TaskCellText, TaskDataTable } from "./task-data-table";
 import { t } from "@/lib/i18n";
-import { TaskPanelHeader } from "./task-panel-header";
-import { Collapsible, CollapsibleContent } from "./ui/collapsible";
+import { TaskPanelHeader, TaskPanelCollapsible } from "./task-panel-header";
+import { CollapsibleContent } from "./ui/collapsible";
 import { useEffect, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { AlertCircle } from "lucide-react";
@@ -23,6 +23,7 @@ export type ServerOperation = {
   status:
     "queued" | "running" | "completed" | "blocked" | "paused" | "isolated";
   attempts: number;
+  revision: number;
   error: string;
 };
 export type OperationSnapshot = {
@@ -30,6 +31,7 @@ export type OperationSnapshot = {
   blocked: number;
   completed: number;
   isolated?: number;
+  retired?: string[];
   items: ServerOperation[];
 };
 const states = {
@@ -95,11 +97,24 @@ export function ServerOperations({
       unlisten?.();
     };
   }, []);
-  async function retry(id: string) {
+  async function updateTask(item: ServerOperation, dismiss: boolean) {
     if (busy) return;
-    setBusy(id);
+    setBusy(item.id);
     try {
-      await call("retry_server_operation", { id });
+      if (dismiss) {
+        const changed = await call<boolean>(
+          "dismiss_retired_server_operation",
+          {
+            id: item.id,
+            revision: item.revision,
+          },
+        );
+        await reload();
+        if (!changed)
+          setError(t("The sync task changed. Review its latest status."));
+        return;
+      }
+      await call("retry_server_operation", { id: item.id });
       await reload();
     } catch (e) {
       setError(String(e));
@@ -108,14 +123,17 @@ export function ServerOperations({
     }
   }
   return (
-    <Collapsible defaultOpen={!defaultCollapsed} asChild>
+    <TaskPanelCollapsible
+      defaultOpen={!defaultCollapsed}
+      remember={defaultCollapsed ? "server-flags" : undefined}
+    >
       <Card>
         <TaskPanelHeader
           title={t("Server flag synchronization")}
           description={
             <>
               {t(
-                "Read and star flags sync automatically to IMAP, with retries after reconnecting. POP3 and local-only messages keep local flags.",
+                "Read and star flags sync automatically for supported accounts. Locally saved flags remain on this device.",
               )}
             </>
           }
@@ -159,7 +177,7 @@ export function ServerOperations({
                   )}
                 </div>
                 <TaskDataTable
-                  actionsWidth={6}
+                  actionsWidth={7}
                   label={t("Server sync tasks")}
                   empty={t("No sync tasks")}
                   fields={[
@@ -171,55 +189,77 @@ export function ServerOperations({
                     "reason",
                     "actions",
                   ]}
-                  rows={data.items.map((item) => ({
-                    id: item.id,
-                    task: (
-                      <TaskCellText text={item.subject || t("(No subject)")} />
-                    ),
-                    account: item.accountEmail && (
-                      <TaskCellText text={item.accountEmail} />
-                    ),
-                    folder: item.folder && <TaskCellText text={item.folder} />,
-                    operation: (
-                      <TaskCellText
-                        text={
-                          item.action === "read"
-                            ? item.value
-                              ? t("Mark read")
-                              : t("Mark unread")
-                            : item.value
-                              ? t("Add star")
-                              : t("Unstar")
-                        }
-                      />
-                    ),
-                    reason: item.error && <TaskCellText text={item.error} />,
-                    status: (
-                      <Badge
-                        variant={
-                          item.status === "blocked" ? "destructive" : "outline"
-                        }
-                      >
-                        {item.status === "queued" && item.error
-                          ? t("Waiting to retry")
-                          : states[item.status]}
-                      </Badge>
-                    ),
-                    actions:
-                      item.status === "blocked" ||
-                      (item.status === "queued" && item.error) ? (
-                        <div className="flex flex-wrap items-center justify-end gap-1">
-                          <Button
-                            variant="outline"
-                            size="xs"
-                            disabled={busy !== null}
-                            onClick={() => void retry(item.id)}
-                          >
-                            {busy === item.id ? t("Retrying…") : t("Retry")}
-                          </Button>
-                        </div>
-                      ) : undefined,
-                  }))}
+                  rows={data.items.map((item) => {
+                    const retired = data.retired?.includes(item.id);
+                    return {
+                      id: item.id,
+                      task: (
+                        <TaskCellText
+                          text={item.subject || t("(No subject)")}
+                        />
+                      ),
+                      account: item.accountEmail && (
+                        <TaskCellText text={item.accountEmail} />
+                      ),
+                      folder: item.folder && (
+                        <TaskCellText text={item.folder} />
+                      ),
+                      operation: (
+                        <TaskCellText
+                          text={
+                            item.action === "read"
+                              ? item.value
+                                ? t("Mark read")
+                                : t("Mark unread")
+                              : item.value
+                                ? t("Add star")
+                                : t("Unstar")
+                          }
+                        />
+                      ),
+                      reason: retired ? (
+                        <TaskCellText
+                          text={t("Account removed. Local archives are kept.")}
+                          detail={item.error}
+                        />
+                      ) : (
+                        item.error && <TaskCellText text={item.error} />
+                      ),
+                      status: (
+                        <Badge
+                          variant={
+                            item.status === "blocked"
+                              ? "destructive"
+                              : "outline"
+                          }
+                        >
+                          {retired
+                            ? t("Removed account")
+                            : item.status === "queued" && item.error
+                              ? t("Waiting to retry")
+                              : states[item.status]}
+                        </Badge>
+                      ),
+                      actions:
+                        item.status === "blocked" ||
+                        (item.status === "queued" && item.error) ? (
+                          <div className="flex flex-wrap items-center justify-end gap-1">
+                            <Button
+                              variant="outline"
+                              size="xs"
+                              disabled={busy !== null}
+                              onClick={() => void updateTask(item, !!retired)}
+                            >
+                              {retired
+                                ? t("Dismiss")
+                                : busy === item.id
+                                  ? t("Retrying…")
+                                  : t("Retry")}
+                            </Button>
+                          </div>
+                        ) : undefined,
+                    };
+                  })}
                 />
                 {data.items.length >= 50 && (
                   <p className="text-xs text-muted-foreground">
@@ -231,6 +271,6 @@ export function ServerOperations({
           </CardContent>
         </CollapsibleContent>
       </Card>
-    </Collapsible>
+    </TaskPanelCollapsible>
   );
 }

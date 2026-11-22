@@ -1,7 +1,7 @@
 import { TaskCellText, TaskDataTable } from "./task-data-table";
 import { t } from "@/lib/i18n";
-import { TaskPanelHeader } from "./task-panel-header";
-import { Collapsible, CollapsibleContent } from "./ui/collapsible";
+import { TaskPanelHeader, TaskPanelCollapsible } from "./task-panel-header";
+import { CollapsibleContent } from "./ui/collapsible";
 import { useEffect, useRef, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { AlertCircle } from "lucide-react";
@@ -144,14 +144,17 @@ export function DirectoryOperationsPanel({
     }
   }
   return (
-    <Collapsible defaultOpen={!defaultCollapsed} asChild>
+    <TaskPanelCollapsible
+      defaultOpen={!defaultCollapsed}
+      remember={defaultCollapsed ? "directory-operations" : undefined}
+    >
       <Card>
         <TaskPanelHeader
           title={t("Server folder operations")}
           description={
             <>
               {t(
-                "Copy keeps the original; move updates both folders after confirmation. Unconfirmed tasks are not automatically resent. For moves with lost receipts, refresh the destination and verify read-only. Compatible moves copy and verify before removing the source. Interrupted moves require explicit continuation and a fresh check of both copies.",
+                "Review the progress and results of server copies and moves. If the result is unclear, check the destination before continuing.",
               )}
             </>
           }
@@ -174,7 +177,16 @@ export function DirectoryOperationsPanel({
             )}
             {items && (
               <TaskDataTable
-                actionsWidth={17}
+                actionsWidth={12}
+                columnWidths={{
+                  task: 8.5,
+                  account: 8,
+                  operation: 5,
+                  folder: 7,
+                  target: 7,
+                  status: 8,
+                  reason: 6,
+                }}
                 label={t("Server folder tasks")}
                 empty={t("No server folder operations.")}
                 fields={[
@@ -194,6 +206,12 @@ export function DirectoryOperationsPanel({
                     item.status === "cleanup_blocked" ||
                     (item.kind === "move" && item.status === "uncertain");
                   const cancel = ["queued", "blocked"].includes(item.status);
+                  const statusText =
+                    item.kind === "move" && item.status === "completed"
+                      ? t("Move completed")
+                      : item.kind === "move" && item.status === "queued"
+                        ? t("Waiting to move")
+                        : statuses[item.status];
                   const details = [
                     item.error,
                     item.receiptOrigin === "observed" &&
@@ -229,6 +247,8 @@ export function DirectoryOperationsPanel({
                     ) : undefined,
                     status: (
                       <Badge
+                        className="inline-block max-w-full truncate align-middle"
+                        title={statusText}
                         variant={
                           item.status === "blocked" ||
                           item.status === "cleanup_blocked"
@@ -236,16 +256,12 @@ export function DirectoryOperationsPanel({
                             : "outline"
                         }
                       >
-                        {item.kind === "move" && item.status === "completed"
-                          ? t("Move completed")
-                          : item.kind === "move" && item.status === "queued"
-                            ? t("Waiting to move")
-                            : statuses[item.status]}
+                        {statusText}
                       </Badge>
                     ),
                     actions:
                       verify || cancel ? (
-                        <div className="flex items-center justify-end gap-1">
+                        <div className="flex flex-wrap items-center justify-end gap-1">
                           {item.status === "blocked" && (
                             <Button
                               size="xs"
@@ -304,6 +320,6 @@ export function DirectoryOperationsPanel({
           </CardContent>
         </CollapsibleContent>
       </Card>
-    </Collapsible>
+    </TaskPanelCollapsible>
   );
 }

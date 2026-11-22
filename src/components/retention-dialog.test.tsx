@@ -94,10 +94,10 @@ afterEach(async () => {
 });
 it("shows the account default and submits explicit wire folder overrides only", async () => {
   await render();
-  expect(document.body.textContent).toContain("账号默认：在线阅读");
+  expect(document.body.textContent).toContain("账号默认：仅在线");
   expect(document.body.textContent).not.toContain("容器目录");
   await select("收件箱保存方式", "完整保存");
-  await select("垃圾邮件保存方式", "在线阅读");
+  await select("垃圾邮件保存方式", "仅在线");
   await click("保存范围");
   expect(api.call).toHaveBeenCalledWith("save_retention", {
     account: { ...a, serverRetentionDays: null },
@@ -365,7 +365,7 @@ it("checks unsaved selected scope, displays low disk budget, and invalidates it 
     "save_retention",
     expect.anything(),
   );
-  await select("收件箱保存方式", "在线阅读");
+  await select("收件箱保存方式", "仅在线");
   expect(
     document.querySelector('[aria-label="服务器数量与空间预算"]'),
   ).toBeNull();

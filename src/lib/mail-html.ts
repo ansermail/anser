@@ -15,7 +15,7 @@ const darkMailColors = {
 function mailThemeCss(colorScheme: MailColorScheme, background?: string) {
   const mailBackground = background?.trim() || darkMailColors.background;
   return colorScheme === "dark"
-    ? `:root{color-scheme:dark}html,body{background-color:${mailBackground}!important;color:${darkMailColors.foreground}!important}a{color:${darkMailColors.link}}::selection{background:${darkMailColors.link};color:#111}`
+    ? `:root{color-scheme:dark}html,body{background-color:${mailBackground}!important;color:${darkMailColors.foreground}!important}a:where(:not([data-anser-light-image-surface] *)){color:${darkMailColors.link}}:where([data-anser-light-image-surface]){color:#242424}a:where([data-anser-light-image-surface] *){color:#0645ad}::selection{background:${darkMailColors.link};color:#111}`
     : "html,body{background-color:#fff}";
 }
 
@@ -53,7 +53,12 @@ export function safeMailHtml(
       "base",
       "meta",
     ],
-    FORBID_ATTR: ["action", "formaction", "data-mail-href"],
+    FORBID_ATTR: [
+      "action",
+      "formaction",
+      "data-mail-href",
+      "data-anser-light-image-surface",
+    ],
   });
   const doc = new DOMParser().parseFromString(content, "text/html");
   // Keep stylesheet links only; preload/prefetch/icons and other relationships
@@ -205,9 +210,66 @@ function hasAuthoredColorSurface(element: Element, view: Window) {
     const style = view.getComputedStyle(current);
     if (style.backgroundImage && style.backgroundImage !== "none") return true;
     const background = rgb(style.backgroundColor);
-    if (background && background.alpha > 0.95) return !neutral(background);
+    if (background && background.alpha > 0.95)
+      return (
+        !neutral(background) ||
+        current.hasAttribute("data-anser-light-image-surface")
+      );
   }
   return false;
+}
+
+function preserveLightImageSurfaces(doc: Document, view: Window) {
+  for (const image of doc.images) {
+    const style = view.getComputedStyle(image);
+    const tiny = (value: string | null) =>
+      !!value &&
+      /^\d+(?:\.\d+)?(?:px)?$/i.test(value) &&
+      parseFloat(value) <= 1;
+    if (
+      style.visibility === "hidden" ||
+      tiny(image.style.width || image.getAttribute("width")) ||
+      tiny(image.style.height || image.getAttribute("height")) ||
+      (image.naturalWidth > 0 &&
+        (image.naturalWidth <= 1 || image.naturalHeight <= 1))
+    )
+      continue;
+    const source = image.getAttribute("src") || "";
+    const brandImage = /logo|wordmark/i.test(
+      `${image.alt} ${image.title} ${source.length < 2048 ? source : ""}`,
+    );
+    for (
+      let parent: HTMLElement | null = image;
+      parent && parent !== doc.body;
+      parent = parent.parentElement
+    ) {
+      const computed = view.getComputedStyle(parent);
+      if (
+        computed.display === "none" ||
+        (computed.backgroundImage && computed.backgroundImage !== "none")
+      )
+        break;
+      const color = rgb(computed.backgroundColor);
+      if (!color || color.alpha <= 0.95) continue;
+      const brandRegion =
+        brandImage ||
+        parent.matches('footer,[role="contentinfo"]') ||
+        /footer|branding/i.test(`${parent.id} ${parent.className}`);
+
+      // Keep the nearest authored backing for an image tile or a compact
+      // logo with its caption. A mail-wide table can also contain a logo.
+      if (
+        neutral(color) &&
+        luminance(color) > 0.78 &&
+        !parent.matches("main,article") &&
+        !parent.querySelector("table table, h1, h2, h3, h4, h5, h6") &&
+        parent.querySelectorAll("tr").length <= 1 &&
+        (parent.textContent?.trim().length ?? 0) <= (brandRegion ? 320 : 0)
+      )
+        parent.setAttribute("data-anser-light-image-surface", "");
+      break;
+    }
+  }
 }
 
 function hasBackgroundImage(element: Element, view: Window) {
@@ -239,6 +301,7 @@ export function applyMailColorScheme(
   doc.documentElement.dataset.mailColorScheme = colorScheme;
   if (colorScheme === "light") return;
 
+  preserveLightImageSurfaces(doc, view);
   doc.body.style.setProperty("background-color", mailBackground, "important");
   doc.body.style.setProperty("color", darkMailColors.foreground, "important");
   for (const element of doc.body.querySelectorAll<HTMLElement>("*")) {
@@ -263,10 +326,11 @@ export function applyMailColorScheme(
     const background = rgb(computed.backgroundColor);
     if (
       background &&
+      !element.hasAttribute("data-anser-light-image-surface") &&
       background.alpha > 0.05 &&
       neutral(background) &&
       luminance(background) > 0.78 &&
-      computed.backgroundImage === "none"
+      (!computed.backgroundImage || computed.backgroundImage === "none")
     )
       element.style.setProperty(
         "background-color",

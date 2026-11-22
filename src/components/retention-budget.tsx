@@ -3,6 +3,7 @@ import type { RetentionBudget } from "@/lib/types";
 import { formatSize } from "@/lib/providers";
 import { Alert, AlertDescription } from "./ui/alert";
 import { Separator } from "./ui/separator";
+import { ArchivePath } from "./archive-path";
 
 function budgetSize(bytes: number) {
   return bytes >= 1024 ** 3
@@ -12,9 +13,11 @@ function budgetSize(bytes: number) {
 export function RetentionBudgetView({
   budget,
   currentPath,
+  defaultPath,
 }: {
   budget: RetentionBudget;
   currentPath: string;
+  defaultPath?: string;
 }) {
   const total = budget.folders.reduce((n, f) => n + (f.total ?? 0), 0);
   const uncached = budget.folders.reduce((n, f) => n + (f.uncached ?? 0), 0);
@@ -78,10 +81,10 @@ export function RetentionBudgetView({
         )}
       </p>
       {budget.dataDir !== currentPath && (
-        <p className="break-all text-sm text-muted-foreground">
-          {t("Estimated disk location: ")}
-          {budget.dataDir}
-          {t(". The save location changed. Refresh local status.")}
+        <p className="min-w-0 text-sm text-muted-foreground">
+          <span>{t("Estimated disk location: ")}</span>
+          <ArchivePath path={budget.dataDir} defaultPath={defaultPath} />
+          <span>{t(". The save location changed. Refresh local status.")}</span>
         </p>
       )}
       <p className="text-sm text-muted-foreground">

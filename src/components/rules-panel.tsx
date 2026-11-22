@@ -51,6 +51,12 @@ import { SelectGroup } from "./ui/select";
 import { RuleServerFolders } from "./rule-server-folders";
 import { RuleExecutions } from "./rule-executions";
 import { RuleRunsPanel } from "./rule-runs";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "./ui/tooltip";
 
 const fields: { [key: string]: string } = {
   get sender() {
@@ -263,6 +269,7 @@ export function RulesPanel({
   const [editing, setEditing] = useState<Rule | null>(null),
     [busy, setBusy] = useState(false),
     [preview, setPreview] = useState<string[] | null>(null);
+  const hasEnabledRule = data.rules.some((rule) => rule.enabled);
   const remote = (r: Rule) =>
     ruleActions(r).some((step) =>
       ["serverCopy", "serverMove"].includes(step.action),
@@ -349,7 +356,6 @@ export function RulesPanel({
     <section className="workspace-panel">
       <div className="panel-heading">
         <div>
-          <span className="eyebrow">A LITTLE ORDER</span>
           <div className="page-title-row">
             <SidebarTrigger
               title={t("Toggle sidebar")}
@@ -366,20 +372,47 @@ export function RulesPanel({
       </div>
       <div className="info-strip">
         <SlidersHorizontal size={17} />
-        <span>
-          {t(
-            "Rules run in order. Local filing keeps originals; existing server actions continue under their configured rules.",
-          )}
-        </span>
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={run}
-          disabled={busy || !data.rules.length}
-        >
-          <Play size={14} />
-          {busy ? t("Running…") : t("Run on existing mail")}
-        </Button>
+        <div className="flex min-w-0 flex-1 flex-col gap-1">
+          <p>
+            {t(
+              "Rules run in order. Local filing keeps originals; existing server actions continue under their configured rules.",
+            )}
+          </p>
+          <p>
+            {t(
+              "No need to keep webmail open. Anser processes new mail automatically while running on this computer.",
+            )}
+          </p>
+        </div>
+        <TooltipProvider>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <span
+                tabIndex={hasEnabledRule ? undefined : 0}
+                aria-label={
+                  hasEnabledRule
+                    ? undefined
+                    : t("Enable a rule to run it on existing mail.")
+                }
+              >
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={run}
+                  disabled={busy || !hasEnabledRule}
+                >
+                  <Play size={14} />
+                  {busy ? t("Running…") : t("Run on existing mail")}
+                </Button>
+              </span>
+            </TooltipTrigger>
+            {!hasEnabledRule && (
+              <TooltipContent>
+                {t("Enable a rule to run it on existing mail.")}
+              </TooltipContent>
+            )}
+          </Tooltip>
+        </TooltipProvider>
       </div>
       <div className="rule-list">
         {data.rules.map((r, i) => (
@@ -484,12 +517,10 @@ export function RulesPanel({
           </Empty>
         )}
       </div>
-      <div className="quiet-note">
-        {t(
-          "No need to keep webmail open. Anser processes new mail automatically while running on this computer.",
-        )}
-      </div>
-      <RuleExecutions onShowTasks={onShowTasks} />
+      <RuleExecutions
+        onShowTasks={onShowTasks}
+        defaultCollapsed={!data.rules.length}
+      />
       <RuleRunsPanel />
       <Dialog
         open={!!editing}

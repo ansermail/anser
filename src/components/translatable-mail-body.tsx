@@ -13,6 +13,7 @@ import { useTheme } from "@/lib/theme";
 import { call } from "@/lib/api";
 import {
   planMailTranslation,
+  subjectTranslationParts,
   translationBatches,
   translationLanguages,
   validateTranslationReply,
@@ -36,6 +37,8 @@ export function TranslatableMailBody({
   body,
   onOpenLink,
   title = t("Message body"),
+  subject = "",
+  subjectContainer,
   actionsContainer,
   mailId,
   mailDate,
@@ -48,6 +51,8 @@ export function TranslatableMailBody({
   html: string;
   body: string;
   title?: string;
+  subject?: string;
+  subjectContainer?: HTMLElement | null;
   onOpenLink: (href: string) => void;
 }) {
   const summary = useMailSummary(
@@ -66,6 +71,7 @@ export function TranslatableMailBody({
   const [ready, setReady] = useState(false);
   const [busy, setBusy] = useState(false);
   const [shown, setShown] = useState(false);
+  const [translatedSubject, setTranslatedSubject] = useState("");
   const [progress, setProgress] = useState({ done: 0, total: 0 });
   const [error, setError] = useState("");
   const [language, setLanguage] = useState("zh-CN");
@@ -86,6 +92,7 @@ export function TranslatableMailBody({
     plan.current = null;
     setBusy(false);
     setShown(false);
+    setTranslatedSubject("");
     setError("");
     setProgress({ done: 0, total: 0 });
   }, [cancel]);
@@ -135,13 +142,18 @@ export function TranslatableMailBody({
         html ? undefined : plain.current!,
       );
       plan.current = next;
-      if (!next.parts.length)
+      const subjectParts = subjectTranslationParts(
+        subject,
+        config.targetLanguage,
+      );
+      const allParts = [...subjectParts, ...next.parts];
+      if (!allParts.length)
         throw new Error(t("No visible body text needs translation."));
-      const total = next.parts.length;
+      const total = allParts.length;
       setProgress({ done: 0, total });
       setShown(true);
       const values = new Map<string, string>();
-      for (const parts of translationBatches(next.parts)) {
+      for (const parts of translationBatches(allParts)) {
         if (!active()) return;
         const requestId = crypto.randomUUID();
         request.current = requestId;
@@ -155,6 +167,16 @@ export function TranslatableMailBody({
         validateTranslationReply(parts, translated);
         for (const part of translated) values.set(part.id, part.text);
         next.apply(values);
+        if (
+          subjectParts.length &&
+          subjectParts.every(({ id }) => values.has(id))
+        )
+          setTranslatedSubject(
+            subjectParts
+              .map(({ id }) => values.get(id))
+              .join("")
+              .trim(),
+          );
         setProgress({ done: values.size, total });
       }
     } catch (e) {
@@ -223,8 +245,21 @@ export function TranslatableMailBody({
       <span className="mail-status-action">{t("Retry translation")}</span>
     </Button>
   ) : null;
+  const subjectTranslation = translatedSubject &&
+    translatedSubject !== subject.trim() && (
+      <p
+        className="mail-subject-translation"
+        lang={language}
+        aria-label={t("Translated subject")}
+      >
+        {translatedSubject}
+      </p>
+    );
   return (
     <div className="translatable-mail-body flex min-w-0 flex-col gap-3">
+      {subjectContainer && subjectTranslation
+        ? createPortal(subjectTranslation, subjectContainer)
+        : subjectTranslation}
       {actionsContainer &&
         createPortal(
           <TooltipProvider>

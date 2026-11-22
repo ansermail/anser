@@ -1,11 +1,11 @@
 import { TaskCellText, TaskDataTable } from "./task-data-table";
 import { t } from "@/lib/i18n";
-import { TaskPanelHeader } from "./task-panel-header";
+import { TaskPanelHeader, TaskPanelCollapsible } from "./task-panel-header";
 import { useEffect, useState } from "react";
 import { call } from "@/lib/api";
 import { coalesceRefresh } from "@/lib/refresh-queue";
 import { Button } from "./ui/button";
-import { Collapsible, CollapsibleContent } from "./ui/collapsible";
+import { CollapsibleContent } from "./ui/collapsible";
 import { Badge } from "./ui/badge";
 import { Alert, AlertDescription } from "./ui/alert";
 import { Skeleton } from "./ui/skeleton";
@@ -85,7 +85,10 @@ export function ArchiveJobsPanel({
     }
   }
   return (
-    <Collapsible defaultOpen={!defaultCollapsed} asChild>
+    <TaskPanelCollapsible
+      defaultOpen={!defaultCollapsed}
+      remember={defaultCollapsed ? "archive" : undefined}
+    >
       <Card>
         <TaskPanelHeader
           title={t("Full-message saving tasks")}
@@ -225,6 +228,6 @@ export function ArchiveJobsPanel({
           )}
         </CollapsibleContent>
       </Card>
-    </Collapsible>
+    </TaskPanelCollapsible>
   );
 }

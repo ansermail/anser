@@ -7,9 +7,10 @@ import type { Account, MailSignature } from "@/lib/types";
 import {
   emptySignature,
   importSignature,
+  plainSignatureToHtml,
   signatureContent,
 } from "@/lib/signatures";
-import { textToHtml } from "@/lib/compose-format";
+import { htmlToText, textToHtml } from "@/lib/compose-format";
 import { cn } from "@/lib/utils";
 import { MailContent } from "./mail-content";
 import { Badge } from "./ui/badge";
@@ -43,6 +44,7 @@ export function MailSignatures({ accounts }: { accounts: Account[] }) {
     fileRevision = useRef(0);
   const [loadedAccountId, setLoadedAccountId] = useState("");
   const savedSignature = useRef(emptySignature());
+  const formatDrafts = useRef<{ plain?: string; html?: string }>({});
   const selected = useRef(accountId);
   selected.current = accountId;
   useEffect(() => {
@@ -56,12 +58,16 @@ export function MailSignatures({ accounts }: { accounts: Account[] }) {
     setSignature(emptySignature());
     setSaved(emptySignature());
     setLoadedAccountId("");
+    formatDrafts.current = {};
     if (!accountId) return;
     setLoading(true);
     void call<MailSignature>("mail_signature", { accountId })
       .then((value) => {
         if (revision.current === current) {
           savedSignature.current = value;
+          formatDrafts.current = {
+            [value.useHtml ? "html" : "plain"]: value.text,
+          };
           setSaved(value);
           setSignature(value);
           setLoadedAccountId(accountId);
@@ -86,6 +92,8 @@ export function MailSignatures({ accounts }: { accounts: Account[] }) {
       await call("save_mail_signature", { accountId: id, signature });
       if (selected.current === id) {
         savedSignature.current = signature;
+        formatDrafts.current[signature.useHtml ? "html" : "plain"] =
+          signature.text;
         setSaved(signature);
         toast.success(
           t("Signature saved. New messages and replies will use it."),
@@ -118,6 +126,15 @@ export function MailSignatures({ accounts }: { accounts: Account[] }) {
     }
   }
   const content = signatureContent(accountId, signature);
+  function changeFormat(useHtml: boolean) {
+    if (signature.useHtml === useHtml) return;
+    const text =
+      formatDrafts.current[useHtml ? "html" : "plain"] ??
+      (useHtml
+        ? plainSignatureToHtml(signature.text)
+        : htmlToText(signature.text));
+    setSignature({ ...signature, useHtml, text });
+  }
   const dirty =
     signature.text !== saved.text ||
     signature.useHtml !== saved.useHtml ||
@@ -185,10 +202,7 @@ export function MailSignatures({ accounts }: { accounts: Account[] }) {
                     checked={signature.useHtml}
                     disabled={!accountId || busy || loading}
                     onCheckedChange={(checked) =>
-                      setSignature((v) => ({
-                        ...v,
-                        useHtml: checked === true,
-                      }))
+                      changeFormat(checked === true)
                     }
                   />
                   <FieldLabel htmlFor="signature-html">
@@ -286,9 +300,13 @@ export function MailSignatures({ accounts }: { accounts: Account[] }) {
                     className="signature-editor-area"
                     disabled={!accountId || busy || loading}
                     value={signature.text}
-                    onChange={(e) =>
-                      setSignature((v) => ({ ...v, text: e.target.value }))
-                    }
+                    onChange={(e) => {
+                      const text = e.target.value;
+                      formatDrafts.current[
+                        signature.useHtml ? "html" : "plain"
+                      ] = text;
+                      setSignature((v) => ({ ...v, text }));
+                    }}
                     placeholder={
                       signature.useHtml
                         ? t(

@@ -64,8 +64,8 @@ export function MailSummaryLayer({ children }: { children: ReactNode }) {
   return (
     <SummaryLayer.Provider value={layer}>
       <div className="reader-body-region">
-        {children}
         <div className="mail-summary-layer" ref={setHost} />
+        {children}
       </div>
     </SummaryLayer.Provider>
   );
@@ -122,6 +122,10 @@ export function useMailSummary(
   const request = useRef("");
   const triggerButton = useRef<HTMLButtonElement>(null);
   const overlayButton = useRef<HTMLButtonElement>(null);
+  const [summaryViewport, setSummaryViewport] = useState<HTMLDivElement | null>(
+    null,
+  );
+  const [moreContent, setMoreContent] = useState(false);
   const restoreFocus = useRef(false);
   const cancel = useCallback(() => {
     cancelMailAi(request.current);
@@ -151,6 +155,26 @@ export function useMailSummary(
       preventScroll: true,
     });
   }, [state.kind]);
+  useEffect(() => {
+    if (!summaryViewport) return;
+    const measure = () =>
+      setMoreContent(
+        summaryViewport.scrollHeight -
+          summaryViewport.clientHeight -
+          summaryViewport.scrollTop >
+          1,
+      );
+    const observer = new ResizeObserver(measure);
+    observer.observe(summaryViewport);
+    if (summaryViewport.firstElementChild)
+      observer.observe(summaryViewport.firstElementChild);
+    summaryViewport.addEventListener("scroll", measure, { passive: true });
+    measure();
+    return () => {
+      observer.disconnect();
+      summaryViewport.removeEventListener("scroll", measure);
+    };
+  }, [summaryViewport]);
 
   function close() {
     restoreFocus.current = true;
@@ -370,6 +394,8 @@ export function useMailSummary(
         <ScrollArea
           type="auto"
           className="mail-summary-scroll"
+          data-more-content={moreContent}
+          viewportRef={setSummaryViewport}
           viewportProps={{ tabIndex: 0, "aria-label": t("Email summary") }}
         >
           <CardContent className="space-y-2.5 px-3 py-2.5 break-words select-text">

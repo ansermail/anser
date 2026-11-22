@@ -3,7 +3,11 @@ import { cn } from "cn";
 import { toast } from "sonner";
 import { t } from "@/lib/i18n";
 import { copyText } from "@/lib/clipboard";
-import { displayAddress } from "@/lib/addresses";
+import {
+  displayAddress,
+  hasAddressName,
+  parseAddresses,
+} from "@/lib/addresses";
 import type { Address } from "@/lib/types";
 import { Button } from "./ui/button";
 import {
@@ -87,7 +91,7 @@ export function ContactAddress({
           <Copy />
           {t("Copy email address")}
         </ContextMenuItem>
-        {!!address.name && (
+        {hasAddressName(address) && (
           <ContextMenuItem
             onSelect={() =>
               void copy(addressLabel, "Copied name and email address")
@@ -107,5 +111,37 @@ export function ContactAddress({
         </ContextMenuItem>
       </ContextMenuContent>
     </ContextMenu>
+  );
+}
+
+export function SenderIdentity({
+  sender,
+  displayName,
+  onComposeAddress,
+  onAddContact,
+}: {
+  sender: string;
+  displayName?: string;
+  onComposeAddress?: (address: Address) => void;
+  onAddContact?: (address: Address) => void;
+}) {
+  const address = parseAddresses(sender)[0];
+  if (!address) return <strong title={sender}>{displayName || sender}</strong>;
+  const name = displayName || (hasAddressName(address) ? address.name : "");
+  return (
+    <>
+      {name && <strong>{name}</strong>}
+      <ContactAddress
+        address={address}
+        text={address.email}
+        className={
+          name
+            ? "contact-address-start"
+            : "contact-address-start sender-address-primary"
+        }
+        onComposeAddress={onComposeAddress}
+        onAddContact={onAddContact}
+      />
+    </>
   );
 }

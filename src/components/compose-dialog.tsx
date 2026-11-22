@@ -91,8 +91,6 @@ export function ComposeDialog({
   onSent,
   onQueued,
   dark = false,
-  themeMode = "light",
-  onToggleTheme,
 }: {
   draft: Compose | null;
   onClose: () => void;
@@ -100,8 +98,6 @@ export function ComposeDialog({
   onSent: () => void;
   onQueued?: () => void;
   dark?: boolean;
-  themeMode?: "light" | "dark" | "system";
-  onToggleTheme?: () => void;
 }) {
   const { askConfirmation, cancelConfirmation, confirmationDialog } =
     useConfirmation();
@@ -849,8 +845,9 @@ export function ComposeDialog({
               >
                 <div className="compose-fields-layout">
                   <div className="compose-row">
-                    <Label>{t("From")}</Label>
+                    <Label htmlFor="compose-sender">{t("From")}</Label>
                     <SelectField
+                      id="compose-sender"
                       value={value.accountId}
                       onValueChange={(value) => update({ accountId: value })}
                     >
@@ -878,7 +875,7 @@ export function ComposeDialog({
                     <Button
                       variant="ghost"
                       type="button"
-                      className="text-link ml-auto"
+                      className="text-link"
                       onClick={() => setExtra(!extra)}
                     >
                       {t("Cc / Bcc")}
@@ -944,8 +941,6 @@ export function ComposeDialog({
                               <RichEditor
                                 ref={richEditor}
                                 dark={dark}
-                                themeMode={themeMode}
-                                onToggleTheme={onToggleTheme}
                                 key={`${value.id}-${format}`}
                                 body={value.body}
                                 html={
@@ -1309,13 +1304,12 @@ export function ComposeDialog({
                     </Label>
                   )}
                 <Button
-                  variant="ghost"
-                  size="icon"
+                  variant="outline"
                   onClick={() => void attach()}
                   disabled={sending || closing}
-                  title={t("Add attachment")}
                 >
-                  <Paperclip size={18} />
+                  <Paperclip data-icon="inline-start" />
+                  {t("Add attachment")}
                 </Button>
                 {attachmentReminderVisible && attachmentReminder && (
                   <Alert role="status" className="compose-attachment-reminder">

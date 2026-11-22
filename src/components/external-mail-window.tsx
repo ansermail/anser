@@ -17,7 +17,6 @@ import { call, native, newDraft } from "../lib/api";
 import {
   displayAddresses,
   formatAddress,
-  parseAddresses,
   replyRecipients,
 } from "../lib/addresses";
 import { saveContactAddress } from "../lib/contact-actions";
@@ -25,12 +24,12 @@ import { disableNativeContextMenu } from "../lib/context-menu";
 import { replyHeaders } from "../lib/conversations";
 import { mailFileError } from "../lib/mail-file-errors";
 import { printMail } from "../lib/mail-print";
-import { senderAddress, senderName } from "../lib/providers";
+import { senderName } from "../lib/providers";
 import { useTheme } from "../lib/theme";
 import type { Account, Compose, Detail } from "../lib/types";
 import { Alert, AlertDescription } from "./ui/alert";
 import { MailRecipients } from "./mail-recipients";
-import { ContactAddress } from "./contact-address";
+import { SenderIdentity } from "./contact-address";
 import { Button } from "./ui/button";
 import {
   DropdownMenu,
@@ -82,6 +81,8 @@ export function ExternalMailWindow() {
       unlisten?.();
     };
   }, []);
+  const [translatedSubject, setTranslatedSubject] =
+    useState<HTMLDivElement | null>(null);
   const [translationActions, setTranslationActions] =
     useState<HTMLDivElement | null>(null);
   useEffect(() => {
@@ -246,25 +247,11 @@ export function ExternalMailWindow() {
                     {senderName(document.detail.mail.sender).slice(0, 1)}
                   </span>
                   <div>
-                    <strong>{senderName(document.detail.mail.sender)}</strong>
-                    {(() => {
-                      const address = parseAddresses(
-                        document.detail.mail.sender,
-                      )[0];
-                      return address ? (
-                        <ContactAddress
-                          address={address}
-                          className="contact-address-start"
-                          text={address.email}
-                          onComposeAddress={composeTo}
-                          onAddContact={saveContactAddress}
-                        />
-                      ) : (
-                        <span>
-                          {senderAddress(document.detail.mail.sender)}
-                        </span>
-                      );
-                    })()}
+                    <SenderIdentity
+                      sender={document.detail.mail.sender}
+                      onComposeAddress={composeTo}
+                      onAddContact={saveContactAddress}
+                    />
                     {document.detail.mail.senderOnBehalfOf && (
                       <span
                         className="sender-on-behalf-of"
@@ -396,6 +383,7 @@ export function ExternalMailWindow() {
                 <h1>{document.detail.mail.subject || t("(No subject)")}</h1>
                 <div className="shrink-0" ref={setTranslationActions} />
               </div>
+              <div ref={setTranslatedSubject} />
             </div>
             <ConversationReader
               selected={document.detail}
@@ -405,6 +393,7 @@ export function ExternalMailWindow() {
               demo={false}
               scrollRef={readerRef}
               translationActions={translationActions}
+              subjectContainer={translatedSubject}
               onAddWorkItem={(item) =>
                 void invoke("open_mail_reminder", {
                   item: { ...item, mailId: "" },
@@ -437,8 +426,6 @@ export function ExternalMailWindow() {
         )}
         <ComposeDialog
           dark={dark}
-          themeMode={theme.mode}
-          onToggleTheme={theme.cycleMode}
           draft={draft}
           onClose={() => setDraft(null)}
           accounts={accounts}

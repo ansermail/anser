@@ -9,6 +9,7 @@ import {
 import { toast } from "sonner";
 import { Button } from "./ui/button";
 import { Card } from "./ui/card";
+import { Alert, AlertDescription } from "./ui/alert";
 import { Skeleton } from "./ui/skeleton";
 import { call, native } from "../lib/api";
 import { formatSize } from "../lib/providers";
@@ -18,12 +19,14 @@ export function MailAttachments({
   mailId,
   demo = false,
   attachments,
+  reportedAttachments = false,
   onDownload,
   onPreview,
 }: {
   mailId: string;
   demo?: boolean;
   attachments: Detail["attachments"];
+  reportedAttachments?: boolean;
   onDownload: (index: number, name: string) => Promise<void>;
   onPreview?: (index: number, name: string) => Promise<void>;
 }) {
@@ -60,10 +63,21 @@ export function MailAttachments({
       });
     }
   }
-  if (!attachments.length) return null;
+  if (!attachments.length)
+    return reportedAttachments ? (
+      <Alert className="mail-attachment-notice">
+        <FileText />
+        <AlertDescription>
+          {t(
+            "This message reports attachments, but no separate files are available. Inline images appear in the message body.",
+          )}
+        </AlertDescription>
+      </Alert>
+    ) : null;
   return (
     <div className="attachment-list" aria-label={t("Message attachments")}>
       {attachments.map((attachment) => {
+        const extension = /\.[^./\\\s]{1,12}$/.exec(attachment.name);
         const Icon = attachment.mime.startsWith("image/")
           ? FileImage
           : /zip|compressed|tar/.test(attachment.mime)
@@ -96,7 +110,16 @@ export function MailAttachments({
             >
               <Icon className="attachment-type size-5" />
               <span className="attachment-info">
-                <strong>{attachment.name}</strong>
+                <strong>
+                  <span className="truncate">
+                    {extension?.index
+                      ? attachment.name.slice(0, extension.index)
+                      : attachment.name}
+                  </span>
+                  {!!extension?.index && (
+                    <span className="shrink-0">{extension[0]}</span>
+                  )}
+                </strong>
                 {busy ? (
                   <span className="attachment-progress" role="status">
                     <Skeleton className="h-2 w-6" />

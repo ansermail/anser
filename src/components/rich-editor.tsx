@@ -78,8 +78,6 @@ export function RichEditor({
   readImages,
   ref,
   dark = false,
-  themeMode = "light",
-  onToggleTheme,
 }: {
   body: string;
   html: string;
@@ -93,8 +91,6 @@ export function RichEditor({
   readImages: (paths: string[]) => Promise<BodyImage[]>;
   ref?: Ref<RichEditorHandle>;
   dark?: boolean;
-  themeMode?: "light" | "dark" | "system";
-  onToggleTheme?: () => void;
 }) {
   const [repairOpen, setRepairOpen] = useState(false);
   const repairToggle = useRef<HTMLButtonElement>(null);
@@ -352,9 +348,6 @@ export function RichEditor({
               </Tooltip>
             )
           }
-          dark={dark}
-          themeMode={themeMode}
-          onToggleTheme={onToggleTheme}
           editor={editor}
           disabled={disabled}
           imageBusy={imageBusy}

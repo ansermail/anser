@@ -202,6 +202,11 @@ it("shows task uncertainty without offering replay and retries only a failed enq
     updatedAt: "2026-11-14T10:00:00+08:00",
   }));
   await render();
+  const historyTrigger = document.querySelector<HTMLButtonElement>(
+    'button[aria-label="展开或收起服务器规则执行记录"]',
+  );
+  if (historyTrigger?.getAttribute("aria-expanded") === "false")
+    await act(async () => historyTrigger.click());
   expect(document.body.textContent).toContain("结果未确认");
   expect(document.body.textContent).toContain("连接中断，结果未确认");
   const table = document.querySelector<HTMLTableElement>(

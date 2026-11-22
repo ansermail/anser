@@ -621,6 +621,7 @@ export async function call<T = void>(
           overrides,
           summary: {
             dataDir: demo.dataDir,
+            defaultDataDir: demo.dataDir,
             known: mails.length,
             saved: saved.length,
             savedBytes: saved.reduce((n, m) => n + m.size, 0),

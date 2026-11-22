@@ -8,6 +8,7 @@ import { Button } from "./ui/button";
 import { Separator } from "./ui/separator";
 import { Alert, AlertDescription } from "./ui/alert";
 import { Progress } from "./ui/progress";
+import { ArchivePath } from "./archive-path";
 export interface ArchiveLocationStatus {
   path: string;
   defaultPath: string;
@@ -182,8 +183,14 @@ export function ArchiveLocation({
             <RefreshCw />
           </Button>
         </div>
-        <p className="break-all text-xs text-muted-foreground">
-          {status?.path || initialPath || t("Reading archive location…")}
+        <p className="min-w-0 text-xs text-muted-foreground">
+          {status ? (
+            <ArchivePath path={status.path} defaultPath={status.defaultPath} />
+          ) : error && initialPath ? (
+            <ArchivePath path={initialPath} />
+          ) : (
+            t("Reading archive location…")
+          )}
         </p>
         {(error || status?.error) && (
           <Alert variant="destructive">

@@ -269,7 +269,7 @@ impl Store {
         .map_err(err)?;
         if crate::operations::identity(&old) != crate::operations::identity(a) {
             tx.execute("UPDATE folder_health SET identity=?2,reason='账号配置已修改，旧来源须经完整收取重新核对' WHERE account_id=?1", params![a.id,crate::operations::identity(a)]).map_err(err)?;
-            tx.execute("UPDATE server_operations SET status='blocked',revision=revision+1,error='账号连接配置已变化，请重新收取后再操作' WHERE account_id=?1 AND status!='completed'", [&a.id]).map_err(err)?;
+            tx.execute("UPDATE server_operations SET status='blocked',revision=revision+1,error='账号连接配置已变化，请重新收取后再操作' WHERE account_id=?1 AND status NOT IN ('completed','dismissed')", [&a.id]).map_err(err)?;
         }
         if source_changed {
             let removed = tx
@@ -320,7 +320,7 @@ impl Store {
         crate::rule_runs::cancel_account_in(&tx, id)?;
         tx.execute("UPDATE eml_import_jobs SET status='cancelled',revision=revision+1,error='accountRemoved' WHERE account_id=?1 AND status IN ('prepared','queued','running')",[id]).map_err(err)?;
         tx.execute("UPDATE eml_import_items SET path='',fingerprint='' WHERE job_id IN (SELECT id FROM eml_import_jobs WHERE account_id=?1)",[id]).map_err(err)?;
-        tx.execute("UPDATE server_operations SET status='blocked',revision=revision+1,error='账号已移除，本地存档保留' WHERE account_id=?1 AND status!='completed'", [id]).map_err(err)?;
+        tx.execute("UPDATE server_operations SET status='blocked',revision=revision+1,error='账号已移除，本地存档保留' WHERE account_id=?1 AND status NOT IN ('completed','dismissed')", [id]).map_err(err)?;
         tx.execute("DELETE FROM accounts WHERE id=?1", [id])
             .map_err(err)?;
         tx.commit().map_err(err)?;

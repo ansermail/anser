@@ -16,6 +16,7 @@ beforeEach(() => {
     items: [
       {
         id: "failed",
+        revision: 3,
         accountEmail: "fixture@example.com",
         subject: "Fixture",
         folder: "收件箱",
@@ -27,6 +28,7 @@ beforeEach(() => {
       },
       {
         id: "paused",
+        revision: 1,
         accountEmail: "fixture@example.com",
         subject: "Paused",
         folder: "收件箱",
@@ -38,6 +40,7 @@ beforeEach(() => {
       },
       {
         id: "done",
+        revision: 1,
         accountEmail: "fixture@example.com",
         subject: "Done",
         folder: "收件箱",
@@ -56,6 +59,11 @@ beforeEach(() => {
       fixture.items[0].status = "queued";
       fixture.items[0].error = "";
       return undefined as never;
+    }
+    if (command === "dismiss_retired_server_operation") {
+      fixture.items = fixture.items.filter((item) => item.id !== "failed");
+      fixture.blocked = 0;
+      return true as never;
     }
     throw new Error("Unexpected command");
   });
@@ -122,6 +130,22 @@ describe("server operation feedback", () => {
     );
     expect(host.textContent).toContain("账号已移除，本地存档保留");
     expect(host.textContent).toContain("Fixture");
+  });
+  it("dismisses a removed account's exact task revision and refreshes the blocked count", async () => {
+    fixture.retired = ["failed"];
+    await render();
+    expect(host.textContent).not.toContain("重试");
+    await act(async () =>
+      [...host.querySelectorAll("button")]
+        .find((b) => b.textContent === "不再提醒")!
+        .click(),
+    );
+    expect(api.call).toHaveBeenCalledWith("dismiss_retired_server_operation", {
+      id: "failed",
+      revision: 3,
+    });
+    expect(host.textContent).not.toContain("Fixture");
+    expect(host.textContent).toContain("需要处理 0");
   });
   it("offers refresh after a failed initial load", async () => {
     vi.mocked(api.call).mockRejectedValueOnce(new Error("storage unavailable"));

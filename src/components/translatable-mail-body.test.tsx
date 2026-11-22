@@ -86,6 +86,7 @@ afterEach(async () => {
 async function render(
   html = "<p>Hello <b>world</b></p>",
   onAddWorkItem?: (item: import("../lib/workbench").WorkItem) => void,
+  subject = "",
 ) {
   await act(async () =>
     root.render(
@@ -94,6 +95,8 @@ async function render(
           <TranslatableMailBody
             html={html}
             mailId="source-mail"
+            subject={subject}
+            subjectContainer={actions}
             mailDate="2026-11-14T10:00:00+08:00"
             onAddWorkItem={onAddWorkItem}
             body=""
@@ -145,6 +148,29 @@ it("never sends text on opening and displays returned plain text below each orig
   expect(mock.docs[0].body.textContent).toBe("Hello world你好 世界");
   await click("隐藏译文");
   expect(mock.docs[0].body.textContent).toBe("Hello world");
+});
+it("translates the original subject on request and clears its separate line when hidden", async () => {
+  await render("<p>Body text</p>", undefined, "Original subject");
+  expect(mock.call).not.toHaveBeenCalled();
+  await click("翻译");
+  const args = mock.call.mock.calls.find(
+    ([command]) => command === "translate_mail_parts",
+  )![1];
+  expect(args.parts[0]).toEqual({ id: "subject0", text: "Original subject" });
+  await act(async () =>
+    pending!(
+      args.parts.map(({ id }: TranslationPart) => ({
+        id,
+        text: id === "subject0" ? "主题译文示例" : "正文示例",
+      })),
+    ),
+  );
+  expect(actions.querySelector(".mail-subject-translation")?.textContent).toBe(
+    "主题译文示例",
+  );
+  expect(actions.querySelector("h1")?.textContent).toBe("示例邮件标题");
+  await click("隐藏译文");
+  expect(actions.querySelector(".mail-subject-translation")).toBeNull();
 });
 it("allows merged inline wording, preserves formatting and restores original DOM", async () => {
   await render("<p>Hello <b>world</b></p><p>Another paragraph</p>");

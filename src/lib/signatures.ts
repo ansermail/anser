@@ -9,14 +9,35 @@ export const emptySignature = (): MailSignature => ({
   fileText: "",
   fileHtml: "",
 });
+
+export function plainSignatureToHtml(text: string) {
+  if (!text.trim()) return "";
+  const paragraph = document.createElement("div");
+  paragraph.style.whiteSpace = "pre-wrap";
+  text.split(/\r\n?|\n/).forEach((line, index) => {
+    if (index) paragraph.append(document.createElement("br"));
+    paragraph.append(line);
+  });
+  return paragraph.outerHTML;
+}
+
 export function signatureContent(
   accountId: string,
   signature: MailSignature,
 ): ComposeSignature {
+  const authoredHtml = signature.useHtml
+    ? sanitizeComposeHtml(signature.text)
+    : "";
+  // Earlier versions could save the same multiline text with HTML enabled.
+  const htmlText =
+    /[\r\n]/.test(authoredHtml) && !/<[a-z]/i.test(authoredHtml)
+      ? plainSignatureToHtml(
+          new DOMParser().parseFromString(authoredHtml, "text/html").body
+            .textContent || "",
+        )
+      : authoredHtml;
   const html = [
-    signature.useHtml
-      ? sanitizeComposeHtml(signature.text)
-      : textToHtml(signature.text),
+    signature.useHtml ? htmlText : textToHtml(signature.text),
     signature.fileHtml || textToHtml(signature.fileText),
   ]
     .filter(Boolean)

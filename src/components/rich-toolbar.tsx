@@ -29,9 +29,6 @@ import {
   Highlighter,
   RemoveFormatting,
   Minus,
-  Monitor,
-  Moon,
-  Sun,
   MoreHorizontal,
 } from "lucide-react";
 import { Button } from "./ui/button";
@@ -148,9 +145,6 @@ export function RichToolbar({
   onLink,
   searchOpen,
   onSearchOpen,
-  dark,
-  themeMode,
-  onToggleTheme,
   assistantAction,
   bodyActions,
   tableAction,
@@ -162,9 +156,6 @@ export function RichToolbar({
   onLink: () => void;
   searchOpen: boolean;
   onSearchOpen: (open: boolean) => void;
-  dark: boolean;
-  themeMode: "light" | "dark" | "system";
-  onToggleTheme?: () => void;
   assistantAction?: React.ReactNode;
   bodyActions?: React.ReactNode;
   tableAction?: React.ReactNode;
@@ -204,6 +195,12 @@ export function RichToolbar({
   });
   const focus = (event: Event) => {
     event.preventDefault();
+    if (
+      document.querySelector(
+        '[data-slot="dropdown-menu-content"][data-state="open"]',
+      )
+    )
+      return;
     editor.commands.focus();
   };
   const normalizeFont = (font: string) =>
@@ -400,7 +397,7 @@ export function RichToolbar({
             (option) => option.value === menu.value,
           )?.label;
           return (
-            <DropdownMenu key={menu.label}>
+            <DropdownMenu modal={false} key={menu.label}>
               <Tooltip>
                 <TooltipTrigger asChild>
                   <DropdownMenuTrigger asChild>
@@ -482,7 +479,7 @@ export function RichToolbar({
             </Tooltip>
           ))}
         </div>
-        <DropdownMenu>
+        <DropdownMenu modal={false}>
           <Tooltip>
             <TooltipTrigger asChild>
               <DropdownMenuTrigger asChild>
@@ -506,24 +503,24 @@ export function RichToolbar({
             className="rich-format-menu"
             onCloseAutoFocus={focus}
           >
-            <DropdownMenuGroup>
+            <DropdownMenuRadioGroup
+              value={state.color || "default"}
+              onValueChange={(color) => {
+                const chain = editor.chain().focus();
+                if (color === "default") chain.unsetColor().run();
+                else chain.setColor(color).run();
+              }}
+            >
               {textColors.map((color) => (
-                <DropdownMenuItem
-                  key={color.value}
-                  onSelect={() =>
-                    editor.chain().focus().setColor(color.value).run()
-                  }
-                >
+                <DropdownMenuRadioItem key={color.value} value={color.value}>
                   <Baseline style={{ color: color.value }} />
                   {color.label}
-                </DropdownMenuItem>
+                </DropdownMenuRadioItem>
               ))}
-              <DropdownMenuItem
-                onSelect={() => editor.chain().focus().unsetColor().run()}
-              >
+              <DropdownMenuRadioItem value="default">
                 {t("Default color")}
-              </DropdownMenuItem>
-            </DropdownMenuGroup>
+              </DropdownMenuRadioItem>
+            </DropdownMenuRadioGroup>
           </DropdownMenuContent>
         </DropdownMenu>
         {tableAction}
@@ -542,19 +539,18 @@ export function RichToolbar({
           </TooltipTrigger>
           <TooltipContent>{t("Insert or edit link")}</TooltipContent>
         </Tooltip>
-        <DropdownMenu>
+        <DropdownMenu modal={false}>
           <Tooltip>
             <TooltipTrigger asChild>
               <DropdownMenuTrigger asChild>
                 <Button
                   type="button"
                   variant="ghost"
-                  size="sm"
+                  size="icon-sm"
                   disabled={disabled}
                   aria-label={t("More formatting")}
                 >
-                  <MoreHorizontal data-icon="inline-start" />
-                  {t("More formatting")}
+                  <MoreHorizontal />
                 </Button>
               </DropdownMenuTrigger>
             </TooltipTrigger>
@@ -686,41 +682,6 @@ export function RichToolbar({
           open={searchOpen}
           onOpenChange={onSearchOpen}
         />
-        {onToggleTheme && (
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon-sm"
-                aria-label={
-                  themeMode === "light"
-                    ? t("Light mode · Switch to dark mode")
-                    : themeMode === "dark"
-                      ? t("Dark mode · Switch to follow system appearance")
-                      : t("Following system appearance · Switch to light mode")
-                }
-                disabled={disabled}
-                onClick={onToggleTheme}
-              >
-                {themeMode === "light" ? (
-                  <Sun />
-                ) : themeMode === "dark" ? (
-                  <Moon />
-                ) : (
-                  <Monitor />
-                )}
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>
-              {themeMode === "light"
-                ? t("Light mode · Switch to dark mode")
-                : themeMode === "dark"
-                  ? t("Dark mode · Switch to follow system appearance")
-                  : t("Following system appearance · Switch to light mode")}
-            </TooltipContent>
-          </Tooltip>
-        )}
         {assistantAction}
       </div>
       {bodyActions}

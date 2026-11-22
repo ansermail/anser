@@ -47,8 +47,12 @@ export function parseAddresses(value: string): Address[] {
 export function formatAddress(a: Address) {
   return a.name ? `${JSON.stringify(a.name)} <${a.email}>` : a.email;
 }
+export function hasAddressName(a: Address) {
+  const name = a.name.trim().toLowerCase();
+  return !!name && name !== a.email.trim().toLowerCase();
+}
 export function displayAddress(a: Address) {
-  if (!a.name) return a.email;
+  if (!hasAddressName(a)) return a.email;
   // Quote only names that would read as multiple addresses or break the angle.
   const name = /[",;<>]/.test(a.name) ? JSON.stringify(a.name) : a.name;
   return `${name} <${a.email}>`;

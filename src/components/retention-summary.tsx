@@ -15,6 +15,7 @@ import {
 } from "./ui/card";
 import { Alert, AlertDescription } from "./ui/alert";
 import { Button } from "./ui/button";
+import { ArchivePath } from "./archive-path";
 
 export function RetentionSummaryView({
   summary,
@@ -79,9 +80,12 @@ export function RetentionSummaryView({
             ? last.toLocaleString(dateLocale())
             : t("No successful checks yet")}
         </p>
-        <p className="break-all text-sm">
-          {t("Save location: ")}
-          {summary.dataDir}
+        <p className="flex min-w-0 flex-wrap items-baseline gap-x-1.5 text-sm">
+          <span>{t("Save location: ")}</span>
+          <ArchivePath
+            path={summary.dataDir}
+            defaultPath={summary.defaultDataDir}
+          />
         </p>
         {budgetContent}
         {summary.receiveError && (

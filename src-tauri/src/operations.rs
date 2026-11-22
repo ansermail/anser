@@ -35,6 +35,7 @@ pub struct OperationSnapshot {
     pub blocked: usize,
     pub completed: usize,
     pub isolated: usize,
+    pub retired: Vec<String>,
     pub items: Vec<Operation>,
 }
 pub enum Failure {
@@ -167,15 +168,19 @@ impl Store {
     pub fn server_operations(&self) -> Result<OperationSnapshot> {
         let db = self.db()?;
         let (pending, blocked, completed, isolated) = db.query_row("SELECT COALESCE(SUM(status IN ('queued','running')),0),COALESCE(SUM(status='blocked'),0),COALESCE(SUM(status='completed'),0),COALESCE(SUM(status='isolated'),0) FROM server_operations", [], |r| Ok((r.get(0)?,r.get(1)?,r.get(2)?,r.get(3)?))).map_err(err)?;
-        let mut stmt = db.prepare(&format!("SELECT {COLUMNS} FROM server_operations ORDER BY CASE status WHEN 'blocked' THEN 0 WHEN 'running' THEN 1 WHEN 'queued' THEN 2 WHEN 'isolated' THEN 3 ELSE 4 END,updated_at DESC LIMIT 50")).map_err(err)?;
+        let mut stmt = db.prepare(&format!("SELECT {COLUMNS} FROM server_operations WHERE status!='dismissed' ORDER BY CASE status WHEN 'blocked' THEN 0 WHEN 'running' THEN 1 WHEN 'queued' THEN 2 WHEN 'isolated' THEN 3 ELSE 4 END,updated_at DESC LIMIT 50")).map_err(err)?;
         let mut items = stmt
             .query_map([], decode)
             .map_err(err)?
             .collect::<std::result::Result<Vec<_>, _>>()
             .map_err(err)?;
         let accounts = self.accounts()?;
+        let mut retired = Vec::new();
         for op in &mut items {
             op.folder = crate::remote::display_name(&op.folder);
+            if op.status == "blocked" && !accounts.iter().any(|a| a.id == op.account_id) {
+                retired.push(op.id.clone());
+            }
             if op.status == "queued" && accounts.iter().any(|a| a.id == op.account_id && !a.enabled)
             {
                 op.status = "paused".into();
@@ -186,6 +191,7 @@ impl Store {
             blocked,
             completed,
             isolated,
+            retired,
             items,
         })
     }
@@ -234,6 +240,16 @@ impl Store {
         })?;
         if self.db()?.execute("UPDATE server_operations SET status='queued',next_attempt=0,error='',updated_at=?2 WHERE id=?1 AND status IN ('queued','blocked')", params![id,now()]).map_err(err)? == 0 { return Err("任务已完成或正在同步，请刷新后查看".into()); }
         Ok(())
+    }
+    pub fn dismiss_retired_server_operation(&self, id: &str, revision: i64) -> Result<bool> {
+        // A reconnected account or a newer flag intent must keep its task.
+        let changed = self.db()?.execute(
+            "UPDATE server_operations SET status='dismissed',revision=revision+1,next_attempt=0,updated_at=?3
+             WHERE id=?1 AND revision=?2 AND status='blocked'
+               AND NOT EXISTS(SELECT 1 FROM accounts WHERE accounts.id=server_operations.account_id)",
+            params![id, revision, now()],
+        ).map_err(err)?;
+        Ok(changed == 1)
     }
     pub(crate) fn validate_operation(
         &self,
@@ -461,11 +477,28 @@ mod tests {
             Err(Failure::Blocked(_))
         ));
         assert_eq!(s.server_operations().unwrap().blocked, 1);
+        let active = s.server_operations().unwrap().items.remove(0);
+        assert!(!s
+            .dismiss_retired_server_operation(&active.id, active.revision)
+            .unwrap());
         s.remove_account(&a.id).unwrap();
         assert!(matches!(
             s.validate_operation(&op),
             Err(Failure::Blocked(_))
         ));
+        let snapshot = s.server_operations().unwrap();
+        let retired = &snapshot.items[0];
+        assert_eq!(snapshot.retired, vec![retired.id.clone()]);
+        assert!(!s
+            .dismiss_retired_server_operation(&retired.id, active.revision)
+            .unwrap());
+        assert!(s
+            .dismiss_retired_server_operation(&retired.id, retired.revision)
+            .unwrap());
+        let hidden = s.server_operations().unwrap();
+        assert_eq!(hidden.blocked, 0);
+        assert!(hidden.items.is_empty());
+        assert!(s.due_operations(&a.id).unwrap().is_empty());
         assert!(s.mail(&id).is_ok());
     }
     #[test]

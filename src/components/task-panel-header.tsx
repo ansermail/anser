@@ -1,11 +1,50 @@
 import { t } from "@/lib/i18n";
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 import { ChevronDown, RefreshCw } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { Button } from "./ui/button";
 import { CardHeader } from "./ui/card";
-import { CollapsibleTrigger } from "./ui/collapsible";
+import { Collapsible, CollapsibleTrigger } from "./ui/collapsible";
+
+export const TaskPanelExpansionContext = createContext<Map<
+  string,
+  boolean
+> | null>(null);
+
+export function TaskPanelCollapsible({
+  children,
+  defaultOpen,
+  remember,
+}: {
+  children: ReactNode;
+  defaultOpen?: boolean;
+  remember?: string;
+}) {
+  const expansion = useContext(TaskPanelExpansionContext);
+  return (
+    <Collapsible
+      asChild
+      defaultOpen={
+        (remember ? expansion?.get(remember) : undefined) ?? defaultOpen
+      }
+      onOpenChange={
+        remember && expansion
+          ? (open) => expansion.set(remember, open)
+          : undefined
+      }
+    >
+      {children}
+    </Collapsible>
+  );
+}
 
 export function TaskPanelHeader({
   title,

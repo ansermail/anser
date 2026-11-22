@@ -62,7 +62,8 @@ it("requires reviewing the destination and cancellation never starts a migration
       ([command]) => command === "move_archive_location",
     ),
   ).toBe(false);
-  expect(host.textContent).toContain("/Old/archive");
+  expect(host.textContent).toContain("雁信默认存档目录");
+  expect(host.querySelector('[title="/Old/archive"]')).toBeTruthy();
 });
 it("shows a migration failure and rereads the active path instead of claiming completion", async () => {
   await click("修改存档位置");
@@ -71,7 +72,7 @@ it("shows a migration failure and rereads the active path instead of claiming co
     parent: "/External",
   });
   expect(host.textContent).toContain("copy failed");
-  expect(host.textContent).toContain("/Old/archive");
+  expect(host.textContent).toContain("雁信默认存档目录");
   expect(host.textContent).not.toContain("/External/Anser-Archive/archive");
 });
 it("disables migration while the configured disk is disconnected", async () => {

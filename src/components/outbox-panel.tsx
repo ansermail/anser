@@ -19,6 +19,7 @@ import { localDateTime, scheduledIso } from "@/lib/schedule-time";
 import { SchedulePicker } from "./schedule-picker";
 import { Badge } from "./ui/badge";
 import { Progress } from "./ui/progress";
+import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
 import {
   Dialog,
   DialogContent,
@@ -593,7 +594,23 @@ export function OutboxPanel({
                       </p>
                     )}
                     {selected.serverCopy.error && (
-                      <p className="form-error">{selected.serverCopy.error}</p>
+                      <Popover>
+                        <PopoverTrigger asChild>
+                          <Button
+                            variant="outline"
+                            size="xs"
+                            className="self-start"
+                          >
+                            {t("Technical details")}
+                          </Button>
+                        </PopoverTrigger>
+                        <PopoverContent
+                          align="start"
+                          className="max-h-48 overflow-auto text-xs break-words select-text"
+                        >
+                          {selected.serverCopy.error}
+                        </PopoverContent>
+                      </Popover>
                     )}
                     {selected.serverCopy.origin === "existing" && (
                       <p className="outbox-detail-copy-note">

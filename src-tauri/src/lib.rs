@@ -333,6 +333,24 @@ async fn retry_server_operation(state: tauri::State<'_, AppState>, id: String) -
         .map_err(err)?
 }
 #[tauri::command]
+async fn dismiss_retired_server_operation(
+    state: tauri::State<'_, AppState>,
+    app: tauri::AppHandle,
+    id: String,
+    revision: i64,
+) -> Result<bool> {
+    let store = state.store.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let changed = store.dismiss_retired_server_operation(&id, revision)?;
+        if changed {
+            let _ = app.emit("server-operations-updated", ());
+        }
+        Ok(changed)
+    })
+    .await
+    .map_err(err)?
+}
+#[tauri::command]
 async fn rule_executions(
     state: tauri::State<'_, AppState>,
 ) -> Result<Vec<rule_operations::RuleExecution>> {
@@ -900,7 +918,10 @@ fn sync_scope(
     scope: &str,
     run: impl FnOnce(&dyn Fn()) -> Result<u32>,
 ) -> Result<u32> {
-    let _ = app.emit("sync-progress", format!("正在收取 {}", account.email));
+    let _ = app.emit(
+        "sync-progress",
+        serde_json::json!({ "accountEmail": account.email }),
+    );
     let checkpoint = std::cell::Cell::new(notifications::checkpoint(store));
     let prior = account.clone();
     let last_update = std::cell::Cell::new(None);
@@ -2108,6 +2129,7 @@ pub fn run() {
             probe_remote_folder,
             server_operations,
             retry_server_operation,
+            dismiss_retired_server_operation,
             save_rules,
             rule_executions,
             rule_runs,

@@ -39,7 +39,7 @@ import { TranslatableMailBody } from "./translatable-mail-body";
 import { MailSummaryLayer } from "./mail-summary";
 import { MailAttachments } from "./mail-attachments";
 import { MailStorageStatus } from "./mail-storage-status";
-import { ContactAddress } from "./contact-address";
+import { SenderIdentity } from "./contact-address";
 import { RecipientAddresses } from "./mail-recipients";
 import { call, newDraft } from "../lib/api";
 import {
@@ -48,7 +48,7 @@ import {
   replyRecipients,
 } from "../lib/addresses";
 import { mailTime, replyHeaders } from "../lib/conversations";
-import { senderName, senderAddress } from "../lib/providers";
+import { senderName } from "../lib/providers";
 import type { Account, Address, Compose, Detail, Mail } from "../lib/types";
 
 function ParseWarnings({ mail }: { mail: Mail }) {
@@ -146,6 +146,7 @@ function Turn({
   onAddContact,
   onLoaded,
   translationActions,
+  subjectContainer,
   onAddWorkItem,
 }: {
   mail: Mail;
@@ -167,6 +168,7 @@ function Turn({
   onAddContact?: (address: Address) => void;
   onLoaded: (detail: Detail) => void;
   translationActions: HTMLElement | null;
+  subjectContainer?: HTMLElement | null;
   onAddWorkItem?: (item: WorkItem) => void;
 }) {
   const [localActions, setLocalActions] = useState<HTMLDivElement | null>(null);
@@ -214,20 +216,12 @@ function Turn({
           {own ? t("Me") : senderName(mail.sender).slice(0, 1)}
         </span>
         <div className="turn-sender">
-          <strong>{own ? t("Me") : senderName(mail.sender)}</strong>
-          {(() => {
-            const address = parseAddresses(mail.sender)[0];
-            return address ? (
-              <ContactAddress
-                address={address}
-                text={address.email}
-                onComposeAddress={onComposeAddress}
-                onAddContact={onAddContact}
-              />
-            ) : (
-              <span title={mail.sender}>{senderAddress(mail.sender)}</span>
-            );
-          })()}
+          <SenderIdentity
+            sender={mail.sender}
+            displayName={own ? t("Me") : undefined}
+            onComposeAddress={onComposeAddress}
+            onAddContact={onAddContact}
+          />
           {senderOnBehalfOf && (
             <span className="turn-sender-via" title={senderOnBehalfOf}>
               {t("Sent on behalf of {value0}", {
@@ -339,6 +333,8 @@ function Turn({
             key={`${mail.id}:${mail.hash}`}
             mailId={mail.id}
             mailDate={mail.date}
+            subject={detail.mail.subject}
+            subjectContainer={selected ? subjectContainer : null}
             onAddWorkItem={onAddWorkItem}
             html={detail.html}
             body={detail.mail.body}
@@ -351,6 +347,7 @@ function Turn({
           mailId={mail.id}
           demo={demo}
           attachments={detail?.attachments || []}
+          reportedAttachments={!!detail?.mail.hasAttachments}
           onPreview={
             onAttachmentPreview
               ? (index, name) => onAttachmentPreview(mail, index, name)
@@ -609,6 +606,7 @@ export function ConversationReader({
   demo,
   scrollRef,
   translationActions,
+  subjectContainer,
   onAddWorkItem,
   editorOpen,
   onReply,
@@ -631,6 +629,7 @@ export function ConversationReader({
   editorOpen: boolean;
   scrollRef: RefObject<HTMLDivElement | null>;
   translationActions: HTMLElement | null;
+  subjectContainer?: HTMLElement | null;
   onAddWorkItem?: (item: WorkItem) => void;
   onReply: (detail: Detail, forward?: boolean, all?: boolean) => void;
   onReedit: (detail: Detail) => void;
@@ -815,6 +814,8 @@ export function ConversationReader({
                 key={`${selected.mail.id}:${selected.mail.hash}`}
                 mailId={selected.mail.id}
                 mailDate={selected.mail.date}
+                subject={selected.mail.subject}
+                subjectContainer={subjectContainer}
                 onAddWorkItem={onAddWorkItem}
                 html={selected.html}
                 body={selected.mail.body}
@@ -825,6 +826,7 @@ export function ConversationReader({
                 mailId={selected.mail.id}
                 demo={demo}
                 attachments={selected.attachments}
+                reportedAttachments={selected.mail.hasAttachments}
                 onPreview={
                   onAttachmentPreview
                     ? (index, name) =>
@@ -890,6 +892,7 @@ export function ConversationReader({
                   onAddContact={onAddContact}
                   onLoaded={loaded}
                   translationActions={translationActions}
+                  subjectContainer={subjectContainer}
                   onAddWorkItem={onAddWorkItem}
                 />
               ))}

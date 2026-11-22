@@ -4,7 +4,12 @@ import { useState } from "react";
 import { Command, CommandItem, CommandList } from "./ui/command";
 import { Popover, PopoverAnchor, PopoverContent } from "./ui/popover";
 import { Input } from "./ui/input";
-import { addressTokens, formatAddress, parseAddresses } from "@/lib/addresses";
+import {
+  addressTokens,
+  formatAddress,
+  hasAddressName,
+  parseAddresses,
+} from "@/lib/addresses";
 import type { Address } from "@/lib/types";
 
 export function RecipientInput({
@@ -62,6 +67,9 @@ export function RecipientInput({
             autoFocus={autoFocus}
             value={value}
             autoComplete="off"
+            autoCorrect="off"
+            autoCapitalize="none"
+            spellCheck={false}
             placeholder={t("Separate multiple addresses with commas")}
             role="combobox"
             aria-autocomplete="list"
@@ -126,10 +134,12 @@ export function RecipientInput({
                 onMouseDown={(e) => e.preventDefault()}
                 onSelect={() => choose(a)}
               >
-                <strong>{a.name || a.email}</strong>
-                <small className="max-w-full break-all text-muted-foreground">
-                  {a.email}
-                </small>
+                <strong>{hasAddressName(a) ? a.name : a.email}</strong>
+                {hasAddressName(a) && (
+                  <small className="max-w-full break-all text-muted-foreground">
+                    {a.email}
+                  </small>
+                )}
               </CommandItem>
             ))}
           </CommandList>

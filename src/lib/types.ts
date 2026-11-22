@@ -33,6 +33,7 @@ export interface RetentionSettings {
 }
 export interface RetentionSummary {
   dataDir: string;
+  defaultDataDir?: string;
   known: number;
   saved: number;
   savedBytes: number;

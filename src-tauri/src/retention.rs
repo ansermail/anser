@@ -357,6 +357,7 @@ pub struct RetentionSettings {
 #[serde(rename_all = "camelCase")]
 pub struct RetentionSummary {
     pub data_dir: String,
+    pub default_data_dir: String,
     pub known: u64,
     pub saved: u64,
     pub saved_bytes: u64,
@@ -447,6 +448,7 @@ impl Store {
             overrides,
             summary: RetentionSummary {
                 data_dir: crate::archive_location::display_path(&self.root),
+                default_data_dir: self.root.join("archive").to_string_lossy().into_owned(),
                 known,
                 saved,
                 saved_bytes,

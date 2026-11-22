@@ -37,8 +37,6 @@ it("applies a low-frequency format only to the preserved selection and returns f
             onLink={() => {}}
             searchOpen={false}
             onSearchOpen={() => {}}
-            dark={false}
-            themeMode="light"
           />
         </TooltipProvider>,
       ),

@@ -1,13 +1,13 @@
 import { TaskCellText, TaskDataTable } from "./task-data-table";
 import { dateLocale, t } from "@/lib/i18n";
-import { TaskPanelHeader } from "./task-panel-header";
+import { TaskPanelHeader, TaskPanelCollapsible } from "./task-panel-header";
 import { useEffect, useRef, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { AlertCircle, RefreshCw } from "lucide-react";
 import { call, native, isDemo } from "@/lib/api";
 import { coalesceRefresh } from "@/lib/refresh-queue";
 import { Button } from "./ui/button";
-import { Collapsible, CollapsibleContent } from "./ui/collapsible";
+import { CollapsibleContent } from "./ui/collapsible";
 import { Badge } from "./ui/badge";
 import { Card, CardContent } from "./ui/card";
 import { Alert, AlertTitle, AlertDescription } from "./ui/alert";
@@ -101,7 +101,10 @@ export function FolderHealthPanel({
     }
   }
   return (
-    <Collapsible defaultOpen={!defaultCollapsed} asChild>
+    <TaskPanelCollapsible
+      defaultOpen={!defaultCollapsed}
+      remember={defaultCollapsed ? "folder-health" : undefined}
+    >
       <Card>
         <TaskPanelHeader
           title={t("Folder source checks")}
@@ -221,6 +224,6 @@ export function FolderHealthPanel({
           </CardContent>
         </CollapsibleContent>
       </Card>
-    </Collapsible>
+    </TaskPanelCollapsible>
   );
 }

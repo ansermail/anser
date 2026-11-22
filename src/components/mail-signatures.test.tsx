@@ -4,7 +4,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { beforeEach, afterEach, expect, it, vi } from "vitest";
 import { MailSignatures } from "./mail-signatures";
 import type { Account, MailSignature } from "@/lib/types";
-import { emptySignature } from "@/lib/signatures";
+import { emptySignature, signatureContent } from "@/lib/signatures";
 const mocks = vi.hoisted(() => ({ call: vi.fn() }));
 vi.mock("@/lib/api", () => ({
   publicPreview: false,
@@ -92,6 +92,35 @@ it("retains the disabled state and shows errors when saving the toggle fails", a
   expect(host.querySelector("#signature-text")).toBeNull();
   expect(host.textContent).toContain("保存失败");
   expect(configurations.work.enabled).toBe(false);
+});
+it("preserves line breaks on the first HTML switch and keeps each edited format", async () => {
+  await click(toggle());
+  const editor = () =>
+    host.querySelector("#signature-text") as HTMLTextAreaElement;
+  const format = () =>
+    host.querySelector("#signature-html") as HTMLButtonElement;
+  const edit = async (value: string) =>
+    act(async () => {
+      Object.getOwnPropertyDescriptor(
+        HTMLTextAreaElement.prototype,
+        "value",
+      )!.set!.call(editor(), value);
+      editor().dispatchEvent(new Event("input", { bubbles: true }));
+    });
+  const plain = "Best regards,\n\nName <name@example.com>";
+  await edit(plain);
+  await click(format());
+  const html = editor().value;
+  expect(html).toContain("Best regards,<br><br>Name &lt;name@example.com&gt;");
+  expect(
+    signatureContent("work", { ...emptySignature(), useHtml: true, text: html })
+      .body,
+  ).toBe(plain);
+  await edit("<strong>Custom HTML</strong>");
+  await click(format());
+  expect(editor().value).toBe(plain);
+  await click(format());
+  expect(editor().value).toBe("<strong>Custom HTML</strong>");
 });
 it("selects an account while collapsed and only enables that account's saved configuration", async () => {
   await act(async () => {

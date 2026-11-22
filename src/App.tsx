@@ -16,7 +16,11 @@ import {
 import { LanguageSettings } from "./components/language-settings";
 import { WorkspaceSettings } from "./components/workspace-settings";
 import { TaskCellText, TaskDataTable } from "./components/task-data-table";
-import { TaskPanelHeader } from "./components/task-panel-header";
+import {
+  TaskPanelHeader,
+  TaskPanelCollapsible,
+  TaskPanelExpansionContext,
+} from "./components/task-panel-header";
 import { SettingsLayout } from "./components/settings-layout";
 import { EmlViewer } from "./components/eml-viewer";
 import { MailStorageStatus } from "./components/mail-storage-status";
@@ -109,6 +113,7 @@ import {
   MoreHorizontal,
   MessagesSquare,
   List,
+  ListChecks,
   Paperclip,
   Plus,
   Printer,
@@ -193,7 +198,7 @@ import {
   displayAddresses,
 } from "./lib/addresses";
 import { MailRecipients } from "./components/mail-recipients";
-import { ContactAddress } from "./components/contact-address";
+import { SenderIdentity } from "./components/contact-address";
 import { hasDraftContent, sanitizeComposeHtml } from "./lib/compose-format";
 import { saveContactAddress } from "./lib/contact-actions";
 import { parseMailtoLink } from "./lib/mailto";
@@ -211,12 +216,7 @@ import {
   restoreDemo,
   newDraft,
 } from "./lib/api";
-import {
-  senderName,
-  senderAddress,
-  formatSize,
-  providers,
-} from "./lib/providers";
+import { senderName, formatSize, providers } from "./lib/providers";
 import type {
   MailPage,
   MailNeighbor,
@@ -332,7 +332,7 @@ export default function App({
     [drafts, setDrafts] = useState<Compose[]>([]),
     [clearingDrafts, setClearingDrafts] = useState(false),
     [syncing, setSyncing] = useState(false),
-    [syncText, setSyncText] = useState(""),
+    [syncEmail, setSyncEmail] = useState(""),
     [loading, setLoading] = useState(true),
     [demo, setDemo] = useState(isDemo()),
     [moveIds, setMoveIds] = useState<string[]>([]),
@@ -363,6 +363,7 @@ export default function App({
     [workbenchPreferenceReady, setWorkbenchPreferenceReady] = useState(false),
     [savingWorkbenchPreference, setSavingWorkbenchPreference] = useState(false);
   const showWorkbenchRef = useRef(showWorkbench);
+  const taskPanelExpansion = useRef(new Map<string, boolean>());
   showWorkbenchRef.current = showWorkbench;
   const theme = useTheme();
   const dark = theme.dark;
@@ -407,6 +408,8 @@ export default function App({
     clearingDraftsNow = useRef(false),
     queryRef = useRef(query),
     readerRef = useRef<HTMLDivElement>(null);
+  const [translatedSubject, setTranslatedSubject] =
+    useState<HTMLDivElement | null>(null);
   const [translationActions, setTranslationActions] =
     useState<HTMLDivElement | null>(null);
   const selectionRef = useRef(selected);
@@ -767,11 +770,12 @@ export default function App({
     let cleanup = () => {};
     let active = true;
     void import("@tauri-apps/api/event").then(async ({ listen }) => {
-      const a = await listen<string>("sync-progress", (e) =>
-        setSyncText(e.payload),
+      const a = await listen<{ accountEmail: string }>(
+        "sync-progress",
+        ({ payload }) => setSyncEmail(payload.accountEmail),
       );
       const b = await listen("mail-updated", () => {
-        setSyncText("");
+        setSyncEmail("");
         void refreshLive();
       });
       const c = await listen<{
@@ -1560,7 +1564,7 @@ export default function App({
       toast.error(String(e), { duration: 8000 });
     } finally {
       setSyncing(false);
-      setSyncText("");
+      setSyncEmail("");
       void refresh();
     }
   }
@@ -2029,7 +2033,11 @@ export default function App({
     >
       <Icon size={17} />
       <span>{viewNames[view]}</span>
-      {!!count && <em>{count}</em>}
+      {!!count && (
+        <em className={view === "all" ? "nav-unread-count" : "nav-total-count"}>
+          {count}
+        </em>
+      )}
     </Button>
   );
   const activeMailBase =
@@ -2085,17 +2093,32 @@ export default function App({
             {t("Demo mode · Exit")}
           </Button>
         )}
-        <span className="connection">
-          <i className={syncing || syncText ? "pulse" : ""} />
-          {syncText ||
-            (demo
+        <Button
+          variant="ghost"
+          size="sm"
+          className="connection"
+          title={t("Background tasks")}
+          onClick={() => {
+            setSettingsSection("tasks");
+            setPage("settings");
+          }}
+        >
+          <i
+            className={syncing || syncEmail ? "pulse" : ""}
+            aria-hidden="true"
+          />
+          <span className="truncate">
+            {demo
               ? t("Sample data")
-              : syncing
-                ? t("Checking mail")
-                : data.accounts.length
-                  ? t("Local first")
-                  : t("No mailbox connected"))}
-        </span>
+              : syncEmail
+                ? t("Checking mail for {value0}", { value0: syncEmail })
+                : syncing
+                  ? t("Checking mail")
+                  : data.accounts.length
+                    ? t("Mail check status")
+                    : t("No mailbox connected")}
+          </span>
+        </Button>
         <Button
           variant="ghost"
           size="icon-sm"
@@ -2141,9 +2164,18 @@ export default function App({
                     <span>{t("Mail, thoughtfully organized")}</span>
                   </strong>
                 </div>
-                <Badge variant="outline" className="brand-version">
-                  α
-                </Badge>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <span
+                      className="brand-version"
+                      tabIndex={0}
+                      aria-label={t("Alpha preview")}
+                    >
+                      α
+                    </span>
+                  </TooltipTrigger>
+                  <TooltipContent>{t("Alpha preview")}</TooltipContent>
+                </Tooltip>
               </div>
               <Button
                 className="compose-button"
@@ -2659,7 +2691,7 @@ export default function App({
                   <p>{t("Manage accounts, local archives and preferences.")}</p>
                 </div>
               </div>
-              <Separator />
+              <Separator className="settings-heading-divider" />
               <SettingsLayout
                 value={settingsSection}
                 onValueChange={setSettingsSection}
@@ -2957,7 +2989,9 @@ export default function App({
                   </>
                 }
                 tasks={
-                  <>
+                  <TaskPanelExpansionContext.Provider
+                    value={taskPanelExpansion.current}
+                  >
                     <div className="settings-section-heading">
                       <div>
                         <h2>{t("Background tasks")}</h2>
@@ -2971,6 +3005,7 @@ export default function App({
                     <ArchiveJobsPanel defaultCollapsed />
                     <EmlImports
                       taskPanel
+                      rememberExpansion
                       accounts={data.accounts}
                       folders={data.folders}
                       onChanged={refresh}
@@ -2983,7 +3018,7 @@ export default function App({
                       <FolderHealthPanel defaultCollapsed />
                       <DirectoryOperationsPanel defaultCollapsed />
                     </div>
-                    <Collapsible asChild>
+                    <TaskPanelCollapsible remember="activity">
                       <Card>
                         <TaskPanelHeader
                           title={t("Recent activity")}
@@ -3017,7 +3052,19 @@ export default function App({
                                   ),
                                   activity: (
                                     <TaskCellText
-                                      text={activity}
+                                      text={
+                                        activity.startsWith("收件诊断：")
+                                          ? activity.endsWith("；成功")
+                                            ? t("Mail check completed")
+                                            : activity.endsWith("；失败")
+                                              ? t("Mail check did not complete")
+                                              : t("Checking mail")
+                                          : /^(?:收件箱收取|收取|目录收取|文件夹收取)失败：/.test(
+                                                activity,
+                                              )
+                                            ? t("Mail check did not complete")
+                                            : activity
+                                      }
                                       detail={log}
                                     />
                                   ),
@@ -3027,8 +3074,8 @@ export default function App({
                           </CardContent>
                         </CollapsibleContent>
                       </Card>
-                    </Collapsible>
-                  </>
+                    </TaskPanelCollapsible>
+                  </TaskPanelExpansionContext.Provider>
                 }
                 about={
                   <>
@@ -3260,77 +3307,97 @@ export default function App({
                         </>
                       )}
                   </div>
-                  <div className="list-filters">
-                    <Tabs
-                      value={query.unreadOnly ? "unread" : "all"}
-                      onValueChange={(value) =>
-                        setQuery((q) => ({
-                          ...q,
-                          unreadOnly: value === "unread",
-                        }))
-                      }
-                    >
-                      <TabsList>
-                        <TabsTrigger value="all">{t("All")}</TabsTrigger>
-                        <TabsTrigger value="unread">{t("Unread")}</TabsTrigger>
-                      </TabsList>
-                    </Tabs>
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          aria-label={t("Message display mode")}
-                        >
-                          {grouped ? (
-                            <MessagesSquare data-icon="inline-start" />
-                          ) : (
-                            <List data-icon="inline-start" />
-                          )}
-                          {grouped
-                            ? t("Conversations")
-                            : t("Individual messages")}
-                          <ChevronDown data-icon="inline-end" />
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end">
-                        <DropdownMenuRadioGroup
-                          value={query.listMode || "conversations"}
-                          onValueChange={(value) => {
-                            if (
-                              value !== "conversations" &&
-                              value !== "messages"
-                            )
-                              return;
-                            setChecked([]);
-                            readingNeighbors.current = null;
-                            setQuery((q) => ({
-                              ...q,
-                              listMode: value,
-                              limit: 200,
-                            }));
-                          }}
-                        >
-                          <DropdownMenuRadioItem value="conversations">
-                            {t("Group by conversation")}
-                          </DropdownMenuRadioItem>
-                          <DropdownMenuRadioItem value="messages">
-                            {t("Individual messages")}
-                          </DropdownMenuRadioItem>
-                        </DropdownMenuRadioGroup>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  </div>
-                  {checked.length > 0 && (
-                    <div className="batch-toolbar">
-                      <span>
+                  {checked.length === 0 ? (
+                    <div className="list-filters">
+                      <Tabs
+                        value={query.unreadOnly ? "unread" : "all"}
+                        onValueChange={(value) =>
+                          setQuery((q) => ({
+                            ...q,
+                            unreadOnly: value === "unread",
+                          }))
+                        }
+                      >
+                        <TabsList>
+                          <TabsTrigger value="all">{t("All")}</TabsTrigger>
+                          <TabsTrigger value="unread">
+                            {t("Unread")}
+                          </TabsTrigger>
+                        </TabsList>
+                      </Tabs>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            aria-label={t("Message display mode")}
+                          >
+                            {grouped ? (
+                              <MessagesSquare data-icon="inline-start" />
+                            ) : (
+                              <List data-icon="inline-start" />
+                            )}
+                            {grouped
+                              ? t("Conversations")
+                              : t("Individual messages")}
+                            <ChevronDown data-icon="inline-end" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuRadioGroup
+                            value={query.listMode || "conversations"}
+                            onValueChange={(value) => {
+                              if (
+                                value !== "conversations" &&
+                                value !== "messages"
+                              )
+                                return;
+                              setChecked([]);
+                              readingNeighbors.current = null;
+                              setQuery((q) => ({
+                                ...q,
+                                listMode: value,
+                                limit: 200,
+                              }));
+                            }}
+                          >
+                            <DropdownMenuRadioItem value="conversations">
+                              {t("Group by conversation")}
+                            </DropdownMenuRadioItem>
+                            <DropdownMenuRadioItem value="messages">
+                              {t("Individual messages")}
+                            </DropdownMenuRadioItem>
+                          </DropdownMenuRadioGroup>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </div>
+                  ) : (
+                    <div className="list-filters batch-toolbar">
+                      <Button
+                        variant="ghost"
+                        size="icon-xs"
+                        title={t("Select all visible messages")}
+                        aria-label={t("Select all visible messages")}
+                        disabled={
+                          loading || checked.length === data.messages.length
+                        }
+                        onClick={() =>
+                          setChecked(data.messages.map((mail) => mail.id))
+                        }
+                      >
+                        <ListChecks />
+                      </Button>
+                      <span role="status">
                         {t("Selected ")}
-                        {checked.length}{" "}
-                        {grouped ? t("conversations") : t("messages")}
+                        {checked.length}
+                        <span className="sr-only">
+                          {" "}
+                          {grouped ? t("conversations") : t("messages")}
+                        </span>
                       </span>
                       <Button
                         variant="ghost"
-                        size="icon-sm"
+                        size="icon-xs"
                         title={t("Manage tags")}
                         aria-label={t("Manage tags")}
                         onClick={() =>
@@ -3347,7 +3414,7 @@ export default function App({
                       </Button>
                       <Button
                         variant="ghost"
-                        size="icon-sm"
+                        size="icon-xs"
                         title={t("Save complete message locally")}
                         disabled={archiving}
                         onClick={() => void queueArchives(checked, grouped)}
@@ -3356,7 +3423,7 @@ export default function App({
                       </Button>
                       <Button
                         variant="ghost"
-                        size="icon-sm"
+                        size="icon-xs"
                         title={t("Mark as read")}
                         onClick={() =>
                           void mutate(checked, "read", "true", grouped)
@@ -3366,7 +3433,7 @@ export default function App({
                       </Button>
                       <Button
                         variant="ghost"
-                        size="icon-sm"
+                        size="icon-xs"
                         title={t("Move to local folder")}
                         onClick={() => {
                           setMoveIds(checked);
@@ -3376,10 +3443,23 @@ export default function App({
                       >
                         <Folder size={15} />
                       </Button>
+                      <Separator
+                        orientation="vertical"
+                        className="mx-0.5 self-center"
+                      />
                       <Button
                         variant="ghost"
-                        size="icon-sm"
-                        title={t("Move to local trash")}
+                        size="icon-xs"
+                        title={t(
+                          query.view === "trash"
+                            ? "Restore local message"
+                            : "Move to local trash",
+                        )}
+                        className={
+                          query.view === "trash"
+                            ? ""
+                            : "text-destructive hover:text-destructive"
+                        }
                         onClick={() =>
                           void mutate(
                             checked,
@@ -3389,7 +3469,16 @@ export default function App({
                           )
                         }
                       >
-                        <Trash2 size={15} />
+                        {query.view === "trash" ? <Undo2 /> : <Trash2 />}
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon-xs"
+                        title={t("Clear selection")}
+                        aria-label={t("Clear selection")}
+                        onClick={() => setChecked([])}
+                      >
+                        <X />
                       </Button>
                     </div>
                   )}
@@ -3712,23 +3801,11 @@ export default function App({
                             {senderName(activeMail.sender).slice(0, 1)}
                           </span>
                           <div>
-                            <strong>{senderName(activeMail.sender)}</strong>
-                            {(() => {
-                              const address = parseAddresses(
-                                activeMail.sender,
-                              )[0];
-                              return address ? (
-                                <ContactAddress
-                                  address={address}
-                                  className="contact-address-start"
-                                  text={address.email}
-                                  onComposeAddress={composeAddress}
-                                  onAddContact={saveContactAddress}
-                                />
-                              ) : (
-                                <span>{senderAddress(activeMail.sender)}</span>
-                              );
-                            })()}
+                            <SenderIdentity
+                              sender={activeMail.sender}
+                              onComposeAddress={composeAddress}
+                              onAddContact={saveContactAddress}
+                            />
                             {activeMail.senderOnBehalfOf && (
                               <span
                                 className="sender-on-behalf-of"
@@ -3846,9 +3923,18 @@ export default function App({
                                 />
                               </Button>
                             </MailActionTooltip>
+                            <Separator
+                              orientation="vertical"
+                              className="mx-1 !h-4 self-center"
+                            />
                             <Button
                               variant="ghost"
                               size="icon-sm"
+                              className={
+                                activeMail.trashed
+                                  ? ""
+                                  : "hover:text-destructive"
+                              }
                               title={
                                 activeMail.trashed
                                   ? t("Restore local message")
@@ -4163,6 +4249,7 @@ export default function App({
                         <h1>{activeMail.subject}</h1>
                         <div className="shrink-0" ref={setTranslationActions} />
                       </div>
+                      <div ref={setTranslatedSubject} />
                     </div>
                     {detail ? (
                       <ConversationReader
@@ -4188,6 +4275,7 @@ export default function App({
                           setPage("workbench");
                         }}
                         translationActions={translationActions}
+                        subjectContainer={translatedSubject}
                         editorOpen={!!draft}
                         onReply={(source, forward = false, all = false) =>
                           compose(source.mail, forward, all, source)
@@ -4362,8 +4450,6 @@ export default function App({
       />
       <ComposeDialog
         dark={dark}
-        themeMode={theme.mode}
-        onToggleTheme={theme.cycleMode}
         draft={draft}
         onClose={() => {
           setDraft(null);

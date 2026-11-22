@@ -52,6 +52,15 @@ function chunks(text: string): string[] {
   if (rest) values.push(rest);
   return values;
 }
+
+export function subjectTranslationParts(subject: string, target: string) {
+  return translatable(subject, target)
+    ? chunks(subject.trim()).map((text, index) => ({
+        id: `subject${index}`,
+        text,
+      }))
+    : [];
+}
 function paragraphKey(id: string) {
   const match = /^(p[0-9]+)_t[0-9]+$/.exec(id);
   return match ? `paragraph:${match[1]}` : `part:${id}`;
@@ -544,7 +553,9 @@ export function planMailTranslation(
         view.lang = target;
         view.setAttribute(
           "aria-label",
-          `${translationLanguages[target] || target}译文`,
+          t("Translation in {value0}", {
+            value0: translationLanguages[target] || target,
+          }),
         );
         copyTypography(group.parent, view);
         view.style.setProperty("display", "block", "important");
@@ -558,6 +569,13 @@ export function planMailTranslation(
         view.style.setProperty("margin-bottom", "0.5em");
         view.style.setProperty("overflow-wrap", "break-word");
         const action = group.parent.closest("a[data-mail-href],a[href]");
+        if (!action || !actionLink(action)) {
+          view.style.setProperty(
+            "border-inline-start",
+            "2px solid color-mix(in srgb, currentColor 40%, transparent)",
+          );
+          view.style.setProperty("padding-inline-start", "0.6em");
+        }
         if (action && actionLink(action)) {
           view.style.setProperty("white-space", "normal");
           view.style.setProperty("line-height", "1.35");

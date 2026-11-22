@@ -124,7 +124,10 @@ it("splits send records into a compact table and keeps diagnostics in details", 
 
   await openDetails("uncertain");
   expect(dialog()?.textContent).toContain("日本語");
-  expect(dialog()?.textContent).toContain("confirmation lost");
+  expect(dialog()?.textContent).not.toContain("confirmation lost");
+  await pressInDialog("技术详情");
+  expect(document.body.textContent).toContain("confirmation lost");
+  await pressInDialog("技术详情");
   expect(dialog()?.textContent).toContain("只读核对副本");
   await pressInDialog("只读核对副本");
   expect(api.call).toHaveBeenCalledWith("sent_upload_action", {

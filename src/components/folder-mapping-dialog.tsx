@@ -1,3 +1,4 @@
+import { ScrollArea } from "./ui/scroll-area";
 import { t } from "@/lib/i18n";
 import { useEffect, useRef, useState } from "react";
 import { RefreshCw } from "lucide-react";
@@ -165,7 +166,7 @@ export function FolderMappingDialog({
       }}
     >
       <DialogContent
-        className="sm:max-w-xl max-h-[85vh] overflow-y-auto"
+        className="sm:max-w-xl flex max-h-[90dvh] flex-col overflow-hidden"
         showCloseButton={!saving}
         onEscapeKeyDown={(e) => {
           if (saving) e.preventDefault();
@@ -180,98 +181,108 @@ export function FolderMappingDialog({
             {account.name} · {account.email}
           </DialogDescription>
         </DialogHeader>
-        <p className="text-sm text-muted-foreground">
-          {t(
-            "Assign purposes to server folders. Junk and Trash are not fetched automatically, but remain accessible from the sidebar.",
-          )}
-        </p>
-        {loading && !settings && <Skeleton className="h-64 w-full" />}
-        {settings && (
-          <FieldGroup className="gap-4">
-            {roles.map(([role, label]) => {
-              const value = values[role] || AUTO;
-              const invalid = missing.some(([r]) => r === role);
-              const detected = settings.folders.filter((f) =>
-                (f.detectedRoles ?? f.roles)?.includes(role),
-              );
-              return (
-                <Field
-                  key={role}
-                  orientation="horizontal"
-                  data-invalid={invalid}
-                  data-disabled={loading || saving}
-                >
-                  <FieldLabel htmlFor={`folder-role-${role}`}>
-                    {t(label)}
-                  </FieldLabel>
-                  <div className="flex min-w-0 flex-1 flex-col gap-1">
-                    <Select
-                      value={value}
-                      onValueChange={(v) =>
-                        setValues((prev) => ({ ...prev, [role]: v }))
-                      }
-                      disabled={loading || saving}
+        <ScrollArea className="dialog-form-scroll">
+          <div className="flex flex-col gap-4 pb-1">
+            <p className="text-sm text-muted-foreground">
+              {t(
+                "Assign purposes to server folders. Junk and Trash are not fetched automatically, but remain accessible from the sidebar.",
+              )}
+            </p>
+            {loading && !settings && <Skeleton className="h-64 w-full" />}
+            {settings && (
+              <FieldGroup className="gap-4">
+                {roles.map(([role, label]) => {
+                  const value = values[role] || AUTO;
+                  const invalid = missing.some(([r]) => r === role);
+                  const detected = settings.folders.filter((f) =>
+                    (f.detectedRoles ?? f.roles)?.includes(role),
+                  );
+                  return (
+                    <Field
+                      key={role}
+                      className="grid items-start gap-2 sm:grid-cols-[minmax(0,1fr)_minmax(0,2fr)] sm:gap-4"
+                      data-invalid={invalid}
+                      data-disabled={loading || saving}
                     >
-                      <SelectTrigger
-                        id={`folder-role-${role}`}
-                        aria-label={t(label)}
-                        aria-invalid={invalid}
-                        className="w-full"
+                      <FieldLabel
+                        className="sm:min-h-9 sm:items-center"
+                        htmlFor={`folder-role-${role}`}
                       >
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectGroup>
-                          <SelectItem value={AUTO}>
-                            {t("Detect automatically")}
-                          </SelectItem>
-                          <SelectItem value={NONE}>
-                            {t("Unassigned")}
-                          </SelectItem>
-                          {invalid && (
-                            <SelectItem value={value} disabled>
-                              {t("Configured folder unavailable")}
-                            </SelectItem>
-                          )}
-                          {selectable.map((f) => (
-                            <SelectItem key={f.name} value={PREFIX + f.name}>
-                              {f.displayName}
-                            </SelectItem>
-                          ))}
-                        </SelectGroup>
-                      </SelectContent>
-                    </Select>
-                    {invalid ? (
-                      <FieldError>
-                        {t(
-                          "The folder was removed or cannot hold messages. Select another.",
+                        {t(label)}
+                      </FieldLabel>
+                      <div className="flex min-w-0 flex-1 flex-col gap-1">
+                        <Select
+                          value={value}
+                          onValueChange={(v) =>
+                            setValues((prev) => ({ ...prev, [role]: v }))
+                          }
+                          disabled={loading || saving}
+                        >
+                          <SelectTrigger
+                            id={`folder-role-${role}`}
+                            aria-label={t(label)}
+                            aria-invalid={invalid}
+                            className="w-full"
+                          >
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectGroup>
+                              <SelectItem value={AUTO}>
+                                {t("Detect automatically")}
+                              </SelectItem>
+                              <SelectItem value={NONE}>
+                                {t("Unassigned")}
+                              </SelectItem>
+                              {invalid && (
+                                <SelectItem value={value} disabled>
+                                  {t("Configured folder unavailable")}
+                                </SelectItem>
+                              )}
+                              {selectable.map((f) => (
+                                <SelectItem
+                                  key={f.name}
+                                  value={PREFIX + f.name}
+                                >
+                                  {f.displayName}
+                                </SelectItem>
+                              ))}
+                            </SelectGroup>
+                          </SelectContent>
+                        </Select>
+                        {invalid ? (
+                          <FieldError>
+                            {t(
+                              "The folder was removed or cannot hold messages. Select another.",
+                            )}
+                          </FieldError>
+                        ) : (
+                          value === AUTO && (
+                            <FieldDescription>
+                              {detected.length
+                                ? t("Detected: {value0}", {
+                                    value0: detected
+                                      .map((f) => f.displayName)
+                                      .join("、"),
+                                  })
+                                : t("No folder detected for this purpose")}
+                            </FieldDescription>
+                          )
                         )}
-                      </FieldError>
-                    ) : (
-                      value === AUTO && (
-                        <FieldDescription>
-                          {detected.length
-                            ? t("Detected: {value0}", {
-                                value0: detected
-                                  .map((f) => f.displayName)
-                                  .join("、"),
-                              })
-                            : t("No folder detected for this purpose")}
-                        </FieldDescription>
-                      )
-                    )}
-                  </div>
-                </Field>
-              );
-            })}
-          </FieldGroup>
-        )}
-        {error && (
-          <Alert variant="destructive">
-            <AlertDescription>{error}</AlertDescription>
-          </Alert>
-        )}
-        <DialogFooter className="sm:justify-between">
+                      </div>
+                    </Field>
+                  );
+                })}
+              </FieldGroup>
+            )}
+            {error && (
+              <Alert variant="destructive">
+                <AlertDescription>{error}</AlertDescription>
+              </Alert>
+            )}
+          </div>
+        </ScrollArea>
+        <DialogFooter className="shrink-0 sm:flex-wrap sm:justify-between">
           <Button
             variant="outline"
             disabled={loading || saving}

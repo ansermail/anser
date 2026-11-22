@@ -1328,7 +1328,7 @@ function WorkReport({
                   <TooltipTrigger asChild>
                     <Button
                       variant="ghost"
-                      size="icon-sm"
+                      size="sm"
                       disabled={!filtered.length}
                       aria-label={t("Copy report")}
                       onClick={() =>
@@ -1339,6 +1339,9 @@ function WorkReport({
                       }
                     >
                       <Copy />
+                      <span className="wb-report-action-label">
+                        {t("Copy")}
+                      </span>
                     </Button>
                   </TooltipTrigger>
                   <TooltipContent>{t("Copy report")}</TooltipContent>
@@ -1347,12 +1350,15 @@ function WorkReport({
                   <TooltipTrigger asChild>
                     <Button
                       variant="ghost"
-                      size="icon-sm"
+                      size="sm"
                       disabled={!filtered.length}
                       aria-label={t("Download Markdown")}
                       onClick={() => download("md")}
                     >
                       <Download />
+                      <span className="wb-report-action-label">
+                        {t("Download Markdown")}
+                      </span>
                     </Button>
                   </TooltipTrigger>
                   <TooltipContent>{t("Download Markdown")}</TooltipContent>

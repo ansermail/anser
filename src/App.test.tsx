@@ -462,6 +462,14 @@ it("manually refreshes recent activity without collapsing it", async () => {
   expect(trigger.getAttribute("aria-expanded")).toBe("true");
   expect(refresh.getAttribute("aria-busy")).toBe("true");
   expect(refresh.disabled).toBe(true);
+  await click(nav("全部邮件"));
+  expect(host.querySelector(".settings-workspace")).toBeNull();
+  await click(host.querySelector('button.connection[title="后台任务"]'));
+  expect(
+    host
+      .querySelector('[aria-label="展开或收起最近活动"]')
+      ?.getAttribute("aria-expanded"),
+  ).toBe("true");
 });
 
 describe("title translation action", () => {
@@ -1283,6 +1291,7 @@ describe("message and conversation display modes", () => {
       ids: ["demo-0"],
       conversations: true,
     });
+    await click(host.querySelector('[aria-label="取消选择"]'));
     await chooseListMode("逐封邮件");
     await click(host.querySelector('.row-check [role="checkbox"]'));
     await click(host.querySelector('.batch-toolbar [title="完整保存到本地"]'));

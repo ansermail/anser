@@ -125,7 +125,7 @@ export function RichTableMenu({
   const gridLabel = (rows: number, cols: number) =>
     t("Insert {rows} rows × {columns} columns", { rows, columns: cols });
   return (
-    <DropdownMenu onOpenChange={() => setSize(0, 0)}>
+    <DropdownMenu modal={false} onOpenChange={() => setSize(0, 0)}>
       <Tooltip>
         <TooltipTrigger asChild>
           <DropdownMenuTrigger asChild>
@@ -147,7 +147,14 @@ export function RichTableMenu({
         align="start"
         onCloseAutoFocus={(event) => {
           event.preventDefault();
-          if (!dialog.current && !editor.isDestroyed) editor.commands.focus();
+          if (
+            !dialog.current &&
+            !editor.isDestroyed &&
+            !document.querySelector(
+              '[data-slot="dropdown-menu-content"][data-state="open"]',
+            )
+          )
+            editor.commands.focus();
         }}
       >
         {!inside && (
