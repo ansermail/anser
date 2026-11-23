@@ -6,7 +6,7 @@
 
 - 固定源码为 `a5c6545dce7f110ec3b45383361558a65c3787ba`，注释标签为 `v0.1.43`。暂存对象及固定提交的五处版本均独立核对通过。
 - Release ID 为 `449495466`，于 2026-11-18 11:43:45 公开为 latest。[正式版本](https://github.com/ansermail/anser/releases/tag/v0.1.43)
-- 本版包含工作台日历、四象限、看板、报告、编辑抽屉改进和各视图右键删除。[完整发布说明](releases/v0.1.43.md)
+- 本版包含工作台日历、四象限、看板、报告、编辑抽屉改进和各视图右键删除。[完整发布说明](../../releases/v0.1.43.md)
 - [Release desktop 44227978366](https://github.com/ansermail/anser/actions/runs/44227978366) 的检查、macOS arm64、macOS x86_64、Windows x64 与草稿汇总全部成功。Windows 正式安装、启动、GUI 子系统和真实托盘恢复冒烟通过。
 - [Checks 44227978627](https://github.com/ansermail/anser/actions/runs/44227978627) 与 [Windows validation 44227978477](https://github.com/ansermail/anser/actions/runs/44227978477) 全部成功。
 - 九份正式资源大小与 SHA-256、说明原文及末尾换行、三平台更新签名、Mac 双架构元数据/固定签名/精确 designated requirement/语言/文件关联/许可、DMG 与更新归档内容一致性均已核验。八份安装/更新文件及签名与独立下载的 Actions 产物逐字节一致。
@@ -26,7 +26,7 @@
 
 复核时本机运行的是 `/Applications/雁信.app/Contents/MacOS/anser`，版本为 0.1.42，严格签名和固定 designated requirement 有效。开发进程已退出，1420 开发端口已释放。0.1.43 的本机升级由用户自行执行，尚未旁观验收。
 
-工作台原生菜单、取消删除及红线显示已在 macOS 开发版核对。Windows/Intel 实机使用和原位升级仍待验收，相关入口保留在 [工作台记录](WORKBENCH_WORKING.md)。
+工作台原生菜单、取消删除及红线显示已在 macOS 开发版核对。Windows/Intel 实机使用和原位升级仍待验收，相关入口保留在 [工作台记录](../features/WORKBENCH_WORKING.md)。
 
 ## 正式资源
 

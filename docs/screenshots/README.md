@@ -6,6 +6,7 @@
 - `inbox-demo.png`：多账号收件箱与单封邮件阅读。
 - `compose-demo.png`：写信窗口与自动保存草稿。
 - `rules-demo.png`：本地自动归类规则。
+- `dashboard-mail.png`：早期 dashboard 布局视觉基线参考图（由 `docs/IMPLEMENTATION.md` 引用）。
 
 截图保留「演示模式」「示例数据」标识。截图时仅临时隐藏浏览器翻译扩展悬浮入口，未修改应用内容或布局，未采集真实邮箱。
 

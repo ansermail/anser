@@ -43,7 +43,7 @@ Markdown 源码由 Marked 解析后净化，兼容旧草稿。编辑画布将可
 
 阅读“更多”菜单组合既有本地动作和 `ServerDirectoryMenu`，后者以共享内容支持独立菜单与嵌套子菜单，继续使用原请求代际、可信来源、任务提交与重复提交保护。富文本低频菜单仍调用 Tiptap 既有命令，关闭时恢复编辑焦点与选区。`MailStorageStatus` 统一阅读页和对话气泡的在线/完整保存说明；不更改保存状态及缓存边界。新增空状态使用官方 shadcn `Empty`。
 
-本轮修改前端正文样式解析及 Rust 外链样式资源重写，两者都只补充 `font-display:swap`；数据库、MIME、协议和保存边界未变。自动与原生验证、限制及用户验收入口见 [UI / UX 改进工作点](UI_UX_REVIEW_WORKING.md)。
+本轮修改前端正文样式解析及 Rust 外链样式资源重写，两者都只补充 `font-display:swap`；数据库、MIME、协议和保存边界未变。自动与原生验证、限制及用户验收入口见 [UI / UX 改进工作点](working/features/UI_UX_REVIEW_WORKING.md)。
 
 ## Windows 平台适配（验证中）
 
@@ -51,7 +51,7 @@ Windows 使用 `tauri.windows.conf.json` 合并原生窗口、HTTPS scheme、Web
 
 凭据库继续 AES-256-GCM 加密文件，Windows 启用 keyring 的 windows-native 后端保存密钥。文件内容刷新并关闭句柄后再原子替换；目录 fsync 仅在 Unix 执行。Windows 通知通过 WinRT 显示，`anser://notification/<token>` 只携带既有数据库绑定的不透明令牌；单实例与冷启动复用同一定位入口，不接收任意邮件 ID 或文件路径。
 
-发布收集器支持三平台九资源，Windows 使用 NSIS EXE 和 Tauri 更新签名。Windows CI 包含原生安装/首屏/外部 EML/外链点击冒烟，真实账号与升级另验。详见 [Windows 工作点](WINDOWS_SUPPORT_WORKING.md)。
+发布收集器支持三平台九资源，Windows 使用 NSIS EXE 和 Tauri 更新签名。Windows CI 包含原生安装/首屏/外部 EML/外链点击冒烟，真实账号与升级另验。详见 [Windows 工作点](working/features/WINDOWS_SUPPORT_WORKING.md)。
 
 Windows 覆盖配置不使用默认 fileAssociations 安装宏；NSIS hooks 只注册可选邮件处理程序、OpenWithProgids 和系统设置候选，不修改扩展名默认值及 UserChoice。附件预览在调用系统关联前拒绝 Windows 脚本、快捷方式、控制面板和安装器类型，另存原附件仍保留。
 
@@ -81,7 +81,7 @@ Windows 覆盖配置不使用默认 fileAssociations 安装宏；NSIS hooks 只�
 
 外置根生成独立 `index.html`，按邮件日期倒序展示并支持浏览器内主题与筛选；`archive_tier_normalize` 递归发现有效 `.eml` 后按索引日期重建目录。设置页使用 shadcn Card/Select/Button/Collapse/Progress/Alert 组合展示统计、待归档、任务进度、断盘错误和最近 50 条记录。完整原始 MIME、附件字节、账号和 SQLite 索引的现有边界不变。
 
-验证与限制见 [附加存档工作点](ARCHIVE_TIER_WORKING.md)。
+验证与限制见 [附加存档工作点](working/features/ARCHIVE_TIER_WORKING.md)。
 
 ## 联系人地址操作（2026-10-24）
 
@@ -105,13 +105,13 @@ Windows 覆盖配置不使用默认 fileAssociations 安装宏；NSIS hooks 只�
 
 `watch_session` 在能力核对与只读打开后先执行 `CatchUp`，再进入循环：有排队信号时在 DONE 回执之后调用收取闭包，收取完重新只读打开收件箱以更新观测基线并检测下载期间到达的邮件；否则按到期顺序执行复核或定时补查，再以三者最近截止（含 29 分钟保活）进入 IDLE。只有被跟踪的 EXISTS/EXPUNGE/UIDNEXT/UIDVALIDITY 变化才排队下载，重复值与首次基线不触发；复核失败直接丢弃会话，失败连接不复用。`sync_inbox_session` 在监听连接上调用现有只读目录收取（限定 INBOX），保留临时原件、短事务发布、来源与存档保护；监听仍不代替其他目录的历史收取、不写标记、不发信。
 
-监听线程、监听注册表（供全目录收取跳过 INBOX）与单账号代次均在 `realtime.rs`；信号来源区分“监听连接后补查”“服务器实时通知”“实时目录复核发现变化”“定时补查”。自动回归覆盖 DONE 后用同一连接下载、复核被拒时丢弃会话、静默 IDLE 下复核发现数量/UIDNEXT/UIDVALIDITY 变化；真实 QQ 与腾讯企业邮的 IDLE 主动推送已复验，外部代理与其他服务商仍未验收，详见 [实时收件工作点](REALTIME_RECEIVE_WORKING.md)。
+监听线程、监听注册表（供全目录收取跳过 INBOX）与单账号代次均在 `realtime.rs`；信号来源区分“监听连接后补查”“服务器实时通知”“实时目录复核发现变化”“定时补查”。自动回归覆盖 DONE 后用同一连接下载、复核被拒时丢弃会话、静默 IDLE 下复核发现数量/UIDNEXT/UIDVALIDITY 变化；真实 QQ 与腾讯企业邮的 IDLE 主动推送已复验，外部代理与其他服务商仍未验收，详见 [实时收件工作点](working/features/REALTIME_RECEIVE_WORKING.md)。
 
 ## QQ 实时收件诊断与只读复核（0.1.24 起，2026-10-20）
 
 原有实时连接在每个 60 秒 IDLE 周期后发 NOOP，只依赖 EXISTS/EXPUNGE 变化；连接响应成功不能证明该会话的目录视图已刷新。现复用 `examine_verified` 在 NOOP 后只读重新打开 INBOX，二者共用 45 秒绝对响应截止；原生监听首次打开同样要求完整的 EXISTS 响应。`MailboxActivity` 复用 IMAP 解析器，同时观察 UIDNEXT/UIDVALIDITY；初次值与重复值不触发。上一阶段变化只排队新连接收取；现行单连接方案已改为在监听连接内收取，见上一节。
 
-回调仍在活动锁外且可早于 tagged 回执排队；IDLE 主动推送、只读复核、定时补查分别记录，后两者均不冒充即时推送。连接失败退避、代次/账号核对、只读历史 FETCH 让出与原件/来源保护保持；主动停止与再次启动 IDLE 竞态按停止处理。合成回归和原生联调边界见 [实时收件工作点](REALTIME_RECEIVE_WORKING.md)，不追溯断言未保存的服务器响应。
+回调仍在活动锁外且可早于 tagged 回执排队；IDLE 主动推送、只读复核、定时补查分别记录，后两者均不冒充即时推送。连接失败退避、代次/账号核对、只读历史 FETCH 让出与原件/来源保护保持；主动停止与再次启动 IDLE 竞态按停止处理。合成回归和原生联调边界见 [实时收件工作点](working/features/REALTIME_RECEIVE_WORKING.md)，不追溯断言未保存的服务器响应。
 
 原生第二轮已证实 QQ 的 NOOP/IDLE 未报告变化，由 EXAMINE 目录复核触发收取；SMTP 确认后约 48.2 秒收完，未等五分钟补查。测试期间后端稳定且未手动刷新，QQ 测试正文显示通过；392 项 Rust、39 项 IMAP 解析及格式/开发固定签名通过。该修正包含在 0.1.24 中，不扩充为其他服务商或睡眠/弱网矩阵验收。
 
@@ -123,7 +123,7 @@ Windows 覆盖配置不使用默认 fileAssociations 安装宏；NSIS hooks 只�
 
 语言由独立 IPC `get_interface_language` / `set_interface_language` 存在现有 preferences 表的 `interface-language` 键，与 sync/通知/代理设置分离；旧库缺失时使用中文，非法语言拒绝写入。保存成功再发布前端状态；菜单更新失败回滚配置，启动的迟到读取不覆盖后续切换。原生托盘和通知固定文案共用英文配置；历史日志、服务器原始诊断和发布说明保持其原语言。正式包与开发包同时声明 `zh-Hans` / `en`，操作系统原生面板仍由系统选择。
 
-Pages 语言选择仍只使用隔离的虚构数据/内存偏好，不调用真实 IPC。`npm run check:i18n` 检查语言键、非空译文、占位符与代码引用，已接入生产/Pages 构建。翻译配置随构建内置；修改 JSON 后重新构建生效。验证证据见 [国际化工作点](I18N_WORKING.md)。
+Pages 语言选择仍只使用隔离的虚构数据/内存偏好，不调用真实 IPC。`npm run check:i18n` 检查语言键、非空译文、占位符与代码引用，已接入生产/Pages 构建。翻译配置随构建内置；修改 JSON 后重新构建生效。验证证据见 [国际化工作点](working/features/I18N_WORKING.md)。
 
 ## Homebrew 同仓库分发（2026-10-17）
 
@@ -145,7 +145,7 @@ Pages 语言选择仍只使用隔离的虚构数据/内存偏好，不调用真�
 
 `proxy::route` 先连接代理并完成 SOCKS5 或 HTTP CONNECT（HTTPS 代理先验证代理 TLS），再建立仅供当前连接使用的回环隧道；IMAP/POP3 在其上继续以真实邮件服务器名验证 TLS，SMTP 的 lettre 传输也显式使用真实服务器名作为 TLS 参数。代理握手失败且用户开启直连回退时才建立直接连接；SMTP 协议数据开始传输后不换路线重发。OAuth 令牌交换由 reqwest 使用同一代理配置，系统浏览器的授权页面不在此范围。代理密码不写入 SQLite、前端持久数据或日志。
 
-此阶段合成代理握手/隧道测试和演示设置页验证与真实服务器收发分开记录，见 [代理工作点](PROXY_WORKING.md)。
+此阶段合成代理握手/隧道测试和演示设置页验证与真实服务器收发分开记录，见 [代理工作点](working/features/PROXY_WORKING.md)。
 
 ## 本地草稿箱一键清空（2026-10-13，未发布）
 
@@ -215,7 +215,7 @@ safeMailHtml原先给body注入overflow-wrap:anywhere，其断词机会参与表
 - `npm run test:rust`：40 项通过，覆盖协议与规则、存档持久化/去重/损坏检测、账号删除保留原件、来源对账、备份恢复、账号编辑、富文本 MIME、联系人、组合筛选、发送结果不明保护、完整性检查、检查间隔及定时计划恢复/取消/过期/附件固定。
 - 浏览器操作：示例邮箱读取、搜索“账单”返回对应邮件、侧栏折叠与恢复、规则预览匹配 1 封且取消不保存、账号设置页、1000×650 小窗口及深色切换。
 - 本轮生产前端构建通过，富文本编辑器按需加载；开发版 Rust 自动重新编译并启动。最近一次 arm64 应用包为 `src-tauri/target/release/bundle/macos/雁信.app`，约 19.28 MiB，该应用包早于本轮新增功能；本轮使用正在运行的 `npm run desktop` 直接预览，无需安装。
-- macOS 原生窗口已验证启动、进入演示、打开邮件正文；原 dashboard 视觉基线见 `dashboard-mail.png`；本轮已在原生窗口检查移除重复标题、标题旁侧栏切换、阅读区顶端对齐、顶部回复转发和卡片外的主题按钮。侧栏顶部写信与底部设置区固定，中间账号/文件夹独立滚动。
+- macOS 原生窗口已验证启动、进入演示、打开邮件正文；原 dashboard 视觉基线见 `screenshots/dashboard-mail.png`；本轮已在原生窗口检查移除重复标题、标题旁侧栏切换、阅读区顶端对齐、顶部回复转发和卡片外的主题按钮。侧栏顶部写信与底部设置区固定，中间账号/文件夹独立滚动。
 - 用户的腾讯企业邮账号已实际收取并保存 320 封邮件；Gmail/微软/其他国内服务商尚未完成线上收发验证。演示模式不会连接服务器。
 
 ## 视觉依据

@@ -6,7 +6,7 @@
 - 浏览器：生产净化/分段模块，600px/320px 虚构结构对比约 8.3px→0 缝隙，按钮 174px→90px，译文约 22px 单行，无溢出；隐藏后 DOM 精确恢复。临时 TaskSpace 已结束。
 - 自动验证：`npx vitest run src/lib/mail-translation.test.ts src/lib/mail-html.test.ts src/components/translatable-mail-body.test.tsx src/components/mail-content.test.tsx` 四文件 48/48；`npm run build`（含 UI/i18n1367键/TS/Vite）、`npm run format:check` 与 `git diff --check` 通过，仅既有分包警告。本轮未改 Rust，不沿用前阶段结果冒充本轮检查。
 - 原生验证：稳定 `npm run desktop` Running 后确认开发 PID 23233 为 Tauri CLI 22991 直接子进程。真实图片邮件中原截图的 Codelabs/Profiler/最佳实践连续，无切片白缝；真实促销邮件橙色按钮中文单行居中、无前导缩进，双语高度紧凑；隐藏恢复原始单语按钮，再次显示成功。最终开发预览保留双语按钮供核对。未点击促销链接、不改凭据/邮箱配置、不替换正式包；Windows/Intel 实机未验证。
-- 状态：`main` / `be4b549` 基线。用户已授权提交并发布，本阶段连同额外片段、横排链接和两处既有图片诊断改动进入 0.1.37；临时原件/HTML 诊断副本、对比截图和浏览器夹具已清理，不进入提交/公开夹具。正式发布状态见 [0.1.37 发布工作点](RELEASE_0_1_37_WORKING.md)。
+- 状态：`main` / `be4b549` 基线。用户已授权提交并发布，本阶段连同额外片段、横排链接和两处既有图片诊断改动进入 0.1.37；临时原件/HTML 诊断副本、对比截图和浏览器夹具已清理，不进入提交/公开夹具。正式发布状态见 [0.1.37 发布工作点](../releases/RELEASE_0_1_37_WORKING.md)。
 
 ---
 
@@ -39,7 +39,7 @@
 
 ## 当前发布状态（2026-10-16）
 
-本次返回校验、分批与活动记录修复已随 [0.1.18](https://github.com/ansermail/anser/releases/tag/v0.1.18) / `71224095b21aefea3f59d2cc89c23a87a85fb86d` 正式发布，双架构/完整七资源及公开更新地址核验通过，Tap 已同步；正式包实际安装/升级独立待验证。详见 [发布工作点](RELEASE_0_1_18_WORKING.md)。下方未提交/未发布说明均为当时历史。
+本次返回校验、分批与活动记录修复已随 [0.1.18](https://github.com/ansermail/anser/releases/tag/v0.1.18) / `71224095b21aefea3f59d2cc89c23a87a85fb86d` 正式发布，双架构/完整七资源及公开更新地址核验通过，Tap 已同步；正式包实际安装/升级独立待验证。详见 [发布工作点](../releases/RELEASE_0_1_18_WORKING.md)。下方未提交/未发布说明均为当时历史。
 
 ## 发布前修复（2026-10-16，原邮件翻译已验证）
 
@@ -60,7 +60,7 @@
 
 ## 前一发布状态（2026-10-15，历史）
 
-本工作点的功能和修复已随 [0.1.17](https://github.com/ansermail/anser/releases/tag/v0.1.17) 的固定源码 `7312e5c` 正式发布，远程全量检查/双架构、七资源及标准更新端点核验完成，Homebrew 配方同步。发布证据与签名、实际安装/升级的独立边界见 [发布工作点](RELEASE_0_1_17_WORKING.md)。下方开发预览与未提交/未发布文字保留为当时历史，不能覆盖本项；真实邮件翻译及其他模型服务的完整矩阵仍待用户验收。
+本工作点的功能和修复已随 [0.1.17](https://github.com/ansermail/anser/releases/tag/v0.1.17) 的固定源码 `7312e5c` 正式发布，远程全量检查/双架构、七资源及标准更新端点核验完成，Homebrew 配方同步。发布证据与签名、实际安装/升级的独立边界见 [发布工作点](../releases/RELEASE_0_1_17_WORKING.md)。下方开发预览与未提交/未发布文字保留为当时历史，不能覆盖本项；真实邮件翻译及其他模型服务的完整矩阵仍待用户验收。
 
 ## 目标与边界
 

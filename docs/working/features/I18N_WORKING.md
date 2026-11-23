@@ -10,7 +10,7 @@
 - 独立 IPC 与 preferences 表 `interface-language` 键保存语言；不通过整份通知/同步/代理 Preferences 覆盖。旧库使用配置默认语言，拒绝不支持的值，重开 Store 恢复；启动迟到读取不能覆盖后续切换，保存失败保留原显示。
 - 原生菜单栏四项、托盘提示及新邮件/发送结果通知的固定文字复用 JSON；菜单更新失败回滚。正式与开发包声明 `zh-Hans` / `en`，原生 ACL、存储标识、签名、公钥与协议身份未变。
 - 界面语言与模型正文翻译目标独立。用户内容、邮件主题/原文、账号和自建目录名称、服务端原始诊断、历史日志、发布说明保留原文。已有草稿/邮件不因切换而重写。
-- AGENTS、USAGE、IMPLEMENTATION 与当前开发检查点已同步。源码 `6fb7d55` 已进入组织 main 并随 0.1.23 正式发布；双架构构建、签名、资源/公开端点及 Homebrew 证据见 [发布工作点](RELEASE_0_1_23_WORKING.md)。
+- AGENTS、USAGE、IMPLEMENTATION 与当前开发检查点已同步。源码 `6fb7d55` 已进入组织 main 并随 0.1.23 正式发布；双架构构建、签名、资源/公开端点及 Homebrew 证据见 [发布工作点](../releases/RELEASE_0_1_23_WORKING.md)。
 
 ## 本轮实际验证
 

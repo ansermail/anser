@@ -141,6 +141,7 @@ npm run build
 
 ## 项目文档
 
+- [文档总览与目录索引](docs/README.md)：文档分类结构、专题方案与历史工作点入口。
 - [功能与使用说明](docs/USAGE.md)：具体功能、数据行为及开发运行方式。
 - [开发进度与继续检查点](docs/DEVELOPMENT_STATUS.md)：已完成事项、验收证据和剩余任务。
 - [发布与应用内更新](docs/UPDATES.md)：构建、签名、版本发布与升级流程。

@@ -38,7 +38,7 @@ Windows validation 执行格式、前端与脚本测试、生产构建、Rust �
 
 Release desktop 将 macOS 两架构与 Windows x64 一并收齐后才生成草稿。新版本共九项资源：两组 Mac DMG/更新归档/签名，Windows NSIS EXE/签名，以及包含三平台的 `latest.json`。Homebrew 仍仅同步两份 Mac DMG。
 
-Windows 11 真实窗口、草稿、系统通知横幅及外部邮件已检查；发送与打印由用户实测通过。Windows 10 实机、IDLE 新到达、绑定邮件通知冷启动及原位升级尚未验证。完整记录见 [Windows 发布工作点](WINDOWS_RELEASE_WORKING.md)。
+Windows 11 真实窗口、草稿、系统通知横幅及外部邮件已检查；发送与打印由用户实测通过。Windows 10 实机、IDLE 新到达、绑定邮件通知冷启动及原位升级尚未验证。完整记录见 [Windows 发布工作点](working/releases/WINDOWS_RELEASE_WORKING.md)。
 
 ## 2026-10-28 实机与云端验收
 

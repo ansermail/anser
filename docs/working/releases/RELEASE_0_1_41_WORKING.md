@@ -5,7 +5,7 @@
 ## 当前状态：正式发布与分发完成
 
 - 主线业务改动为 `49388dc94a4bc9de21e461a1d5afcfc29e843aff`。阅读区四周统一为 10px，HTML 正文区域使用 12px 圆角。该提交已通过 Checks、Windows validation 和用户的开发预览验收。
-- 固定源码 `c360d27b587a5b9aee4a1e07e24b00929cb5b65b`，注释标签 `v0.1.41`（对象 `d8ad0102adf615342b4f3f08fd6fa576943407fc`）已推送。五处版本已通过 Git 暂存对象及固定提交双重核对；发布说明见 [v0.1.41](releases/v0.1.41.md)。
+- 固定源码 `c360d27b587a5b9aee4a1e07e24b00929cb5b65b`，注释标签 `v0.1.41`（对象 `d8ad0102adf615342b4f3f08fd6fa576943407fc`）已推送。五处版本已通过 Git 暂存对象及固定提交双重核对；发布说明见 [v0.1.41](../../releases/v0.1.41.md)。
 - 本机 Apple Silicon 通过 `npm run test:ci`（70 文件 / 485 项）、`npm run test:rust`（454 通过 / 5 条件忽略）、钥匙串迁移示例（16 通过 / 2 条件忽略）、`npm run test:desktop`（37 项）、vendored IMAP 回归（39 项）、`npm run build`、`npm run build:preview`、`npm run format:check`、Rust fmt 与 `npm run release:check`。
 - Release ID `441692517`，于 2026-11-11 20:55:53（Asia/Shanghai）公开为 latest。[v0.1.41](https://github.com/ansermail/anser/releases/tag/v0.1.41)
 - [Release desktop 43019626935](https://github.com/ansermail/anser/actions/runs/43019626935) 的全量检查、macOS 双架构、Windows x64 和草稿汇总均成功。Windows Rust 453 项通过、3 项条件忽略；正式安装、启动和托盘恢复冒烟通过。

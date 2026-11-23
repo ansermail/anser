@@ -2,7 +2,7 @@
 
 ## 目标与工作区
 
-- 组织仓库：`ansermail/anser`；开发分支：`codex/issue-1-improvements`，起点 `30d65a780`。[PR #2](https://github.com/ansermail/anser/pull/2) 已以 squash 合并到 `main`，合并提交 `3d48afc4410d01f544c05f8323c53086d9baad78`；Issue #1 已回复并关闭。后续桌面交付从 [0.1.20 发布工作点](RELEASE_0_1_20_WORKING.md) 继续。
+- 组织仓库：`ansermail/anser`；开发分支：`codex/issue-1-improvements`，起点 `30d65a780`。[PR #2](https://github.com/ansermail/anser/pull/2) 已以 squash 合并到 `main`，合并提交 `3d48afc4410d01f544c05f8323c53086d9baad78`；Issue #1 已回复并关闭。后续桌面交付从 [0.1.20 发布工作点](../releases/RELEASE_0_1_20_WORKING.md) 继续。
 - 起点工作区干净；本阶段改动独立于正式发布。八秒撤回、两授权账号间的立即发送、托盘菜单、菜单栏数字与 Dock 角标已完成本轮原生验收；系统通知横幅和服务器规则动作仍待验收，不得作为正式发布的完成验收。
 - 来源：[Issue #1](https://github.com/ansermail/anser/issues/1) 与用户提供的三张其他邮件客户端过滤规则截图。截图仅作功能参考；保留雁信的 shadcn UI、来源保护和发送边界。
 
@@ -23,7 +23,7 @@
 
 ## 实际验证
 
-- 2026-10-17 发布交付：源码 `eb80fa4a26909ec5f86427f86a4e66af7c71fb54` 的 0.1.20 已通过 Release macOS、Checks、Preview Pages 并正式发布；七资源、双架构签名、App/DMG 与 Homebrew 配方完成核验。发布证据见 [0.1.20 发布工作点](RELEASE_0_1_20_WORKING.md)。
+- 2026-10-17 发布交付：源码 `eb80fa4a26909ec5f86427f86a4e66af7c71fb54` 的 0.1.20 已通过 Release macOS、Checks、Preview Pages 并正式发布；七资源、双架构签名、App/DMG 与 Homebrew 配方完成核验。发布证据见 [0.1.20 发布工作点](../releases/RELEASE_0_1_20_WORKING.md)。
 - 2026-10-17 合并与 Issue 收口：PR #2 在最新提交检查通过、合并状态 `CLEAN` 后转为可审阅并以 squash 合并，`main` 合并提交 `3d48afc` 的 [Checks 39006875683](https://github.com/ansermail/anser/actions/runs/39006875683) 与 [Preview Pages 39006875703](https://github.com/ansermail/anser/actions/runs/39006875703) 均全部成功。Issue #1 已写明完成范围并关闭。
 - 2026-10-17 抄送、优先级与已接收天数验证：完整 Rust 389 通过、3 项既有条件忽略；前端 381 通过（55 文件），`npm run check:ui`、`npm run format:check`、Rust 格式、`npm run build` 与 `git diff --check` 通过。原生开发预览启动迁移处理 9,787 封邮件，其中 5,487 封有本地原件、4,300 封仅在线；抄送地址条件的只读预览命中 26 封并另列 4,300 封等待完整邮件核对，优先级为高的预览命中 5 封，已接收天数大于 365 天命中 7,776 封，打开真实邮件后收件人下方显示非空抄送地址。测试规则全部取消，未保存或执行规则，未改动真实邮件。此轮验证的是本机开发预览，不是正式安装包或 Release。代码提交 `4627914` 的 [Checks 39006027664](https://github.com/ansermail/anser/actions/runs/39006027664) 全部成功。
 - 2026-10-17 托盘与 Dock 原生目视验收（用户截图）：菜单栏状态项显示信封图标与 `692`，左键菜单为“打开雁信 / 立即检查新邮件 / 暂停新邮件通知 / 退出雁信”；Dock 图标红色角标同样为 `692`，悬停提示“雁信”。两者与应用内“全部邮件”未读数一致。本轮没有点击菜单项、切换免打扰或修改设置，通知横幅和服务器规则动作仍未验收。记录提交 `e127387` 的 [Checks 39002413734](https://github.com/ansermail/anser/actions/runs/39002413734) 全部成功。
@@ -47,5 +47,5 @@
 1. 托盘菜单、菜单栏数字与 Dock 角标已由用户截图完成目视验收；仍待核对“暂停新邮件通知”实际切换后的持久状态、系统通知横幅以及服务器规则动作。辅助功能无法读取 SystemUIServer，后续菜单操作仍以实际画面或用户确认为准。
 2. 对已完成的草稿卡片、八秒撤回与立即发送保留本轮原生验收记录；若后续调整调度或托盘逻辑，再按两授权邮箱的边界复测，不以自动测试充当真发信结果。
 3. 已读/星标状态条件与首次匹配快照已完成并验证。后续若调整规则条件语义或延迟任务结构，须保留“多步动作共用首次命中状态”的回归测试与旧任务兼容；本轮原生预览只做只读预览，没有保存规则或改动真实邮件。
-4. PR #2 已合并，后续桌面包构建、正式发布与 Homebrew 同步记录在 [0.1.20 发布工作点](RELEASE_0_1_20_WORKING.md)；不沿用当前 0.1.19 结果。
+4. PR #2 已合并，后续桌面包构建、正式发布与 Homebrew 同步记录在 [0.1.20 发布工作点](../releases/RELEASE_0_1_20_WORKING.md)；不沿用当前 0.1.19 结果。
 5. 抄送、优先级与已接收天数已完成自动测试和原生只读预览。后续调整规则头信息或解析版本时，必须保留未知头信息等待完整邮件、迁移不重解码正文、旧任务恢复读取重新解析头信息这三项回归；规则对真实服务器动作的端到端验收仍未完成。

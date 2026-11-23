@@ -7,7 +7,7 @@
 - 0.1.25 Alpha 于 2026-10-22 11:29:39（Asia/Shanghai）正式发布为 latest，[公开版本](https://github.com/ansermail/anser/releases/tag/v0.1.25)。Release ID `420275414`。
 - 固定源码 `6d965c3e1f37a83e130969e726c503572fb6fdc5` 已进入 main；唯一注释标签 `v0.1.25` 解引用为同一源码，发布前后未变。五处版本一致，更新公钥和应用标识保持不变。
 - [Release macOS 39715043732](https://github.com/ansermail/anser/actions/runs/39715043732)、[Checks 39715044036](https://github.com/ansermail/anser/actions/runs/39715044036)、[Preview Pages 39715044018](https://github.com/ansermail/anser/actions/runs/39715044018) 全部成功。
-- 本版包含通知重复点击重新定位、长对话选中邮件开头锚定、WebKit 布局滚动误判修正、固定阅读头尾、shadcn 常驻正文滚动条及数量 Badge。用户说明见 [v0.1.25](releases/v0.1.25.md)。
+- 本版包含通知重复点击重新定位、长对话选中邮件开头锚定、WebKit 布局滚动误判修正、固定阅读头尾、shadcn 常驻正文滚动条及数量 Badge。用户说明见 [v0.1.25](../../releases/v0.1.25.md)。
 - [Homebrew 39717132990](https://github.com/ansermail/anser/actions/runs/39717132990) 成功，主仓库 [配方提交 132613c](https://github.com/ansermail/anser/commit/132613c27ff44c637669f5f98b02fc8250c5c96a) 仅更新 Casks/anser.rb。两架构 DMG 摘要与公开资源及独立审计一致；本机 brew style/audit/Apple Silicon fetch 通过。重复核验 [39717314552](https://github.com/ansermail/anser/actions/runs/39717314552) 成功，返回 `Cask is already current; no commit needed.`，远端 main 未产生多余提交。
 
 ## 本轮实际检查
@@ -39,6 +39,6 @@
 
 ## 验收边界与后续
 
-系统通知真实横幅点击仍未复验：开发阶段调用现有 `test_notification` 后，CUA 访问 Notification Center 返回 -10005 timeoutReached。85 项开发相关回归与真实 41 封对话阅读检查通过，详情见 [阅读工作点](READING_LAYOUT_WORKING.md)，不等同横幅点击通过。正式包安装、应用内升级与 Intel 实机未验证；项目自签名不等同 Developer ID、公证或 Gatekeeper 认可。不覆盖本机安装包，不发送真实测试邮件，不改变系统信任或代理配置。
+系统通知真实横幅点击仍未复验：开发阶段调用现有 `test_notification` 后，CUA 访问 Notification Center 返回 -10005 timeoutReached。85 项开发相关回归与真实 41 封对话阅读检查通过，详情见 [阅读工作点](../features/READING_LAYOUT_WORKING.md)，不等同横幅点击通过。正式包安装、应用内升级与 Intel 实机未验证；项目自签名不等同 Developer ID、公证或 Gatekeeper 认可。不覆盖本机安装包，不发送真实测试邮件，不改变系统信任或代理配置。
 
 本版代码、完整自动检查、双架构云端构建、独立产物审计、公开发布与 Homebrew 同步/幂等分别完成。后续由用户核对正式包安装/升级及系统通知真实横幅点击；发布记录提交后的 Checks 属于独立运行，不把已发布源码的通过结果移作该提交的结果。

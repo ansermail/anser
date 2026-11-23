@@ -25,7 +25,7 @@
 
 `/Users/zhangxiaojun/Downloads/Anser-0.1.35-draft/Anser_0.1.35_x86_64-setup.exe`，同目录有 SHA256SUMS.txt 和验证说明。
 SHA-256：`dcdbde3641b0bc06abe162c3120eaf1b69f71802d6f5a05328d9f18ecc6cdda2`；10,187,040 字节。
-Windows 实机按 [检查清单](WINDOWS.md) 验证；草稿未公开，不能把资源 URL 的匿名 404 视为下载失败或通过匿名公开审计。
+Windows 实机按 [检查清单](../../WINDOWS.md) 验证；草稿未公开，不能把资源 URL 的匿名 404 视为下载失败或通过匿名公开审计。
 
 ## 未完成与下一步
 

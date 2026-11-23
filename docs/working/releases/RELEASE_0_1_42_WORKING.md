@@ -5,7 +5,7 @@
 ## 当前状态：0.1.42 已公开，等待主页部署收尾
 
 - 固定源码为 `2faab2545d147f3c272cb08c68727da007a8c4a4`，注释标签 `v0.1.42`；正式 Release ID 为 `446061216`，于 `2026-11-15T13:08:09Z` 公开为 latest。
-- 本版包含 AI 邮件摘要与写信助手、日历与多维工作台、邮件标签、数据表格及当前工作台交互修正。发布说明见 [v0.1.42](releases/v0.1.42.md)，Release 正文与发布文件逐字节一致。
+- 本版包含 AI 邮件摘要与写信助手、日历与多维工作台、邮件标签、数据表格及当前工作台交互修正。发布说明见 [v0.1.42](../../releases/v0.1.42.md)，Release 正文与发布文件逐字节一致。
 - 本地门槛通过：前端 74 文件 562 项，Rust 472 项通过/5 项条件忽略，桌面脚本 37 项，IMAP 39 项，钥匙串迁移示例 16 项通过/2 项条件忽略；生产与 Pages 构建、UI 铁律、1794 条双语键、Prettier、Rust 格式、发布资源检查及 diff 检查通过。
 - [Release desktop 43713551214](https://github.com/ansermail/anser/actions/runs/43713551214) 的检查、macOS arm64、macOS x86_64、Windows x64 和草稿汇总全部通过。Windows CI 完成正式安装、启动与真实托盘恢复冒烟。
 - 九资源、三个更新签名、标准 latest 清单、macOS 双架构 App 元数据与固定签名、DMG 与更新归档一致性及匿名公开下载均通过。两个 App 均为版本 0.1.42、标识 `dev.maildesk.desktop`、开发区域 `zh-Hans`，声明 `zh-Hans`/`en` 并提供 EML、EMLX、MSG 关联；架构分别为 `arm64` 与 `x86_64`，严格签名和 designated requirement 与固定证书一致。

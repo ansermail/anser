@@ -6,7 +6,7 @@
 
 - 版本已在 `package.json`、`package-lock.json`、`src-tauri/Cargo.toml`、`src-tauri/Cargo.lock` 和 `src-tauri/tauri.conf.json` 同步为 `0.1.44`。
 - 候选范围包含富文本与 Markdown 表格编辑、官方邮箱服务商图标、0.1.43 走查修正、深色邮件品牌页脚、附件真实缩略图、定时发送未来时间约束、长收件人列表行内展开、WebView Backspace 防护和错误边界。
-- 发布说明为 [v0.1.44](releases/v0.1.44.md)。正式安装器公开前，README、Homebrew 配方和官网继续保留 0.1.43。
+- 发布说明为 [v0.1.44](../../releases/v0.1.44.md)。正式安装器公开前，README、Homebrew 配方和官网继续保留 0.1.43。
 - 本轮使用 `/Volumes/Others/mail` 的本地 `main`。已有五个功能提交保留在原位，其余发布候选修改在完成门禁后作为独立提交加入。
 
 ## 已完成的原生复核
@@ -43,7 +43,7 @@
 | `Anser_0.1.44_x86_64.dmg`             | 15182365 | `6649c1b68aaa6dae7592f8489af020c5eb79700a5e71fe636ec64c895834c30d` |
 | `latest.json`                         |     3379 | `add9ce61eec11a8963bb04a58cf3c1c96a423898bc29e1b162c68aae2d87abe1` |
 
-`latest.json` 的版本、平台 URL 与三份更新签名匹配，Release 正文、清单 notes 和 [发布说明](releases/v0.1.44.md) 原文一致。Mac 双架构 App 版本、架构、标识、macOS 12.0、`zh-Hans/en`、EML/EMLX/MSG 关联、许可、严格签名与精确 designated requirement 通过。Windows 冒烟覆盖 GUI 子系统、无原生菜单、最小化到托盘、托盘恢复、外部邮件窗口、原生外链、协议注册及受保护关联不变，全部为真。三个安装器匿名访问返回 HTTP 200，标准更新端点 `releases/latest/download/latest.json` 返回 200 且与草稿版清单逐字节一致。
+`latest.json` 的版本、平台 URL 与三份更新签名匹配，Release 正文、清单 notes 和 [发布说明](../../releases/v0.1.44.md) 原文一致。Mac 双架构 App 版本、架构、标识、macOS 12.0、`zh-Hans/en`、EML/EMLX/MSG 关联、许可、严格签名与精确 designated requirement 通过。Windows 冒烟覆盖 GUI 子系统、无原生菜单、最小化到托盘、托盘恢复、外部邮件窗口、原生外链、协议注册及受保护关联不变，全部为真。三个安装器匿名访问返回 HTTP 200，标准更新端点 `releases/latest/download/latest.json` 返回 200 且与草稿版清单逐字节一致。
 
 [Homebrew 45019129529](https://github.com/ansermail/anser/actions/runs/45019129529) 成功，`main` 远端产生配方提交 `36c69b3`，只修改 `Casks/anser.rb`。配方版本为 `0.1.44`，Apple Silicon 与 Intel DMG 摘要分别为 `d6f64d…` 和 `6649c1…`，与公开资源一致。
 

@@ -6,7 +6,7 @@
 
 [40647081835](https://github.com/ansermail/anser/actions/runs/40647081835) 对 `9c3aaae` 安装器补验通过，SHA-256 `f96ce1f488113874507ba63fa6e6ddbc83254c1f9619a5fa50beafa3fed57e59`：UIA 的任务栏子项缺失时使用 MSAA 定位实际图标并点击，主窗口恢复；GUI Subsystem、窗口按钮、原生菜单、外部 EML/外链、许可、通知协议与默认关联保护全部通过。旧草稿的 `cb8b832` 资源不可当成这些顶栏修正的最终包。
 
-官网 Windows 下载及按系统默认选择已上线，三平台九资源和公开更新端点已核验，Homebrew 已同步。最终源码 `bd4d062`、正式资源和验收边界统一从 [Windows 发布工作点](WINDOWS_RELEASE_WORKING.md) 继续。旧的“只保存草稿”等限制属于当时指令，已由本轮用户的新发版指令替代；本轮已完成实际构建与资源核验后发布。
+官网 Windows 下载及按系统默认选择已上线，三平台九资源和公开更新端点已核验，Homebrew 已同步。最终源码 `bd4d062`、正式资源和验收边界统一从 [Windows 发布工作点](../releases/WINDOWS_RELEASE_WORKING.md) 继续。旧的“只保存草稿”等限制属于当时指令，已由本轮用户的新发版指令替代；本轮已完成实际构建与资源核验后发布。
 
 ## 以下为早期草稿与开发历史（不作为当前入口）
 
@@ -14,7 +14,7 @@
 
 Mac 打印修复的四组合原生 PDF 自动检查通过，候选 App 系统面板和实际保存 7 页 A4 PDF 验证通过，页顶留白正常、60 段和末尾/附件完整。本机原账号/存档、快捷键、EML/CID/原生外链及空白草稿关闭已实测，未替换已安装正式 App。原目录两处 WIP 保留。
 
-Windows 安装器已下载到 `~/Downloads/Anser-0.1.35-draft/`，SHA-256 `dcdbde3641b0bc06abe162c3120eaf1b69f71802d6f5a05328d9f18ecc6cdda2`。接下来由用户按 [Windows 真实桌面清单](WINDOWS.md) 验收收发/IDLE、通知冷启动、A4 打印和升级；验收结果出来前继续保持草稿。完整测试与资源表见 [草稿工作点](RELEASE_0_1_35_DRAFT_WORKING.md)。
+Windows 安装器已下载到 `~/Downloads/Anser-0.1.35-draft/`，SHA-256 `dcdbde3641b0bc06abe162c3120eaf1b69f71802d6f5a05328d9f18ecc6cdda2`。接下来由用户按 [Windows 真实桌面清单](../../WINDOWS.md) 验收收发/IDLE、通知冷启动、A4 打印和升级；验收结果出来前继续保持草稿。完整测试与资源表见 [草稿工作点](../releases/RELEASE_0_1_35_DRAFT_WORKING.md)。
 
 ## Windows 11 专业版局域网验收（2026-10-28，原生外壳修复中）
 
