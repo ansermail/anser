@@ -155,16 +155,19 @@ export function NetworkProxySettings() {
           <form
             onSubmit={(event) => {
               event.preventDefault();
+              const name = draft.name.trim();
+              const host = draft.host.trim();
               if (
-                !draft.name.trim() ||
-                !draft.host.trim() ||
+                !name ||
+                !host ||
+                !Number.isInteger(draft.port) ||
                 draft.port < 1 ||
                 draft.port > 65535
               ) {
                 toast.error(t("Enter a valid name, server address and port"));
                 return;
               }
-              void save(draft, password);
+              void save({ ...draft, name, host }, password);
             }}
           >
             <FieldGroup className="gap-4">
@@ -219,7 +222,7 @@ export function NetworkProxySettings() {
                   type="number"
                   min={1}
                   max={65535}
-                  value={draft.port}
+                  value={draft.port || ""}
                   onChange={(event) =>
                     setDraft({ ...draft, port: Number(event.target.value) })
                   }

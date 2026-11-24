@@ -1,3 +1,4 @@
+import { useSettingsTabActive } from "./settings-layout";
 import { t } from "@/lib/i18n";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { FolderOpen, HardDrive, RefreshCw } from "lucide-react";
@@ -29,6 +30,7 @@ export function ArchiveLocation({
   initialPath?: string;
   children?: ReactNode;
 }) {
+  const tabActive = useSettingsTabActive();
   const [status, setStatus] = useState<ArchiveLocationStatus | null>(null),
     [busy, setBusy] = useState(false),
     [error, setError] = useState("");
@@ -52,13 +54,18 @@ export function ArchiveLocation({
   }
   useEffect(() => {
     live.current = true;
+    return () => {
+      live.current = false;
+    };
+  }, []);
+  useEffect(() => {
+    if (!tabActive) return;
     void reload();
     const timer = setInterval(() => void reload(), 2000);
     return () => {
-      live.current = false;
       clearInterval(timer);
     };
-  }, []);
+  }, [tabActive]);
   async function move(parent: string) {
     if (request.current || !native || isDemo()) return;
     if (

@@ -1,5 +1,5 @@
 import { t } from "@/lib/i18n";
-import { useEffect, useState } from "react";
+import { useEffect, useId, useState } from "react";
 import { call } from "@/lib/api";
 import type { Account, FolderSettings, Rule } from "@/lib/types";
 import { Field, FieldGroup, FieldLabel, FieldDescription } from "./ui/field";
@@ -16,6 +16,7 @@ export function RuleServerFolders({
   account?: Account;
   onChange: (rule: Rule) => void;
 }) {
+  const id = useId();
   const [settings, setSettings] = useState<FolderSettings | null>(null);
   const [error, setError] = useState("");
   const supported =
@@ -69,9 +70,9 @@ export function RuleServerFolders({
         </Alert>
       )}
       <Field>
-        <FieldLabel htmlFor="rule-source">{t("Source folder")}</FieldLabel>
+        <FieldLabel htmlFor={`${id}-source`}>{t("Source folder")}</FieldLabel>
         <SelectField
-          id="rule-source"
+          id={`${id}-source`}
           aria-label={t("Rule source folder")}
           value={rule.sourceFolder || ""}
           disabled={!supported || !settings}
@@ -100,9 +101,11 @@ export function RuleServerFolders({
         </FieldDescription>
       </Field>
       <Field>
-        <FieldLabel htmlFor="rule-target">{t("Destination folder")}</FieldLabel>
+        <FieldLabel htmlFor={`${id}-target`}>
+          {t("Destination folder")}
+        </FieldLabel>
         <SelectField
-          id="rule-target"
+          id={`${id}-target`}
           aria-label={t("Rule destination folder")}
           value={rule.destination}
           disabled={!supported || !settings}

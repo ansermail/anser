@@ -102,7 +102,7 @@ it("keeps the selected header in view as a 41-message conversation loads, then r
     root.render(
       <ConversationReader
         selected={selected}
-        revision={[]}
+        revision={0}
         accounts={[]}
         demo
         editorOpen={false}
@@ -178,7 +178,7 @@ it("shows the delegating sender only when the message carries one", async () => 
     root.render(
       <ConversationReader
         selected={{ ...selected, mail: delegated }}
-        revision={[]}
+        revision={0}
         accounts={[]}
         demo
         editorOpen={false}
@@ -209,7 +209,7 @@ it("shows the delegating sender only when the message carries one", async () => 
     root.render(
       <ConversationReader
         selected={{ ...selected, mail: plain }}
-        revision={[]}
+        revision={0}
         accounts={[]}
         demo
         editorOpen={false}
@@ -248,7 +248,7 @@ it("places reported-only attachment guidance before the message body", async () 
       <ConversationReader
         selected={{ ...selected, mail, attachments: [] }}
         singleMessage
-        revision={[]}
+        revision={0}
         accounts={[]}
         demo
         editorOpen={false}

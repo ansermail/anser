@@ -413,7 +413,12 @@ export function RichToolbar({
                   </DropdownMenuTrigger>
                 </TooltipTrigger>
                 <TooltipContent>
-                  {menu.label}：{current}
+                  {current
+                    ? t("{value0}: {value1}", {
+                        value0: menu.label,
+                        value1: current,
+                      })
+                    : menu.label}
                 </TooltipContent>
               </Tooltip>
               <DropdownMenuContent

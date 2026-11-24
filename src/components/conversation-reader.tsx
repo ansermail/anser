@@ -209,7 +209,10 @@ function Turn({
     <article
       className={`conversation-turn ${own ? "outgoing" : "incoming"}`}
       data-mail-id={mail.id}
-      aria-label={`${own ? t("Messages I sent") : t("Messages received")}：${mail.subject}`}
+      aria-label={t("{value0}: {value1}", {
+        value0: own ? t("Messages I sent") : t("Messages received"),
+        value1: mail.subject,
+      })}
     >
       <div className="turn-byline">
         <span className="sender-avatar" aria-hidden="true">
@@ -390,6 +393,9 @@ function QuickReply({
   const [ready, setReady] = useState(false);
   const [sending, setSending] = useState(false);
   const persisted = useRef(false);
+  const submitting = useRef(false);
+  const saveTimer = useRef<ReturnType<typeof setTimeout>>(null);
+  const savingDraft = useRef<Promise<unknown>>(Promise.resolve());
   const latest = useRef(draft);
   latest.current = draft;
   useEffect(() => {
@@ -442,7 +448,8 @@ function QuickReply({
     setSaving(true);
     setSaveError(false);
     const timer = setTimeout(() => {
-      void call("save_draft", { draft })
+      savingDraft.current = savingDraft.current
+        .then(() => call("save_draft", { draft }))
         .then(() => setSaving(false))
         .catch((e) => {
           setSaving(false);
@@ -450,16 +457,23 @@ function QuickReply({
           toast.error(t("Could not save draft: {value0}", { value0: e }));
         });
     }, 600);
+    saveTimer.current = timer;
     return () => clearTimeout(timer);
   }, [draft, ready, sending]);
   // Flush the latest body on navigation; draft identity is per reply target.
   useEffect(
     () => () => {
       const current = latest.current;
-      if (current && (current.body.trim() || persisted.current))
-        void call("save_draft", { draft: current }).catch((e) =>
-          toast.error(t("Could not save draft: {value0}", { value0: e })),
-        );
+      if (
+        !submitting.current &&
+        current &&
+        (current.body.trim() || persisted.current)
+      )
+        void savingDraft.current
+          .then(() => call("save_draft", { draft: current }))
+          .catch((e) =>
+            toast.error(t("Could not save draft: {value0}", { value0: e })),
+          );
     },
     [],
   );
@@ -471,9 +485,12 @@ function QuickReply({
     return () => onEditing(false);
   }, [draft?.body, draft?.html, draft?.attachments.length, onEditing]);
   async function send() {
-    if (!draft || !draft.body.trim() || sending) return;
+    if (!draft || !draft.body.trim() || submitting.current) return;
+    submitting.current = true;
+    if (saveTimer.current !== null) clearTimeout(saveTimer.current);
     setSending(true);
     try {
+      await savingDraft.current;
       await call("save_draft", { draft });
       await call("queue_send", { draft });
       // A new draft ID prevents a subsequent reply reusing a completed send.
@@ -495,6 +512,7 @@ function QuickReply({
     } catch (e) {
       toast.error(String(e), { duration: 10000 });
     } finally {
+      submitting.current = false;
       setSending(false);
     }
   }
@@ -627,7 +645,7 @@ export function ConversationReader({
 }: {
   selected: Detail;
   singleMessage?: boolean;
-  revision: Mail[];
+  revision?: number;
   accounts: Account[];
   demo: boolean;
   editorOpen: boolean;
@@ -682,11 +700,7 @@ export function ConversationReader({
   }, [scrollRef]);
   useEffect(() => {
     let live = true;
-    if (singleMessage) {
-      setMessages([selected.mail]);
-      setError("");
-      return;
-    }
+    if (singleMessage) return;
     void call<Mail[]>("mail_conversation", { id: selected.mail.id })
       .then((list) => {
         if (!live) return;

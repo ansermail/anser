@@ -827,7 +827,9 @@ it("places timed and multi-day items in the week, then opens a new record in a d
     const dialog = document.querySelector('[role="dialog"]')!;
     expect(dialog.querySelector("#work-estimate")).toBeNull();
     expect(dialog.querySelector("#work-actual")).toBeNull();
-    expect(dialog.querySelector("#work-hour")?.textContent).toBe("15");
+    expect(
+      dialog.querySelector<HTMLInputElement>('[aria-label="安排小时"]')?.value,
+    ).toBe("15");
     expect(dialog.textContent).toContain(date);
     expect(backend.items).toHaveLength(3);
   } finally {
@@ -1629,3 +1631,104 @@ it.each([
     }
   },
 );
+
+it("enables a specific work time from the switch or all-day button and saves midnight or an empty time", async () => {
+  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+  backend.items = [];
+  const host = document.createElement("div");
+  document.body.append(host);
+  const root = createRoot(host);
+  const submit = (editor: Element) =>
+    act(async () =>
+      editor
+        .querySelector("form")!
+        .dispatchEvent(
+          new Event("submit", { bubbles: true, cancelable: true }),
+        ),
+    );
+  try {
+    await act(async () =>
+      root.render(
+        <Workbench
+          onSeedConsumed={() => {}}
+          openMail={() => {}}
+          writeMail={() => {}}
+        />,
+      ),
+    );
+    const day = host.querySelector(".workbench-day");
+    await act(async () =>
+      host
+        .querySelector<HTMLButtonElement>(
+          '.wb-navigation button:not([role="tab"])',
+        )!
+        .click(),
+    );
+    const editor = document.querySelector(".wb-editor")!;
+    const specificTime =
+      editor.querySelector<HTMLButtonElement>('[role="switch"]')!;
+    const allDay = () =>
+      editor.querySelector<HTMLButtonElement>(".wb-all-day-trigger");
+    const spinboxes = () => [
+      ...editor.querySelectorAll<HTMLInputElement>('[role="spinbutton"]'),
+    ];
+    expect(specificTime.labels?.[0]?.textContent).toBe("具体时间");
+    expect(specificTime.getAttribute("aria-checked")).toBe("false");
+    expect(allDay()?.textContent).toBe("全天");
+    expect(spinboxes()).toHaveLength(0);
+
+    await act(async () => specificTime.click());
+    expect(specificTime.getAttribute("aria-checked")).toBe("true");
+    expect(allDay()).toBeNull();
+    expect(spinboxes().map((input) => input.value)).toEqual(["09", "00"]);
+
+    await act(async () => specificTime.click());
+    expect(specificTime.getAttribute("aria-checked")).toBe("false");
+    expect(allDay()?.textContent).toBe("全天");
+    expect(spinboxes()).toHaveLength(0);
+
+    await act(async () => allDay()!.click());
+    expect(specificTime.getAttribute("aria-checked")).toBe("true");
+    const [hour, minute] = spinboxes();
+    expect([hour.value, minute.value]).toEqual(["09", "00"]);
+    const type = (input: HTMLInputElement, value: string) =>
+      act(async () => {
+        Object.getOwnPropertyDescriptor(
+          HTMLInputElement.prototype,
+          "value",
+        )!.set!.call(input, value);
+        input.dispatchEvent(new Event("input", { bubbles: true }));
+        input.dispatchEvent(new FocusEvent("focusout", { bubbles: true }));
+      });
+    await type(hour, "00");
+    await type(minute, "60");
+    expect([hour.value, minute.value]).toEqual(["00", "00"]);
+    await act(async () =>
+      hour.dispatchEvent(
+        new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true }),
+      ),
+    );
+    expect(hour.value).toBe("00");
+    await type(
+      editor.querySelector<HTMLInputElement>("#work-title")!,
+      "Midnight work",
+    );
+    await submit(editor);
+    expect(backend.items[0].time).toBe("00:00");
+    expect(host.querySelector(".workbench-day")).toBe(day);
+
+    await act(async () =>
+      host.querySelector<HTMLButtonElement>(".wb-task-title")!.click(),
+    );
+    const reopened = document.querySelector(".wb-editor")!;
+    const reopenedSwitch =
+      reopened.querySelector<HTMLButtonElement>('[role="switch"]')!;
+    expect(reopenedSwitch.getAttribute("aria-checked")).toBe("true");
+    await act(async () => reopenedSwitch.click());
+    await submit(reopened);
+    expect(backend.items[0].time).toBe("");
+  } finally {
+    await act(async () => root.unmount());
+    host.remove();
+  }
+});

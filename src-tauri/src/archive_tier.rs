@@ -384,6 +384,32 @@ impl Reader {
     }
 }
 
+pub(crate) fn original_available(
+    root: &Path,
+    db: &Connection,
+    hash: &str,
+    expected_size: Option<u64>,
+) -> bool {
+    let available = || -> Result<bool> {
+        let relative: Option<String> = db
+            .prepare_cached("SELECT rel_path FROM archive_tier WHERE hash=?1")
+            .map_err(err)?
+            .query_row([hash], |row| row.get(0))
+            .optional()
+            .map_err(err)?;
+        let Some(relative) = relative else {
+            return Ok(false);
+        };
+        let config = configured(root)?.ok_or("未配置附加存档")?;
+        check_marker(&config)?;
+        let path = tier_file(&config, hash, &relative).ok_or("附加存档路径无效")?;
+        let gate = runtime(root).gate;
+        let _guard = gate.read().map_err(err)?;
+        Ok(archive::original_file_available(&path, expected_size))
+    };
+    available().unwrap_or(false)
+}
+
 pub fn read_raw(root: &Path, hash: &str) -> Result<Vec<u8>> {
     if !valid_hash(hash) {
         return Err("无效存档标识".into());

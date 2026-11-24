@@ -13,16 +13,38 @@ use std::{
     time::{Duration, Instant},
 };
 
-fn watchers() -> &'static Mutex<HashSet<String>> {
-    static WATCHERS: OnceLock<Mutex<HashSet<String>>> = OnceLock::new();
+type Watchers = HashMap<String, HashSet<u64>>;
+
+fn watchers() -> &'static Mutex<Watchers> {
+    static WATCHERS: OnceLock<Mutex<Watchers>> = OnceLock::new();
     WATCHERS.get_or_init(Default::default)
 }
-fn watched(id: &str, on: bool) {
-    if let Ok(mut watchers) = watchers().lock() {
-        if on {
-            watchers.insert(id.to_string());
-        } else {
-            watchers.remove(id);
+
+struct WatchClaim<'a> {
+    id: &'a str,
+    token: u64,
+}
+impl<'a> WatchClaim<'a> {
+    fn new(id: &'a str) -> Self {
+        static NEXT_WATCH: AtomicU64 = AtomicU64::new(0);
+        let token = NEXT_WATCH.fetch_add(1, Ordering::Relaxed);
+        if let Ok(mut watchers) = watchers().lock() {
+            watchers.entry(id.into()).or_default().insert(token);
+        }
+        Self { id, token }
+    }
+}
+impl Drop for WatchClaim<'_> {
+    fn drop(&mut self) {
+        if let Ok(mut watchers) = watchers().lock() {
+            if let std::collections::hash_map::Entry::Occupied(mut entry) =
+                watchers.entry(self.id.into())
+            {
+                entry.get_mut().remove(&self.token);
+                if entry.get().is_empty() {
+                    entry.remove();
+                }
+            }
         }
     }
 }
@@ -31,7 +53,7 @@ fn watched(id: &str, on: bool) {
 pub fn inbox_watched(id: &str) -> bool {
     watchers()
         .lock()
-        .is_ok_and(|watchers| watchers.contains(id))
+        .is_ok_and(|watchers| watchers.contains_key(id))
 }
 
 #[derive(Default)]
@@ -121,7 +143,7 @@ fn spawn_worker(store: Store, app: tauri::AppHandle, account: Account, revision:
             let connected = std::cell::Cell::new(false);
             // Claim INBOX before dialing so a directory sweep that starts
             // during the connection attempt leaves the folder to this worker.
-            watched(&id, true);
+            let claim = WatchClaim::new(&id);
             let ready = || {
                 connected.set(true);
                 let _ = store.log(&format!("{email} 实时收取已连接（IMAP IDLE）"));
@@ -138,7 +160,7 @@ fn spawn_worker(store: Store, app: tauri::AppHandle, account: Account, revision:
                     || poll_interval(&store),
                 )
             });
-            watched(&id, false);
+            drop(claim);
             if stopped.stopped() {
                 break;
             }
@@ -160,7 +182,6 @@ fn spawn_worker(store: Store, app: tauri::AppHandle, account: Account, revision:
                 }
             }
         }
-        watched(&id, false);
     });
     Worker {
         config: worker_config,
@@ -244,10 +265,12 @@ mod tests {
     }
     #[test]
     fn watched_accounts_are_reported_and_released() {
-        watched("watched-account", true);
-        assert!(inbox_watched("watched-account"));
+        let original = WatchClaim::new("watched-account");
+        let replacement = WatchClaim::new("watched-account");
         assert!(!inbox_watched("other-account"));
-        watched("watched-account", false);
+        drop(original);
+        assert!(inbox_watched("watched-account"));
+        drop(replacement);
         assert!(!inbox_watched("watched-account"));
     }
 }

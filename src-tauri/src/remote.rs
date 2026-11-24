@@ -11,14 +11,7 @@ impl ReceiveLookup {
         Ok(Self { db: store.db()? })
     }
     pub fn account(&self, id: &str) -> Result<Account> {
-        let data: Option<String> = self
-            .db
-            .prepare_cached("SELECT data FROM accounts WHERE id=?1")
-            .map_err(err)?
-            .query_row([id], |r| r.get(0))
-            .optional()
-            .map_err(err)?;
-        serde_json::from_str(&data.ok_or_else(|| "账号不存在".to_string())?).map_err(err)
+        account_in(&self.db, id)
     }
     pub fn source_available(&self, account: &Account, folder: &str, remote: &str) -> Result<bool> {
         let save = crate::retention::effective_save(&self.db, account, folder)?;
@@ -29,16 +22,24 @@ impl ReceiveLookup {
             .is_some_and(|m| m.saved_locally || (!save && m.header_metadata_known)))
     }
 }
+pub(crate) fn account_in(db: &rusqlite::Connection, id: &str) -> Result<Account> {
+    let data: Option<String> = db
+        .prepare_cached("SELECT data FROM accounts WHERE id=?1")
+        .map_err(err)?
+        .query_row([id], |r| r.get(0))
+        .optional()
+        .map_err(err)?;
+    serde_json::from_str(&data.ok_or_else(|| "账号不存在".to_string())?).map_err(err)
+}
 impl Store {
     pub fn save_remote_folders(&self, account: &str, folders: &[RemoteFolder]) -> Result<()> {
-        let owner = self.account(account)?;
         let mut db = self.db()?;
         let tx = db
             .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
             .map_err(err)?;
+        let owner = account_in(&tx, account)?;
         let mappings = read_mappings(&tx, account)?;
-        tx.execute("DELETE FROM remote_folders WHERE account_id=?1", [account])
-            .map_err(err)?;
+        let mut normalized = std::collections::BTreeMap::new();
         for folder in folders {
             let mut folder = folder.clone();
             normalize_folder(&mut folder);
@@ -50,15 +51,42 @@ impl Store {
                     .unwrap_or_else(|| folder.roles.clone()),
             );
             apply_mappings(&mut folder, &mappings);
+            let data = serde_json::to_string(&folder).map_err(err)?;
+            if normalized.insert(folder.name, data).is_some() {
+                return Err("服务器返回了同名文件夹".into());
+            }
+        }
+        let existing = {
+            let mut query = tx
+                .prepare("SELECT name,data FROM remote_folders WHERE account_id=?1")
+                .map_err(err)?;
+            let rows = query
+                .query_map([account], |row| {
+                    Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+                })
+                .map_err(err)?;
+            rows.collect::<rusqlite::Result<std::collections::BTreeMap<_, _>>>()
+                .map_err(err)?
+        };
+        for name in existing
+            .keys()
+            .filter(|name| !normalized.contains_key(*name))
+        {
             tx.execute(
-                "INSERT INTO remote_folders VALUES(?1,?2,?3)",
-                params![
-                    account,
-                    folder.name,
-                    serde_json::to_string(&folder).map_err(err)?
-                ],
+                "DELETE FROM remote_folders WHERE account_id=?1 AND name=?2",
+                params![account, name],
             )
             .map_err(err)?;
+        }
+        for (name, data) in normalized {
+            if existing.get(&name) != Some(&data) {
+                tx.execute(
+                    "INSERT INTO remote_folders VALUES(?1,?2,?3)
+                     ON CONFLICT(account_id,name) DO UPDATE SET data=excluded.data",
+                    params![account, name, data],
+                )
+                .map_err(err)?;
+            }
         }
         tx.commit().map_err(err)
     }

@@ -1,3 +1,4 @@
+import { useSettingsTabActive } from "./settings-layout";
 import { TaskCellText, TaskDataTable } from "./task-data-table";
 import { t } from "@/lib/i18n";
 import { TaskPanelHeader, TaskPanelCollapsible } from "./task-panel-header";
@@ -57,6 +58,7 @@ const states = {
 export function ServerOperations({
   defaultCollapsed = false,
 }: { defaultCollapsed?: boolean } = {}) {
+  const tabActive = useSettingsTabActive();
   const [data, setData] = useState<OperationSnapshot | null>(null);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState<string | null>(null);
@@ -65,8 +67,10 @@ export function ServerOperations({
     () => async () => {},
   );
   useEffect(() => {
+    if (!tabActive) return;
     let live = true;
     const update = coalesceRefresh(async () => {
+      if (!live) return;
       try {
         const result = await call<OperationSnapshot>("server_operations");
         if (live) {
@@ -96,7 +100,7 @@ export function ServerOperations({
       clearInterval(timer);
       unlisten?.();
     };
-  }, []);
+  }, [tabActive]);
   async function updateTask(item: ServerOperation, dismiss: boolean) {
     if (busy) return;
     setBusy(item.id);

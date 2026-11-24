@@ -108,7 +108,7 @@ impl Store {
         let rows = {
             let mut query = tx
                 .prepare(
-                    "SELECT data FROM messages
+                    "SELECT id FROM message_listing
                      WHERE EXISTS(
                        SELECT 1 FROM json_each(data,'$.tags') WHERE value=?1 COLLATE NOCASE
                      )",
@@ -122,8 +122,8 @@ impl Store {
             drop(query);
             values
         };
-        for data in rows {
-            let mut mail: Mail = serde_json::from_str(&data).map_err(err)?;
+        for id in rows {
+            let mut mail = Self::mail_in(&tx, &id)?;
             replace_tag(&mut mail.tags, &current, &replacement);
             tx.execute(
                 "UPDATE messages SET data=?2 WHERE id=?1",
@@ -144,7 +144,7 @@ impl Store {
         let rows = {
             let mut query = tx
                 .prepare(
-                    "SELECT data FROM messages
+                    "SELECT id FROM message_listing
                      WHERE EXISTS(
                        SELECT 1 FROM json_each(data,'$.tags') WHERE value=?1 COLLATE NOCASE
                      )",
@@ -159,8 +159,8 @@ impl Store {
             values
         };
         let mut affected = 0;
-        for data in rows {
-            let mut mail: Mail = serde_json::from_str(&data).map_err(err)?;
+        for id in rows {
+            let mut mail = Self::mail_in(&tx, &id)?;
             let before = mail.tags.len();
             mail.tags.retain(|tag| !tag.eq_ignore_ascii_case(&name));
             if mail.tags.len() != before {
@@ -179,44 +179,14 @@ impl Store {
     }
 
     pub fn set_mail_tag(&self, id: &str, name: &str, enabled: bool) -> Result<()> {
-        let selected = self.mail(id)?;
         let mut db = self.db()?;
         let tx = db
             .transaction_with_behavior(TransactionBehavior::Immediate)
             .map_err(err)?;
         let name = canonical_tag(&tx, name)?;
-        let rows = tx
-            .prepare(
-                "SELECT data FROM messages
-                 WHERE id=?1 OR (
-                   account_id=?2 AND (
-                     (?3!='' AND json_extract(data,'$.messageId')=?3) OR
-                     (?4!='' AND COALESCE(
-                       NULLIF(json_extract(data,'$.serverMessageId'),''),
-                       json_extract(data,'$.messageId')
-                     )=?4)
-                   )
-                 )",
-            )
-            .map_err(err)?
-            .query_map(
-                params![
-                    id,
-                    selected.account_id,
-                    selected.message_id,
-                    if selected.server_message_id.is_empty() {
-                        &selected.message_id
-                    } else {
-                        &selected.server_message_id
-                    }
-                ],
-                |row| row.get::<_, String>(0),
-            )
-            .map_err(err)?
-            .collect::<std::result::Result<Vec<_>, _>>()
-            .map_err(err)?;
-        for data in rows {
-            let mut mail: Mail = serde_json::from_str(&data).map_err(err)?;
+        let rows = Self::related_mail_ids(&tx, id)?;
+        for id in rows {
+            let mut mail = Self::mail_in(&tx, &id)?;
             mail.tags.retain(|tag| !tag.eq_ignore_ascii_case(&name));
             if enabled {
                 mail.tags.push(name.clone());

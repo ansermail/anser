@@ -2,6 +2,7 @@
 import { createRoot, type Root } from "react-dom/client";
 import { act } from "react";
 import { beforeEach, afterEach, it, expect, vi } from "vitest";
+import { composeCanvasCss } from "@/lib/compose-presentation";
 import { RichEditor } from "./rich-editor";
 import { Editor } from "@tiptap/core";
 import { closeHistory } from "@tiptap/pm/history";
@@ -663,4 +664,28 @@ it("drags either side of a divider and resizes the whole table at the outer edge
   } finally {
     editor.destroy();
   }
+});
+
+it("updates the existing editor canvas when the theme changes", async () => {
+  const render = (dark: boolean) =>
+    act(async () =>
+      root.render(
+        <RichEditor
+          body="Keep this draft"
+          html=""
+          dark={dark}
+          disabled={false}
+          onChange={() => {}}
+          onBusy={() => {}}
+          readImages={vi.fn()}
+        />,
+      ),
+    );
+  await render(false);
+  const canvas = host.querySelector(".rich-body");
+  expect(canvas?.getAttribute("style")).toBe(composeCanvasCss(false));
+  await render(true);
+  expect(host.querySelector(".rich-body")).toBe(canvas);
+  expect(canvas?.getAttribute("style")).toBe(composeCanvasCss(true));
+  expect(canvas?.textContent).toBe("Keep this draft");
 });

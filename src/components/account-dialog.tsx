@@ -3,7 +3,7 @@ import { t } from "@/lib/i18n";
 import { Switch } from "./ui/switch";
 import { Checkbox } from "./ui/checkbox";
 import { SelectField, SelectOption } from "@/components/ui/select-field";
-import { useEffect, useState } from "react";
+import { useEffect, useId, useState } from "react";
 import {
   ArrowLeft,
   ArrowRight,
@@ -78,6 +78,15 @@ export function AccountDialog({
   }
   async function connect() {
     if (!account) return;
+    if (
+      [account.incomingPort, account.smtpPort].some(
+        (port) => !Number.isInteger(port) || port < 1 || port > 65535,
+      )
+    ) {
+      setAdvanced(true);
+      setError(t("Enter server ports from 1 to 65535."));
+      return;
+    }
     setBusy(true);
     setStage("");
     setCancelling(false);
@@ -567,6 +576,7 @@ function ServerFields({
   account: Account;
   update: (p: Partial<Account>) => void;
 }) {
+  const portId = useId();
   const host = kind === "incoming" ? "incomingHost" : "smtpHost",
     port = kind === "incoming" ? "incomingPort" : "smtpPort",
     tls = kind === "incoming" ? "incomingTls" : "smtpTls";
@@ -584,13 +594,14 @@ function ServerFields({
         />
       </div>
       <div className="field">
-        <Label>{t("Port")}</Label>
+        <Label htmlFor={portId}>{t("Port")}</Label>
         <Input
+          id={portId}
           type="number"
           min={1}
           max={65535}
           required
-          value={account[port]}
+          value={account[port] || ""}
           onChange={(e) => update({ [port]: Number(e.target.value) })}
         />
       </div>

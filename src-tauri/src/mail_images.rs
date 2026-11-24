@@ -2,7 +2,10 @@
 //! process does not use the application's mail/OAuth proxy configuration.
 use crate::models::{ProxyConfig, Result};
 use reqwest::{Client, Response};
-use std::{sync::OnceLock, time::Duration};
+use std::{
+    sync::{Mutex, OnceLock},
+    time::Duration,
+};
 use tauri::http;
 use url::{Host, Url};
 
@@ -81,6 +84,43 @@ fn client(config: Option<&ProxyConfig>, password: &str) -> Result<Client> {
     }
     // No cookies, origin/referrer or mailbox credentials are forwarded.
     builder.build().map_err(|_| "图片连接初始化失败".into())
+}
+
+struct ProxiedClient {
+    config: ProxyConfig,
+    password_digest: String,
+    client: Client,
+}
+
+fn cached_client(config: Option<&ProxyConfig>, password: &str) -> Result<Client> {
+    static DIRECT: OnceLock<Client> = OnceLock::new();
+    static PROXIED: Mutex<Option<ProxiedClient>> = Mutex::new(None);
+    let Some(config) = config else {
+        if let Some(client) = DIRECT.get() {
+            return Ok(client.clone());
+        }
+        let direct = client(None, "")?;
+        return Ok(DIRECT.get_or_init(|| direct).clone());
+    };
+    let password_digest = if config.username.is_empty() {
+        String::new()
+    } else {
+        crate::archive::digest(password.as_bytes())
+    };
+    let mut cached = PROXIED.lock().map_err(crate::models::err)?;
+    if let Some(cached) = cached
+        .as_ref()
+        .filter(|cached| cached.config == *config && cached.password_digest == password_digest)
+    {
+        return Ok(cached.client.clone());
+    }
+    let proxied = client(Some(config), password)?;
+    *cached = Some(ProxiedClient {
+        config: config.clone(),
+        password_digest,
+        client: proxied.clone(),
+    });
+    Ok(proxied)
 }
 
 fn image_mime(bytes: &[u8], declared: &str) -> Result<&'static str> {
@@ -163,13 +203,13 @@ pub(crate) async fn fetch_resource(url: Url, limit: usize) -> Result<(String, Ve
         .map_err(|_| "图片任务已结束")?;
     // Snapshot only: no database transaction or global lock during the request.
     let (config, password) = crate::proxy::current()?;
-    let request = client(config.as_ref(), &password)?.get(url.clone());
+    let request = cached_client(config.as_ref(), &password)?.get(url.clone());
     let response = match request.send().await {
         Ok(response) => response,
         Err(error)
             if error.is_connect() && config.as_ref().is_some_and(|p| p.direct_on_failure) =>
         {
-            client(None, "")?
+            cached_client(None, "")?
                 .get(url)
                 .send()
                 .await

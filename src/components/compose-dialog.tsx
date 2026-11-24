@@ -1,3 +1,4 @@
+import { formatSize } from "@/lib/providers";
 import { Card } from "./ui/card";
 import { Select, SelectContent, SelectGroup, SelectTrigger } from "./ui/select";
 import {
@@ -85,6 +86,25 @@ import { isImagePath, type BodyImage } from "@/lib/rich-body";
 import type { RichEditorHandle } from "./rich-editor";
 import { RichEditorBoundary } from "./rich-editor-boundary";
 import { composePaper } from "@/lib/compose-presentation";
+type ComposeSession = {
+  id: string;
+  promise: Promise<string>;
+  closing?: Promise<void>;
+};
+
+function closeComposeSession(session: ComposeSession) {
+  session.closing ??= session.promise
+    .then(
+      (token) => call<void>("close_compose_session", { id: session.id, token }),
+      () => {},
+    )
+    .catch((error) => {
+      session.closing = undefined;
+      throw error;
+    });
+  return session.closing;
+}
+
 export function ComposeDialog({
   draft,
   onClose,
@@ -118,7 +138,7 @@ export function ComposeDialog({
   const [forwardReload, setForwardReload] = useState(0);
   const [sessionReload, setSessionReload] = useState(0);
   const sessionChain = useRef<Promise<void>>(Promise.resolve());
-  const session = useRef<{ id: string; promise: Promise<string> } | null>(null);
+  const session = useRef<ComposeSession | null>(null);
   const dialogElement = useRef<HTMLDivElement>(null);
   const [assistantHost, setAssistantHost] = useState<HTMLDivElement | null>(
     null,
@@ -152,16 +172,14 @@ export function ComposeDialog({
     const promise = sessionChain.current.then(() =>
       call<string>("open_compose_session", { id }),
     );
-    session.current = { id, promise };
+    const lease = { id, promise };
+    session.current = lease;
     sessionChain.current = promise.then(
       () => {},
       () => {},
     );
     return () => {
-      const close = promise.then((token) =>
-        call<void>("close_compose_session", { id, token }),
-      );
-      sessionChain.current = close.catch(() => {});
+      sessionChain.current = closeComposeSession(lease).catch(() => {});
     };
   }, [draft?.id, sessionReload]);
   useEffect(() => {
@@ -425,8 +443,7 @@ export function ComposeDialog({
         });
       const lease = session.current;
       if (native && !isDemo() && lease && current && lease.id === current.id) {
-        const token = await lease.promise;
-        await call("close_compose_session", { id: lease.id, token });
+        await closeComposeSession(lease);
       }
       onClose();
     } catch (e) {
@@ -1203,8 +1220,7 @@ export function ComposeDialog({
                                   className="max-w-full break-words"
                                   htmlFor={`forward-file-${file.id}`}
                                 >
-                                  {file.name} · {file.size}
-                                  {t(" bytes")}
+                                  {file.name} · {formatSize(file.size)}
                                 </FieldLabel>
                               </FieldContent>
                             </Field>
@@ -1217,7 +1233,7 @@ export function ComposeDialog({
                         {value.attachments.map((p, i) => (
                           <span key={p + i}>
                             <Paperclip size={13} />
-                            {p.split("/").pop()}
+                            {p.split(/[\\/]/).pop() || p}
                             <Button
                               variant="ghost"
                               title={t("Remove attachment")}

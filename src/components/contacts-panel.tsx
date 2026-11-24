@@ -7,6 +7,7 @@ import { hasAddressName } from "@/lib/addresses";
 import type { Address, Contact } from "@/lib/types";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
+import { InputGroup, InputGroupAddon, InputGroupInput } from "./ui/input-group";
 import { Label } from "./ui/label";
 import { SidebarTrigger } from "./ui/sidebar";
 import {
@@ -67,7 +68,10 @@ export function ContactsPanel({
       <div className="panel-heading">
         <div>
           <div className="page-title-row">
-            <SidebarTrigger />
+            <SidebarTrigger
+              title={t("Toggle sidebar")}
+              aria-label={t("Toggle sidebar")}
+            />
             <h1>{t("Contacts")}</h1>
           </div>
           <p>
@@ -85,15 +89,17 @@ export function ContactsPanel({
           {t("Add contact")}
         </Button>
       </div>
-      <div className="contact-search">
-        <Search size={16} />
-        <Input
+      <InputGroup className="contact-search">
+        <InputGroupAddon>
+          <Search />
+        </InputGroupAddon>
+        <InputGroupInput
           aria-label={t("Search contacts")}
           placeholder={t("Search by name or email…")}
           value={search}
           onChange={(e) => setSearch(e.target.value)}
         />
-      </div>
+      </InputGroup>
       <div className="contact-list">
         {visible.map((c) => (
           <article className="contact-card" key={c.id}>

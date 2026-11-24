@@ -3,6 +3,8 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { beforeEach, afterEach, expect, it, vi } from "vitest";
 import { ArchiveJobsPanel, type ArchiveJob } from "./archive-jobs";
+import { SettingsLayout } from "./settings-layout";
+import { Input } from "./ui/input";
 import * as api from "@/lib/api";
 let root: Root, host: HTMLDivElement, items: ArchiveJob[];
 async function click(label: string) {
@@ -125,4 +127,56 @@ it("collapses records and task actions until the settings section is opened", as
     id: "queued",
     action: "pause",
   });
+});
+
+it("pauses polling in an inactive settings tab while preserving the mounted panel", async () => {
+  vi.useFakeTimers();
+  vi.stubGlobal(
+    "ResizeObserver",
+    class {
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    },
+  );
+  const renderSettings = (section: string) =>
+    act(async () =>
+      root.render(
+        <SettingsLayout
+          value={section}
+          onValueChange={() => {}}
+          accountCount={0}
+          accounts={null}
+          archive={null}
+          preferences={null}
+          composing={null}
+          tasks={
+            <>
+              <Input defaultValue="Unsaved" />
+              <ArchiveJobsPanel />
+            </>
+          }
+          about={null}
+        />,
+      ),
+    );
+  try {
+    await renderSettings("accounts");
+    const input = host.querySelector("input")!;
+    await act(async () => vi.advanceTimersByTimeAsync(5000));
+    expect(api.call).not.toHaveBeenCalled();
+    await renderSettings("tasks");
+    expect(api.call).toHaveBeenCalledExactlyOnceWith("archive_jobs");
+    await act(async () => vi.advanceTimersByTimeAsync(5000));
+    expect(api.call).toHaveBeenCalledTimes(2);
+    await renderSettings("accounts");
+    await act(async () => vi.advanceTimersByTimeAsync(10000));
+    expect(api.call).toHaveBeenCalledTimes(2);
+    await renderSettings("tasks");
+    expect(api.call).toHaveBeenCalledTimes(3);
+    expect(host.querySelector("input")).toBe(input);
+  } finally {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+  }
 });

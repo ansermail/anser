@@ -1,3 +1,4 @@
+import { useSettingsTabActive } from "./settings-layout";
 import { TaskCellText, TaskDataTable } from "./task-data-table";
 import { t } from "@/lib/i18n";
 import { TaskPanelHeader, TaskPanelCollapsible } from "./task-panel-header";
@@ -87,6 +88,7 @@ const statuses = {
 export function DirectoryOperationsPanel({
   defaultCollapsed = false,
 }: { defaultCollapsed?: boolean } = {}) {
+  const tabActive = useSettingsTabActive();
   const [items, setItems] = useState<DirectoryOperation[] | null>(null);
   const [loadError, setLoadError] = useState("");
   const [error, setError] = useState("");
@@ -95,9 +97,16 @@ export function DirectoryOperationsPanel({
   const reload = useRef<() => Promise<void>>(async () => {});
   const live = useRef(false);
   useEffect(() => {
-    let subscribed = true;
     live.current = true;
+    return () => {
+      live.current = false;
+    };
+  }, []);
+  useEffect(() => {
+    if (!tabActive) return;
+    let subscribed = true;
     const update = coalesceRefresh(async () => {
+      if (!subscribed) return;
       try {
         const result = await call<DirectoryOperation[]>("directory_operations");
         if (subscribed) {
@@ -123,11 +132,10 @@ export function DirectoryOperationsPanel({
         });
     return () => {
       subscribed = false;
-      live.current = false;
       clearInterval(timer);
       unlisten?.();
     };
-  }, []);
+  }, [tabActive]);
   async function action(id: string, action: string) {
     if (request.current) return;
     request.current = true;

@@ -1,6 +1,7 @@
 use crate::{archive, models::*, rules};
 use rusqlite::{params, Connection, OptionalExtension};
 use std::{
+    collections::HashSet,
     fs,
     path::{Path, PathBuf},
     sync::{Arc, Mutex, RwLock},
@@ -87,17 +88,24 @@ impl Store {
                 .map_err(err)?;
             }
         }
+        db.execute(
+            "CREATE INDEX IF NOT EXISTS outbox_status_scheduled ON outbox(status,scheduled_at)",
+            [],
+        )
+        .map_err(err)?;
         db.execute("UPDATE outbox SET status='uncertain',error='应用在发送完成前退出，请先检查服务端已发送邮件' WHERE status='sending'", []).map_err(err)?;
         // Maintain a small listing projection atomically with every archive write,
         // including rule application, restore and parser migrations. Bodies remain
         // in messages and the original MIME archive; list refreshes never load them.
-        db.execute_batch("BEGIN IMMEDIATE;
+        let listing =
+            rusqlite::Transaction::new_unchecked(&db, rusqlite::TransactionBehavior::Immediate)
+                .map_err(err)?;
+        listing.execute_batch("
             CREATE INDEX IF NOT EXISTS sources_mail_active ON sources(mail_id, active, folder COLLATE NOCASE, account_id);
             CREATE TABLE IF NOT EXISTS message_listing(id TEXT PRIMARY KEY, account_id TEXT NOT NULL, data TEXT NOT NULL);
             CREATE INDEX IF NOT EXISTS listing_account ON message_listing(account_id);
             CREATE TABLE IF NOT EXISTS conversation_revision(id INTEGER PRIMARY KEY CHECK(id=1), version INTEGER NOT NULL);
             INSERT OR IGNORE INTO conversation_revision VALUES(1,0);
-            INSERT OR IGNORE INTO message_listing SELECT id,account_id,json_set(data,'$.body','') FROM messages;
             CREATE TRIGGER IF NOT EXISTS listing_insert AFTER INSERT ON messages BEGIN
                 INSERT INTO message_listing VALUES(NEW.id,NEW.account_id,json_set(NEW.data,'$.body',''));
                 UPDATE conversation_revision SET version=version+1;
@@ -110,7 +118,49 @@ impl Store {
                 DELETE FROM message_listing WHERE id=OLD.id;
                 UPDATE conversation_revision SET version=version+1;
             END;
-            COMMIT;").map_err(err)?;
+            CREATE INDEX IF NOT EXISTS listing_message_id
+                ON message_listing(account_id,json_extract(data,'$.messageId'));
+            CREATE INDEX IF NOT EXISTS listing_server_message_id
+                ON message_listing(account_id,COALESCE(NULLIF(json_extract(data,'$.serverMessageId'),''),json_extract(data,'$.messageId')));
+            CREATE INDEX IF NOT EXISTS listing_online_account
+                ON message_listing(account_id) WHERE json_extract(data,'$.savedLocally')=0;
+            ").map_err(err)?;
+        let listing_incomplete: bool = listing
+            .query_row(
+                "SELECT (SELECT COUNT(*) FROM messages) != (SELECT COUNT(*) FROM message_listing)",
+                [],
+                |row| row.get(0),
+            )
+            .map_err(err)?;
+        if listing_incomplete {
+            let repaired = listing
+                .execute(
+                    "INSERT INTO message_listing
+                 SELECT m.id,m.account_id,json_set(m.data,'$.body','') FROM messages m
+                 WHERE NOT EXISTS(SELECT 1 FROM message_listing l WHERE l.id=m.id)",
+                    [],
+                )
+                .map_err(err)?;
+            if repaired > 0 {
+                listing
+                    .execute(
+                        "UPDATE conversation_revision SET version=version+1 WHERE id=1",
+                        [],
+                    )
+                    .map_err(err)?;
+                let has_query_revision: bool = listing.query_row(
+                    "SELECT EXISTS(SELECT 1 FROM sqlite_schema WHERE name='query_revision' AND type='table')",
+                    [],
+                    |row| row.get(0),
+                ).map_err(err)?;
+                if has_query_revision {
+                    listing
+                        .execute("UPDATE query_revision SET version=version+1 WHERE id=1", [])
+                        .map_err(err)?;
+                }
+            }
+        }
+        listing.commit().map_err(err)?;
         crate::operations::initialize(&db)?;
         crate::folder_health::initialize(&db)?;
         crate::directory_operations::initialize(&db)?;
@@ -364,9 +414,13 @@ impl Store {
         tx.commit().map_err(err)
     }
     pub fn mail(&self, id: &str) -> Result<Mail> {
-        let raw: String = self
-            .db()?
-            .query_row("SELECT data FROM messages WHERE id=?1", [id], |r| r.get(0))
+        Self::mail_in(&self.db()?, id)
+    }
+    pub(crate) fn mail_in(db: &Connection, id: &str) -> Result<Mail> {
+        let raw: String = db
+            .prepare_cached("SELECT data FROM messages WHERE id=?1")
+            .map_err(err)?
+            .query_row([id], |r| r.get(0))
             .map_err(err)?;
         serde_json::from_str(&raw).map_err(err)
     }
@@ -686,39 +740,84 @@ impl Store {
         let tx = db
             .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
             .map_err(err)?;
-        tx.execute(
-            "UPDATE sources SET active=0 WHERE account_id=?1 AND folder=?2",
-            params![account, folder],
-        )
-        .map_err(err)?;
-        for id in remote_ids {
-            tx.execute(
-                "UPDATE sources SET active=1 WHERE account_id=?1 AND folder=?2 AND remote_id=?3",
-                params![account, folder, id],
-            )
-            .map_err(err)?;
+        let remote_ids: HashSet<&str> = remote_ids.iter().map(String::as_str).collect();
+        let sources = {
+            let mut query = tx
+                .prepare(
+                    "SELECT rowid,remote_id,active FROM sources WHERE account_id=?1 AND folder=?2",
+                )
+                .map_err(err)?;
+            let rows = query
+                .query_map(params![account, folder], |row| {
+                    Ok((
+                        row.get::<_, i64>(0)?,
+                        row.get::<_, Option<String>>(1)?,
+                        row.get::<_, i64>(2)?,
+                    ))
+                })
+                .map_err(err)?;
+            rows.collect::<rusqlite::Result<Vec<_>>>().map_err(err)?
+        };
+        {
+            let mut update = tx
+                .prepare("UPDATE sources SET active=?2 WHERE rowid=?1")
+                .map_err(err)?;
+            for (rowid, id, active) in sources {
+                let present = id.as_deref().is_some_and(|id| remote_ids.contains(id));
+                if active != i64::from(present) {
+                    update.execute(params![rowid, present]).map_err(err)?;
+                }
+            }
         }
-        tx.execute("DELETE FROM messages WHERE account_id=?1 AND json_extract(data,'$.savedLocally')=0 AND NOT EXISTS(SELECT 1 FROM sources WHERE mail_id=messages.id AND active=1) AND NOT EXISTS(SELECT 1 FROM rule_runs r WHERE r.mail_id=messages.id AND r.status NOT IN ('completed','cancelled')) AND NOT EXISTS(SELECT 1 FROM directory_operations d WHERE d.account_id=messages.account_id AND json_extract(d.data,'$.mailId')=messages.id AND d.status NOT IN ('completed','cancelled'))", [account]).map_err(err)?;
+        // Recheck previously unreferenced online mail too. A pending rule or
+        // directory operation may have stopped protecting it since the last sync.
+        let orphans = {
+            let mut query = tx.prepare(
+                "SELECT l.id FROM message_listing l
+                 WHERE l.account_id=?1 AND json_extract(l.data,'$.savedLocally')=0
+                 AND NOT EXISTS(SELECT 1 FROM sources s WHERE s.mail_id=l.id AND s.active=1)
+                 AND NOT EXISTS(SELECT 1 FROM rule_runs r WHERE r.mail_id=l.id AND r.status NOT IN ('completed','cancelled'))
+                 AND NOT EXISTS(SELECT 1 FROM directory_operations d WHERE d.account_id=l.account_id
+                    AND json_extract(d.data,'$.mailId')=l.id AND d.status NOT IN ('completed','cancelled'))",
+            ).map_err(err)?;
+            let rows = query
+                .query_map([account], |row| row.get::<_, String>(0))
+                .map_err(err)?;
+            rows.collect::<rusqlite::Result<Vec<_>>>().map_err(err)?
+        };
+        if !orphans.is_empty() {
+            let mut delete = tx
+                .prepare("DELETE FROM messages WHERE id=?1")
+                .map_err(err)?;
+            for id in orphans {
+                delete.execute([id]).map_err(err)?;
+            }
+        }
         tx.commit().map_err(err)
     }
     pub fn preview_rule(&self, rule: &Rule) -> Result<Vec<String>> {
         rules::validate(rule)?;
         let mut rule = rule.clone();
         rule.enabled = true;
+        let mut db = self.db()?;
+        let tx = db.transaction().map_err(err)?;
+        let steps = rules::expand(std::slice::from_ref(&rule));
         let mut matches = Vec::new();
-        for m in self.rule_candidates()? {
+        for m in Self::rule_candidates(&tx)? {
             let mut state = rules::match_state(&rule, &m, false);
             if state == rules::MatchState::NeedsBody && m.saved_locally {
-                let full = self.mail(&m.id)?;
+                let full = Self::mail_in(&tx, &m.id)?;
                 state = rules::match_state(&rule, &full, rules::body_available(&full));
             }
-            let available = rules::expand(std::slice::from_ref(&rule)).iter().try_fold(
-                false,
-                |found, step| -> Result<bool> {
-                    Ok(found || !rules::remote(step) || self.rule_has_source(step, &m)?)
-                },
-            )?;
-            if state != rules::MatchState::NoMatch && available {
+            if state == rules::MatchState::NoMatch {
+                continue;
+            }
+            let available = steps
+                .iter()
+                .try_fold(false, |found, step| -> Result<bool> {
+                    Ok(found || !rules::remote(step) || Self::rule_has_source_in(&tx, step, &m)?)
+                })?;
+            if available {
                 matches.push(if state == rules::MatchState::NeedsBody {
                     format!("{}（等待完整邮件核对）", m.subject)
                 } else {
@@ -728,8 +827,7 @@ impl Store {
         }
         Ok(matches)
     }
-    fn rule_candidates(&self) -> Result<Vec<Mail>> {
-        let db = self.db()?;
+    fn rule_candidates(db: &Connection) -> Result<Vec<Mail>> {
         let mut query = db
             .prepare("SELECT data FROM message_listing ORDER BY rowid")
             .map_err(err)?;
@@ -748,7 +846,7 @@ impl Store {
             return Ok(0);
         }
         let mut n = 0;
-        for mail in self.rule_candidates()? {
+        for mail in Self::rule_candidates(&self.db()?)? {
             if configured
                 .iter()
                 .any(|rule| rules::match_state(rule, &mail, false) != rules::MatchState::NoMatch)

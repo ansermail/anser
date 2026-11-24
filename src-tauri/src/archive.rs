@@ -154,6 +154,42 @@ fn read_local(root: &Path, hash: &str) -> LocalRead {
     LocalRead::Found(raw)
 }
 
+// The outbox checks availability. Reading or exporting an original still
+// verifies its contents with read_raw.
+pub(crate) fn original_available(
+    root: &Path,
+    db: &rusqlite::Connection,
+    hash: &str,
+    expected_size: Option<u64>,
+) -> bool {
+    if hash.len() != 64 || !hash.bytes().all(|x| x.is_ascii_hexdigit()) {
+        return false;
+    }
+    let local = || {
+        let runtime = crate::archive_location::runtime(root);
+        let _guard = runtime.gate.read().ok()?;
+        let actual = crate::archive_location::physical_root(root).ok()?;
+        let path = actual.join("archive").join(format!("{hash}.eml"));
+        match fs::symlink_metadata(&path) {
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => None,
+            _ => Some(original_file_available(&path, expected_size)),
+        }
+    };
+    local().unwrap_or_else(|| {
+        crate::archive_tier::original_available(root, db, hash, expected_size)
+            || local().unwrap_or(false)
+    })
+}
+
+pub(crate) fn original_file_available(path: &Path, expected_size: Option<u64>) -> bool {
+    fs::symlink_metadata(path).is_ok_and(|metadata| {
+        metadata.is_file()
+            && metadata.len() > 0
+            && expected_size.is_none_or(|size| metadata.len() == size)
+            && crate::eml_input::open(path).is_ok()
+    })
+}
+
 pub fn read_raw(root: &Path, hash: &str) -> Result<Vec<u8>> {
     if hash.len() != 64 || !hash.bytes().all(|x| x.is_ascii_hexdigit()) {
         return Err("无效存档标识".into());
@@ -524,6 +560,21 @@ pub fn parse(
     };
     Ok((mail, html, attachments))
 }
+pub(crate) fn preview_attachment(raw: &[u8], index: usize) -> Result<(String, String, Vec<u8>)> {
+    let projection = crate::mail_formats::mime(raw)?;
+    let parsed = mailparse::parse_mail(&projection).map_err(err)?;
+    let mut parts = Vec::new();
+    leaves(&parsed, &mut parts);
+    let part = parts
+        .get(index)
+        .filter(|part| is_attachment(part))
+        .ok_or("附件不存在")?;
+    let name = filename(part).unwrap_or_else(|| format!("附件-{}", index + 1));
+    let bytes =
+        decoded_bytes(part).map_err(|error| format!("附件编码损坏，原始邮件已保留：{error}"))?;
+    Ok((name, part.ctype.mimetype.clone(), bytes))
+}
+
 pub fn attachment(raw: &[u8], index: usize) -> Result<Vec<u8>> {
     let projection = crate::mail_formats::mime(raw)?;
     let p = mailparse::parse_mail(&projection).map_err(err)?;

@@ -1,5 +1,5 @@
 use crate::{archive, models::*, store::Store};
-use rusqlite::params;
+use rusqlite::{params, OptionalExtension};
 use std::collections::BTreeMap;
 
 #[derive(Default)]
@@ -28,7 +28,6 @@ impl SyncSchedule {
 
 impl Store {
     pub fn interface_language(&self) -> Result<String> {
-        use rusqlite::OptionalExtension;
         let language: Option<String> = self
             .db()?
             .query_row(
@@ -55,20 +54,39 @@ impl Store {
         ).map_err(err)?;
         Ok(())
     }
+    #[cfg(test)]
     pub fn unread_total(&self) -> Result<u64> {
+        Self::unread_total_in(&self.db()?)
+    }
+    fn unread_total_in(db: &rusqlite::Connection) -> Result<u64> {
         let non_unread = crate::search::non_unread_mail_predicate("listing");
-        self.db()?
-            .query_row(
-                &format!("SELECT COUNT(*) FROM readable_listing listing JOIN search_documents d ON d.mail_id=listing.id WHERE d.is_read=0 AND d.trashed=0 AND NOT ({non_unread})"),
-                [],
-                |row| row.get(0),
-            )
-            .map_err(err)
+        db.query_row(
+            &format!("SELECT COUNT(*) FROM readable_listing listing JOIN search_documents d ON d.mail_id=listing.id WHERE d.is_read=0 AND d.trashed=0 AND NOT ({non_unread})"),
+            [],
+            |row| row.get(0),
+        ).map_err(err)
+    }
+    pub(crate) fn unread_total_if_changed(
+        &self,
+        previous: Option<i64>,
+    ) -> Result<Option<(i64, u64)>> {
+        let db = self.db()?;
+        let tx = db.unchecked_transaction().map_err(err)?;
+        let revision = tx
+            .query_row("SELECT version FROM query_revision WHERE id=1", [], |row| {
+                row.get(0)
+            })
+            .map_err(err)?;
+        if previous == Some(revision) {
+            return Ok(None);
+        }
+        Ok(Some((revision, Self::unread_total_in(&tx)?)))
     }
     pub fn preferences(&self) -> Result<Preferences> {
-        use rusqlite::OptionalExtension;
-        let data: Option<String> = self
-            .db()?
+        Self::preferences_in(&self.db()?)
+    }
+    fn preferences_in(db: &rusqlite::Connection) -> Result<Preferences> {
+        let data: Option<String> = db
             .query_row("SELECT data FROM preferences WHERE key='sync'", [], |r| {
                 r.get(0)
             })
@@ -77,19 +95,33 @@ impl Store {
         data.map(|data| serde_json::from_str(&data).map_err(err))
             .unwrap_or(Ok(Preferences::default()))
     }
+    #[cfg(test)]
     pub fn save_preferences(&self, p: &Preferences) -> Result<()> {
+        self.update_preferences(|preferences| *preferences = p.clone())
+    }
+    pub(crate) fn update_preferences<T>(
+        &self,
+        update: impl FnOnce(&mut Preferences) -> T,
+    ) -> Result<T> {
+        let mut db = self.db()?;
+        let tx = db
+            .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
+            .map_err(err)?;
+        let mut p = Self::preferences_in(&tx)?;
+        let result = update(&mut p);
         if let Some(proxy) = &p.proxy {
             proxy.validate()?;
         }
         if ![1, 5, 10, 15, 30, 60].contains(&p.sync_interval_minutes) {
             return Err("请选择有效的后台检查间隔".into());
         }
-        crate::read_cache::validate_preferences(p)?;
-        self.db()?.execute("INSERT INTO preferences(key,data) VALUES('sync',?1) ON CONFLICT(key) DO UPDATE SET data=excluded.data",[serde_json::to_string(p).map_err(err)?]).map_err(err)?;
+        crate::read_cache::validate_preferences(&p)?;
+        tx.execute("INSERT INTO preferences(key,data) VALUES('sync',?1) ON CONFLICT(key) DO UPDATE SET data=excluded.data",[serde_json::to_string(&p).map_err(err)?]).map_err(err)?;
+        tx.commit().map_err(err)?;
         if let Err(error) = crate::read_cache::prune(self) {
             let _ = self.log(&format!("阅读缓存设置已保存，但清理未完成：{error}"));
         }
-        Ok(())
+        Ok(result)
     }
     pub fn archive_health(&self) -> Result<ArchiveHealth> {
         crate::archive_verification::check_now(self, "deep")
@@ -166,7 +198,7 @@ impl Store {
     }
     pub fn outbox(&self) -> Result<Vec<OutboxRecord>> {
         let db = self.db()?;
-        let mut query = db.prepare("SELECT id,status,data,error,updated_at,raw,scheduled_at,send_kind FROM outbox ORDER BY julianday(NULLIF(updated_at,'')) DESC, rowid DESC LIMIT 100").map_err(err)?;
+        let mut query = db.prepare("SELECT id,status,data,error,updated_at,raw_hash,CASE WHEN raw_hash='' THEN raw END,scheduled_at,send_kind FROM outbox ORDER BY julianday(NULLIF(updated_at,'')) DESC, rowid DESC LIMIT 100").map_err(err)?;
         let rows = query
             .query_map([], |r| {
                 Ok((
@@ -175,29 +207,45 @@ impl Store {
                     r.get::<_, String>(2)?,
                     r.get::<_, String>(3)?,
                     r.get::<_, String>(4)?,
-                    r.get::<_, Vec<u8>>(5)?,
-                    r.get::<_, String>(6)?,
+                    r.get::<_, String>(5)?,
+                    r.get::<_, Option<Vec<u8>>>(6)?,
                     r.get::<_, String>(7)?,
+                    r.get::<_, String>(8)?,
                 ))
             })
             .map_err(err)?;
         let mut out = Vec::new();
         for row in rows {
-            let (id, status, data, error, updated_at, raw, scheduled_at, send_kind) =
-                row.map_err(err)?;
+            let (
+                id,
+                status,
+                data,
+                error,
+                updated_at,
+                raw_hash,
+                legacy_raw,
+                scheduled_at,
+                send_kind,
+            ) = row.map_err(err)?;
             let draft: Compose = serde_json::from_str(&data).map_err(err)?;
-            let hash = archive::digest(&raw);
-            let exists: bool = db
-                .query_row(
-                    "SELECT EXISTS(SELECT 1 FROM messages WHERE account_id=?1 AND hash=?2)",
-                    params![draft.account_id, hash],
-                    |r| r.get(0),
+            let hash = legacy_raw
+                .as_deref()
+                .map(archive::digest)
+                .unwrap_or(raw_hash);
+            let archived_size: Option<Option<u64>> = db
+                .prepare_cached(
+                    "SELECT NULLIF(d.size,0) FROM messages m
+                 LEFT JOIN search_documents d ON d.mail_id=m.id
+                 WHERE m.account_id=?1 AND m.hash=?2",
                 )
+                .map_err(err)?
+                .query_row(params![draft.account_id, hash], |row| row.get(0))
+                .optional()
                 .map_err(err)?;
-            let archived = exists && archive::read_raw(&self.root, &hash).is_ok();
-            let server_copy = self.sent_upload(&id)?;
-            let server_copy_available = self
-                .account(&draft.account_id)
+            let archived = archived_size
+                .is_some_and(|size| archive::original_available(&self.root, &db, &hash, size));
+            let server_copy = Self::sent_upload_in(&db, &id)?;
+            let server_copy_available = crate::remote::account_in(&db, &draft.account_id)
                 .is_ok_and(|a| a.enabled && a.protocol == "imap");
             out.push(OutboxRecord {
                 id,

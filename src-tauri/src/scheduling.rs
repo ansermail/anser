@@ -27,6 +27,22 @@ mod tests {
         )
     }
     #[test]
+    fn polling_a_future_plan_does_not_wait_for_a_database_writer() {
+        let (_dir, store, now) = setup();
+        let draft = draft();
+        let raw = network::build_message(&account(), &draft)
+            .unwrap()
+            .formatted();
+        store.queue_send(&draft, &raw, now).unwrap();
+        let mut db = store.db().unwrap();
+        let writer = db
+            .transaction_with_behavior(TransactionBehavior::Immediate)
+            .unwrap();
+        assert!(store.claim_scheduled(now).unwrap().is_none());
+        writer.rollback().unwrap();
+    }
+
+    #[test]
     fn undo_send_is_durable_cancelable_and_can_be_sent_early_once() {
         let (dir, store, now) = setup();
         let draft = draft();
@@ -358,10 +374,21 @@ impl Store {
     // Claim before any network call. A restart cannot silently repeat this send.
     pub fn claim_scheduled(&self, now: DateTime<Utc>) -> Result<Option<ScheduledMail>> {
         let mut db = self.db()?;
+        let cutoff = now.to_rfc3339_opts(SecondsFormat::Secs, true);
+        let due: bool = db
+            .query_row(
+                "SELECT EXISTS(SELECT 1 FROM outbox WHERE status='scheduled' AND scheduled_at<=?1)",
+                [&cutoff],
+                |row| row.get(0),
+            )
+            .map_err(err)?;
+        if !due {
+            return Ok(None);
+        }
         let tx = db
             .transaction_with_behavior(TransactionBehavior::Immediate)
             .map_err(err)?;
-        let record: Option<(String,String,Vec<u8>,String,String)> = tx.query_row("SELECT id,data,raw,raw_hash,scheduled_at FROM outbox WHERE status='scheduled' AND scheduled_at<=?1 ORDER BY scheduled_at LIMIT 1", [now.to_rfc3339_opts(SecondsFormat::Secs,true)], |r| Ok((r.get(0)?,r.get(1)?,r.get(2)?,r.get(3)?,r.get(4)?))).optional().map_err(err)?;
+        let record: Option<(String,String,Vec<u8>,String,String)> = tx.query_row("SELECT id,data,raw,raw_hash,scheduled_at FROM outbox WHERE status='scheduled' AND scheduled_at<=?1 ORDER BY scheduled_at LIMIT 1", [&cutoff], |r| Ok((r.get(0)?,r.get(1)?,r.get(2)?,r.get(3)?,r.get(4)?))).optional().map_err(err)?;
         let Some((id, data, raw, hash, at)) = record else {
             return Ok(None);
         };
@@ -375,7 +402,7 @@ impl Store {
         } else if archive::digest(&raw) != hash {
             Some(("failed", "待发原始邮件校验失败，未发送".to_string()))
         } else {
-            match self.account(&draft.account_id) {
+            match crate::remote::account_in(&tx, &draft.account_id) {
                 Ok(a) if a.enabled => None,
                 _ => Some((
                     "paused",

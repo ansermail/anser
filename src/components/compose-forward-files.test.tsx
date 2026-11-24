@@ -30,13 +30,13 @@ vi.mock("@tauri-apps/api/webview", () => ({
 vi.mock("@tauri-apps/plugin-dialog", () => ({ open: mocks.open }));
 let root: Root, host: HTMLDivElement, initial: Compose;
 const accounts = makeDemo().accounts;
-async function render(draft: Compose | null = initial) {
+async function render(draft: Compose | null = initial, onClose = () => {}) {
   await act(async () =>
     root.render(
       <ComposeDialog
         draft={draft}
         accounts={accounts}
-        onClose={() => {}}
+        onClose={onClose}
         onSent={() => {}}
       />,
     ),
@@ -201,4 +201,59 @@ describe("managed original attachments", () => {
     await render(null);
     expect(mocks.stop).toHaveBeenCalled();
   });
+});
+
+it("closes the lease only once when closing and unmounting a draft", async () => {
+  await render();
+  await click("保存草稿并关闭");
+  await render(null);
+  expect(
+    mocks.call.mock.calls.filter(([name]) => name === "close_compose_session"),
+  ).toEqual([
+    ["close_compose_session", { id: initial.id, token: `lease-${initial.id}` }],
+  ]);
+});
+
+it("saves and closes the draft even when opening its lease failed", async () => {
+  const base = mocks.call.getMockImplementation()!;
+  mocks.call.mockImplementation((cmd, args) =>
+    cmd === "open_compose_session"
+      ? Promise.reject(new Error("Session unavailable"))
+      : base(cmd, args),
+  );
+  const closed = vi.fn();
+  await render(initial, closed);
+  await click("保存草稿并关闭");
+  expect(mocks.call).toHaveBeenCalledWith("save_draft", {
+    draft: expect.objectContaining({ id: initial.id }),
+  });
+  expect(closed).toHaveBeenCalledOnce();
+  await render(null);
+  expect(
+    mocks.call.mock.calls.some(([name]) => name === "close_compose_session"),
+  ).toBe(false);
+});
+
+it("shows Windows attachment basenames and readable forward-file sizes", async () => {
+  const path = String.raw`C:\Users\Example\report.pdf`;
+  await render({
+    ...initial,
+    attachments: [path],
+    forwardFiles: [
+      {
+        id: "forward-size",
+        name: "original.pdf",
+        mime: "application/pdf",
+        size: 2048,
+        included: true,
+      },
+    ],
+  });
+  expect(document.querySelector(".compose-attachments")?.textContent).toContain(
+    "report.pdf",
+  );
+  expect(
+    document.querySelector(".compose-attachments")?.textContent,
+  ).not.toContain(path);
+  expect(document.body.textContent).toContain("original.pdf · 2 KB");
 });

@@ -1,5 +1,9 @@
+import { TimeSpinbox } from "./time-spinbox";
 import {
+  createContext,
+  useContext,
   useEffect,
+  useId,
   useMemo,
   useRef,
   useState,
@@ -21,6 +25,7 @@ import {
   Circle,
   CircleDashed,
   CircleDot,
+  Clock,
   Copy,
   Download,
   MoreHorizontal,
@@ -73,6 +78,7 @@ import {
 } from "@/lib/workbench";
 import { Alert, AlertDescription } from "./ui/alert";
 import { Badge } from "./ui/badge";
+import { Switch } from "./ui/switch";
 import {
   ContextMenu,
   ContextMenuContent,
@@ -355,10 +361,12 @@ function DatePicker({
   label,
   fallback,
   minDate,
+  maxDate,
   disabled,
 }: {
   fallback?: string;
   minDate?: string;
+  maxDate?: string;
   disabled?: boolean;
   date: string;
   onChange: (date: string) => void;
@@ -385,7 +393,10 @@ function DatePicker({
           mode="single"
           selected={selected}
           defaultMonth={selected ?? (fallback ? parseISO(fallback) : undefined)}
-          disabled={minDate ? { before: parseISO(minDate) } : undefined}
+          disabled={[
+            ...(minDate ? [{ before: parseISO(minDate) }] : []),
+            ...(maxDate ? [{ after: parseISO(maxDate) }] : []),
+          ]}
           onSelect={(day) => {
             if (day) {
               onChange(workDate(day));
@@ -541,10 +552,11 @@ function WorkEditor({
   remove: () => void;
   openMail: (id: string) => void;
 }) {
+  const timeId = useId();
   const [check, setCheck] = useState("");
   const [showEndDate, setShowEndDate] = useState(Boolean(item.endDate));
   const update = (fields: Partial<WorkItem>) => setItem({ ...item, ...fields });
-  const [hour = "", minute = "00"] = item.time ? item.time.split(":") : [];
+  const [hour = "09", minute = "00"] = item.time ? item.time.split(":") : [];
   return (
     <Sheet
       open
@@ -615,7 +627,9 @@ function WorkEditor({
               </div>
               <div className="wb-form-pair">
                 <Field>
-                  <FieldLabel>{t("Record date")}</FieldLabel>
+                  <div className="wb-editor-field-heading">
+                    <FieldLabel>{t("Record date")}</FieldLabel>
+                  </div>
                   <DatePicker
                     date={item.date}
                     label={t("Work date")}
@@ -632,51 +646,62 @@ function WorkEditor({
                   />
                 </Field>
                 <Field>
-                  <FieldLabel htmlFor="work-hour">
-                    {t("Specific time")}
-                  </FieldLabel>
-                  <div className="wb-time-controls">
-                    <SelectField
-                      id="work-hour"
-                      aria-label={t("Schedule hour")}
+                  <div className="wb-editor-field-heading">
+                    <FieldLabel htmlFor={timeId}>
+                      {t("Specific time")}
+                    </FieldLabel>
+                    <Switch
+                      id={timeId}
+                      checked={Boolean(item.time)}
                       disabled={busy}
-                      value={hour || "none"}
-                      onValueChange={(next) =>
-                        update({
-                          time: next === "none" ? "" : `${next}:${minute}`,
-                        })
+                      onCheckedChange={(specificTime) =>
+                        update({ time: specificTime ? "09:00" : "" })
                       }
-                    >
-                      <SelectOption value="none">{t("All day")}</SelectOption>
-                      {Array.from({ length: 24 }, (_, index) =>
-                        String(index).padStart(2, "0"),
-                      ).map((value) => (
-                        <SelectOption key={value} value={value}>
-                          {value}
-                        </SelectOption>
-                      ))}
-                    </SelectField>
-                    {hour && (
+                    />
+                  </div>
+                  <div className="wb-time-controls">
+                    {item.time ? (
                       <>
-                        <span>:</span>
-                        <SelectField
-                          id="work-minute"
-                          aria-label={t("Schedule minute")}
+                        <TimeSpinbox
+                          id={`${timeId}-hour`}
+                          label={t("Schedule hour")}
+                          value={hour}
+                          min={0}
+                          max={23}
                           disabled={busy}
+                          onChange={(next) =>
+                            update({ time: `${next}:${minute}` })
+                          }
+                        />
+                        <span
+                          aria-hidden="true"
+                          className="text-muted-foreground"
+                        >
+                          :
+                        </span>
+                        <TimeSpinbox
+                          id={`${timeId}-minute`}
+                          label={t("Schedule minute")}
                           value={minute}
-                          onValueChange={(next) =>
+                          min={0}
+                          max={59}
+                          disabled={busy}
+                          onChange={(next) =>
                             update({ time: `${hour}:${next}` })
                           }
-                        >
-                          {Array.from({ length: 60 }, (_, index) =>
-                            String(index).padStart(2, "0"),
-                          ).map((value) => (
-                            <SelectOption key={value} value={value}>
-                              {value}
-                            </SelectOption>
-                          ))}
-                        </SelectField>
+                        />
                       </>
+                    ) : (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className="wb-all-day-trigger h-9 w-full text-muted-foreground"
+                        disabled={busy}
+                        onClick={() => update({ time: "09:00" })}
+                      >
+                        <Clock data-icon="inline-start" aria-hidden="true" />
+                        {t("All day")}
+                      </Button>
                     )}
                   </div>
                 </Field>
@@ -1213,6 +1238,7 @@ function WorkReport({
                           <FieldLabel>{t("Start date")}</FieldLabel>
                           <DatePicker
                             date={from}
+                            maxDate={to}
                             label={t("Start date")}
                             onChange={setFrom}
                           />
@@ -1221,11 +1247,15 @@ function WorkReport({
                           <FieldLabel>{t("End date")}</FieldLabel>
                           <DatePicker
                             date={to}
+                            minDate={from}
                             label={t("End date")}
                             onChange={setTo}
                           />
                         </Field>
                       </FieldGroup>
+                      <p className="mt-2 text-xs text-muted-foreground">
+                        {t("The end date must be on or after the start date.")}
+                      </p>
                     </PopoverContent>
                   </Popover>
                 </div>
@@ -1332,10 +1362,10 @@ function WorkReport({
                       disabled={!filtered.length}
                       aria-label={t("Copy report")}
                       onClick={() =>
-                        void navigator.clipboard
-                          .writeText(markdown)
-                          .then(() => toast.success(t("Report copied.")))
-                          .catch(() => toast.error(t("Could not copy report.")))
+                        void copyText(markdown).then((copied) => {
+                          if (copied) toast.success(t("Report copied."));
+                          else toast.error(t("Could not copy report."));
+                        })
                       }
                     >
                       <Copy />
@@ -1526,6 +1556,17 @@ function WorkReport({
   );
 }
 
+const WorkbenchDayContent =
+  createContext<
+    (props: React.ComponentProps<typeof CalendarDayButton>) => React.JSX.Element
+  >(CalendarDayButton);
+
+const workbenchCalendarComponents = {
+  DayButton(props: React.ComponentProps<typeof CalendarDayButton>) {
+    return useContext(WorkbenchDayContent)(props);
+  },
+};
+
 export function Workbench({
   seed,
   onSeedConsumed,
@@ -1647,67 +1688,62 @@ export function Workbench({
     const index = projects.findIndex((project) => project.name === name);
     return index < 0 ? "none" : String(index % 6);
   };
-  const calendarComponents = useMemo(
-    () => ({
-      DayButton: (props: React.ComponentProps<typeof CalendarDayButton>) => {
-        const day = workDate(props.day.date);
-        const entries = visible
-          .filter((item) => isWorkItemOnDate(item, day))
-          .sort(
-            (a, b) =>
-              a.time.localeCompare(b.time) || a.title.localeCompare(b.title),
-          );
-        return (
-          <CalendarDayButton
-            {...props}
-            className={`workbench-day ${
-              props.modifiers.outside
-                ? "workbench-day-outside"
-                : "workbench-day-current-month"
-            }`}
-            aria-label={t("{value0} · {value1} work items", {
-              value0: day,
-              value1: entries.length,
-            })}
-          >
-            <span
-              className="workbench-day-number"
-              data-today={props.modifiers.today || undefined}
+  const renderCalendarDay = (
+    props: React.ComponentProps<typeof CalendarDayButton>,
+  ) => {
+    const day = workDate(props.day.date);
+    const entries = visible
+      .filter((item) => isWorkItemOnDate(item, day))
+      .sort(
+        (a, b) =>
+          a.time.localeCompare(b.time) || a.title.localeCompare(b.title),
+      );
+    return (
+      <CalendarDayButton
+        {...props}
+        className={`workbench-day ${
+          props.modifiers.outside
+            ? "workbench-day-outside"
+            : "workbench-day-current-month"
+        }`}
+        aria-label={t("{value0} · {value1} work items", {
+          value0: day,
+          value1: entries.length,
+        })}
+      >
+        <span
+          className="workbench-day-number"
+          data-today={props.modifiers.today || undefined}
+        >
+          {props.day.date.getDate()}
+        </span>
+        <span className="workbench-day-items">
+          {entries.slice(0, 2).map((item) => (
+            <WorkItemContextMenu
+              key={item.id}
+              item={item}
+              disabled={busy || loading}
+              onOpen={setEditing}
+              onDelete={remove}
             >
-              {props.day.date.getDate()}
-            </span>
-            <span className="workbench-day-items">
-              {entries.slice(0, 2).map((item) => (
-                <WorkItemContextMenu
-                  key={item.id}
-                  item={item}
-                  disabled={busy || loading}
-                  onOpen={setEditing}
-                  onDelete={remove}
-                >
-                  <span
-                    className="workbench-day-event"
-                    data-project-tone={projectTone(item.project)}
-                    data-work-status={item.status}
-                  >
-                    <span className="workbench-project-dot" />
-                    {item.time && <small>{item.time}</small>}
-                    <span>{item.title}</span>
-                  </span>
-                </WorkItemContextMenu>
-              ))}
-              {entries.length > 2 && (
-                <small className="workbench-day-more">
-                  +{entries.length - 2}
-                </small>
-              )}
-            </span>
-          </CalendarDayButton>
-        );
-      },
-    }),
-    [visible, projects, busy, loading],
-  );
+              <span
+                className="workbench-day-event"
+                data-project-tone={projectTone(item.project)}
+                data-work-status={item.status}
+              >
+                <span className="workbench-project-dot" />
+                {item.time && <small>{item.time}</small>}
+                <span>{item.title}</span>
+              </span>
+            </WorkItemContextMenu>
+          ))}
+          {entries.length > 2 && (
+            <small className="workbench-day-more">+{entries.length - 2}</small>
+          )}
+        </span>
+      </CalendarDayButton>
+    );
+  };
   const date = workDate(selected);
   const daily = visible
     .filter((item) => isWorkItemOnDate(item, date))
@@ -2104,7 +2140,6 @@ export function Workbench({
                     })
                   : t("Open linked email")
               }
-              title={item.mailSubject || t("Open linked email")}
               onClick={() => openMail(item.mailId)}
             >
               <Mail />
@@ -2815,29 +2850,31 @@ export function Workbench({
                       </div>
                     </ScrollArea>
                   ) : calendarMode === "month" ? (
-                    <Calendar
-                      className="workbench-calendar"
-                      hideNavigation
-                      showOutsideDays
-                      locale={calendarLocale()}
-                      weekStartsOn={1}
-                      fixedWeeks
-                      month={month}
-                      onMonthChange={setMonth}
-                      mode="single"
-                      selected={selected}
-                      onSelect={(day) => {
-                        if (!day) return;
-                        setSelected(day);
-                        if (
-                          day.getFullYear() !== month.getFullYear() ||
-                          day.getMonth() !== month.getMonth()
-                        ) {
-                          setMonth(startOfMonth(day));
-                        }
-                      }}
-                      components={calendarComponents}
-                    />
+                    <WorkbenchDayContent.Provider value={renderCalendarDay}>
+                      <Calendar
+                        className="workbench-calendar"
+                        hideNavigation
+                        showOutsideDays
+                        locale={calendarLocale()}
+                        weekStartsOn={1}
+                        fixedWeeks
+                        month={month}
+                        onMonthChange={setMonth}
+                        mode="single"
+                        selected={selected}
+                        onSelect={(day) => {
+                          if (!day) return;
+                          setSelected(day);
+                          if (
+                            day.getFullYear() !== month.getFullYear() ||
+                            day.getMonth() !== month.getMonth()
+                          ) {
+                            setMonth(startOfMonth(day));
+                          }
+                        }}
+                        components={workbenchCalendarComponents}
+                      />
+                    </WorkbenchDayContent.Provider>
                   ) : (
                     <WorkbenchTimeline
                       mode={calendarMode}

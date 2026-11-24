@@ -230,48 +230,47 @@ impl Store {
             .map_err(err)?;
         let mails = {
             let mut query = tx
-                .prepare("SELECT data FROM messages WHERE json_extract(data,'$.localFolder')=?1")
+                .prepare("SELECT m.id,m.hash FROM search_documents d JOIN messages m ON m.id=d.mail_id WHERE d.local_folder=?1")
                 .map_err(err)?;
             let mails = query
-                .query_map([current], |r| r.get::<_, String>(0))
+                .query_map([current], |r| {
+                    Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?))
+                })
                 .map_err(err)?
-                .map(|row| serde_json::from_str::<Mail>(&row.map_err(err)?).map_err(err))
-                .collect::<Result<Vec<_>>>()?;
+                .collect::<rusqlite::Result<Vec<_>>>()
+                .map_err(err)?;
             mails
         };
         if mails.is_empty() {
             return Err("本地文件夹不存在".into());
         }
         let mut hashes = std::collections::BTreeSet::new();
-        for mail in &mails {
-            if !valid_hash(&mail.hash) {
+        for (id, hash) in &mails {
+            if !valid_hash(hash) {
                 return Err("存档标识无效，请先校验存档".into());
             }
-            hashes.insert(mail.hash.clone());
-            crate::rule_runs::cancel_mail_in(&tx, &mail.id)?;
+            hashes.insert(hash.clone());
+            crate::rule_runs::cancel_mail_in(&tx, id)?;
             tx.execute(
                 "UPDATE archive_jobs SET status='cancelled',revision=revision+1,error='本地文件夹已删除' WHERE mail_id=?1 AND status NOT IN ('completed','cancelled')",
-                [&mail.id],
+                [id],
             )
             .map_err(err)?;
             tx.execute(
                 "DELETE FROM server_operations WHERE json_extract(data,'$.mailId')=?1",
-                [&mail.id],
+                [id],
             )
             .map_err(err)?;
             tx.execute(
                 "DELETE FROM directory_operations WHERE json_extract(data,'$.mailId')=?1 AND status NOT IN ('completed','cancelled')",
-                [&mail.id],
+                [id],
             )
             .map_err(err)?;
-            tx.execute(
-                "DELETE FROM notification_targets WHERE mail_id=?1",
-                [&mail.id],
-            )
-            .map_err(err)?;
-            tx.execute("DELETE FROM sources WHERE mail_id=?1", [&mail.id])
+            tx.execute("DELETE FROM notification_targets WHERE mail_id=?1", [id])
                 .map_err(err)?;
-            tx.execute("DELETE FROM messages WHERE id=?1", [&mail.id])
+            tx.execute("DELETE FROM sources WHERE mail_id=?1", [id])
+                .map_err(err)?;
+            tx.execute("DELETE FROM messages WHERE id=?1", [id])
                 .map_err(err)?;
         }
         let tier_stage = if hashes.iter().any(|hash| tier_reader.entry(hash).is_some()) {

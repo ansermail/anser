@@ -1,3 +1,4 @@
+import { copyText } from "@/lib/clipboard";
 import {
   createContext,
   useCallback,
@@ -117,7 +118,9 @@ export function useMailSummary(
   const layer = useContext(SummaryLayer);
   const reference =
     sent && Number.isFinite(Date.parse(sent)) ? sent : undefined;
-  const offset = reference && /(?:Z|[+-]\d\d:\d\d)$/i.exec(reference)?.[0];
+  const offset = reference
+    ?.match(/(Z|[+-]\d{2}:?\d{2})(?:\s+\([^)]*\))?\s*$/i)?.[1]
+    ?.replace(/^([+-]\d{2})(\d{2})$/, "$1:$2");
   const [state, setState] = useState<State>({ kind: "idle" });
   const request = useRef("");
   const triggerButton = useRef<HTMLButtonElement>(null);
@@ -425,7 +428,7 @@ export function useMailSummary(
                       ? [local.getHours(), local.getMinutes()]
                           .map((v) => String(v).padStart(2, "0"))
                           .join(":")
-                      : "";
+                      : reminder.time;
                     return (
                       <li
                         key={i}
@@ -474,16 +477,16 @@ export function useMailSummary(
             size="sm"
             variant="ghost"
             onClick={() =>
-              void navigator.clipboard
-                .writeText(
-                  [
-                    conclusion,
-                    ...points,
-                    ...reminders.map((reminder) => reminder.evidence),
-                  ].join("\n"),
-                )
-                .then(() => toast.success(t("Summary copied")))
-                .catch(() => toast.error(t("Could not copy summary.")))
+              void copyText(
+                [
+                  conclusion,
+                  ...points,
+                  ...reminders.map((reminder) => reminder.evidence),
+                ].join("\n"),
+              ).then((copied) => {
+                if (copied) toast.success(t("Summary copied"));
+                else toast.error(t("Could not copy summary."));
+              })
             }
           >
             <Copy />

@@ -11,7 +11,7 @@ import {
   ReplyAll,
   Send,
 } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useEffectEvent, useRef, useState } from "react";
 import { Toaster, toast } from "sonner";
 import { call, native, newDraft } from "../lib/api";
 import {
@@ -120,49 +120,53 @@ export function ExternalMailWindow() {
       live = false;
     };
   }, []);
+  const handleShortcut = useEffectEvent((event: KeyboardEvent) => {
+    if (
+      event.defaultPrevented ||
+      event.isComposing ||
+      event.repeat ||
+      !document ||
+      draft ||
+      window.document.querySelector(
+        '[role="dialog"], [role="alertdialog"], [role="menu"], [role="listbox"]',
+      ) ||
+      (event.target instanceof Element &&
+        event.target.closest(
+          'input, textarea, select, [role="combobox"], [contenteditable]:not([contenteditable="false"])',
+        ))
+    )
+      return;
+    if (
+      (event.metaKey || event.ctrlKey) &&
+      !event.altKey &&
+      !event.shiftKey &&
+      event.key.toLowerCase() === "r"
+    ) {
+      event.preventDefault();
+      compose(false, false);
+    } else if (
+      (event.metaKey || event.ctrlKey) &&
+      !event.altKey &&
+      event.shiftKey &&
+      event.key.toLowerCase() === "r"
+    ) {
+      event.preventDefault();
+      compose(false, true);
+    } else if (
+      (event.metaKey || event.ctrlKey) &&
+      !event.altKey &&
+      event.shiftKey &&
+      event.key.toLowerCase() === "f"
+    ) {
+      event.preventDefault();
+      compose(true);
+    }
+  });
   useEffect(() => {
-    const shortcuts = (event: KeyboardEvent) => {
-      if (
-        event.defaultPrevented ||
-        event.isComposing ||
-        event.repeat ||
-        !document ||
-        draft ||
-        (event.target instanceof Element &&
-          event.target.closest(
-            'input, textarea, [contenteditable]:not([contenteditable="false"]), [role="dialog"], [role="menu"]',
-          ))
-      )
-        return;
-      if (
-        (event.metaKey || event.ctrlKey) &&
-        !event.altKey &&
-        !event.shiftKey &&
-        event.key.toLowerCase() === "r"
-      ) {
-        event.preventDefault();
-        compose(false, false);
-      } else if (
-        (event.metaKey || event.ctrlKey) &&
-        !event.altKey &&
-        event.shiftKey &&
-        event.key.toLowerCase() === "r"
-      ) {
-        event.preventDefault();
-        compose(false, true);
-      } else if (
-        (event.metaKey || event.ctrlKey) &&
-        !event.altKey &&
-        event.shiftKey &&
-        event.key.toLowerCase() === "f"
-      ) {
-        event.preventDefault();
-        compose(true);
-      }
-    };
+    const shortcuts = (event: KeyboardEvent) => handleShortcut(event);
     window.addEventListener("keydown", shortcuts);
     return () => window.removeEventListener("keydown", shortcuts);
-  });
+  }, []);
   function compose(forward = false, all = false) {
     if (!document) return;
     const account = accounts.find((item) => item.enabled);
@@ -360,6 +364,7 @@ export function ExternalMailWindow() {
               </div>
               <div className="recipient-line">
                 <MailRecipients
+                  key={document.detail.mail.id}
                   to={displayAddresses(
                     document.detail.to,
                     document.detail.mail.recipients,
@@ -388,7 +393,6 @@ export function ExternalMailWindow() {
             <ConversationReader
               selected={document.detail}
               singleMessage
-              revision={[]}
               accounts={accounts}
               demo={false}
               scrollRef={readerRef}

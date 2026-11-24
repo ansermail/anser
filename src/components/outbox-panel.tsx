@@ -411,7 +411,10 @@ export function OutboxPanel({
       <div className="panel-heading">
         <div>
           <div className="page-title-row">
-            <SidebarTrigger />
+            <SidebarTrigger
+              title={t("Toggle sidebar")}
+              aria-label={t("Toggle sidebar")}
+            />
             <h1>{t("Send history")}</h1>
           </div>
           <p>{t("Review successful, failed and unconfirmed send receipts")}</p>

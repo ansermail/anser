@@ -1,3 +1,4 @@
+import { useSettingsTabActive } from "./settings-layout";
 import { TaskCellText, TaskDataTable } from "./task-data-table";
 import { t } from "@/lib/i18n";
 import { TaskPanelHeader, TaskPanelCollapsible } from "./task-panel-header";
@@ -45,6 +46,7 @@ const unfinished = ["queued", "running", "paused", "blocked"];
 export function ArchiveJobsPanel({
   defaultCollapsed = false,
 }: { defaultCollapsed?: boolean } = {}) {
+  const tabActive = useSettingsTabActive();
   const [items, setItems] = useState<ArchiveJob[] | null>(null);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -52,8 +54,10 @@ export function ArchiveJobsPanel({
     () => async () => {},
   );
   useEffect(() => {
+    if (!tabActive) return;
     let live = true;
     const update = coalesceRefresh(async () => {
+      if (!live) return;
       try {
         const next = await call<ArchiveJob[]>("archive_jobs");
         if (live) {
@@ -71,7 +75,7 @@ export function ArchiveJobsPanel({
       live = false;
       clearInterval(timer);
     };
-  }, []);
+  }, [tabActive]);
   async function action(id: string, action: string) {
     if (busy) return;
     setBusy(true);

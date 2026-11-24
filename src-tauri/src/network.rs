@@ -3807,6 +3807,12 @@ fn parse_header_fetch(response: &[u8], uid: u32) -> Result<(&[u8], Option<u32>, 
     }
     Ok((body.ok_or("服务器未返回邮件头")?, size, read))
 }
+// Catch protocol-library panics below the caller's folder-lock scope.
+fn guard_imap<T>(operation: impl FnOnce() -> Result<T>) -> Result<T> {
+    catch_unwind(AssertUnwindSafe(operation))
+        .unwrap_or_else(|_| Err("邮件协议库处理响应异常；请重新连接后重试".into()))
+}
+
 pub fn folder_list(store: &Store, a: &Account) -> Result<Vec<RemoteFolder>> {
     if a.protocol == "pop3" {
         return Ok(vec![RemoteFolder {
@@ -3821,8 +3827,11 @@ pub fn folder_list(store: &Store, a: &Account) -> Result<Vec<RemoteFolder>> {
         }]);
     }
     let secret = auth::credentials(a).map_err(|e| format!("读取或刷新邮箱授权失败：{e}"))?;
-    let session = imap_session(a, &secret).map_err(|e| format!("连接或登录邮件服务器失败：{e}"))?;
-    discover_and_cache_folders(store, a, session)
+    guard_imap(|| {
+        let session =
+            imap_session(a, &secret).map_err(|e| format!("连接或登录邮件服务器失败：{e}"))?;
+        discover_and_cache_folders(store, a, session)
+    })
 }
 fn discover_and_cache_folders<T: std::io::Read + Write>(
     store: &Store,
@@ -3974,20 +3983,26 @@ pub fn probe_folder(
         .try_lock()
         .map_err(|_| "此目录正在收取，请稍后重新核查")?;
     let secret = auth::credentials(a)?;
-    let mut session = imap_session(a, &secret)?;
-    let (mut evidence, ids, reason) = inspect_selection(&mut session, folder)?;
-    let _ = session.logout();
+    let (mut evidence, ids, reason) = guard_imap(|| {
+        let mut session = imap_session(a, &secret)?;
+        let selection = inspect_selection(&mut session, folder)?;
+        let _ = session.logout();
+        Ok(selection)
+    })?;
     if !folder.eq_ignore_ascii_case("INBOX") && evidence.uid_count.is_some() {
         let inbox_gate = crate::sync_control::folder_gate(&store.root, &a.id, "INBOX")?;
         // Never block realtime delivery to run a diagnostic.
         if let Ok(_inbox_guard) = inbox_gate.try_lock() {
-            if let Ok(mut inbox) = imap_session(a, &secret) {
-                if let Ok((_, inbox_ids, reason)) = inspect_selection(&mut inbox, "INBOX") {
-                    if reason.is_none() {
-                        evidence.inbox_uid_overlap = Some(ids.intersection(&inbox_ids).count());
-                    }
-                    let _ = inbox.logout();
-                }
+            // INBOX overlap is an optional diagnostic.
+            if let Ok(overlap) = guard_imap(|| {
+                let mut inbox = imap_session(a, &secret)?;
+                let (_, inbox_ids, reason) = inspect_selection(&mut inbox, "INBOX")?;
+                let _ = inbox.logout();
+                Ok(reason
+                    .is_none()
+                    .then(|| ids.intersection(&inbox_ids).count()))
+            }) {
+                evidence.inbox_uid_overlap = overlap;
             }
         };
     }
@@ -4033,30 +4048,32 @@ pub(crate) fn read_remote_source(
 ) -> Result<Vec<u8>> {
     let secret = auth::credentials(a)?;
     let raw = if a.protocol == "imap" {
-        let mut session = imap_session(a, &secret)?;
-        let mailbox = examine_verified(&mut session, folder)?;
-        let mut pieces = remote.split(':');
-        let first = pieces.next().ok_or("服务器邮件标识无效")?;
-        let uid = pieces
-            .next()
-            .and_then(|s| s.parse::<u32>().ok())
-            .ok_or("服务器邮件标识无效")?;
-        if first != "content"
-            && mailbox_uid_validity(&mut session, folder, &mailbox)?
-                .map(|v| v.to_string())
-                .as_deref()
-                != Some(first)
-        {
-            return Err("服务器文件夹已重建，请刷新后再打开邮件".into());
-        }
-        let response = session
-            .run_command_and_read_response(format!(
-                "UID FETCH {uid} (UID FLAGS RFC822.SIZE BODY.PEEK[])"
-            ))
-            .map_err(err)?;
-        let raw = parse_full_fetch(&response, uid)?.0.to_vec();
-        let _ = session.logout();
-        raw
+        guard_imap(|| {
+            let mut session = imap_session(a, &secret)?;
+            let mailbox = examine_verified(&mut session, folder)?;
+            let mut pieces = remote.split(':');
+            let first = pieces.next().ok_or("服务器邮件标识无效")?;
+            let uid = pieces
+                .next()
+                .and_then(|s| s.parse::<u32>().ok())
+                .ok_or("服务器邮件标识无效")?;
+            if first != "content"
+                && mailbox_uid_validity(&mut session, folder, &mailbox)?
+                    .map(|v| v.to_string())
+                    .as_deref()
+                    != Some(first)
+            {
+                return Err("服务器文件夹已重建，请刷新后再打开邮件".into());
+            }
+            let response = session
+                .run_command_and_read_response(format!(
+                    "UID FETCH {uid} (UID FLAGS RFC822.SIZE BODY.PEEK[])"
+                ))
+                .map_err(err)?;
+            let raw = parse_full_fetch(&response, uid)?.0.to_vec();
+            let _ = session.logout();
+            Ok(raw)
+        })?
     } else {
         let mut pop = pop_session(a, &secret)?;
         pop_command(&mut pop, "UIDL")?;
@@ -4146,6 +4163,17 @@ fn header_attachments(response: &[u8], uid: u32) -> Result<Option<bool>> {
 #[cfg(test)]
 mod remote_tests {
     use super::*;
+    #[test]
+    fn protocol_panic_returns_an_error_without_poisoning_the_folder_gate() {
+        let gate = crate::sync_control::FolderGate::default();
+        {
+            let _folder = gate.lock().unwrap();
+            let result: Result<()> = guard_imap(|| panic!("synthetic protocol parser panic"));
+            assert!(result.unwrap_err().contains("邮件协议库处理响应异常"));
+        }
+        assert!(gate.try_lock().is_ok());
+    }
+
     fn attachment_name_fixture(value: &[u8], literal: bool) -> (Vec<u8>, Vec<u8>) {
         let raw = b"From: sender@example.com\r\nSubject: Legacy attachment\r\nDate: Mon, 29 Mar 2021 17:48:00 +0800\r\n\r\n".to_vec();
         // Match the observed shape, with entirely synthetic names and headers.

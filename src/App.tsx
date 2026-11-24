@@ -448,6 +448,8 @@ export default function App({
   const [navigationLoading, setNavigationLoading] = useState(false);
   selectionRef.current = selected;
   const localChanges = useRef(new Map<string, Partial<Mail>>());
+  const refreshedReaderMetadata = useRef<Mail | null>(null);
+  const renamingFolderPending = useRef(false);
   queryRef.current = query;
   const grouped = query.listMode !== "messages";
   const [notificationToken, setNotificationToken] = useState<{
@@ -604,6 +606,7 @@ export default function App({
   refreshAction.current = async () => {
     const seq = ++request.current;
     const currentQuery = queryRef.current;
+    const settledChanges = new Map(localChanges.current);
     try {
       const value = await mailPage({ ...currentQuery, limit: 200 });
       if (seq === request.current && currentQuery === queryRef.current) {
@@ -622,12 +625,22 @@ export default function App({
                 nextCursor: previous.nextCursor,
               }
             : value;
+        for (const [id, change] of settledChanges) {
+          // The open message may have left the filtered list. Reconcile it
+          // with the metadata read below, even when it isn't in this page.
+          if (
+            id !== selectionRef.current &&
+            localChanges.current.get(id) === change
+          )
+            localChanges.current.delete(id);
+        }
         dataScope.current = queryScope(currentQuery);
         dataRef.current = merged;
         setData(merged);
       }
       const reading = selectionRef.current;
       if (reading) {
+        const settledChange = localChanges.current.get(reading);
         const metadata = await call<Mail>("mail_metadata", {
           id: reading,
         }).catch(() => null);
@@ -636,6 +649,10 @@ export default function App({
           selectionRef.current === reading &&
           seq === request.current
         ) {
+          if (localChanges.current.get(reading) === settledChange)
+            localChanges.current.delete(reading);
+          refreshedReaderMetadata.current = metadata;
+          setHeaderMail(metadata);
           if (
             detailRef.current?.mail.id === reading &&
             detailRef.current.mail.hash !== metadata.hash
@@ -652,7 +669,6 @@ export default function App({
                     mail: {
                       ...metadata,
                       body: current.mail.body,
-                      ...localChanges.current.get(reading),
                     },
                   }
                 : current,
@@ -698,6 +714,7 @@ export default function App({
   }, [theme.dark]);
   useEffect(() => {
     let live = true;
+    const metadataAtStart = refreshedReaderMetadata.current;
     // A read message may leave an unread list while it remains open.
     // Keep its content during list refreshes, and clear only on selection changes.
     setDetail((current) => (current?.mail.id === selected ? current : null));
@@ -706,10 +723,17 @@ export default function App({
       void call<Detail>("mail_detail", { id: selected })
         .then((d) => {
           if (live) {
-            setDetail({
-              ...d,
-              mail: { ...d.mail, ...localChanges.current.get(d.mail.id) },
-            });
+            const freshMetadata = refreshedReaderMetadata.current;
+            const metadata =
+              freshMetadata !== metadataAtStart &&
+              freshMetadata?.id === d.mail.id
+                ? freshMetadata
+                : d.mail;
+            if (metadata.hash !== d.mail.hash) {
+              setDetailRetry((n) => n + 1);
+              return;
+            }
+            setDetail({ ...d, mail: { ...metadata, body: d.mail.body } });
             if (notificationReading.current === d.mail.id) {
               notificationReading.current = "";
               if (!d.mail.isRead)
@@ -735,6 +759,7 @@ export default function App({
       return;
     }
     let live = true;
+    const metadataAtStart = refreshedReaderMetadata.current;
     setHeaderMail((current) => (current?.id === selected ? current : null));
     const listed = dataRef.current.messages.find((m) => m.id === selected);
     if (listed) setHeaderMail(listed);
@@ -742,7 +767,8 @@ export default function App({
     // from notifications before the current list has caught up.
     void call<Mail>("mail_metadata", { id: selected })
       .then((mail) => {
-        if (live) setHeaderMail(mail);
+        if (live && refreshedReaderMetadata.current === metadataAtStart)
+          setHeaderMail(mail);
       })
       .catch(() => {});
     return () => {
@@ -783,7 +809,10 @@ export default function App({
         subject: string;
         message: string;
       }>("send-result", ({ payload }) => {
-        const message = `${payload.subject || t("(No subject)")}：${payload.message}`;
+        const message = t("{value0}: {value1}", {
+          value0: payload.subject || t("(No subject)"),
+          value1: payload.message,
+        });
         if (payload.status === "sent") toast.success(message);
         else if (payload.status === "uncertain")
           toast.warning(message, { duration: 10000 });
@@ -1189,7 +1218,9 @@ export default function App({
     }
   }
   async function updateMail(id: string, action: string, value: string) {
+    const pendingChanges = localChanges.current;
     await call("update_mail", { id, action, value });
+    if (pendingChanges !== localChanges.current) return;
     const change: Partial<Mail> =
       action === "read"
         ? { isRead: value === "true" }
@@ -1202,6 +1233,9 @@ export default function App({
       ...localChanges.current.get(id),
       ...change,
     });
+    setHeaderMail((current) =>
+      current?.id === id ? { ...current, ...change } : current,
+    );
     setDetail((current) =>
       current?.mail.id === id
         ? { ...current, mail: { ...current.mail, ...change } }
@@ -1569,6 +1603,8 @@ export default function App({
     }
   }
   function demoMode() {
+    localChanges.current = new Map();
+    refreshedReaderMetadata.current = null;
     if (demo) {
       leaveDemo();
       setDemo(false);
@@ -1607,9 +1643,12 @@ export default function App({
       !current ||
       !replacement ||
       replacement.length > 120 ||
-      replacement === current
+      replacement === current ||
+      data.folders.includes(replacement) ||
+      renamingFolderPending.current
     )
       return;
+    renamingFolderPending.current = true;
     setRenamingFolder(true);
     try {
       await call("rename_local_folder", { current, replacement });
@@ -1621,6 +1660,7 @@ export default function App({
     } catch (error) {
       toast.error(String(error));
     } finally {
+      renamingFolderPending.current = false;
       setRenamingFolder(false);
     }
   }
@@ -2027,7 +2067,7 @@ export default function App({
   const nav = (view: string, Icon: typeof Inbox, count?: number) => (
     <Button
       variant="ghost"
-      className={`nav-item ${page === "mail" && query.view === view && !query.accountId && !query.folder ? "active" : ""}`}
+      className={`nav-item ${page === "mail" && query.view === view && !query.accountId && !query.folder && !query.tag ? "active" : ""}`}
       onClick={() => navigate(view)}
       key={view}
     >
@@ -2258,7 +2298,7 @@ export default function App({
                       }}
                     >
                       <div
-                        className={`account-navigation ${page === "mail" && query.accountId === a.id ? "active" : ""}`}
+                        className={`account-navigation ${page === "mail" && query.accountId === a.id && !query.folder && !query.remoteFolder && query.view !== "starred" ? "active" : ""}`}
                       >
                         <CollapsibleTrigger asChild>
                           <Button
@@ -2656,8 +2696,11 @@ export default function App({
                   if (draft) return;
                   const account =
                     data.accounts.find(
-                      (account) => account.id === query.accountId,
-                    ) ?? data.accounts[0];
+                      (account) =>
+                        account.id === query.accountId && account.enabled,
+                    ) ??
+                    data.accounts.find((account) => account.enabled) ??
+                    data.accounts[0];
                   if (!account) {
                     setAccountDialog(true);
                     return;
@@ -3201,8 +3244,15 @@ export default function App({
                       />
                       <h1>{title}</h1>
                       <span>
-                        {data.matched}{" "}
-                        {grouped ? t("conversations") : t("messages")}
+                        {grouped
+                          ? data.matched === 1
+                            ? t("1 conversation")
+                            : t("{value0} conversations", {
+                                value0: data.matched,
+                              })
+                          : data.matched === 1
+                            ? t("1 message")
+                            : t("{value0} messages", { value0: data.matched })}
                       </span>
                     </div>
                     <Button
@@ -3551,7 +3601,14 @@ export default function App({
                                 {m.preview && <p>{m.preview}</p>}
                                 <div className="row-meta">
                                   <span
-                                    className={`mini-dot color-${data.accounts.findIndex((a) => a.id === m.accountId) % 4}`}
+                                    className={`mini-dot color-${
+                                      Math.max(
+                                        0,
+                                        data.accounts.findIndex(
+                                          (a) => a.id === m.accountId,
+                                        ),
+                                      ) % 4
+                                    }`}
                                     aria-hidden="true"
                                     title={t("Account color indicator")}
                                   />
@@ -3841,7 +3898,10 @@ export default function App({
                               <TooltipContent>
                                 {navigationLoading
                                   ? t("Finding neighboring messages…")
-                                  : t("Previous message (⌥↑)")}
+                                  : t("{value0} ({value1})", {
+                                      value0: t("Previous message"),
+                                      value1: shortcut("⌥↑"),
+                                    })}
                               </TooltipContent>
                             </Tooltip>
                             <Tooltip>
@@ -3862,7 +3922,10 @@ export default function App({
                               <TooltipContent>
                                 {navigationLoading
                                   ? t("Finding neighboring messages…")
-                                  : t("Next message (⌥↓)")}
+                                  : t("{value0} ({value1})", {
+                                      value0: t("Next message"),
+                                      value1: shortcut("⌥↓"),
+                                    })}
                               </TooltipContent>
                               {navigationLoading && (
                                 <span className="sr-only" role="status">
@@ -3883,7 +3946,7 @@ export default function App({
                                 <Button
                                   variant="ghost"
                                   size="icon-sm"
-                                  title={
+                                  aria-label={
                                     activeMail.isRead
                                       ? t("Mark unread")
                                       : t("Mark read")
@@ -3901,11 +3964,18 @@ export default function App({
                                 </Button>
                               </MailActionTooltip>
                             )}
-                            <MailActionTooltip action="star" label={t("Star")}>
+                            <MailActionTooltip
+                              action="star"
+                              label={
+                                activeMail.starred ? t("Unstar") : t("Star")
+                              }
+                            >
                               <Button
                                 variant="ghost"
                                 size="icon-sm"
-                                title={t("Star")}
+                                aria-label={
+                                  activeMail.starred ? t("Unstar") : t("Star")
+                                }
                                 aria-keyshortcuts="Meta+Shift+L Control+Shift+L"
                                 onClick={() =>
                                   void mutate(
@@ -3965,7 +4035,6 @@ export default function App({
                                 size="sm"
                                 className="reader-primary-action"
                                 aria-label={t("Reply")}
-                                title={t("Reply")}
                                 aria-keyshortcuts="Meta+R Control+R"
                                 disabled={!bodyReady}
                                 onClick={() =>
@@ -3998,7 +4067,7 @@ export default function App({
                                 <DropdownMenuGroup>
                                   <DropdownMenuItem
                                     aria-keyshortcuts="Meta+Shift+R Control+Shift+R"
-                                    disabled={!detail}
+                                    disabled={!bodyReady}
                                     onClick={() =>
                                       detail &&
                                       compose(detail.mail, false, true, detail)
@@ -4041,7 +4110,6 @@ export default function App({
                                 variant="ghost"
                                 size="sm"
                                 aria-label={t("Forward")}
-                                title={t("Forward")}
                                 aria-keyshortcuts="Meta+Shift+F Control+Shift+F"
                                 disabled={!bodyReady}
                                 onClick={() =>
@@ -4063,7 +4131,7 @@ export default function App({
                               <Button
                                 variant="ghost"
                                 size="sm"
-                                disabled={!detail}
+                                disabled={!bodyReady}
                                 onClick={() => detail && reeditSent(detail)}
                               >
                                 <SquarePen size={15} />
@@ -4185,12 +4253,18 @@ export default function App({
                       </div>
                       <div className="recipient-line">
                         <MailRecipients
+                          key={activeMail.id}
                           to={displayAddresses(
-                            detail?.to,
+                            bodyReady ? detail.to : undefined,
                             activeMail.recipients,
                           )}
-                          cc={displayAddresses(detail?.cc, activeMail.cc)}
-                          bcc={displayAddresses(detail?.bcc)}
+                          cc={displayAddresses(
+                            bodyReady ? detail.cc : undefined,
+                            activeMail.cc,
+                          )}
+                          bcc={displayAddresses(
+                            bodyReady ? detail.bcc : undefined,
+                          )}
                           onComposeAddress={composeAddress}
                           onAddContact={saveContactAddress}
                         />
@@ -4251,14 +4325,14 @@ export default function App({
                       </div>
                       <div ref={setTranslatedSubject} />
                     </div>
-                    {detail ? (
+                    {bodyReady ? (
                       <ConversationReader
                         key={`${selected}:${query.listMode}:${notificationSelected?.click ?? "list"}`}
                         selected={detail}
                         singleMessage={
                           !grouped || notificationSelected?.id === selected
                         }
-                        revision={data.messages}
+                        revision={data.revision}
                         accounts={data.accounts}
                         demo={demo}
                         scrollRef={readerRef}
@@ -4470,9 +4544,16 @@ export default function App({
           <DialogHeader>
             <DialogTitle>{t("Move to local folder")}</DialogTitle>
             <DialogDescription>
-              {t("Organize ")}
-              {moveIds.length}
-              {t(" local messages. Server originals remain unchanged.")}
+              {moveIds.length === 1
+                ? t(
+                    "Organize 1 local message. Server originals remain unchanged.",
+                  )
+                : t(
+                    "Organize {value0} local messages. Server originals remain unchanged.",
+                    {
+                      value0: moveIds.length,
+                    },
+                  )}
             </DialogDescription>
           </DialogHeader>
           <FolderInput

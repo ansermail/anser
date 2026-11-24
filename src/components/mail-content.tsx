@@ -232,6 +232,17 @@ export function MailContent({
       }
     };
   }
+  const failed = images.failed
+    ? t("{value0} failed", { value0: images.failed })
+    : "";
+  const timedOut = images.timedOut
+    ? t("{value0} timed out", { value0: images.timedOut })
+    : "";
+  const imageErrors =
+    failed && timedOut
+      ? t("{value0}, {value1}", { value0: failed, value1: timedOut })
+      : failed || timedOut;
+  const missingImageCount = images.failed + images.timedOut;
   return (
     <div
       className="mail-html-container"
@@ -277,15 +288,14 @@ export function MailContent({
                 >
                   <ImageOff aria-hidden="true" />
                   <span className="mail-status-detail">
-                    {t("{value0} body images could not load ({value1})", {
-                      value0: images.failed + images.timedOut,
-                      value1: [
-                        images.failed > 0 && `${images.failed} 张失败`,
-                        images.timedOut > 0 && `${images.timedOut} 张超时`,
-                      ]
-                        .filter(Boolean)
-                        .join("，"),
-                    })}
+                    {missingImageCount === 1
+                      ? t("1 body image could not load ({value0})", {
+                          value0: imageErrors,
+                        })
+                      : t("{value0} body images could not load ({value1})", {
+                          value0: missingImageCount,
+                          value1: imageErrors,
+                        })}
                   </span>
                   <span className="mail-status-action">
                     {t("Reload images")}

@@ -290,6 +290,11 @@ export function RichEditor({
   useEffect(() => {
     editor?.setEditable(!disabled, false);
   }, [editor, disabled]);
+  useEffect(() => {
+    if (editor && !editor.isDestroyed) {
+      editor.view.dom.setAttribute("style", composeCanvasCss(dark));
+    }
+  }, [editor, dark]);
   function closeAssistant() {
     if (!repairOpen) return false;
     setRepairOpen(false);

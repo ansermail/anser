@@ -96,7 +96,7 @@ fn items(db: &rusqlite::Connection) -> Result<Vec<WorkItem>> {
         .prepare(
             "SELECT w.data,COALESCE(json_extract(m.data,'$.subject'),'')
              FROM work_items w
-             LEFT JOIN messages m ON m.id=json_extract(w.data,'$.mailId')
+             LEFT JOIN message_listing m ON m.id=json_extract(w.data,'$.mailId')
              ORDER BY w.work_date DESC,
                       COALESCE(json_extract(w.data,'$.time'),'') DESC,
                       w.id",
@@ -122,7 +122,7 @@ fn mail_subject(db: &rusqlite::Connection, mail_id: &str) -> Result<String> {
     }
     Ok(db
         .query_row(
-            "SELECT COALESCE(json_extract(data,'$.subject'),'') FROM messages WHERE id=?1",
+            "SELECT COALESCE(json_extract(data,'$.subject'),'') FROM message_listing WHERE id=?1",
             [mail_id],
             |row| row.get(0),
         )
@@ -132,8 +132,11 @@ fn mail_subject(db: &rusqlite::Connection, mail_id: &str) -> Result<String> {
 }
 
 #[tauri::command]
-pub fn list_work_projects(state: tauri::State<AppState>) -> Result<Vec<WorkProject>> {
-    projects(&state.store.db()?)
+pub async fn list_work_projects(state: tauri::State<'_, AppState>) -> Result<Vec<WorkProject>> {
+    let store = state.store.clone();
+    tauri::async_runtime::spawn_blocking(move || projects(&store.db()?))
+        .await
+        .map_err(err)?
 }
 
 fn change_project(store: &Store, mut project: WorkProject, delete: bool) -> Result<WorkbenchData> {
@@ -186,28 +189,36 @@ fn change_project(store: &Store, mut project: WorkProject, delete: bool) -> Resu
 }
 
 #[tauri::command]
-pub fn save_work_project(
-    state: tauri::State<AppState>,
+pub async fn save_work_project(
+    state: tauri::State<'_, AppState>,
     project: WorkProject,
 ) -> Result<WorkbenchData> {
-    change_project(&state.store, project, false)
+    let store = state.store.clone();
+    tauri::async_runtime::spawn_blocking(move || change_project(&store, project, false))
+        .await
+        .map_err(err)?
 }
 
 #[tauri::command]
-pub fn delete_work_project(
-    state: tauri::State<AppState>,
+pub async fn delete_work_project(
+    state: tauri::State<'_, AppState>,
     id: String,
     revision: u64,
 ) -> Result<WorkbenchData> {
-    change_project(
-        &state.store,
-        WorkProject {
-            id,
-            revision,
-            name: String::new(),
-        },
-        true,
-    )
+    let store = state.store.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        change_project(
+            &store,
+            WorkProject {
+                id,
+                revision,
+                name: String::new(),
+            },
+            true,
+        )
+    })
+    .await
+    .map_err(err)?
 }
 
 fn validate(item: &WorkItem) -> Result<()> {
@@ -240,8 +251,11 @@ fn validate(item: &WorkItem) -> Result<()> {
 }
 
 #[tauri::command]
-pub fn list_work_items(state: tauri::State<AppState>) -> Result<Vec<WorkItem>> {
-    list(&state.store)
+pub async fn list_work_items(state: tauri::State<'_, AppState>) -> Result<Vec<WorkItem>> {
+    let store = state.store.clone();
+    tauri::async_runtime::spawn_blocking(move || list(&store))
+        .await
+        .map_err(err)?
 }
 
 fn list(store: &Store) -> Result<Vec<WorkItem>> {
@@ -250,8 +264,11 @@ fn list(store: &Store) -> Result<Vec<WorkItem>> {
 }
 
 #[tauri::command]
-pub fn save_work_item(state: tauri::State<AppState>, item: WorkItem) -> Result<WorkItem> {
-    save(&state.store, item)
+pub async fn save_work_item(state: tauri::State<'_, AppState>, item: WorkItem) -> Result<WorkItem> {
+    let store = state.store.clone();
+    tauri::async_runtime::spawn_blocking(move || save(&store, item))
+        .await
+        .map_err(err)?
 }
 
 fn save(store: &Store, mut item: WorkItem) -> Result<WorkItem> {
@@ -296,20 +313,28 @@ fn save(store: &Store, mut item: WorkItem) -> Result<WorkItem> {
 }
 
 #[tauri::command]
-pub fn delete_work_item(state: tauri::State<AppState>, id: String, revision: u64) -> Result<()> {
-    if state
-        .store
-        .db()?
-        .execute(
-            "DELETE FROM work_items WHERE id=?1 AND revision=?2",
-            params![id, revision],
-        )
-        .map_err(err)?
-        != 1
-    {
-        return Err("事项已改动，请重新加载".into());
-    }
-    Ok(())
+pub async fn delete_work_item(
+    state: tauri::State<'_, AppState>,
+    id: String,
+    revision: u64,
+) -> Result<()> {
+    let store = state.store.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        if store
+            .db()?
+            .execute(
+                "DELETE FROM work_items WHERE id=?1 AND revision=?2",
+                params![id, revision],
+            )
+            .map_err(err)?
+            != 1
+        {
+            return Err("事项已改动，请重新加载".into());
+        }
+        Ok(())
+    })
+    .await
+    .map_err(err)?
 }
 
 #[cfg(test)]

@@ -139,6 +139,8 @@ it("creates a local tag, assigns it from the reader and filters the list", async
     "重要客户",
   );
   expect(host.querySelector(".tag-item .tag-dot")).not.toBeNull();
+  expect(nav("全部邮件")?.classList.contains("active")).toBe(false);
+  expect(nav("重要客户")?.classList.contains("active")).toBe(true);
   await click(host.querySelector("button.mail-row-main"));
   await vi.waitFor(() =>
     expect(
@@ -1240,7 +1242,11 @@ describe("message and conversation display modes", () => {
         b.textContent?.includes("完整保存到本地"),
       ) ?? null,
     );
-    await click(host.querySelector('[title="星标"], [title="取消星标"]'));
+    await click(
+      host.querySelector(
+        '.reader-toolbar [aria-label="星标"], .reader-toolbar [aria-label="取消星标"]',
+      ),
+    );
     expect(host.textContent).toContain("Full archived original");
     expect(host.textContent).not.toContain("Online body preview");
   });
@@ -1680,6 +1686,101 @@ describe("reading unread mail within its current category", () => {
       host.querySelector(".message-body")?.textContent?.length,
     ).toBeGreaterThan(10);
   });
+  it("resets recipient expansion and keeps the old headers out of a newly selected message", async () => {
+    await chooseListMode("逐封邮件");
+    const rows = host.querySelectorAll("button.mail-row-main");
+    await click(rows[0]);
+    const seed = await snapshot({ ...localQuery, view: "all" });
+    const original = api.call;
+    const ids = seed.messages.slice(0, 2).map((mail) => mail.id);
+    const recipients = (prefix: string) =>
+      Array.from({ length: 4 }, (_, i) => ({
+        name: "",
+        email: `${prefix}-${i + 1}@example.com`,
+      }));
+    let release!: () => void;
+    const delay = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const first = {
+      ...(await original<Detail>("mail_detail", { id: ids[0] })),
+      to: recipients("first"),
+    };
+    const second = {
+      ...(await original<Detail>("mail_detail", { id: ids[1] })),
+      to: recipients("second"),
+    };
+    vi.spyOn(api, "call").mockImplementation(
+      async <T,>(command: string, args?: Record<string, unknown>) => {
+        if (command === "mail_detail" && args?.id === ids[0]) return first as T;
+        if (command === "mail_detail" && args?.id === ids[1]) {
+          await delay;
+          return second as T;
+        }
+        return original<T>(command, args);
+      },
+    );
+    await click(rows[2]);
+    await click(rows[0]);
+    const recipientsPanel = () =>
+      host.querySelector(".message-heading .recipient-fields");
+    await click(
+      recipientsPanel()!.querySelector(".recipient-overflow-control"),
+    );
+    expect(recipientsPanel()?.textContent).toContain("first-4@example.com");
+
+    await click(rows[1]);
+    expect(recipientsPanel()?.textContent).not.toContain("first-");
+    expect(host.querySelector(".mail-body-skeleton")).not.toBeNull();
+    await act(async () => release());
+    expect(recipientsPanel()?.textContent).toContain("second-1@example.com");
+    expect(recipientsPanel()?.textContent).not.toContain(
+      "second-4@example.com",
+    );
+    expect(
+      recipientsPanel()
+        ?.querySelector(".recipient-overflow-control")
+        ?.getAttribute("aria-expanded"),
+    ).toBe("false");
+  });
+
+  it("reconciles a local star change and allows a later backend refresh to update it", async () => {
+    await chooseListMode("逐封邮件");
+    await click(host.querySelector("button.mail-row-main"));
+    const star = () =>
+      host.querySelector<HTMLButtonElement>(
+        '.reader-toolbar [aria-label="星标"], .reader-toolbar [aria-label="取消星标"]',
+      )!;
+    const previous = star().getAttribute("aria-label");
+    const mail = (await snapshot({ ...localQuery, view: "all" })).messages[0];
+    await click(star());
+    expect(star().getAttribute("aria-label")).not.toBe(previous);
+
+    await act(async () => {
+      await api.call("update_mail", {
+        id: mail.id,
+        action: "star",
+        value: String(mail.starred),
+      });
+      window.dispatchEvent(new Event("anser-activity-changed"));
+    });
+    expect(star().getAttribute("aria-label")).toBe(previous);
+  });
+
+  it("leaves the conversation loaded when a refresh returns the same revision", async () => {
+    const commands = vi.spyOn(api, "call");
+    await click(host.querySelector("button.mail-row-main"));
+    const reads = () =>
+      commands.mock.calls.filter(([name]) => name === "mail_conversation")
+        .length;
+    const before = reads();
+    expect(before).toBeGreaterThan(0);
+    await act(async () =>
+      window.dispatchEvent(new Event("anser-activity-changed")),
+    );
+    expect(reads()).toBe(before);
+  });
+
   it("shows a detail-only delegating sender and the complete sender address", async () => {
     await chooseListMode("逐封邮件");
     const original = api.call;
@@ -1989,6 +2090,52 @@ describe("reading unread mail within its current category", () => {
       ).value,
     ).toBe("");
   });
+  it("does not flush a quick reply draft again while its send is queued", async () => {
+    await seedReplyThread();
+    let finishQueue!: () => void;
+    const pending = new Promise<void>((resolve) => {
+      finishQueue = resolve;
+    });
+    const original = api.call;
+    const calls = vi
+      .spyOn(api, "call")
+      .mockImplementation(
+        async <T,>(command: string, args?: Record<string, unknown>) => {
+          if (command === "queue_send") await pending;
+          return original<T>(command, args);
+        },
+      );
+    await click(host.querySelector("button.mail-row-main"));
+    const input = host.querySelector<HTMLTextAreaElement>(
+      'textarea[aria-label="对话回复正文"]',
+    )!;
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(
+        HTMLTextAreaElement.prototype,
+        "value",
+      )!.set!.call(input, "A single queued reply");
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    await click(
+      [...host.querySelectorAll("button")].find(
+        (b) => b.textContent?.trim() === "发送回复",
+      ) ?? null,
+    );
+    expect(calls.mock.calls.some(([command]) => command === "queue_send")).toBe(
+      true,
+    );
+    const saves = () =>
+      calls.mock.calls.filter(([command]) => command === "save_draft").length;
+    expect(saves()).toBe(1);
+    await click(nav("星标邮件"));
+    expect(
+      host.querySelector('textarea[aria-label="对话回复正文"]'),
+    ).toBeNull();
+    expect(saves()).toBe(1);
+    await act(async () => finishQueue());
+    expect(await original("list_drafts")).toEqual([]);
+  });
+
   it("opens a new editable draft from a sent message without changing the original", async () => {
     const seed = await snapshot(localQuery);
     const original = seed.messages[0];
@@ -2341,6 +2488,8 @@ describe("reading unread mail within its current category", () => {
         (button) => button.querySelector("span")?.textContent === label,
       ) ?? null;
     await click(folderButton("其他文件夹"));
+    expect(host.querySelector(".account-navigation.active")).toBeNull();
+    expect(folderButton("其他文件夹")?.classList.contains("active")).toBe(true);
     expect(host.querySelector(".list-heading h1")?.textContent).toBe(
       "其他文件夹",
     );
@@ -2425,6 +2574,8 @@ describe("reading unread mail within its current category", () => {
     await click(folderButton("归档"));
     expect(host.querySelectorAll(".mail-row-main")).toHaveLength(1);
     await click(folderButton("星标邮件"));
+    expect(host.querySelector(".account-navigation.active")).toBeNull();
+    expect(folderButton("星标邮件")?.classList.contains("active")).toBe(true);
     expect(host.querySelector(".list-heading h1")?.textContent).toBe(
       "星标邮件",
     );
@@ -2638,7 +2789,9 @@ describe("reading unread mail within its current category", () => {
       expect(host.querySelectorAll("button.mail-row-main")).toHaveLength(
         before - 1,
       );
-      expect(host.querySelector('button[title="标记未读"]')).not.toBeNull();
+      expect(
+        host.querySelector('button[aria-label="标记未读"]'),
+      ).not.toBeNull();
       const title = host.querySelector(".list-heading h1")?.textContent;
       await click(filter("全部"));
       expect(host.querySelector(".list-heading h1")?.textContent).toBe(title);
@@ -2659,7 +2812,7 @@ describe("reading unread mail within its current category", () => {
     expect(host.querySelector(".message-heading h1")?.textContent).toBe(
       lastSubject,
     );
-    await click(host.querySelector('button[title="标记未读"]'));
+    await click(host.querySelector('button[aria-label="标记未读"]'));
     expect(host.querySelectorAll("button.mail-row-main")).toHaveLength(1);
     expect(host.querySelector(".message-heading h1")?.textContent).toBe(
       lastSubject,

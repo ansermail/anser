@@ -280,3 +280,38 @@ it("does not forward a typed key when the service address changes and ignores la
     host.remove();
   }
 });
+
+it("keeps assistant settings labels and controls in a single responsive field", async () => {
+  api.mockResolvedValue(savedConfig);
+  const host = document.createElement("div");
+  document.body.append(host);
+  const root = createRoot(host);
+  try {
+    await act(async () => root.render(<MailTranslationSettings />));
+    const rows = host.querySelectorAll(".translation-settings-field");
+    expect(rows.length).toBeGreaterThan(4);
+    for (const row of rows) {
+      expect(row.getAttribute("data-orientation")).toBe("vertical");
+      expect(row.children).toHaveLength(2);
+      expect(row.firstElementChild?.getAttribute("data-slot")).toBe(
+        "field-content",
+      );
+      expect(
+        row.lastElementChild?.classList.contains(
+          "translation-settings-control",
+        ),
+      ).toBe(true);
+    }
+    const trigger = host.querySelector("#translation-provider")!;
+    expect(trigger.classList.contains("min-w-0")).toBe(true);
+    expect(
+      trigger.classList.contains("*:data-[slot=select-value]:truncate"),
+    ).toBe(true);
+    expect(trigger.classList.contains("*:data-[slot=select-value]:flex")).toBe(
+      false,
+    );
+  } finally {
+    await act(async () => root.unmount());
+    host.remove();
+  }
+});

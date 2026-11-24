@@ -241,31 +241,30 @@ fn attachment_preview_keeps_names_and_bytes_isolated_from_archive() {
     let temp = tempfile::tempdir().unwrap();
     let cache = temp.path().join("preview");
     let raw = raw();
-    let path = crate::attachment_preview::prepare(&cache, &raw, &account(), 1).unwrap();
+    let path = crate::attachment_preview::prepare(&cache, &raw, 1).unwrap();
     assert_eq!(path.file_name().unwrap(), "invoice.txt");
     assert_eq!(std::fs::read(&path).unwrap(), b"invoice content");
     assert_eq!(
-        crate::attachment_preview::prepare(&cache, &raw, &account(), 1).unwrap(),
+        crate::attachment_preview::prepare(&cache, &raw, 1).unwrap(),
         path
     );
     std::fs::write(&path, b"edited in viewer").unwrap();
-    crate::attachment_preview::prepare(&cache, &raw, &account(), 1).unwrap();
+    crate::attachment_preview::prepare(&cache, &raw, 1).unwrap();
     assert_eq!(std::fs::read(&path).unwrap(), b"invoice content");
     assert!(!temp.path().join("archive").exists());
-    assert!(crate::attachment_preview::prepare(&cache, &raw, &account(), 0).is_err());
-    assert!(crate::attachment_preview::prepare(&cache, &raw, &account(), 999).is_err());
+    assert!(crate::attachment_preview::prepare(&cache, &raw, 0).is_err());
+    assert!(crate::attachment_preview::prepare(&cache, &raw, 999).is_err());
     let hostile = String::from_utf8(raw.clone())
         .unwrap()
         .replace("invoice.txt", "../../invoice.txt");
-    let safe =
-        crate::attachment_preview::prepare(&cache, hostile.as_bytes(), &account(), 1).unwrap();
+    let safe = crate::attachment_preview::prepare(&cache, hostile.as_bytes(), 1).unwrap();
     assert_eq!(safe.parent().unwrap().parent().unwrap(), cache);
     assert_eq!(std::fs::read(&safe).unwrap(), b"invoice content");
     assert_ne!(path.parent(), safe.parent());
     let damaged = String::from_utf8(raw)
         .unwrap()
         .replace("aW52b2ljZSBjb250ZW50", "aW52!b2ljZSBjb250ZW50");
-    assert!(crate::attachment_preview::prepare(&cache, damaged.as_bytes(), &account(), 1).is_err());
+    assert!(crate::attachment_preview::prepare(&cache, damaged.as_bytes(), 1).is_err());
 }
 
 #[test]
@@ -297,12 +296,11 @@ fn attachment_thumbnail_only_decodes_supported_images_into_a_small_data_url() {
     let image_bytes = crate::archive::attachment(image_raw.as_bytes(), 1).unwrap();
     assert_eq!(image_bytes, png);
     assert_eq!(&image_bytes[..8], b"\x89PNG\r\n\x1a\n");
-    let thumbnail =
-        crate::attachment_preview::thumbnail(image_raw.as_bytes(), &account(), 1).unwrap();
+    let thumbnail = crate::attachment_preview::thumbnail(image_raw.as_bytes(), 1).unwrap();
     assert!(thumbnail.starts_with("data:image/png;base64,"));
     assert!(thumbnail.len() < 1024 * 1024);
-    assert!(crate::attachment_preview::thumbnail(&raw(), &account(), 1).is_err());
-    assert!(crate::attachment_preview::thumbnail(image_raw.as_bytes(), &account(), 99).is_err());
+    assert!(crate::attachment_preview::thumbnail(&raw(), 1).is_err());
+    assert!(crate::attachment_preview::thumbnail(image_raw.as_bytes(), 99).is_err());
 }
 
 #[test]
@@ -313,15 +311,15 @@ fn preview_does_not_launch_programs_and_only_prunes_owned_expired_cache() {
         .unwrap()
         .replace("invoice.txt", "invoice.command");
     assert!(
-        crate::attachment_preview::prepare(&cache, raw.as_bytes(), &account(), 1)
+        crate::attachment_preview::prepare(&cache, raw.as_bytes(), 1)
             .unwrap_err()
             .contains("不支持直接预览")
     );
     let raw = raw
         .replace("invoice.command", "invoice.txt")
         .replace("aW52b2ljZSBjb250ZW50", "IyEvYmluL3NoCg==");
-    assert!(crate::attachment_preview::prepare(&cache, raw.as_bytes(), &account(), 1).is_err());
-    let path = crate::attachment_preview::prepare(&cache, &self::raw(), &account(), 1).unwrap();
+    assert!(crate::attachment_preview::prepare(&cache, raw.as_bytes(), 1).is_err());
+    let path = crate::attachment_preview::prepare(&cache, &self::raw(), 1).unwrap();
     let keep = cache.join("other-data");
     std::fs::create_dir(&keep).unwrap();
     crate::attachment_preview::prune(&cache, std::time::SystemTime::now());

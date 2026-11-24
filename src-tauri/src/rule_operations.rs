@@ -40,7 +40,14 @@ fn fingerprint(rule: &Rule) -> Result<String> {
 }
 impl Store {
     pub fn rule_has_source(&self, rule: &Rule, mail: &Mail) -> Result<bool> {
-        self.db()?.query_row("SELECT EXISTS(SELECT 1 FROM sources WHERE account_id=?1 AND mail_id=?2 AND folder=?3 AND active=1)",params![mail.account_id,mail.id,rule.source_folder],|r|r.get(0)).map_err(err)
+        Self::rule_has_source_in(&self.db()?, rule, mail)
+    }
+    pub(crate) fn rule_has_source_in(
+        db: &rusqlite::Connection,
+        rule: &Rule,
+        mail: &Mail,
+    ) -> Result<bool> {
+        db.prepare_cached("SELECT EXISTS(SELECT 1 FROM sources WHERE account_id=?1 AND mail_id=?2 AND folder=?3 AND active=1)").map_err(err)?.query_row(params![mail.account_id,mail.id,rule.source_folder],|r|r.get(0)).map_err(err)
     }
     pub fn apply_remote_rule(&self, rule: &Rule, mail: &Mail, retry: bool) -> Result<bool> {
         rules::validate(rule)?;
@@ -66,7 +73,7 @@ impl Store {
     ) -> Result<bool> {
         rules::validate(rule)?;
         let frozen = fingerprint(rule)?;
-        let has_source: bool = tx.query_row("SELECT EXISTS(SELECT 1 FROM sources WHERE account_id=?1 AND mail_id=?2 AND folder=?3 AND active=1)",params![mail.account_id,mail.id,rule.source_folder],|r|r.get(0)).map_err(err)?;
+        let has_source = Self::rule_has_source_in(tx, rule, mail)?;
         let existing: Option<(String, Option<String>, String)> = tx.query_row("SELECT id,operation_id,status FROM rule_executions WHERE rule_id=?1 AND mail_id=?2 AND fingerprint=?3",params![rule.id,mail.id,frozen],|r|Ok((r.get(0)?,r.get(1)?,r.get(2)?))).optional().map_err(err)?;
         if !has_source {
             if retry {

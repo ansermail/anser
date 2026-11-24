@@ -1,3 +1,4 @@
+import { useSettingsTabActive } from "./settings-layout";
 import { TaskCellText, TaskDataTable } from "./task-data-table";
 import { dateLocale, t } from "@/lib/i18n";
 import { TaskPanelHeader, TaskPanelCollapsible } from "./task-panel-header";
@@ -32,6 +33,7 @@ export type FolderHealthItem = {
 export function FolderHealthPanel({
   defaultCollapsed = false,
 }: { defaultCollapsed?: boolean } = {}) {
+  const tabActive = useSettingsTabActive();
   const [items, setItems] = useState<FolderHealthItem[] | null>(null);
   const [error, setError] = useState("");
   const [loadError, setLoadError] = useState("");
@@ -45,8 +47,15 @@ export function FolderHealthPanel({
   const reload = useRef<() => Promise<void>>(async () => {});
   useEffect(() => {
     live.current = true;
+    return () => {
+      live.current = false;
+    };
+  }, []);
+  useEffect(() => {
+    if (!tabActive) return;
     let subscribed = true;
     const update = coalesceRefresh(async () => {
+      if (!subscribed) return;
       try {
         const data = await call<FolderHealthItem[]>("folder_health");
         if (subscribed) {
@@ -72,11 +81,10 @@ export function FolderHealthPanel({
         });
     return () => {
       subscribed = false;
-      live.current = false;
       clearInterval(timer);
       unlisten?.();
     };
-  }, []);
+  }, [tabActive]);
   async function probe(item: FolderHealthItem) {
     if (request.current) return;
     request.current = true;

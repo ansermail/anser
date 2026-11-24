@@ -65,6 +65,7 @@ struct AppState {
     store: Store,
     gate: Arc<Mutex<()>>,
     send_gate: Arc<Mutex<()>>,
+    quitting: Arc<AtomicBool>,
     realtime: Arc<realtime::RealtimeControl>,
     opening_mail: Arc<AtomicBool>,
 }
@@ -96,12 +97,15 @@ fn mail_signature(
     state.store.mail_signature(&account_id)
 }
 #[tauri::command]
-fn save_mail_signature(
-    state: tauri::State<AppState>,
+async fn save_mail_signature(
+    state: tauri::State<'_, AppState>,
     account_id: String,
     signature: signatures::MailSignature,
 ) -> Result<()> {
-    state.store.save_mail_signature(&account_id, &signature)
+    let store = state.store.clone();
+    tauri::async_runtime::spawn_blocking(move || store.save_mail_signature(&account_id, &signature))
+        .await
+        .map_err(err)?
 }
 #[tauri::command]
 async fn snapshot(state: tauri::State<'_, AppState>, query: Query) -> Result<Snapshot> {
@@ -385,12 +389,18 @@ async fn retry_rule_execution(state: tauri::State<'_, AppState>, id: String) -> 
         .map_err(err)?
 }
 #[tauri::command]
-fn save_rules(state: tauri::State<AppState>, rules: Vec<Rule>) -> Result<()> {
-    state.store.save_rules(&rules)
+async fn save_rules(state: tauri::State<'_, AppState>, rules: Vec<Rule>) -> Result<()> {
+    let store = state.store.clone();
+    tauri::async_runtime::spawn_blocking(move || store.save_rules(&rules))
+        .await
+        .map_err(err)?
 }
 #[tauri::command]
-fn preview_rule(state: tauri::State<AppState>, rule: Rule) -> Result<Vec<String>> {
-    state.store.preview_rule(&rule)
+async fn preview_rule(state: tauri::State<'_, AppState>, rule: Rule) -> Result<Vec<String>> {
+    let store = state.store.clone();
+    tauri::async_runtime::spawn_blocking(move || store.preview_rule(&rule))
+        .await
+        .map_err(err)?
 }
 #[tauri::command]
 async fn run_rules(state: tauri::State<'_, AppState>) -> Result<u32> {
@@ -545,21 +555,31 @@ async fn edit_account(
     .map_err(err)?
 }
 #[tauri::command]
-fn list_contacts(state: tauri::State<AppState>) -> Result<Vec<Contact>> {
-    state.store.contacts()
+async fn list_contacts(state: tauri::State<'_, AppState>) -> Result<Vec<Contact>> {
+    let store = state.store.clone();
+    tauri::async_runtime::spawn_blocking(move || store.contacts())
+        .await
+        .map_err(err)?
 }
 #[tauri::command]
-fn save_contact(state: tauri::State<AppState>, contact: Contact) -> Result<()> {
-    state.store.save_contact(&contact)
+async fn save_contact(state: tauri::State<'_, AppState>, contact: Contact) -> Result<()> {
+    let store = state.store.clone();
+    tauri::async_runtime::spawn_blocking(move || store.save_contact(&contact))
+        .await
+        .map_err(err)?
 }
 #[tauri::command]
-fn delete_contact(state: tauri::State<AppState>, id: String) -> Result<()> {
-    state
-        .store
-        .db()?
-        .execute("DELETE FROM contacts WHERE id=?1", [id])
-        .map_err(err)?;
-    Ok(())
+async fn delete_contact(state: tauri::State<'_, AppState>, id: String) -> Result<()> {
+    let store = state.store.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        store
+            .db()?
+            .execute("DELETE FROM contacts WHERE id=?1", [id])
+            .map_err(err)?;
+        Ok(())
+    })
+    .await
+    .map_err(err)?
 }
 #[tauri::command]
 async fn contact_suggestions(state: tauri::State<'_, AppState>) -> Result<Vec<Address>> {
@@ -593,12 +613,15 @@ async fn sent_upload_action(
     .map_err(err)?
 }
 #[tauri::command]
-fn retry_outbox(
-    state: tauri::State<AppState>,
+async fn retry_outbox(
+    state: tauri::State<'_, AppState>,
     id: String,
     confirm_duplicate: bool,
 ) -> Result<Compose> {
-    state.store.outbox_draft(&id, confirm_duplicate)
+    let store = state.store.clone();
+    tauri::async_runtime::spawn_blocking(move || store.outbox_draft(&id, confirm_duplicate))
+        .await
+        .map_err(err)?
 }
 #[tauri::command]
 async fn archive_outbox(state: tauri::State<'_, AppState>, id: String) -> Result<()> {
@@ -646,12 +669,21 @@ fn set_interface_language(
     Ok(())
 }
 #[tauri::command]
-fn save_preferences(state: tauri::State<AppState>, preferences: Preferences) -> Result<()> {
-    let mut preferences = preferences;
-    let current = state.store.preferences()?;
-    preferences.proxy = current.proxy;
-    preferences.do_not_disturb = current.do_not_disturb;
-    state.store.save_preferences(&preferences)
+async fn save_preferences(
+    state: tauri::State<'_, AppState>,
+    preferences: Preferences,
+) -> Result<()> {
+    let store = state.store.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        store.update_preferences(move |current| {
+            let mut preferences = preferences;
+            preferences.proxy = current.proxy.clone();
+            preferences.do_not_disturb = current.do_not_disturb;
+            *current = preferences;
+        })
+    })
+    .await
+    .map_err(err)?
 }
 #[tauri::command]
 async fn save_network_proxy(
@@ -664,12 +696,11 @@ async fn save_network_proxy(
         if let Some(config) = &proxy {
             config.validate()?;
         }
-        let previous = store.preferences()?;
-        let mut preferences = previous.clone();
-        preferences.proxy = proxy.clone();
-        store.save_preferences(&preferences)?;
+        let previous = store.update_preferences(|preferences| {
+            std::mem::replace(&mut preferences.proxy, proxy.clone())
+        })?;
         if let Err(error) = proxy::apply(proxy, Some(&password)) {
-            let _ = store.save_preferences(&previous);
+            let _ = store.update_preferences(|preferences| preferences.proxy = previous);
             return Err(error);
         }
         Ok(())
@@ -702,29 +733,42 @@ fn set_auto_start(app: tauri::AppHandle, enabled: bool) -> Result<()> {
     }
 }
 #[tauri::command]
-fn test_notification(
+async fn test_notification(
     app: tauri::AppHandle,
-    state: tauri::State<AppState>,
+    state: tauri::State<'_, AppState>,
     id: Option<String>,
 ) -> Result<()> {
-    #[cfg(any(target_os = "macos", target_os = "windows"))]
-    if let Some(id) = id.filter(|id| !id.is_empty()) {
-        let mail = state.store.mail_metadata(&id)?;
-        let token = notification_open::bind(&state.store, &mail)?;
-        notification_open::resolve(&state.store, &token)?;
-        return notification_open::show(
-            "雁信 · 通知测试",
-            "点击这条通知，打开刚才阅读的邮件。",
-            &token,
-        );
-    }
-    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
-    let _ = (state, id);
-    notifications::show(
-        &app,
-        "雁信 · 通知测试",
-        "系统通知已接入。收到新邮件和发送结果会在这里提示。",
-    )
+    let store = state.store.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let language = store.interface_language()?;
+        let title = interface_language::text(&language, "Test system notification");
+        #[cfg(any(target_os = "macos", target_os = "windows"))]
+        if let Some(id) = id.filter(|id| !id.is_empty()) {
+            let mail = store.mail_metadata(&id)?;
+            let token = notification_open::bind(&store, &mail)?;
+            notification_open::resolve(&store, &token)?;
+            return notification_open::show(
+                title,
+                interface_language::text(
+                    &language,
+                    "Click this notification to open the email you were reading.",
+                ),
+                &token,
+            );
+        }
+        #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+        let _ = id;
+        notifications::show(
+            &app,
+            title,
+            interface_language::text(
+                &language,
+                "System notifications are working. New mail and send results will appear here.",
+            ),
+        )
+    })
+    .await
+    .map_err(err)?
 }
 #[tauri::command]
 async fn archive_health(state: tauri::State<'_, AppState>) -> Result<ArchiveHealth> {
@@ -809,33 +853,37 @@ fn open_archive_tier(state: tauri::State<AppState>) -> Result<()> {
     archive_tier::open_index(&state.store)
 }
 #[tauri::command]
-fn account_action(state: tauri::State<AppState>, id: String, remove: bool) -> Result<()> {
-    let _guard = state
-        .gate
-        .try_lock()
-        .map_err(|_| "正在处理邮件，请稍后重试")?;
-    let inbox_gate = sync_control::folder_gate(&state.store.root, &id, "INBOX")?;
-    let _inbox = inbox_gate
-        .try_lock()
-        .map_err(|_| "正在收取该账号邮件，请稍后修改账号")?;
-    let _sending = state
-        .send_gate
-        .try_lock()
-        .map_err(|_| "正在发送邮件，请稍后修改账号")?;
-    if remove {
-        let previous = auth::remove(&id)?;
-        if let Err(error) = state.store.remove_account(&id) {
-            auth::restore(&id, previous)
-                .map_err(|_| "移除账号失败，凭据恢复也失败；原账号保留，请重新连接")?;
-            return Err(error);
+async fn account_action(state: tauri::State<'_, AppState>, id: String, remove: bool) -> Result<()> {
+    let store = state.store.clone();
+    let gate = state.gate.clone();
+    let send_gate = state.send_gate.clone();
+    let realtime = state.realtime.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let _guard = gate.try_lock().map_err(|_| "正在处理邮件，请稍后重试")?;
+        let inbox_gate = sync_control::folder_gate(&store.root, &id, "INBOX")?;
+        let _inbox = inbox_gate
+            .try_lock()
+            .map_err(|_| "正在收取该账号邮件，请稍后修改账号")?;
+        let _sending = send_gate
+            .try_lock()
+            .map_err(|_| "正在发送邮件，请稍后修改账号")?;
+        if remove {
+            let previous = auth::remove(&id)?;
+            if let Err(error) = store.remove_account(&id) {
+                auth::restore(&id, previous)
+                    .map_err(|_| "移除账号失败，凭据恢复也失败；原账号保留，请重新连接")?;
+                return Err(error);
+            }
+        } else {
+            let mut a = store.account(&id)?;
+            a.enabled = !a.enabled;
+            store.save_account(&a)?;
         }
-    } else {
-        let mut a = state.store.account(&id)?;
-        a.enabled = !a.enabled;
-        state.store.save_account(&a)?;
-    }
-    state.realtime.restart();
-    Ok(())
+        realtime.restart();
+        Ok(())
+    })
+    .await
+    .map_err(err)?
 }
 fn sync_one(store: &Store, app: &tauri::AppHandle, account: Account) -> Result<u32> {
     sync_one_scope(store, app, account, false)
@@ -1058,8 +1106,11 @@ async fn save_draft(state: tauri::State<'_, AppState>, draft: Compose) -> Result
         .map_err(err)?
 }
 #[tauri::command]
-fn list_drafts(state: tauri::State<AppState>) -> Result<Vec<Compose>> {
-    state.store.drafts()
+async fn list_drafts(state: tauri::State<'_, AppState>) -> Result<Vec<Compose>> {
+    let store = state.store.clone();
+    tauri::async_runtime::spawn_blocking(move || store.drafts())
+        .await
+        .map_err(err)?
 }
 #[tauri::command]
 async fn delete_draft(state: tauri::State<'_, AppState>, id: String) -> Result<()> {
@@ -1135,8 +1186,14 @@ async fn send_mail(
 ) -> Result<String> {
     let store = state.store.clone();
     let send_gate = state.send_gate.clone();
+    let quitting = state.quitting.clone();
     tauri::async_runtime::spawn_blocking(move || {
-        let result = with_send_gate(&send_gate, || network::send(&store, &draft));
+        let result = with_send_gate(&send_gate, || {
+            if quitting.load(Ordering::Acquire) {
+                return Err("应用正在退出，草稿已保留".into());
+            }
+            network::send(&store, &draft)
+        });
         notifications::sent(&store, &app, &draft, &result, false);
         let _ = app.emit("mail-updated", ());
         result
@@ -1414,8 +1471,7 @@ async fn preview_attachment(
     tauri::async_runtime::spawn_blocking(move || {
         let mail = store.mail(&id)?;
         let raw = store.message_raw(&mail)?;
-        let path =
-            attachment_preview::prepare(&cache, &raw, &store.account_for_mail(&mail), index)?;
+        let path = attachment_preview::prepare(&cache, &raw, index)?;
         open::that(path).map_err(|e| format!("无法打开附件，请确认已安装对应应用：{e}"))
     })
     .await
@@ -1431,7 +1487,7 @@ async fn attachment_thumbnail(
     tauri::async_runtime::spawn_blocking(move || {
         let mail = store.mail(&id)?;
         let raw = store.message_raw(&mail)?;
-        attachment_preview::thumbnail(&raw, &store.account_for_mail(&mail), index)
+        attachment_preview::thumbnail(&raw, index)
     })
     .await
     .map_err(err)?
@@ -1662,7 +1718,7 @@ async fn preview_eml_attachment(
         .map_err(err)?
         .join("attachment-previews");
     tauri::async_runtime::spawn_blocking(move || {
-        let path = attachment_preview::prepare(&cache, &raw, &eml_files::account(), index)?;
+        let path = attachment_preview::prepare(&cache, &raw, index)?;
         open::that(path).map_err(|e| format!("无法打开附件，请确认已安装对应应用：{e}"))
     })
     .await
@@ -1707,17 +1763,26 @@ async fn open_external_mail_window(
 ) -> Result<()> {
     {
         let docs = state.inner().clone();
+        let _window_open = docs.window_open.lock().await;
+        let opened_docs = docs.clone();
+        let lookup_path = path.clone();
+        let existing = tauri::async_runtime::spawn_blocking(move || {
+            opened_docs.matching_label(Path::new(&lookup_path))
+        })
+        .await
+        .map_err(err)??;
+        if let Some(window) = existing.and_then(|label| app.get_webview_window(&label)) {
+            let _ = window.unminimize();
+            let _ = window.show();
+            let _ = window.set_focus();
+            return Ok(());
+        }
         let opened_docs = docs.clone();
         let document =
             tauri::async_runtime::spawn_blocking(move || opened_docs.open(Path::new(&path)))
                 .await
                 .map_err(err)??;
         let label = eml_files::window_label(&document.token);
-        if let Some(window) = app.get_webview_window(&label) {
-            let _ = window.show();
-            let _ = window.set_focus();
-            return Ok(());
-        }
         if let Some(previous) = app
             .webview_windows()
             .keys()
@@ -1750,11 +1815,15 @@ async fn open_external_mail_window(
     }
 }
 #[tauri::command]
-fn current_external_mail(
+async fn current_external_mail(
     window: tauri::WebviewWindow,
-    state: tauri::State<eml_files::EmlFiles>,
+    state: tauri::State<'_, eml_files::EmlFiles>,
 ) -> Result<eml_files::EmlDocument> {
-    state.document_for_label(window.label())
+    let docs = state.inner().clone();
+    let label = window.label().to_owned();
+    tauri::async_runtime::spawn_blocking(move || docs.document_for_label(&label))
+        .await
+        .map_err(err)?
 }
 
 fn queue_eml_arguments(app: &tauri::AppHandle, args: Vec<String>, cwd: &Path) -> bool {
@@ -1855,11 +1924,13 @@ pub fn run() {
                 .map_err(std::io::Error::other)?;
             let gate = Arc::new(Mutex::new(()));
             let send_gate = Arc::new(Mutex::new(()));
+            let quitting = Arc::new(AtomicBool::new(false));
             let realtime = Arc::new(realtime::RealtimeControl::default());
             app.manage(AppState {
                 store: store.clone(),
                 gate: gate.clone(),
                 send_gate: send_gate.clone(),
+                quitting: quitting.clone(),
                 realtime: realtime.clone(),
                 opening_mail: Arc::new(AtomicBool::new(opening_mail && !opening_link)),
             });
@@ -1944,17 +2015,39 @@ pub fn run() {
                     }
                     "tray-quiet" => {
                         let store = app.state::<AppState>().store.clone();
-                        if let Ok(mut preferences) = store.preferences() {
+                        let updated = store.update_preferences(|preferences| {
                             preferences.do_not_disturb = !preferences.do_not_disturb;
-                            if store.save_preferences(&preferences).is_ok() {
-                                let _ = quiet_control.set_checked(preferences.do_not_disturb);
+                            preferences.do_not_disturb
+                        });
+                        match updated {
+                            Ok(quiet) => {
+                                let _ = quiet_control.set_checked(quiet);
                                 let _ = app.emit("mail-updated", ());
-                            } else {
-                                let _ = quiet_control.set_checked(!preferences.do_not_disturb);
+                            }
+                            Err(_) => {
+                                if let Ok(preferences) = store.preferences() {
+                                    let _ = quiet_control.set_checked(preferences.do_not_disturb);
+                                }
                             }
                         }
                     }
-                    "tray-quit" => app.exit(0),
+                    "tray-quit" => {
+                        let state = app.state::<AppState>();
+                        if !state.quitting.swap(true, Ordering::AcqRel) {
+                            let send_gate = state.send_gate.clone();
+                            let store = state.store.clone();
+                            let app = app.clone();
+                            tauri::async_runtime::spawn_blocking(move || {
+                                let _sending =
+                                    send_gate.lock().unwrap_or_else(|error| error.into_inner());
+                                use tauri_plugin_window_state::AppHandleExt;
+                                if let Err(error) = app.save_window_state(window_state_flags()) {
+                                    let _ = store.log(&format!("退出前保存窗口状态失败：{error}"));
+                                }
+                                app.exit(0);
+                            });
+                        }
+                    }
                     _ => {}
                 })
                 .on_tray_icon_event(|tray, event| {
@@ -1986,30 +2079,28 @@ pub fn run() {
             #[cfg(target_os = "macos")]
             let badge_app = app.handle().clone();
             std::thread::spawn(move || {
+                let mut counted_revision = None;
+                let mut latest_unread = None;
                 let mut displayed_unread = None;
                 loop {
-                    if let Ok(unread) = tray_store.unread_total() {
-                        if displayed_unread != Some(unread) {
-                            let count = if unread == 0 {
-                                String::new()
-                            } else {
-                                unread.to_string()
-                            };
-                            if tray
-                                .set_title(if count.is_empty() {
-                                    None
-                                } else {
-                                    Some(count.as_str())
-                                })
-                                .is_ok()
-                            {
-                                displayed_unread = Some(unread);
+                    if let Ok(Some((revision, unread))) =
+                        tray_store.unread_total_if_changed(counted_revision)
+                    {
+                        counted_revision = Some(revision);
+                        latest_unread = Some(unread);
+                    }
+                    if let Some(unread) =
+                        latest_unread.filter(|count| displayed_unread != Some(*count))
+                    {
+                        let count = (unread > 0).then(|| unread.to_string());
+                        if tray.set_title(count.as_deref()).is_ok() {
+                            #[cfg(target_os = "macos")]
+                            if let Some(window) = badge_app.get_webview_window("main") {
+                                let badge =
+                                    (unread > 0).then(|| unread.min(i64::MAX as u64) as i64);
+                                let _ = window.set_badge_count(badge);
                             }
-                        }
-                        #[cfg(target_os = "macos")]
-                        if let Some(window) = badge_app.get_webview_window("main") {
-                            let badge = (unread > 0).then(|| unread.min(i64::MAX as u64) as i64);
-                            let _ = window.set_badge_count(badge);
+                            displayed_unread = Some(unread);
                         }
                     }
                     std::thread::sleep(std::time::Duration::from_secs(5));
@@ -2021,6 +2112,9 @@ pub fn run() {
             let scheduled_handle = handle.clone();
             std::thread::spawn(move || loop {
                 if let Ok(_guard) = scheduled_gate.try_lock() {
+                    if quitting.load(Ordering::Acquire) {
+                        break;
+                    }
                     match scheduled_store.claim_scheduled(chrono::Utc::now()) {
                         Ok(Some(mail)) => {
                             let draft = mail.draft.clone();

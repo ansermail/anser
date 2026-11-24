@@ -146,8 +146,11 @@ impl Store {
         delimiter: &str,
         starred: bool,
     ) -> Result<u64> {
-        self.account(account_id)?;
-        let db = self.db()?;
+        let mut db = self.db()?;
+        let tx = db
+            .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
+            .map_err(err)?;
+        crate::remote::account_in(&tx, account_id)?;
         if starred && (!folder.is_empty() || tree || !delimiter.is_empty()) {
             return Err("星标邮件范围无效".into());
         }
@@ -155,7 +158,7 @@ impl Store {
             if folder.is_empty() || (tree && delimiter.is_empty()) {
                 return Err("文件夹范围无效".into());
             }
-            let known: bool = db
+            let known: bool = tx
                 .query_row(
                     "SELECT EXISTS(SELECT 1 FROM remote_folders WHERE account_id=?1 AND (name=?2 OR (?3=1 AND json_extract(data,'$.delimiter')=?4 AND substr(name,1,length(?2||?4))=?2||?4)))",
                     rusqlite::params![account_id, folder, tree, delimiter],
@@ -168,7 +171,7 @@ impl Store {
         }
         // Select every unread message in the trusted folder scope before changing
         // flags. This is independent of the currently loaded UI page or filter.
-        let mut stmt = db
+        let mut stmt = tx
             .prepare(
                 "SELECT DISTINCT d.mail_id FROM search_documents d
                  JOIN trusted_sources s ON s.mail_id=d.mail_id AND s.account_id=d.account_id
@@ -187,67 +190,98 @@ impl Store {
             .collect::<std::result::Result<Vec<_>, _>>()
             .map_err(err)?;
         drop(stmt);
-        drop(db);
-        let mut changed = 0;
-        for id in ids {
-            if let Err(error) = self.change_mail(&id, "read", "true") {
-                return Err(format!("已标记 {changed} 封，下一封失败：{error}").into());
+        let mut updated = std::collections::HashSet::new();
+        for id in &ids {
+            for related in Self::related_mail_ids(&tx, id)? {
+                if updated.insert(related.clone()) {
+                    Self::change_mail_in(&tx, &related, "read", "true")?;
+                }
             }
-            changed += 1;
         }
-        Ok(changed)
+        tx.commit().map_err(err)?;
+        Ok(ids.len() as u64)
     }
 
     pub fn change_mail(&self, id: &str, action: &str, value: &str) -> Result<()> {
         if matches!(action, "read" | "star" | "trash") && !matches!(value, "true" | "false") {
             return Err("无效状态值".into());
         }
-        let selected = self.mail(id)?;
         let mut db = self.db()?;
         let tx = db
             .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
             .map_err(err)?;
-        let rows = tx.prepare("SELECT data FROM messages WHERE id=?1 OR (account_id=?2 AND ((?3!='' AND json_extract(data,'$.messageId')=?3) OR (?4!='' AND COALESCE(NULLIF(json_extract(data,'$.serverMessageId'),''),json_extract(data,'$.messageId'))=?4)))").map_err(err)?
-            .query_map(rusqlite::params![id, selected.account_id, selected.message_id, if selected.server_message_id.is_empty() { &selected.message_id } else { &selected.server_message_id }], |r| r.get::<_, String>(0)).map_err(err)?
-            .collect::<std::result::Result<Vec<_>,_>>().map_err(err)?;
-        for data in rows {
-            let mut mail: Mail = serde_json::from_str(&data).map_err(err)?;
-            if action == "read"
-                && value == "false"
-                && crate::search::is_non_unread_mail(&tx, &mail.id)?
-            {
-                return Err("已发送和草稿邮件不能标记为未读".into());
-            }
-            let local_import:bool=tx.query_row("SELECT EXISTS(SELECT 1 FROM message_imports WHERE mail_id=?1) AND NOT EXISTS(SELECT 1 FROM trusted_sources WHERE mail_id=?1 AND active=1)",[&mail.id],|r|r.get(0)).map_err(err)?;
-            match action {
-                "read" => {
-                    mail.is_read = value == "true";
-                    mail.local_read_override = if local_import {
-                        Some(mail.is_read)
-                    } else {
-                        None
-                    };
-                }
-                "star" => {
-                    mail.starred = value == "true";
-                    mail.local_star_override = if local_import {
-                        Some(mail.starred)
-                    } else {
-                        None
-                    };
-                }
-                "trash" => mail.trashed = value == "true",
-                "folder" if !value.trim().is_empty() => mail.local_folder = value.into(),
-                _ => return Err("无效动作或空文件夹名称".into()),
-            }
-            crate::operations::enqueue(&tx, &mail, action, value == "true")?;
-            tx.execute(
-                "UPDATE messages SET data=?2 WHERE id=?1",
-                rusqlite::params![mail.id, serde_json::to_string(&mail).map_err(err)?],
-            )
-            .map_err(err)?;
+        for related in Self::related_mail_ids(&tx, id)? {
+            Self::change_mail_in(&tx, &related, action, value)?;
         }
         tx.commit().map_err(err)
+    }
+
+    pub(crate) fn related_mail_ids(db: &rusqlite::Connection, id: &str) -> Result<Vec<String>> {
+        let (account, message_id, server_id): (String, Option<String>, Option<String>) = db
+            .prepare_cached(
+                "SELECT account_id,json_extract(data,'$.messageId'),
+                    COALESCE(NULLIF(json_extract(data,'$.serverMessageId'),''),json_extract(data,'$.messageId'))
+                 FROM message_listing WHERE id=?1",
+            ).map_err(err)?
+            .query_row([id], |row| Ok((row.get(0)?,row.get(1)?,row.get(2)?))).map_err(err)?;
+        // Separate UNION branches let SQLite use both expression indexes.
+        let mut query = db.prepare_cached(
+            "SELECT ?1
+             UNION SELECT id FROM message_listing
+               WHERE account_id=?2 AND ?3!='' AND json_extract(data,'$.messageId')=?3
+             UNION SELECT id FROM message_listing
+               WHERE account_id=?2 AND ?4!=''
+                 AND COALESCE(NULLIF(json_extract(data,'$.serverMessageId'),''),json_extract(data,'$.messageId'))=?4",
+        ).map_err(err)?;
+        let ids = query
+            .query_map(
+                rusqlite::params![id, account, message_id, server_id],
+                |row| row.get(0),
+            )
+            .map_err(err)?;
+        ids.collect::<rusqlite::Result<Vec<_>>>().map_err(err)
+    }
+
+    fn change_mail_in(
+        db: &rusqlite::Transaction<'_>,
+        id: &str,
+        action: &str,
+        value: &str,
+    ) -> Result<()> {
+        let mut mail = Self::mail_in(db, id)?;
+        if action == "read" && value == "false" && crate::search::is_non_unread_mail(db, &mail.id)?
+        {
+            return Err("已发送和草稿邮件不能标记为未读".into());
+        }
+        let local_import:bool=db.query_row("SELECT EXISTS(SELECT 1 FROM message_imports WHERE mail_id=?1) AND NOT EXISTS(SELECT 1 FROM trusted_sources WHERE mail_id=?1 AND active=1)",[&mail.id],|r|r.get(0)).map_err(err)?;
+        match action {
+            "read" => {
+                mail.is_read = value == "true";
+                mail.local_read_override = if local_import {
+                    Some(mail.is_read)
+                } else {
+                    None
+                };
+            }
+            "star" => {
+                mail.starred = value == "true";
+                mail.local_star_override = if local_import {
+                    Some(mail.starred)
+                } else {
+                    None
+                };
+            }
+            "trash" => mail.trashed = value == "true",
+            "folder" if !value.trim().is_empty() => mail.local_folder = value.into(),
+            _ => return Err("无效动作或空文件夹名称".into()),
+        }
+        crate::operations::enqueue(db, &mail, action, value == "true")?;
+        db.execute(
+            "UPDATE messages SET data=?2 WHERE id=?1",
+            rusqlite::params![mail.id, serde_json::to_string(&mail).map_err(err)?],
+        )
+        .map_err(err)?;
+        Ok(())
     }
 
     /// Rename a local filing label without changing message identity, MIME or
@@ -284,7 +318,7 @@ impl Store {
         }
         let rows = {
             let mut query = tx
-                .prepare("SELECT data FROM messages WHERE json_extract(data,'$.localFolder')=?1")
+                .prepare("SELECT mail_id FROM search_documents WHERE local_folder=?1")
                 .map_err(err)?;
             let values = query
                 .query_map([current], |r| r.get::<_, String>(0))
@@ -293,8 +327,8 @@ impl Store {
                 .map_err(err)?;
             values
         };
-        for data in rows {
-            let mut mail: Mail = serde_json::from_str(&data).map_err(err)?;
+        for id in rows {
+            let mut mail = Self::mail_in(&tx, &id)?;
             mail.local_folder = replacement.into();
             tx.execute(
                 "UPDATE messages SET data=?2 WHERE id=?1",

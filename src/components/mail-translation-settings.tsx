@@ -186,7 +186,7 @@ export function MailTranslationSettings() {
           }}
         >
           <FieldGroup className="gap-5">
-            <Field orientation="responsive">
+            <Field className="translation-settings-field">
               <FieldContent>
                 <FieldLabel htmlFor="translation-provider">
                   {t("Model service")}
@@ -230,7 +230,7 @@ export function MailTranslationSettings() {
                 </SelectField>
               </div>
             </Field>
-            <Field orientation="responsive">
+            <Field className="translation-settings-field">
               <FieldContent>
                 <FieldLabel htmlFor="translation-url">
                   {t("Service URL")}
@@ -251,7 +251,7 @@ export function MailTranslationSettings() {
                 onChange={(event) => changeAddress(event.target.value)}
               />
             </Field>
-            <Field orientation="responsive">
+            <Field className="translation-settings-field">
               <FieldContent>
                 <FieldLabel htmlFor="translation-key">
                   {t("API key (optional)")}
@@ -300,7 +300,7 @@ export function MailTranslationSettings() {
                 )}
               </div>
             </Field>
-            <Field orientation="responsive">
+            <Field className="translation-settings-field">
               <FieldContent>
                 <FieldLabel htmlFor="translation-model">
                   {t("Model name")}
@@ -443,7 +443,7 @@ export function MailTranslationSettings() {
               </p>
             </div>
             <FieldGroup className="gap-5">
-              <Field orientation="responsive">
+              <Field className="translation-settings-field">
                 <FieldContent>
                   <FieldLabel htmlFor="translation-language">
                     {t("Target language")}
@@ -478,7 +478,7 @@ export function MailTranslationSettings() {
                   </SelectField>
                 </div>
               </Field>
-              <Field orientation="responsive">
+              <Field className="translation-settings-field">
                 <FieldContent>
                   <FieldTitle>{t("Translation cache")}</FieldTitle>
                   <FieldDescription>

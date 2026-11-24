@@ -176,12 +176,15 @@ impl Store {
         tx.commit().map_err(err)
     }
     pub fn sent_upload(&self, id: &str) -> Result<Option<SentUpload>> {
-        self.db()?
-            .query_row(
-                &format!("SELECT {COLUMNS} FROM sent_uploads WHERE id=?1"),
-                [id],
-                decode,
-            )
+        Self::sent_upload_in(&self.db()?, id)
+    }
+    pub(crate) fn sent_upload_in(
+        db: &rusqlite::Connection,
+        id: &str,
+    ) -> Result<Option<SentUpload>> {
+        db.prepare_cached(&format!("SELECT {COLUMNS} FROM sent_uploads WHERE id=?1"))
+            .map_err(err)?
+            .query_row([id], decode)
             .optional()
             .map_err(err)
     }
@@ -683,6 +686,33 @@ pub(crate) mod tests {
             0
         );
     }
+    #[test]
+    fn outbox_listing_uses_stored_hash_and_falls_back_for_legacy_rows() {
+        let (_dir, store, mut account, id, raw) = fixture();
+        let db = store.db().unwrap();
+        let check = |available: bool| {
+            let records = store.outbox().unwrap();
+            assert_eq!(records.len(), 1);
+            let record = &records[0];
+            assert_eq!(record.id, id);
+            assert!(record.archived);
+            assert_eq!(record.server_copy_available, available);
+            assert!(record.server_copy.is_some());
+        };
+        db.execute("UPDATE outbox SET raw=NULL WHERE id=?1", [&id])
+            .unwrap();
+        check(true);
+        db.execute(
+            "UPDATE outbox SET raw=?2,raw_hash='' WHERE id=?1",
+            params![id, raw],
+        )
+        .unwrap();
+        check(true);
+        account.enabled = false;
+        store.save_account(&account).unwrap();
+        check(false);
+    }
+
     #[test]
     fn finishing_server_archival_does_not_revive_a_removed_local_archive() {
         let (_temp, s, mut a, id, raw) = fixture();

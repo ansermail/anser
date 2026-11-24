@@ -1,3 +1,4 @@
+import { useSettingsTabActive } from "./settings-layout";
 import { dateLocale, t } from "@/lib/i18n";
 import { formatSize } from "@/lib/providers";
 import { useEffect, useRef, useState } from "react";
@@ -51,8 +52,10 @@ function actionLabel(action: string) {
 }
 
 export function ArchiveTier({ onChanged }: { onChanged: () => void }) {
+  const tabActive = useSettingsTabActive();
   const [status, setStatus] = useState<ArchiveTierStatus | null>(null);
-  const [retention, setRetention] = useState(7);
+  const [retentionDraft, setRetentionDraft] = useState<number>();
+  const retention = retentionDraft ?? status?.retentionDays ?? 7;
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
@@ -60,16 +63,16 @@ export function ArchiveTier({ onChanged }: { onChanged: () => void }) {
   const live = useRef(true);
   const requestSequence = useRef(0);
   const polling = useRef(false);
+  const mutating = useRef(false);
 
   async function reload() {
-    if (polling.current) return;
+    if (polling.current || mutating.current) return;
     polling.current = true;
     const request = ++requestSequence.current;
     try {
       const value = await call<ArchiveTierStatus>("archive_tier_status");
       if (live.current && request === requestSequence.current) {
         setStatus(value);
-        setRetention(value.retentionDays);
         setError("");
       }
     } catch (e) {
@@ -83,22 +86,28 @@ export function ArchiveTier({ onChanged }: { onChanged: () => void }) {
 
   useEffect(() => {
     live.current = true;
+    return () => {
+      live.current = false;
+    };
+  }, []);
+  useEffect(() => {
+    if (!tabActive) return;
     void reload().finally(() => {
       if (live.current) setLoading(false);
     });
     const timer = setInterval(() => void reload(), 2500);
     return () => {
-      live.current = false;
       clearInterval(timer);
     };
-  }, []);
+  }, [tabActive]);
 
   async function run(
     command: string,
     args: Record<string, unknown> = {},
     success?: string,
   ) {
-    if (busy) return;
+    if (mutating.current) return;
+    mutating.current = true;
     setBusy(command);
     setError("");
     const request = ++requestSequence.current;
@@ -106,16 +115,16 @@ export function ArchiveTier({ onChanged }: { onChanged: () => void }) {
       const value = await call<ArchiveTierStatus>(command, args);
       if (live.current && request === requestSequence.current) {
         setStatus(value);
-        setRetention(value.retentionDays);
+        if (command === "configure_archive_tier") setRetentionDraft(undefined);
         if (success) toast.success(success);
         onChanged();
       }
     } catch (e) {
       if (live.current && request === requestSequence.current) {
         setError(String(e));
-        await reload();
       }
     } finally {
+      mutating.current = false;
       if (live.current) setBusy("");
     }
   }
@@ -138,7 +147,9 @@ export function ArchiveTier({ onChanged }: { onChanged: () => void }) {
 
   async function changeRetention(value: string) {
     const days = Number(value);
-    setRetention(days);
+    setRetentionDraft(
+      status?.configured && days === status.retentionDays ? undefined : days,
+    );
     if (
       !status?.configured ||
       !status.available ||

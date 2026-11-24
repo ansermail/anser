@@ -5,6 +5,7 @@ import { beforeEach, afterEach, expect, it, vi } from "vitest";
 import { RulesPanel } from "./rules-panel";
 import { SidebarProvider } from "./ui/sidebar";
 import * as api from "@/lib/api";
+import { setInterfaceLanguage } from "@/lib/i18n";
 import { makeDemo } from "@/lib/demo";
 import type { FolderSettings, Rule } from "@/lib/types";
 import type { RuleExecution } from "./rule-executions";
@@ -123,13 +124,17 @@ it("requires account/source/target, excludes isolated and same folders, and only
   await render([legacyServerRule("serverMove")]);
   await openExistingRule();
   expect(
-    (document.querySelector("#rule-source") as HTMLButtonElement).disabled,
+    (
+      document.querySelector(
+        '[aria-label="规则来源文件夹"]',
+      ) as HTMLButtonElement
+    ).disabled,
   ).toBe(true);
   await select("规则适用账号", account.email);
   await select("规则来源文件夹", "收件箱");
   await act(async () =>
     document
-      .querySelector("#rule-target")!
+      .querySelector('[aria-label="规则目标文件夹"]')!
       .dispatchEvent(
         new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true }),
       ),
@@ -177,7 +182,7 @@ it("clears destinations when switching back to local actions", async () => {
   await select("规则来源文件夹", "收件箱");
   await select("规则目标文件夹", "归档");
   await select("规则执行动作", "归入本地文件夹");
-  expect(document.querySelector("#rule-source")).toBeNull();
+  expect(document.querySelector('[aria-label="规则来源文件夹"]')).toBeNull();
   await click("预览匹配，不执行动作");
   expect(api.call).toHaveBeenLastCalledWith("preview_rule", {
     rule: expect.objectContaining({
@@ -458,4 +463,110 @@ it("offers copied receivers, priority and received-day conditions", async () => 
       ],
     }),
   });
+});
+
+it("saves legacy rules with a server action in the second step and requires every server target", async () => {
+  const first = { action: "read", sourceFolder: "", destination: "" };
+  const second = {
+    action: "serverCopy",
+    sourceFolder: "INBOX",
+    destination: "",
+  };
+  const third = {
+    action: "serverMove",
+    sourceFolder: "Archive",
+    destination: "INBOX",
+  };
+  const rule = {
+    ...legacyServerRule("serverCopy"),
+    ...first,
+    accountId: account.id,
+    conditions: [{ field: "subject", operator: "contains", value: "invoice" }],
+    actions: [first, second, third],
+  };
+  await render([rule]);
+  await openExistingRule();
+  const submit = document.querySelector<HTMLButtonElement>(
+    ".rule-form button[type=submit]",
+  )!;
+  expect(submit.disabled).toBe(true);
+  const target = document.querySelectorAll('[aria-label="规则目标文件夹"]')[0];
+  await act(async () =>
+    target.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true }),
+    ),
+  );
+  const archive = [
+    ...document.querySelectorAll<HTMLElement>('[role="option"]'),
+  ].find((option) => option.textContent === "归档")!;
+  await act(async () => archive.click());
+  expect(submit.disabled).toBe(false);
+  await act(async () => submit.click());
+  expect(api.call).toHaveBeenCalledWith("save_rules", {
+    rules: [
+      expect.objectContaining({
+        action: "read",
+        destination: "",
+        actions: [first, { ...second, destination: "Archive" }, third],
+      }),
+    ],
+  });
+});
+
+it("blocks both buttons and form submission for a date condition without a value", async () => {
+  await render([
+    {
+      ...legacyServerRule("serverMove"),
+      action: "read",
+      actions: [{ action: "read", sourceFolder: "", destination: "" }],
+      conditions: [{ field: "date", operator: "after", value: "" }],
+    },
+  ]);
+  await openExistingRule();
+  const submit = document.querySelector<HTMLButtonElement>(
+    ".rule-form button[type=submit]",
+  )!;
+  expect(submit.disabled).toBe(true);
+  await act(async () =>
+    submit.form!.dispatchEvent(
+      new Event("submit", { bubbles: true, cancelable: true }),
+    ),
+  );
+  expect(api.call).not.toHaveBeenCalledWith("save_rules", expect.anything());
+});
+
+it("localizes rule values and singular preview counts in English", async () => {
+  setInterfaceLanguage("en");
+  try {
+    vi.mocked(api.call).mockImplementation(
+      async <T,>(command: string) =>
+        (command === "preview_rule"
+          ? ["Match", "Pending（等待完整邮件核对）"]
+          : []) as T,
+    );
+    await render([
+      {
+        ...legacyServerRule("serverCopy"),
+        action: "read",
+        actions: [{ action: "read", sourceFolder: "", destination: "" }],
+        conditions: [{ field: "read", operator: "equals", value: "false" }],
+      },
+    ]);
+    expect(host.textContent).toContain("Read status Equals Unread");
+    await act(async () =>
+      document.querySelector<HTMLButtonElement>('[title="Edit rule"]')!.click(),
+    );
+    await click("Preview matches without running actions");
+    expect(document.querySelector(".rule-preview")?.textContent).toContain(
+      "This preview: 1 match.",
+    );
+    expect(document.querySelector(".rule-preview")?.textContent).toContain(
+      "1 more message awaits complete-message verification.",
+    );
+    expect(document.querySelector(".rule-preview")?.textContent).toContain(
+      "Pending (awaiting complete-message verification)",
+    );
+  } finally {
+    setInterfaceLanguage("zh-CN");
+  }
 });

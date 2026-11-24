@@ -1,14 +1,9 @@
 import { dateLocale, calendarLocale, t } from "@/lib/i18n";
 import { useEffect, useId, useState } from "react";
-import { CalendarIcon, ChevronDown, ChevronUp, Clock } from "lucide-react";
+import { CalendarIcon, Clock } from "lucide-react";
 import { Button } from "./ui/button";
 import { Calendar } from "./ui/calendar";
-import {
-  InputGroup,
-  InputGroupAddon,
-  InputGroupButton,
-  InputGroupInput,
-} from "./ui/input-group";
+import { TimeSpinbox } from "./time-spinbox";
 import { Label } from "./ui/label";
 import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
 import {
@@ -17,121 +12,6 @@ import {
   nextScheduledMinute,
   normalizeScheduledTime,
 } from "@/lib/schedule-time";
-
-const padTime = (value: number) => String(value).padStart(2, "0");
-
-function ScheduleTimeField({
-  id,
-  label,
-  value,
-  min,
-  max,
-  disabled,
-  onChange,
-}: {
-  id: string;
-  label: string;
-  value: string;
-  min: number;
-  max: number;
-  disabled: boolean;
-  onChange: (value: string) => void;
-}) {
-  const [draft, setDraft] = useState(value);
-
-  useEffect(() => {
-    setDraft(value);
-  }, [value]);
-
-  function commit(next = draft) {
-    if (!/^\d{1,2}$/.test(next)) {
-      setDraft(value);
-      return;
-    }
-    const number = Number(next);
-    if (number < min || number > max) {
-      setDraft(value);
-      return;
-    }
-    const padded = padTime(number);
-    setDraft(padded);
-    onChange(padded);
-  }
-
-  function step(delta: number) {
-    const current = Number(draft);
-    const base = Number.isFinite(current) ? current : Number(value);
-    const next = Math.min(max, Math.max(min, base + delta));
-    commit(padTime(next));
-  }
-
-  return (
-    <InputGroup className="schedule-time-input">
-      <InputGroupInput
-        id={id}
-        role="spinbutton"
-        aria-label={label}
-        aria-valuemin={min}
-        aria-valuemax={max}
-        aria-valuenow={Number(draft)}
-        inputMode="numeric"
-        pattern="[0-9]*"
-        maxLength={2}
-        disabled={disabled}
-        value={draft}
-        onFocus={(event) => event.currentTarget.select()}
-        onChange={(event) => {
-          const next = event.currentTarget.value.replace(/\D/g, "").slice(0, 2);
-          setDraft(next);
-          if (next.length === 2 && Number(next) >= min && Number(next) <= max) {
-            onChange(next);
-          }
-        }}
-        onBlur={() => commit()}
-        onKeyDown={(event) => {
-          if (event.key === "ArrowUp" || event.key === "ArrowDown") {
-            event.preventDefault();
-            step(event.key === "ArrowUp" ? 1 : -1);
-          }
-          if (event.key === "Enter") {
-            event.preventDefault();
-            commit();
-            event.currentTarget.blur();
-          }
-        }}
-        onWheel={(event) => {
-          if (document.activeElement !== event.currentTarget) return;
-          event.preventDefault();
-          step(event.deltaY < 0 ? 1 : -1);
-        }}
-      />
-      <InputGroupAddon align="inline-end" className="schedule-time-stepper">
-        <InputGroupButton
-          size="icon-xs"
-          tabIndex={-1}
-          className="schedule-time-step"
-          aria-label={t("Increase value")}
-          disabled={disabled}
-          onMouseDown={(event) => event.preventDefault()}
-          onClick={() => step(1)}
-        >
-          <ChevronUp />
-        </InputGroupButton>
-        <InputGroupButton
-          size="icon-xs"
-          tabIndex={-1}
-          className="schedule-time-step"
-          aria-label={t("Decrease value")}
-          disabled={disabled}
-          onMouseDown={(event) => event.preventDefault()}
-          onClick={() => step(-1)}
-        >
-          <ChevronDown />
-        </InputGroupButton>
-      </InputGroupAddon>
-    </InputGroup>
-  );
-}
 
 export function SchedulePicker({
   value,
@@ -234,7 +114,7 @@ export function SchedulePicker({
           {t("Time")}
         </Label>
         <div className="flex items-center gap-1">
-          <ScheduleTimeField
+          <TimeSpinbox
             id={`${id}-hour`}
             label={t("Send hour")}
             value={hour}
@@ -244,7 +124,7 @@ export function SchedulePicker({
             onChange={(hour) => changeTime(hour, minute)}
           />
           <span aria-hidden="true">:</span>
-          <ScheduleTimeField
+          <TimeSpinbox
             id={`${id}-minute`}
             label={t("Send minute")}
             value={minute}

@@ -8,7 +8,10 @@ use std::{
 };
 
 #[derive(Clone, Default)]
-pub struct EmlFiles(Arc<Mutex<Documents>>);
+pub struct EmlFiles {
+    documents: Arc<Mutex<Documents>>,
+    pub window_open: Arc<tokio::sync::Mutex<()>>,
+}
 #[derive(Default)]
 struct Documents {
     pending: VecDeque<String>,
@@ -86,7 +89,7 @@ impl EmlFiles {
         if !is_eml(&path) {
             return;
         }
-        if let Ok(mut docs) = self.0.lock() {
+        if let Ok(mut docs) = self.documents.lock() {
             let path = path.to_string_lossy().into_owned();
             if docs.pending.len() < 32 && !docs.pending.contains(&path) {
                 docs.pending.push_back(path);
@@ -94,11 +97,30 @@ impl EmlFiles {
         }
     }
     pub fn take_pending(&self) -> Result<Vec<String>> {
-        Ok(self.0.lock().map_err(err)?.pending.drain(..).collect())
+        Ok(self
+            .documents
+            .lock()
+            .map_err(err)?
+            .pending
+            .drain(..)
+            .collect())
+    }
+    pub fn matching_label(&self, path: &Path) -> Result<Option<String>> {
+        if !is_eml(path) {
+            return Err("invalidFile".into());
+        }
+        let canonical = path.canonicalize().map_err(|_| "unreadable")?;
+        let docs = self.documents.lock().map_err(err)?;
+        if docs.source.as_ref() != Some(&canonical) {
+            return Ok(None);
+        }
+        // Retain the existing regular-file and symlink checks.
+        crate::eml_input::metadata(path)?;
+        Ok(docs.current.as_ref().map(|(token, _)| window_label(token)))
     }
     pub fn document_for_label(&self, label: &str) -> Result<EmlDocument> {
         let (token, raw, source) = {
-            let docs = self.0.lock().map_err(err)?;
+            let docs = self.documents.lock().map_err(err)?;
             let (token, raw) = docs.current.clone().ok_or("邮件文件已关闭，请重新打开")?;
             if window_label(&token) != label {
                 return Err("邮件文件不属于当前窗口".into());
@@ -128,7 +150,7 @@ impl EmlFiles {
         })
     }
     pub fn close_label(&self, label: &str) -> Result<()> {
-        let mut docs = self.0.lock().map_err(err)?;
+        let mut docs = self.documents.lock().map_err(err)?;
         if docs
             .current
             .as_ref()
@@ -150,7 +172,7 @@ impl EmlFiles {
         let token = uuid::Uuid::new_v4().to_string();
         let original_hash = archive::digest(&raw);
         let source = path.canonicalize().map_err(err)?;
-        let mut docs = self.0.lock().map_err(err)?;
+        let mut docs = self.documents.lock().map_err(err)?;
         docs.current = Some((token.clone(), Arc::new(raw)));
         docs.source = Some(source);
         drop(docs);
@@ -174,14 +196,14 @@ impl EmlFiles {
         })
     }
     pub fn raw(&self, token: &str) -> Result<Arc<Vec<u8>>> {
-        let docs = self.0.lock().map_err(err)?;
+        let docs = self.documents.lock().map_err(err)?;
         match &docs.current {
             Some((current, raw)) if current == token => Ok(raw.clone()),
             _ => Err("邮件文件已关闭或切换，请重新打开后操作附件".into()),
         }
     }
     pub fn save_attachment(&self, token: &str, index: usize, path: &Path) -> Result<()> {
-        let docs = self.0.lock().map_err(err)?;
+        let docs = self.documents.lock().map_err(err)?;
         let raw = match &docs.current {
             Some((current, raw)) if current == token => raw.clone(),
             _ => return Err("邮件文件已关闭或切换，请重新打开后操作附件".into()),
@@ -199,7 +221,7 @@ impl EmlFiles {
         archive::atomic_write(path, &archive::attachment(&raw, index)?)
     }
     pub fn close(&self, token: &str) -> Result<()> {
-        let mut docs = self.0.lock().map_err(err)?;
+        let mut docs = self.documents.lock().map_err(err)?;
         if docs
             .current
             .as_ref()
@@ -256,6 +278,22 @@ mod tests {
         assert_eq!(docs.raw(&document.token).unwrap().as_slice(), MIME);
         std::fs::remove_dir_all(dir).unwrap();
     }
+    #[test]
+    fn canonical_path_matches_only_the_current_document() {
+        let (folder, path) = fixture("alias.eml", &crate::tests::raw());
+        let docs = EmlFiles::default();
+        let document = docs.open(&path).unwrap();
+        let label = window_label(&document.token);
+        let alternate_path = folder.join(".").join("alias.eml");
+        assert_eq!(
+            docs.matching_label(&alternate_path).unwrap(),
+            Some(label.clone())
+        );
+        docs.close_label(&label).unwrap();
+        assert!(docs.matching_label(&alternate_path).unwrap().is_none());
+        let _ = std::fs::remove_dir_all(folder);
+    }
+
     #[test]
     fn stale_token_cannot_read_another_document_or_close_it() {
         let (dir, path) = fixture("sample.eml", MIME);

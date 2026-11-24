@@ -2,9 +2,11 @@ use crate::{archive, models::*};
 use base64::{engine::general_purpose::STANDARD, Engine as _};
 use image::ImageFormat;
 use std::{
+    collections::VecDeque,
     fs,
     io::Cursor,
     path::{Path, PathBuf},
+    sync::{Mutex, OnceLock},
     time::{Duration, SystemTime},
 };
 
@@ -212,18 +214,10 @@ pub fn prune(cache: &Path, now: SystemTime) {
     }
 }
 
-pub fn prepare(cache: &Path, raw: &[u8], account: &Account, index: usize) -> Result<PathBuf> {
-    let (_, _, attachments) = archive::parse(raw, account, "")?;
-    let attachment = attachments
-        .iter()
-        .find(|a| a.index == index)
-        .ok_or("附件不存在")?;
-    if !attachment.error.is_empty() {
-        return Err(attachment.error.clone());
-    }
-    let bytes = archive::attachment(raw, index)?;
-    let name = filename(&attachment.name, &attachment.mime);
-    if !can_open(&name, &attachment.mime, &bytes) {
+pub fn prepare(cache: &Path, raw: &[u8], index: usize) -> Result<PathBuf> {
+    let (name, mime, bytes) = archive::preview_attachment(raw, index)?;
+    let name = filename(&name, &mime);
+    if !can_open(&name, &mime, &bytes) {
         return Err("该附件是程序或脚本，不支持直接预览；可使用下载按钮另存".into());
     }
     private_dir(cache)?;
@@ -289,14 +283,30 @@ fn thumbnail_data_url(mime: &str, bytes: &[u8]) -> Result<String> {
     ))
 }
 
-pub fn thumbnail(raw: &[u8], account: &Account, index: usize) -> Result<String> {
-    let (_, _, attachments) = archive::parse(raw, account, "")?;
-    let attachment = attachments
+type ThumbnailCache = VecDeque<((String, usize), String)>;
+
+pub fn thumbnail(raw: &[u8], index: usize) -> Result<String> {
+    const MAX_THUMBNAILS: usize = 32;
+    static THUMBNAILS: OnceLock<Mutex<ThumbnailCache>> = OnceLock::new();
+    let cache = THUMBNAILS.get_or_init(Default::default);
+    let key = (archive::digest(raw), index);
+    if let Some(value) = cache
+        .lock()
+        .map_err(err)?
         .iter()
-        .find(|attachment| attachment.index == index)
-        .ok_or("附件不存在")?;
-    if !attachment.error.is_empty() {
-        return Err(attachment.error.clone());
+        .find(|(stored, _)| stored == &key)
+        .map(|(_, value)| value.clone())
+    {
+        return Ok(value);
     }
-    thumbnail_data_url(&attachment.mime, &archive::attachment(raw, index)?)
+    let (_, mime, bytes) = archive::preview_attachment(raw, index)?;
+    let thumbnail = thumbnail_data_url(&mime, &bytes)?;
+    let mut cache = cache.lock().map_err(err)?;
+    if !cache.iter().any(|(stored, _)| stored == &key) {
+        if cache.len() == MAX_THUMBNAILS {
+            cache.pop_front();
+        }
+        cache.push_back((key, thumbnail.clone()));
+    }
+    Ok(thumbnail)
 }

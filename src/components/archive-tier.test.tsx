@@ -6,6 +6,10 @@ import { ArchiveTier } from "./archive-tier";
 import type { ArchiveTierStatus } from "@/lib/types";
 import { enterDemo, leaveDemo } from "../lib/api";
 import * as api from "../lib/api";
+vi.mock("../lib/api", async (original) => ({
+  ...(await original<typeof import("../lib/api")>()),
+  native: true,
+}));
 
 let root: Root;
 let host: HTMLDivElement;
@@ -100,4 +104,36 @@ it("renders task progress and a disconnected archive error", async () => {
   expect(host.textContent).toContain("附加存档任务：3 / 10");
   expect(host.textContent).toContain("附加存档盘未连接");
   expect(host.querySelector('[role="progressbar"]')).not.toBeNull();
+});
+
+it("keeps the selected retention period while polling an unconfigured archive", async () => {
+  leaveDemo();
+  vi.useFakeTimers();
+  HTMLElement.prototype.scrollIntoView = vi.fn();
+  const backend = vi
+    .spyOn(api, "call")
+    .mockImplementation(async <T,>(command: string) => {
+      if (command === "archive_tier_status")
+        return { ...idle, configured: false, available: false } as T;
+      throw new Error(`Unexpected command: ${command}`);
+    });
+  try {
+    await act(async () => root.render(<ArchiveTier onChanged={() => {}} />));
+    const select = host.querySelector('[aria-label="附加存档保留天数"]')!;
+    await act(async () =>
+      select.dispatchEvent(
+        new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true }),
+      ),
+    );
+    const choice = [
+      ...document.querySelectorAll<HTMLElement>('[role="option"]'),
+    ].find((option) => option.textContent === "30 天")!;
+    await act(async () => choice.click());
+    expect(select.textContent).toContain("30 天");
+    await act(async () => vi.advanceTimersByTimeAsync(2500));
+    expect(backend).toHaveBeenCalledTimes(2);
+    expect(select.textContent).toContain("30 天");
+  } finally {
+    vi.useRealTimers();
+  }
 });

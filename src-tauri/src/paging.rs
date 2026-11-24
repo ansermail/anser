@@ -264,17 +264,18 @@ fn filtered(indexed: bool) -> String {
         filtered_where(indexed)
     )
 }
-fn units(request: &PageRequest) -> String {
+fn units(request: &PageRequest, materialized: bool) -> String {
     let indexed = search::phrase(&request.query.search).is_some();
     let source = filtered(indexed);
     let where_sql = filtered_where(indexed);
+    let materialized = if materialized { "MATERIALIZED " } else { "" };
     if request.query.list_mode == ListMode::Messages {
-        return format!("WITH units AS (SELECT listing.id,d.instant,d.is_read,d.starred,d.has_attachments,'' AS root,1 AS count {source})");
+        return format!("WITH units AS {materialized}(SELECT listing.id,d.instant,d.is_read,d.starred,d.has_attachments,'' AS root,1 AS count {source})");
     }
     format!("WITH eligible AS MATERIALIZED (SELECT listing.id,d.instant,d.is_read,d.starred,d.has_attachments,d.trashed,cm.root FROM search_documents d JOIN message_listing listing ON listing.id=d.mail_id JOIN conversation_members cm ON cm.mail_id=listing.id WHERE {}),
         grouped AS (SELECT root,MIN(is_read) AS is_read,MAX(starred) AS starred,MAX(has_attachments) AS has_attachments FROM eligible GROUP BY root),
         ranked AS (SELECT id,instant,root,trashed,ROW_NUMBER() OVER(PARTITION BY root ORDER BY instant DESC,id ASC) AS n FROM eligible),
-        units AS (SELECT r.id,r.instant,g.is_read,g.starred,g.has_attachments,r.root,c.count FROM ranked r JOIN grouped g ON g.root=r.root JOIN conversation_counts c ON c.root=r.root AND c.trashed=r.trashed WHERE n=1)",where_sql)
+        units AS {materialized}(SELECT r.id,r.instant,g.is_read,g.starred,g.has_attachments,r.root,c.count FROM ranked r JOIN grouped g ON g.root=r.root JOIN conversation_counts c ON c.root=r.root AND c.trashed=r.trashed WHERE n=1)",where_sql)
 }
 
 impl Store {
@@ -305,7 +306,7 @@ impl Store {
             }else{
                 ("CASE WHEN ?17 IS NULL THEN u.instant IS NOT NULL OR (u.instant IS NULL AND u.id<?18) ELSE u.instant>?17 OR (u.instant=?17 AND u.id<?18) END","u.instant ASC,u.id DESC")
             };
-            let sql=format!("{} SELECT listing.data,u.is_read,u.starred,u.has_attachments,u.root,u.count FROM units u JOIN message_listing listing ON listing.id=u.id WHERE ({condition}) AND (?19='' OR u.root!=?19) ORDER BY {order} LIMIT 1",units(request));
+            let sql=format!("{} SELECT listing.data,u.is_read,u.starred,u.has_attachments,u.root,u.count FROM units u JOIN message_listing listing ON listing.id=u.id WHERE ({condition}) AND (?19='' OR u.root!=?19) ORDER BY {order} LIMIT 1",units(request, false));
             let mut stmt=tx.prepare(&sql).map_err(err)?;let mut rows=stmt.query(params_from_iter(values.iter())).map_err(err)?;
             let mail=if let Some(row)=rows.next().map_err(err)? {
                 let mut mail:Mail=serde_json::from_str(&row.get::<_,String>(0).map_err(err)?).map_err(err)?;
@@ -329,48 +330,52 @@ impl Store {
         self.read_listing(request.query.list_mode, |tx, revision| {
             let reset = old.as_ref().is_some_and(|c| c.revision != revision);
             let cursor = old.as_ref().filter(|_| !reset);
-            let cte = units(request);
-            let values = bindings(request, from, before, true);
-            let matched: u64 = tx
-                .query_row(
-                    &format!("{cte} SELECT COUNT(*) FROM units"),
-                    params_from_iter(values.iter()),
-                    |r| r.get(0),
-                )
-                .map_err(err)?;
-            if let Some(c) = cursor {
-                let mut anchor = values.clone();
-                anchor.push(c.id.clone().into());
-                anchor.push(c.instant.into());
-                let exists:bool=tx.query_row(&format!("{cte} SELECT EXISTS(SELECT 1 FROM units WHERE id=?17 AND instant IS ?18)"),params_from_iter(anchor.iter()),|r|r.get(0)).map_err(err)?;
-                if !exists {
-                    return Err("分页位置无效，请重新搜索".into());
-                }
-            }
+            let cte = units(request, true);
             let size = request.query.limit.clamp(1, 200) as usize;
-            let mut page_values = values.clone();
+            let mut page_values = bindings(request, from, before, true);
             page_values.extend([
                 (cursor.is_some() as i64).into(),
                 cursor.and_then(|c| c.instant).into(),
                 cursor.map(|c| c.id.clone()).unwrap_or_default().into(),
                 ((size + 1) as i64).into(),
             ]);
-            let sql=format!("{cte} SELECT listing.data,u.instant,u.is_read,u.starred,u.has_attachments,u.root,u.count FROM units u JOIN message_listing listing ON listing.id=u.id
-                WHERE ?17=0 OR CASE WHEN ?18 IS NULL THEN u.instant IS NULL AND u.id>?19 ELSE u.instant<?18 OR u.instant IS NULL OR (u.instant=?18 AND u.id>?19) END
-                ORDER BY u.instant DESC,u.id ASC LIMIT ?20");
+            // Evaluate the expensive scope/grouping once. The summary row
+            // survives an empty page so it still validates the anchor and total.
+            let sql = format!("{cte},
+                summary AS (
+                    SELECT COUNT(*) AS total,COALESCE(MAX(id=?19 AND instant IS ?18),0) AS anchor
+                    FROM units
+                ),
+                page_ids AS MATERIALIZED (
+                    SELECT * FROM units
+                    WHERE ?17=0 OR CASE WHEN ?18 IS NULL THEN instant IS NULL AND id>?19
+                        ELSE instant<?18 OR instant IS NULL OR (instant=?18 AND id>?19) END
+                    ORDER BY instant DESC,id ASC LIMIT ?20
+                )
+                SELECT listing.data,p.instant,p.is_read,p.starred,p.has_attachments,p.root,p.count,
+                    summary.total,summary.anchor
+                FROM summary LEFT JOIN page_ids p ON 1
+                LEFT JOIN message_listing listing ON listing.id=p.id
+                ORDER BY p.instant DESC,p.id ASC");
             let mut stmt = tx.prepare(&sql).map_err(err)?;
-            let mut rows = stmt
-                .query(params_from_iter(page_values.iter()))
-                .map_err(err)?;
+            let mut rows = stmt.query(params_from_iter(page_values.iter())).map_err(err)?;
+            let first = rows.next().map_err(err)?.ok_or("分页内部状态无效")?;
+            let matched: u64 = first.get(7).map_err(err)?;
+            if cursor.is_some() && !first.get::<_, bool>(8).map_err(err)? {
+                return Err("分页位置无效，请重新搜索".into());
+            }
             let mut messages = Vec::with_capacity(size);
             let mut last = None;
             let mut more = false;
-            while let Some(row) = rows.next().map_err(err)? {
+            let mut current = Some(first);
+            while let Some(row) = current {
+                let Some(data) = row.get::<_, Option<String>>(0).map_err(err)? else {
+                    break;
+                };
                 if messages.len() == size {
                     more = true;
                     break;
                 }
-                let data: String = row.get(0).map_err(err)?;
                 let mut mail: Mail = serde_json::from_str(&data).map_err(err)?;
                 mail.is_read = row.get(2).map_err(err)?;
                 mail.starred = row.get(3).map_err(err)?;
@@ -385,6 +390,7 @@ impl Store {
                     id: mail.id.clone(),
                 });
                 messages.push(mail);
+                current = rows.next().map_err(err)?;
             }
             let next_cursor = if more {
                 Some(
@@ -1007,6 +1013,189 @@ mod tests {
             .all(|count| count.tree == 0));
     }
 
+    fn folder(account: &Account, name: &str) -> RemoteFolder {
+        RemoteFolder {
+            account_id: account.id.clone(),
+            name: name.into(),
+            display_name: name.into(),
+            delimiter: Some("/".into()),
+            selectable: true,
+            sync_error: None,
+            roles: vec![],
+            detected_roles: None,
+        }
+    }
+
+    #[test]
+    fn unchanged_uid_reconciliation_preserves_both_revisions_and_cursor() {
+        let (_dir, store) = seed(6);
+        let a = account();
+        let db = store.db().unwrap();
+        // Run the online-only orphan check even with an unchanged UID set.
+        let mut online = store.mail("fictional-00000").unwrap();
+        online.saved_locally = false;
+        store.update_mail(&online).unwrap();
+        let mut request = request(ListMode::Conversations, 2);
+        request.query.view = "all".into();
+        let first = store.mail_page(&request).unwrap();
+        request.cursor = first.next_cursor.unwrap();
+        let graph = graph_revision(&db).unwrap();
+        let mut ids: Vec<_> = (0..6).rev().map(|i| format!("7:{i}")).collect();
+        store.reconcile_folder(&a.id, "INBOX", &ids).unwrap();
+        let next = store.mail_page(&request).unwrap();
+        assert!(!next.reset);
+        assert_eq!(next.revision, first.revision);
+        assert_eq!(graph_revision(&db).unwrap(), graph);
+        assert_eq!(next.snapshot.matched, 6);
+        assert_ne!(next.snapshot.messages[0].id, first.snapshot.messages[0].id);
+
+        // Removing the online-only source deletes the orphan. A saved message
+        // survives deactivation and regains its source when the UID reappears.
+        ids.retain(|id| id != "7:0" && id != "7:1");
+        store.reconcile_folder(&a.id, "INBOX", &ids).unwrap();
+        assert!(store.mail(&online.id).is_err());
+        let source_active = || {
+            db.query_row("SELECT active FROM sources WHERE account_id=?1 AND folder='INBOX' AND remote_id='7:1'", [&a.id], |row| row.get::<_, bool>(0)).unwrap()
+        };
+        assert!(!source_active());
+        assert!(store.mail_page(&request).unwrap().reset);
+        ids.push("7:1".into());
+        store.reconcile_folder(&a.id, "INBOX", &ids).unwrap();
+        assert!(source_active());
+        assert!(graph_revision(&db).unwrap() > graph);
+    }
+
+    #[test]
+    fn equivalent_normalized_remote_folders_preserve_both_revisions_and_cursor() {
+        let (_dir, store) = seed(6);
+        let a = account();
+        let folders = [folder(&a, "INBOX"), folder(&a, "Other")];
+        store.save_remote_folders(&a.id, &folders).unwrap();
+        let db = store.db().unwrap();
+        let mut request = request(ListMode::Conversations, 2);
+        let first = store.mail_page(&request).unwrap();
+        request.cursor = first.next_cursor.unwrap();
+        let graph = graph_revision(&db).unwrap();
+        let mut reordered = folders.clone();
+        reordered[0].display_name = "A different server label".into();
+        reordered.reverse();
+        store.save_remote_folders(&a.id, &reordered).unwrap();
+        let next = store.mail_page(&request).unwrap();
+        assert!(!next.reset);
+        assert_eq!(next.revision, first.revision);
+        assert_eq!(graph_revision(&db).unwrap(), graph);
+        assert_ne!(next.snapshot.messages[0].id, first.snapshot.messages[0].id);
+
+        reordered[0].selectable = false;
+        store.save_remote_folders(&a.id, &reordered).unwrap();
+        assert!(store.mail_page(&request).unwrap().reset);
+    }
+
+    #[test]
+    fn startup_repairs_empty_and_partial_listing_without_rewriting_complete_projection() {
+        let (dir, store) = seed(3);
+        let db = store.db().unwrap();
+        for filter in ["WHERE id='fictional-00001'", ""] {
+            db.execute(&format!("DELETE FROM message_listing {filter}"), [])
+                .unwrap();
+            Store::new(dir.path().into()).unwrap();
+            let count: u32 = db
+                .query_row(
+                    "SELECT COUNT(*) FROM message_listing WHERE json_extract(data,'$.body')=''",
+                    [],
+                    |row| row.get(0),
+                )
+                .unwrap();
+            assert_eq!(count, 3);
+        }
+        let revision = graph_revision(&db).unwrap();
+        db.execute_batch(
+            "CREATE TRIGGER reject_unneeded_listing_insert BEFORE INSERT ON message_listing
+             BEGIN SELECT RAISE(ABORT,'complete projection should not be backfilled'); END;",
+        )
+        .unwrap();
+        Store::new(dir.path().into()).unwrap();
+        assert_eq!(graph_revision(&db).unwrap(), revision);
+    }
+
+    #[test]
+    fn folder_mark_read_is_atomic_with_related_messages_and_server_operations() {
+        let (_dir, store) = seed(5);
+        let a = account();
+        let db = store.db().unwrap();
+        store
+            .save_remote_folders(&a.id, &[folder(&a, "INBOX")])
+            .unwrap();
+        db.execute(
+            "UPDATE sources SET folder='Other',remote_id='7:5' WHERE mail_id='fictional-00000'",
+            [],
+        )
+        .unwrap();
+        db.execute(
+            "UPDATE sources SET folder='Other' WHERE mail_id='fictional-00004'",
+            [],
+        )
+        .unwrap();
+        let mut related = store.mail("fictional-00000").unwrap();
+        related.is_read = false;
+        related.message_id = store.mail("fictional-00001").unwrap().message_id;
+        store.update_mail(&related).unwrap();
+        let mut related_by_server_id = store.mail("fictional-00004").unwrap();
+        related_by_server_id.server_message_id = store.mail("fictional-00002").unwrap().message_id;
+        store.update_mail(&related_by_server_id).unwrap();
+
+        db.execute_batch(
+            "CREATE TRIGGER fail_later_read BEFORE UPDATE OF data ON messages
+             WHEN OLD.id='fictional-00002'
+             BEGIN SELECT RAISE(ABORT,'injected late failure'); END;",
+        )
+        .unwrap();
+        assert!(store
+            .mark_folder_read(&a.id, "INBOX", false, "", false)
+            .unwrap_err()
+            .contains("injected late failure"));
+        for id in [0, 1, 2, 4] {
+            assert!(!store.mail(&format!("fictional-{id:05}")).unwrap().is_read);
+        }
+        let operation_count = || {
+            db.query_row(
+            "SELECT COUNT(*) FROM server_operations WHERE action='read' AND status='queued' AND json_extract(data,'$.value')=1 AND revision=1",
+            [],
+            |row| row.get::<_, u32>(0),
+        ).unwrap()
+        };
+        assert_eq!(operation_count(), 0);
+        db.execute("DROP TRIGGER fail_later_read", []).unwrap();
+        assert_eq!(
+            store
+                .mark_folder_read(&a.id, "INBOX", false, "", false)
+                .unwrap(),
+            2
+        );
+        assert_eq!(operation_count(), 4);
+        for id in [0, 1, 2, 4] {
+            let mail = store.mail(&format!("fictional-{id:05}")).unwrap();
+            assert!(mail.is_read);
+            assert_eq!(mail.local_read_override, None);
+        }
+    }
+
+    #[test]
+    fn valid_anchor_at_end_keeps_total_on_an_empty_continuation() {
+        let (_dir, store) = seed(4);
+        let mut request = request(ListMode::Messages, 3);
+        let first = store.mail_page(&request).unwrap();
+        let mut cursor = decode(&first.next_cursor.unwrap()).unwrap().unwrap();
+        cursor.id = "fictional-00003".into();
+        cursor.instant = None;
+        request.cursor = URL_SAFE_NO_PAD.encode(serde_json::to_vec(&cursor).unwrap());
+        let page = store.mail_page(&request).unwrap();
+        assert!(page.snapshot.messages.is_empty());
+        assert_eq!(page.snapshot.matched, 4);
+        assert!(!page.reset);
+        assert!(page.next_cursor.is_none());
+    }
+
     #[test]
     fn identical_sources_and_background_status_do_not_reset_a_valid_cursor() {
         let (_dir, store) = seed(12);
@@ -1050,7 +1239,7 @@ mod tests {
         let mut changed = store.mail("fictional-00000").unwrap();
         changed.starred = false;
         store.update_mail(&changed).unwrap();
-        let cte = units(&r);
+        let cte = units(&r, false);
         let vals = bindings(&r, None, None, true);
         let count: i64 = tx
             .query_row(

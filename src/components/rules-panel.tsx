@@ -118,10 +118,14 @@ const choiceConditions: Record<string, [string, string][]> = {
     ["low", "Low"],
   ],
 };
-const conditionValueLabel = (c: Condition) =>
-  t(
-    choiceConditions[c.field]?.find(([value]) => value === c.value)?.[1] ?? "",
-  ) || `「${c.value}」`;
+const conditionValueLabel = (c: Condition) => {
+  const choice = choiceConditions[c.field]?.find(
+    ([value]) => value === c.value,
+  );
+  return choice ? t(choice[1]) : t("“{value0}”", { value0: c.value });
+};
+// This suffix is part of the existing preview_rule response.
+const waitingPreviewSuffix = "（等待完整邮件核对）";
 const conditionOperators: Record<string, string> = {
   get contains() {
     return t("Contains");
@@ -190,6 +194,32 @@ const ruleActions = (rule: Rule): RuleAction[] =>
           sourceFolder: rule.sourceFolder || "",
         },
       ];
+const remoteAction = (step: RuleAction) =>
+  step.action === "serverCopy" || step.action === "serverMove";
+
+function canSaveRule(rule: Rule, accounts: Snapshot["accounts"]) {
+  if (
+    rule.conditions.some(
+      ({ field, value }) => field === "date" && !value.trim(),
+    )
+  )
+    return false;
+  const steps = ruleActions(rule).filter(remoteAction);
+  return (
+    !steps.length ||
+    (steps.every(
+      ({ sourceFolder, destination }) => sourceFolder && destination,
+    ) &&
+      accounts.some(
+        (a) =>
+          a.id === rule.accountId &&
+          a.enabled &&
+          a.protocol === "imap" &&
+          a.provider !== "gmail",
+      ))
+  );
+}
+
 function withActions(rule: Rule, next: RuleAction[]): Rule {
   const first = next[0];
   return {
@@ -270,10 +300,8 @@ export function RulesPanel({
     [busy, setBusy] = useState(false),
     [preview, setPreview] = useState<string[] | null>(null);
   const hasEnabledRule = data.rules.some((rule) => rule.enabled);
-  const remote = (r: Rule) =>
-    ruleActions(r).some((step) =>
-      ["serverCopy", "serverMove"].includes(step.action),
-    );
+  const remote = (r: Rule) => ruleActions(r).some(remoteAction);
+  const valid = editing !== null && canSaveRule(editing, data.accounts);
   const [folderNames, setFolderNames] = useState<
     Record<string, Record<string, string>>
   >({});
@@ -283,7 +311,8 @@ export function RulesPanel({
     .sort()
     .join(",");
   const waitingPreview =
-    preview?.filter((s) => s.endsWith("（等待完整邮件核对）")).length ?? 0;
+    preview?.filter((s) => s.endsWith(waitingPreviewSuffix)).length ?? 0;
+  const matchedPreview = (preview?.length ?? 0) - waitingPreview;
   useEffect(() => {
     let live = true;
     for (const id of remoteAccounts.split(",").filter(Boolean))
@@ -388,6 +417,7 @@ export function RulesPanel({
           <Tooltip>
             <TooltipTrigger asChild>
               <span
+                className="shrink-0"
                 tabIndex={hasEnabledRule ? undefined : 0}
                 aria-label={
                   hasEnabledRule
@@ -428,9 +458,12 @@ export function RulesPanel({
               </div>
               <p>
                 {r.conditions
-                  .map(
-                    (c) =>
-                      `${fields[c.field]} ${conditionOperators[c.operator] || c.operator}${conditionValueLabel(c)}`,
+                  .map((c) =>
+                    t("{value0} {value1} {value2}", {
+                      value0: fields[c.field],
+                      value1: conditionOperators[c.operator] || c.operator,
+                      value2: conditionValueLabel(c),
+                    }),
                   )
                   .join(r.mode === "all" ? t(" AND ") : t(" OR "))}
               </p>
@@ -444,9 +477,13 @@ export function RulesPanel({
                   <MailCheck size={14} />
                 )}{" "}
                 {ruleActions(r)
-                  .map(
-                    (step) =>
-                      `${actions[step.action]}${step.destination ? `「${step.destination}」` : ""}`,
+                  .map((step) =>
+                    step.destination
+                      ? t("{value0} “{value1}”", {
+                          value0: actions[step.action],
+                          value1: step.destination,
+                        })
+                      : actions[step.action],
                   )
                   .join(" → ")}
               </div>
@@ -546,6 +583,7 @@ export function RulesPanel({
               className="rule-form"
               onSubmit={async (e) => {
                 e.preventDefault();
+                if (!valid) return;
                 const rs = data.rules.some((r) => r.id === editing.id)
                   ? data.rules.map((r) => (r.id === editing.id ? editing : r))
                   : [...data.rules, editing];
@@ -577,7 +615,7 @@ export function RulesPanel({
                         withActions(
                           { ...editing, accountId: value },
                           ruleActions(editing).map((step) =>
-                            ["serverCopy", "serverMove"].includes(step.action)
+                            remoteAction(step)
                               ? { ...step, sourceFolder: "", destination: "" }
                               : step,
                           ),
@@ -963,7 +1001,7 @@ export function RulesPanel({
                         </Button>
                       </div>
                     </div>
-                    {["serverCopy", "serverMove"].includes(step.action) && (
+                    {remoteAction(step) && (
                       <RuleServerFolders
                         rule={{
                           ...editing,
@@ -1036,15 +1074,41 @@ export function RulesPanel({
               </Button>
               {preview && (
                 <div className="rule-preview">
-                  {t("This preview: {value0} matches{value1}.", {
-                    value0: preview.length - waitingPreview,
-                    value1:
-                      waitingPreview > 0
-                        ? `，另有 ${waitingPreview} 项等待完整邮件核对后确认`
-                        : "",
-                  })}
-                  {preview.slice(0, 3).map((s, i) => (
-                    <p key={i}>{s}</p>
+                  <p>
+                    {matchedPreview === 1
+                      ? t("This preview: 1 match.")
+                      : t("This preview: {value0} matches.", {
+                          value0: matchedPreview,
+                        })}
+                  </p>
+                  {waitingPreview > 0 && (
+                    <p>
+                      {waitingPreview === 1
+                        ? t(
+                            "1 more message awaits complete-message verification.",
+                          )
+                        : t(
+                            "{value0} more messages await complete-message verification.",
+                            {
+                              value0: waitingPreview,
+                            },
+                          )}
+                    </p>
+                  )}
+                  {preview.slice(0, 3).map((subject, i) => (
+                    <p key={i}>
+                      {subject.endsWith(waitingPreviewSuffix)
+                        ? t(
+                            "{value0} (awaiting complete-message verification)",
+                            {
+                              value0: subject.slice(
+                                0,
+                                -waitingPreviewSuffix.length,
+                              ),
+                            },
+                          )
+                        : subject}
+                    </p>
                   ))}
                 </div>
               )}
@@ -1073,22 +1137,7 @@ export function RulesPanel({
                 >
                   {t("Cancel")}
                 </Button>
-                <Button
-                  type="submit"
-                  disabled={
-                    remote(editing) &&
-                    (!editing.accountId ||
-                      !editing.sourceFolder ||
-                      !editing.destination ||
-                      !data.accounts.some(
-                        (a) =>
-                          a.id === editing.accountId &&
-                          a.enabled &&
-                          a.protocol === "imap" &&
-                          a.provider !== "gmail",
-                      ))
-                  }
-                >
+                <Button type="submit" disabled={!valid}>
                   {t("Save rule")}
                 </Button>
               </div>

@@ -1,3 +1,4 @@
+import { useSettingsTabActive } from "./settings-layout";
 import {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -126,6 +127,7 @@ export function EmlImports({
   taskPanel?: boolean;
   rememberExpansion?: boolean;
 }) {
+  const tabActive = useSettingsTabActive();
   const [open, setOpen] = useState(false);
   const [accountId, setAccountId] = useState("");
   const [folderChoice, setFolderChoice] = useState("new");
@@ -174,7 +176,7 @@ export function EmlImports({
     if (mounted.current && ticket === jobsRead.current) setJobs(next);
   }
   useEffect(() => {
-    if (!taskPanel) return;
+    if (!tabActive || !taskPanel) return;
     let live = true,
       reading = false;
     const update = async () => {
@@ -195,12 +197,12 @@ export function EmlImports({
       jobsRead.current++;
       clearInterval(timer);
     };
-  }, [taskPanel]);
+  }, [tabActive, taskPanel]);
   useEffect(() => {
-    if (!open || !job || !active(job)) return;
+    if (!tabActive || !open || !job || !active(job)) return;
     let live = true,
       reading = false;
-    const timer = setInterval(async () => {
+    const update = async () => {
       if (reading || pending.current) return;
       reading = true;
       const ticket = ++detailRead.current;
@@ -215,12 +217,14 @@ export function EmlImports({
       } finally {
         reading = false;
       }
-    }, 1000);
+    };
+    void update();
+    const timer = setInterval(() => void update(), 1000);
     return () => {
       live = false;
       clearInterval(timer);
     };
-  }, [open, job?.id, job?.status]);
+  }, [tabActive, open, job?.id, job?.status]);
 
   async function invalidate(update: () => void) {
     const ticket = ++generation.current;
