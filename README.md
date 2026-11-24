@@ -8,9 +8,9 @@
 
 [下载最新版本](https://github.com/ansermail/anser/releases/latest) · [产品官网](https://ansermail.github.io/anser/) · [Web 演示](https://ansermail.github.io/anser/demo/) · [使用说明](docs/USAGE.md) · [开发进度](docs/DEVELOPMENT_STATUS.md) · [反馈问题](https://github.com/ansermail/anser/issues)
 
-> **0.1.44 Alpha** 已正式发布，支持 Apple Silicon / Intel Mac 与 Windows 10/11 x64。长期稳定性、部分服务商兼容性及真实场景验收仍在持续完善。
+> **0.1.45 Alpha** 已正式发布，支持 Apple Silicon / Intel Mac 与 Windows 10/11 x64。长期稳定性、部分服务商兼容性及真实场景验收仍在持续完善。
 
-0.1.44 为富文本与 Markdown 写信加入可视化表格编辑，定时发送改为悬浮面板并限制过去时间，长收件人列表可在行内展开，附件显示真实缩略图，并补齐官方邮箱图标与一批布局修正。可从[最新正式版](https://github.com/ansermail/anser/releases/latest)下载安装。详见 [0.1.44 发布说明](docs/releases/v0.1.44.md)。
+0.1.45 修复设置页「AI 智能助手」中宽排版溢出、补齐深浅主题语义变量与下拉省略号，改进深色写信输入、规则按钮、通讯录搜索、1000px 窄窗工具栏及工作台等高单行数字时分输入，并完成 IMAP 空同步游标保护、IDLE 监听归属修复、冷启动索引按需回填与多项桌面后端性能优化。可从[最新正式版](https://github.com/ansermail/anser/releases/latest)下载安装。详见 [0.1.45 发布说明](docs/releases/v0.1.45.md)。
 
 ![雁信的多账号收件箱与邮件阅读界面](docs/screenshots/inbox-demo.png)
 

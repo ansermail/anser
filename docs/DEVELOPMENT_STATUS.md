@@ -2,14 +2,14 @@
 
 依据 PRD 第 5、8、9 节、实施记录和当前代码核查。当前仍为 Alpha；功能代码已存在与真实场景验收通过分别记录。早期回归使用临时存储/演示数据；2026-10-05 用户授权后增加当前腾讯企业邮箱与 QQ 邮箱互发测试，未向其他地址发送，未删除真实邮件。
 
-## 当前执行检查点：0.1.44 真机走查与前后端全量优化（2026-11-24）
+## 当前执行检查点：0.1.45 已发布（2026-11-24）
 
-基于本机已安装 `/Applications/雁信.app`（v0.1.44）只读全界面走查与前后端全量审计，已完成一轮前端（`src/` 40 文件）与 Rust 桌面后端（`src-tauri/` 21 文件）联合优化，详见 [0.1.44 真机走查与前后端优化工作点](working/features/UI_UX_AND_BACKEND_AUDIT_0_1_44_WORKING.md)。按用户意见跳过左侧「我的账号」邮箱截断项（侧栏可拖动调宽），保留 macOS 菜单栏左键唤起主窗口及 SQLite 持久化级别约定。
+基于本机已安装 `/Applications/雁信.app`（v0.1.44）只读全界面走查与前后端全量审计，已完成一轮前端（`src/` 40 文件）与 Rust 桌面后端（`src-tauri/` 21 文件）联合优化（详见 [0.1.44 真机走查与前后端优化工作点](working/features/UI_UX_AND_BACKEND_AUDIT_0_1_44_WORKING.md)），并正式发布 **0.1.45 Alpha**。按用户意见跳过左侧「我的账号」邮箱截断项（侧栏可拖动调宽），保留 macOS 菜单栏左键唤起主窗口及 SQLite 持久化级别约定。
 
 - **前端重点**：修复 AI 智能助手卡片中宽排版溢出、补齐 `:root`/`.dark` 未定义的 `--muted-foreground`/`--ring`、修复规则提示条按钮对齐、深色写信输入背景、通讯录搜索图标、`SelectTrigger` 省略号、1000px 阅读与周历工具栏裁切、发送详情滚动与单列看板宽度；工作台改用共享 shadcn `InputGroup` 数字时分控件（`time-spinbox.tsx`），并将「日期」与「具体时间」优化为等高标题行（右侧正向开关）+ 36px 严格单行等高控件（全天按钮 / `09 : 00` 原地切换，结束日期保持纯日期）；修复多步服务器规则校验、富文本主题切换、写信会话关闭与 Windows 附件名、`localChanges` 清理、收件人串档/展开态泄漏、侧栏双高亮、隐藏设置页轮询暂停与 `ArchiveTier` 输入保护，以及多处双语文案（含将后端测试通知正文统一迁入 `src/locales/`）。
 - **后端重点**：`reconcile_folder` 与 `save_remote_folders` 改为差异写入，空同步不再破坏分页游标或重建会话图；`realtime.rs` 改用每线程独立令牌 `WatchClaim` 消除重启竞态；`Store::new()` 按需回填 `message_listing`；补齐 `messageId`/`serverMessageId` 索引与单事务 `mark_folder_read`；补齐 `imap` `catch_unwind`、优化定时轮询只读预检、`Store::outbox()` 去 BLOB/去 N+1 连接、18 个重型/写库命令异步化、远端资源复用代理缓存 `reqwest::Client`、附件缩略图单次解析加 32 项缓存、`mail_page` 复用结果集，以及托盘/Dock 按版本刷新、安全退出等待 `send_gate`、外部 `.eml` 窗口复用与双语测试通知。
-- **本轮验证**：联合全量门禁通过——`npm run check:i18n`（1,887 条双语键）、`npm run check:ui`、`npm run format:check`、`npm run build`、`npm run build:preview`、`npm test`（77 文件 616 项全部通过）、`cargo fmt --check`、`cargo check`、`cargo test --lib`（482 通过、0 失败、5 项既有条件忽略）、`git diff --check`。已构建并运行独立标识 `dev.maildesk.preview0144` 的本地隔离 macOS 原生开发预览包（`雁信预览.app`，不触碰已安装的 `/Applications/雁信.app` 与真实数据），在原生 WKWebView 中实机截图标注复核了 7 组核心视觉/布局改动（1380×900 下 AI 智能助手卡片与签名下拉省略号、深色写信透明输入框与富文本画布、规则提示条按钮右对齐、通讯录内嵌搜索图标、工作台紧凑数字时分输入框；1000×760 最小窗宽下周历工具栏折行、列表复选框边框及阅读器 10 项工具按钮）。
-- **未验证与状态**：改动留在本地 `main` 工作区，未提交、推送或发布。短窗发送详情定时改期、托盘退出/Dock 角标/双语测试通知、重复打开外部 `.eml` 窗口复用、Windows 10/11、Intel Mac 及云端构建仍**未验证**；下一步待用户复核确认后清理临时预览进程，再按授权提交或发版。
+- **本地与云端验证**：本地门禁全绿——`npm run release:check`、`npm run check:i18n`（1,887 条双语键）、`npm run check:ui`、`npm run format:check`、`npm run build`、`npm run build:preview`、`npm run test:ci`（77 文件 616 项）、`npm run test:desktop`（37 项）、`cargo fmt --check`、`cargo test --lib`（482 通过/5 项既有条件忽略）、vendored IMAP（39 项）与 `git diff --check`。隔离 macOS 原生开发预览包（`dev.maildesk.preview0144`）已实机复核 7 组核心视觉改动及工作台明暗双主题时间布局，并已停止清理。
+- **正式发布与分发**：固定源码 `1e7e238bb8cd974c289cd570afc5dde641307664`、注释标签 `v0.1.45`。[Checks 45340348743](https://github.com/ansermail/anser/actions/runs/45340348743)、[Windows validation 45340348545](https://github.com/ansermail/anser/actions/runs/45340348545)（重跑失败作业后全绿）与 [Release desktop 45340357092](https://github.com/ansermail/anser/actions/runs/45340357092) 全部成功。[Release v0.1.45](https://github.com/ansermail/anser/releases/tag/v0.1.45)（ID `456407212`）于 2026-11-24 15:04:35（Asia/Shanghai）公开为 latest，九份资源与 `latest.json` 核验通过，三端安装器及标准更新端点匿名返回 HTTP 200。[Homebrew 45345188443](https://github.com/ansermail/anser/actions/runs/45345188443) 成功并生成配方提交 `b962bd0`；首次 [Preview Pages 45340348583](https://github.com/ansermail/anser/actions/runs/45340348583) 在安装器公开前取消，公开后 [Preview Pages 45345215670](https://github.com/ansermail/anser/actions/runs/45345215670) 部署成功。本机正式应用未替换，由用户自行更新；Windows/Intel 实机、短窗发送详情定时改期、托盘/通知/外部窗口复用与原位升级仍待后续验收，完整证据见 [0.1.45 发布工作点](working/releases/RELEASE_0_1_45_WORKING.md)。
 
 ## 前一阶段：文档目录归类（2026-11-23）
 

@@ -1,6 +1,14 @@
 # 发布与应用内更新
 
-## 当前版本：0.1.44（2026-11-22）
+## 当前版本：0.1.45（2026-11-24）
+
+0.1.45 Alpha 于 2026-11-24 15:04:35（Asia/Shanghai）公开为 [latest](https://github.com/ansermail/anser/releases/tag/v0.1.45)，固定源码 `1e7e238bb8cd974c289cd570afc5dde641307664`、注释标签 `v0.1.45`、Release ID `456407212`。本版基于真机走查与全量审计修复设置页「AI 智能助手」卡片溢出、`--muted-foreground`/`--ring` 语义变量、`SelectTrigger` 省略号、深色写信输入与画布主题同步、规则提示条按钮、通讯录内嵌搜索、1000px 窄窗阅读/周历工具栏以及工作台「日期 + 具体时间」等高单行数字时分输入；后端同步修复空同步破坏分页游标、IDLE 重启归属竞态、冷启动索引全表重写、单事务批量已读与多项并发/缓存性能问题。完整说明见 [v0.1.45](releases/v0.1.45.md)。
+
+本地门槛为前端 77 文件 616 项、Rust 482 项通过且 5 项既有条件忽略、桌面脚本 37 项、vendored IMAP 39 项，生产与 Pages 构建、UI 铁律、1,887 条双语键、TypeScript、Prettier、Rust 格式、发布资源及差异检查通过；隔离 macOS 原生开发预览包复核了核心视觉项并在发版前完成清理。[Checks 45340348743](https://github.com/ansermail/anser/actions/runs/45340348743)、[Windows validation 45340348545](https://github.com/ansermail/anser/actions/runs/45340348545)（首次大列表用例共享 runner 超时后重跑全绿）和 [Release desktop 45340357092](https://github.com/ansermail/anser/actions/runs/45340357092) 全部成功，完成三平台构建、Windows 安装与托盘冒烟及草稿汇总。
+
+九份资源大小/SHA-256、三份更新签名及标准 `latest.json` 清单核验通过，三个正式安装器与 `releases/latest/download/latest.json` 匿名访问均返回 HTTP 200。[Homebrew 45345188443](https://github.com/ansermail/anser/actions/runs/45345188443) 成功，配方提交 `b962bd0` 只更新 `Casks/anser.rb`，版本 `0.1.45` 与双 DMG 摘要匹配。首次 [Preview Pages 45340348583](https://github.com/ansermail/anser/actions/runs/45340348583) 在安装器公开前主动取消，官网保持 0.1.44；公开后触发 [Preview Pages 45345215670](https://github.com/ansermail/anser/actions/runs/45345215670) 部署成功。本机已安装的正式客户端未替换，由用户自行更新；Windows/Intel 实机长期使用与原位升级仍需单独验收，完整证据见 [0.1.45 发布工作点](working/releases/RELEASE_0_1_45_WORKING.md)。
+
+## 前一正式版本：0.1.44（2026-11-22）
 
 0.1.44 Alpha 于 2026-11-22 19:48:37（Asia/Shanghai）公开为 [latest](https://github.com/ansermail/anser/releases/tag/v0.1.44)，固定源码 `aa8ed1d019952b2868b711cc1186df1a35d3b27f`、注释标签 `v0.1.44`、Release ID `454405997`。本版为富文本与 Markdown 写信加入可视化表格编辑，定时发送改为悬浮面板并限制过去时间，长收件人与抄送列表可显示 `+N` 并在行内展开，附件恢复紧凑卡片与真实缩略图，同时补齐官方邮箱服务商图标、深色品牌页脚保留、WebView Backspace 防护和多项布局修正。完整说明见 [v0.1.44](releases/v0.1.44.md)。
 
