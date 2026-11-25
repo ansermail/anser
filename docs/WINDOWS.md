@@ -34,6 +34,15 @@ node scripts/windows-build.mjs
 
 ## 验证与发布边界
 
+### 平台工程约束
+
+- **可执行子系统与菜单**：Windows 发布二进制必须使用 GUI 子系统（`PE Subsystem=2`），避免双击应用弹出终端；默认 `File / Edit / Window / Help` 原生菜单仅在 macOS 设置。
+- **融合顶栏与窗口权限**：主窗口与外部邮件窗口按融合式布局共用由 shadcn `Button` 组合的最小化 / 最大化还原 / 关闭按钮，不重复展示独立原生标题栏的图标与应用名。保留拖动、边缘缩放、最大化/还原状态同步、主窗口最小化或关闭后隐藏到后台与系统托盘，以及外部邮件窗口正常关闭（不套用主窗口隐藏策略）。同步核对主/外部 capability 的 `minimize` / `toggle-maximize` / `close` 权限；标题栏操作不得触发写信或设置 `Dialog` 的外部点击关闭。
+- **系统托盘与通知区域**：托盘图标可见性由 Windows 用户决定，禁止改写通知区域注册表来强制显示，优先在实际桌面通过系统界面固定；Windows 托盘保留随界面语言切换的静态提示。
+- **安装器与文件关联边界**：安装器仅注册 `OpenWithProgids`、`Applications/SupportedTypes` 与 `Capabilities` 候选项，严禁写入扩展名默认值或改写受保护的 `UserChoice` 来绕过系统默认应用确认。当前 Tauri NSIS 默认关联宏会写扩展名默认值，因此 Windows 配置清空继承的 `fileAssociations` 并使用专用 hooks；更换安装器时须同时核对默认值、可选处理程序与卸载清理，不能仅检查 `UserChoice`。
+- **源码换行与 CI 脚本**：仓库源文件统一使用 LF（由 `.gitattributes` 固定），避免 Windows checkout 的自动 CRLF 转换引起全项目格式检查误报；Windows CI 脚本统一使用 PowerShell 7（`pwsh`）读取 UTF-8，不依赖 Windows PowerShell 5 的本地代码页。
+- **Windows CI 与托盘验收**：Windows CI 须实测 GUI 子系统、主/外部窗口无原生菜单、点击三类自定义顶栏按钮、最小化隐藏及真实托盘点击恢复。托盘验收同时兼容 UI Automation 与 MSAA：部分 Windows Server runner 仅暴露任务栏 Pane、不暴露图标子节点，不能将定位失败判为托盘未创建；须通过 MSAA 读取真实图标名称与边界后实际点击并检查主窗口恢复，不以直接调用窗口恢复代替。编译、安装包、启动冒烟与真实桌面验收分别记录。
+
 Windows validation 执行格式、前端与脚本测试、生产构建、Rust 与 IMAP 测试，然后安装 NSIS 包。原生冒烟检查 WebView2 首屏、外部虚构 EML 正文、正文外链实际点击、通知协议注册及默认关联未被改写；完成后卸载隔离测试应用。它不连接真实邮箱。
 
 Release desktop 将 macOS 两架构与 Windows x64 一并收齐后才生成草稿。新版本共九项资源：两组 Mac DMG/更新归档/签名，Windows NSIS EXE/签名，以及包含三平台的 `latest.json`。Homebrew 仍仅同步两份 Mac DMG。
