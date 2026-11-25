@@ -4,9 +4,9 @@ import type { WorkItem } from "@/lib/workbench";
 import { mailAiSettingsEvent } from "@/lib/mail-ai";
 import { DesktopTitlebar } from "./components/desktop-titlebar";
 import {
+  createMailListTimeFormatter,
   dateLocale,
   formatMailTime,
-  formatMailListTime,
   interfaceLanguageRevision,
   setInterfaceLanguage,
   t,
@@ -2114,6 +2114,7 @@ export default function App({
         tagManager.initial.includes(tag) !== tagManager.selection.includes(tag),
     );
   const bodyReady = detail?.mail.id === selected;
+  const formatListTime = createMailListTimeFormatter();
   return (
     <SidebarProvider
       className={`app-shell ${readerExpanded ? "reader-expanded" : ""}`}
@@ -3535,7 +3536,7 @@ export default function App({
                                     dateTime={m.date}
                                     title={formatMailTime(m.date)}
                                   >
-                                    {formatMailListTime(m.date)}
+                                    {formatListTime(m.date)}
                                   </time>
                                 </div>
                                 <div className="row-subject">

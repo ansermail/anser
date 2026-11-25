@@ -2,6 +2,7 @@
 import { afterEach, expect, it } from "vitest";
 import {
   calendarLocale,
+  createMailListTimeFormatter,
   dateLocale,
   interfaceLanguage,
   formatMailListTime,
@@ -18,14 +19,19 @@ afterEach(() => {
 });
 it("keeps list dates compact in local calendar time and full timestamps available", () => {
   const now = new Date(2026, 10, 8, 12);
+  const formatListTime = createMailListTimeFormatter(now);
   const today = new Date(2026, 10, 8, 0, 7, 42).toISOString();
-  expect(formatMailListTime(today, now)).toBe("00:07");
+  expect(formatListTime(today)).toBe("00:07");
   expect(formatMailTime(today)).toContain("00:07:42");
   const recent = new Date(2026, 10, 6, 15).toISOString();
-  expect(formatMailListTime(recent, now)).not.toContain("2026");
+  expect(formatListTime(recent)).not.toContain("2026");
   const old = new Date(2025, 10, 6, 15).toISOString();
-  expect(formatMailListTime(old, now)).toContain("2025");
+  expect(formatListTime(old)).toContain("2025");
+  expect(formatListTime(new Date(2026, 10, 8, 14, 26).toISOString())).toBe(
+    "14:26",
+  );
   setInterfaceLanguage("en");
+  expect(createMailListTimeFormatter(now)(recent)).toBe("Nov 6");
   expect(formatMailListTime(recent, now)).toBe("Nov 6");
   expect(formatMailListTime("invalid", now)).toBe("Unknown date");
 });

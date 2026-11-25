@@ -34,22 +34,42 @@ export function formatMailTime(value: string) {
   return `${date.getFullYear()}/${pad(date.getMonth() + 1)}/${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
 }
 
-/** Compact list-only display; original dates and full reading timestamps stay intact. */
-export function formatMailListTime(value: string, now = new Date()) {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return t("Unknown date");
-  const today =
-    date.getFullYear() === now.getFullYear() &&
-    date.getMonth() === now.getMonth() &&
-    date.getDate() === now.getDate();
-  return new Intl.DateTimeFormat(
-    dateLocale(),
-    today
-      ? { hour: "2-digit", minute: "2-digit", hourCycle: "h23" }
-      : date.getFullYear() === now.getFullYear()
-        ? { month: "short", day: "numeric" }
-        : { year: "numeric", month: "short", day: "numeric" },
-  ).format(date);
+const mailListTimeFormats = {
+  today: { hour: "2-digit", minute: "2-digit", hourCycle: "h23" },
+  thisYear: { month: "short", day: "numeric" },
+  otherYear: { year: "numeric", month: "short", day: "numeric" },
+} satisfies Record<string, Intl.DateTimeFormatOptions>;
+
+// Reuse formatters within a render so each render can pick up the current
+// locale, system time zone and local calendar day.
+export function createMailListTimeFormatter(now = new Date()) {
+  const locale = dateLocale();
+  const unknownDate = t("Unknown date");
+  const year = now.getFullYear();
+  const month = now.getMonth();
+  const day = now.getDate();
+  const formatters: Partial<
+    Record<keyof typeof mailListTimeFormats, Intl.DateTimeFormat>
+  > = {};
+  return (value: string) => {
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return unknownDate;
+    const format =
+      date.getFullYear() !== year
+        ? "otherYear"
+        : date.getMonth() === month && date.getDate() === day
+          ? "today"
+          : "thisYear";
+    const formatter = (formatters[format] ??= new Intl.DateTimeFormat(
+      locale,
+      mailListTimeFormats[format],
+    ));
+    return formatter.format(date);
+  };
+}
+
+export function formatMailListTime(value: string, now?: Date) {
+  return createMailListTimeFormatter(now)(value);
 }
 
 export function setInterfaceLanguage(next: InterfaceLanguage) {

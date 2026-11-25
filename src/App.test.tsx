@@ -309,11 +309,11 @@ async function chooseListMode(label: string) {
     ) ?? null,
   );
 }
-async function seedLargeMailbox() {
+async function seedLargeMailbox(count = 205) {
   const seed = await snapshot(localQuery);
   const mail = seed.messages[0];
   const newest = new Date(mail.date).getTime();
-  seed.messages = Array.from({ length: 205 }, (_, index) => ({
+  seed.messages = Array.from({ length: count }, (_, index) => ({
     ...mail,
     id: `page-${index}`,
     subject: `Pagination mail ${index}`,
@@ -1563,18 +1563,16 @@ describe(
     );
   },
 );
-// These integration cases render 205 mails and navigate across the 200-row page.
-// The larger pagination cases use a 30s CI budget while the local suite keeps
-// 15s. The two seven-navigation cases need 60s in CI: shared Windows runners
-// measured 34-54s and macOS measured 13-34s for them.
+// These integration cases exercise the real 200-row boundary. Keep two mails
+// outside the loaded page for the round trip, consecutive seeks and final stop.
 describe(
   "reading across loaded page boundaries",
   { timeout: process.env.CI ? 30_000 : 15_000 },
   () => {
     it.each(["按对话分组", "逐封邮件"])(
-      "loads the next page and keeps previous navigation in %s mode",
+      "navigates both ways across a page boundary and stops at the final mail in %s mode",
       async (mode) => {
-        await seedLargeMailbox();
+        await seedLargeMailbox(202);
         if (mode === "逐封邮件") await chooseListMode(mode);
         expect(host.querySelectorAll("button.mail-row-main")).toHaveLength(200);
         await click(host.querySelectorAll("button.mail-row-main")[199]);
@@ -1587,10 +1585,13 @@ describe(
         expect(host.querySelector(".message-heading h1")?.textContent).toBe(
           "Pagination mail 199",
         );
-        for (let n = 0; n < 5; n++)
-          await click(host.querySelector('[aria-label="下一封邮件"]'));
+        await click(host.querySelector('[aria-label="下一封邮件"]'));
         expect(host.querySelector(".message-heading h1")?.textContent).toBe(
-          "Pagination mail 204",
+          "Pagination mail 200",
+        );
+        await click(host.querySelector('[aria-label="下一封邮件"]'));
+        expect(host.querySelector(".message-heading h1")?.textContent).toBe(
+          "Pagination mail 201",
         );
         expect(
           (host.querySelector('[aria-label="下一封邮件"]') as HTMLButtonElement)

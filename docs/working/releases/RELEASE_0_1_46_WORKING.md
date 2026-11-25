@@ -11,3 +11,10 @@
 - [0.1.46 正式发行](https://github.com/ansermail/anser/releases/tag/v0.1.46) 于 15:28:02 公开为 latest，Release ID `457755894`。公开前后的标签、说明及资源身份一致，九份公开资源匿名请求均返回 HTTP 200，标准 `latest.json` 匿名下载与审计清单逐字节一致。
 - [Homebrew 45568357638](https://github.com/ansermail/anser/actions/runs/45568357638) 成功，提交 `b83e620` 只更新 `Casks/anser.rb`，两架构 DMG 摘要均匹配。公开后将发版版本和说明按线性历史同步到 main，[Preview Pages 45569324281](https://github.com/ansermail/anser/actions/runs/45569324281) 成功。浏览器核对线上官网的两条 Mac 下载链接、一条 Windows 下载链接和新版图标均正确。
 - 本机正式应用原位升级、真实邮箱 OAuth、Intel 与 Windows 实机使用未核验。
+
+## 主分支 Windows 前端验证超时（2026-11-25）
+
+- [随发布记录触发的 Windows validation](https://github.com/ansermail/anser/actions/runs/45569324370/job/139051781046) 中，`pnpm test:ci` 的两条跨页阅读用例分别经过 62.6 秒（按对话分组）和 68.5 秒（逐封邮件）后报告超过 60 秒时限。更早的[图标提交验证](https://github.com/ansermail/anser/actions/runs/45556019518/job/139008137590) 中，同组用例分别为 58.9 秒通过和 64.1 秒超时。
+- 两条用例各在 jsdom 渲染 200 行列表并执行七次相邻导航。两次失败之间没有分页实现或测试修改。相同发布记录提交的 [macOS Checks](https://github.com/ansermail/anser/actions/runs/45569324309) 分别用时 31.8 秒和 27.5 秒并通过。本机 Apple Silicon 以 `CI=1 pnpm exec vitest run src/App.test.tsx -t 'loads the next page and keeps previous navigation'` 复跑，两条分别用时 8.5 秒和 9.3 秒并通过。
+- 日志只报告测试超时，具体耗时热点仍待定位。两次主分支 Windows 原生作业和 0.1.46 标签的正式发布作业均通过。当前核查未修改测试门槛或重跑远程作业。
+- 后续修复：邮件列表同轮渲染复用日期格式化器。两条用例保留实际 200 行分页、两种模式、跨页往返、连续越界读取和末封禁用，将页外测试邮件从五封减为两封。超时门槛未改。本机同样以 `CI=1` 执行 12 项分页和跨页阅读检查，全部通过，两条用例分别用时 5.1 秒和 6.2 秒。格式、日期单测、生产及 Pages 构建通过，等待 Windows CI 核验。
