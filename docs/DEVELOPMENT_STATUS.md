@@ -2,7 +2,15 @@
 
 依据 PRD 第 5、8、9 节、实施记录和当前代码核查。当前仍为 Alpha；功能代码已存在与真实场景验收通过分别记录。早期回归使用临时存储/演示数据；2026-10-05 用户授权后增加当前腾讯企业邮箱与 QQ 邮箱互发测试，未向其他地址发送，未删除真实邮件。
 
-## 当前执行检查点：升级包管理器至 pnpm 10 并合入本地 main（2026-11-25）
+## 当前执行检查点：品牌图标替换（2026-11-25）
+
+首轮完成信封内的大雁剪影、飞雁衔信、折纸大雁三款草案，随后比较圆润折纸雁的翼根折面、雁身折面与衔信版本。用户提供新的雁形与信封共用轮廓的参考，当前以该轮廓为方向，试用墨绿 `#244D3F`、灰绿 `#74967D` 与暖白 `#FAF6EC`。
+
+用户确认采用暖白底、墨绿「大雁传书」应用图标。沿认可的造型绘制可编辑的 [SVG 母版](../assets/branding/anser-app-icon.svg)，以 Tauri CLI `icon` 命令生成 macOS、Windows 桌面资源，再以 `icon --png 1024` 生成官网与客户端共用的 `public/app-icon.png`。官网首页与演示页标签栏也使用同一 PNG。
+
+本地通过 `npm run build`、`npm run build:preview`、`npm run test:desktop`（37 项）、官网与演示专项测试（11 项）、`npm run format:check` 和 `git diff --check`。浏览器核对官网页首、演示侧栏与两页的标签栏引用均加载同一 PNG。使用 `iconutil` 解包 macOS ICNS，并解码 Windows ICO，核对现有尺寸列表与透明边缘。原生客户端安装与运行、云端构建及正式发布未执行。
+
+## 前一阶段：升级包管理器至 pnpm 10 并合入 main（2026-11-25）
 
 - **迁移范围**：
   - [package.json](../package.json)：声明 `"packageManager": "pnpm@10.28.0"`，将内部脚本 `build` / `build:preview` 切换为 `pnpm`，配置 `pnpm.onlyBuiltDependencies: ["esbuild"]`（消除 pnpm 10 忽略构建脚本警告），并显式补全此前在 `npm` 扁平依赖下被隐式提升的直接依赖 `@tiptap/core`（`^3.31.3`）。

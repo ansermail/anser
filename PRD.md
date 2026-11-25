@@ -251,7 +251,7 @@ IMAP 和 POP3 是可选的收件方式，SMTP 用于发送。POP3 不提供 IMAP
 ## 15. 已确认的设计与开发决策（2026-09-30）
 
 - 面板风格：以官方 [dashboard-01](https://ui.shadcn.com/view/new-york-v4/dashboard-01) 为基准。复用 SidebarProvider / Sidebar / SidebarInset / SidebarTrigger 和 Card，保留适用于邮件的三栏布局。
-- 应用图标：暂定 `assets/branding/mail-icon-v3.png`，米白底与绿色信封；面板使用黑白灰，图标颜色保留。
+- 应用图标：采用暖白底的墨绿「大雁传书」图形，由飞雁与信封共用轮廓。桌面及官网图标统一从 [`assets/branding/anser-app-icon.svg`](assets/branding/anser-app-icon.svg) 生成。
 - 前端 React 19 + TypeScript + Vite + Tailwind 4，桌面 Tauri 2 + Rust，SQLite 索引与独立原始 MIME 存档。
 - 当前交付是 Alpha，功能实现与验证状态见 `docs/IMPLEMENTATION.md`。此状态说明不降低前述 P0 验收要求。
 
