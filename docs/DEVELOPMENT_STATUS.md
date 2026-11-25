@@ -8,7 +8,9 @@
 
 用户确认采用暖白底、墨绿「大雁传书」应用图标。沿认可的造型绘制可编辑的 [SVG 母版](../assets/branding/anser-app-icon.svg)，以 Tauri CLI `icon` 命令生成 macOS、Windows 桌面资源，再以 `icon --png 1024` 生成官网与客户端共用的 `public/app-icon.png`。官网首页与演示页标签栏也使用同一 PNG。
 
-本地通过 `npm run build`、`npm run build:preview`、`npm run test:desktop`（37 项）、官网与演示专项测试（11 项）、`npm run format:check` 和 `git diff --check`。浏览器核对官网页首、演示侧栏与两页的标签栏引用均加载同一 PNG。使用 `iconutil` 解包 macOS ICNS，并解码 Windows ICO，核对现有尺寸列表与透明边缘。原生客户端安装与运行、云端构建及正式发布未执行。
+本地通过 `npm run build`、`npm run build:preview`、`npm run test:desktop`（37 项）、官网与演示专项测试（11 项）、`npm run format:check` 和 `git diff --check`。浏览器核对官网页首、演示侧栏与两页的标签栏引用均加载同一 PNG。使用 `iconutil` 解包 macOS ICNS，并解码 Windows ICO，核对现有尺寸列表与透明边缘。同步最新 main 后，用 pnpm 10.28.0 复验生产和 Pages 构建、格式及 11 项专项测试。
+
+图标提交 [`937b451`](https://github.com/ansermail/anser/commit/937b4519b2f873f41e1a6d20712a1a4adf1f560c) 已推送到 `main`。[Preview Pages](https://github.com/ansermail/anser/actions/runs/45556019391) 部署通过，线上 PNG 与本地 SHA-256 一致。macOS Apple Silicon 已构建并启动隔离的「雁信预览」（`dev.maildesk.brandpreview`），核对项目固定签名、包内 ICNS 和原生窗口侧栏的新图标。预览无账号，与正式版并行运行，留给用户体验。记录时 [Checks](https://github.com/ansermail/anser/actions/runs/45556019392) 与 [Windows validation](https://github.com/ansermail/anser/actions/runs/45556019518) 仍在运行，未创建桌面发行版本。
 
 ## 前一阶段：升级包管理器至 pnpm 10 并合入 main（2026-11-25）
 
