@@ -1,5 +1,7 @@
 # 发布与应用内更新
 
+0.1.46 发版准备见 [发布工作点](working/releases/RELEASE_0_1_46_WORKING.md) 与 [0.1.46 发布说明](releases/v0.1.46.md)。
+
 ## 当前版本：0.1.45（2026-11-24）
 
 0.1.45 Alpha 于 2026-11-24 15:04:35（Asia/Shanghai）公开为 [latest](https://github.com/ansermail/anser/releases/tag/v0.1.45)，固定源码 `1e7e238bb8cd974c289cd570afc5dde641307664`、注释标签 `v0.1.45`、Release ID `456407212`。本版基于真机走查与全量审计修复设置页「AI 智能助手」卡片溢出、`--muted-foreground`/`--ring` 语义变量、`SelectTrigger` 省略号、深色写信输入与画布主题同步、规则提示条按钮、通讯录内嵌搜索、1000px 窄窗阅读/周历工具栏以及工作台「日期 + 具体时间」等高单行数字时分输入；后端同步修复空同步破坏分页游标、IDLE 重启归属竞态、冷启动索引全表重写、单事务批量已读与多项并发/缓存性能问题。完整说明见 [v0.1.45](releases/v0.1.45.md)。
