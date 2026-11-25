@@ -1,8 +1,12 @@
 # 发布与应用内更新
 
-0.1.46 发版准备见 [发布工作点](working/releases/RELEASE_0_1_46_WORKING.md) 与 [0.1.46 发布说明](releases/v0.1.46.md)。
+## 当前版本：0.1.46（2026-11-25）
 
-## 当前版本：0.1.45（2026-11-24）
+0.1.46 Alpha 于 2026-11-25 15:28:02（Asia/Shanghai）公开为 [latest](https://github.com/ansermail/anser/releases/tag/v0.1.46)，固定源码 `0a92cf230846377f378f74c0494bb732ce860e22`，Release ID `457755894`。本版启用「大雁传书」图标并纳入界面可读性调整，完整改动见 [0.1.46 发布说明](releases/v0.1.46.md)。
+
+[Release desktop](https://github.com/ansermail/anser/actions/runs/45560298955) 的门槛检查、Mac 双架构、Windows x64 安装与冒烟及草稿汇总均通过。九份资源的大小和 SHA-256、三份更新签名、Mac 安装镜像和更新归档一致性、Windows GUI 子系统和三端新图标已核验。标准 `latest.json` 匿名下载与审计文件逐字节一致。[Homebrew](https://github.com/ansermail/anser/actions/runs/45568357638) 已完成，配方提交 `b83e620`。本机原位升级由用户自行完成。详见 [发布工作点](working/releases/RELEASE_0_1_46_WORKING.md)。
+
+## 前一正式版本：0.1.45（2026-11-24）
 
 0.1.45 Alpha 于 2026-11-24 15:04:35（Asia/Shanghai）公开为 [latest](https://github.com/ansermail/anser/releases/tag/v0.1.45)，固定源码 `1e7e238bb8cd974c289cd570afc5dde641307664`、注释标签 `v0.1.45`、Release ID `456407212`。本版基于真机走查与全量审计修复设置页「AI 智能助手」卡片溢出、`--muted-foreground`/`--ring` 语义变量、`SelectTrigger` 省略号、深色写信输入与画布主题同步、规则提示条按钮、通讯录内嵌搜索、1000px 窄窗阅读/周历工具栏以及工作台「日期 + 具体时间」等高单行数字时分输入；后端同步修复空同步破坏分页游标、IDLE 重启归属竞态、冷启动索引全表重写、单事务批量已读与多项并发/缓存性能问题。完整说明见 [v0.1.45](releases/v0.1.45.md)。
 
