@@ -119,13 +119,13 @@ it("reads actual associations without changing defaults and verifies an explicit
 });
 it("sets Anser as the default mail client and rereads the actual system state", async () => {
   await render();
-  expect(document.body.textContent).toContain("当前默认：Thunderbird");
+  expect(document.body.textContent).toContain("Thunderbird");
   const button = [...document.querySelectorAll("button")].find(
     (item) => item.textContent === "设为默认邮件应用",
   )!;
   await act(async () => button.click());
   expect(mocks.call).toHaveBeenCalledWith("set_default_mail_client");
-  expect(document.body.textContent).toContain("雁信已是默认邮件应用");
+  expect(document.body.textContent).toContain("Anser");
   expect(document.body.textContent).toContain("已是默认");
 });
 it("does not report success when macOS keeps another default mail client", async () => {
@@ -142,7 +142,7 @@ it("does not report success when macOS keeps another default mail client", async
   )!;
   await act(async () => button.click());
   expect(document.body.textContent).toContain("macOS 未完成更改");
-  expect(document.body.textContent).not.toContain("雁信已是默认邮件应用");
+  expect(document.body.textContent).not.toContain("已是默认");
 });
 it("disables directly by restoring the recorded app without a menu or dialog", async () => {
   server.items[0].isDefault = true;

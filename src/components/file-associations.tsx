@@ -16,6 +16,7 @@ import { Button, ButtonLabel } from "./ui/button";
 import { Badge } from "./ui/badge";
 import { Label } from "./ui/label";
 import { Switch } from "./ui/switch";
+import { Separator } from "./ui/separator";
 import { Alert, AlertDescription } from "./ui/alert";
 
 type Association = {
@@ -60,13 +61,14 @@ function errorText(error: unknown) {
 }
 export function FileAssociations() {
   const enabled = native && !isDemo();
+  const windows = isWindows();
   const [data, setData] = useState<Associations>({
     supported: enabled,
     busy: false,
     items: [],
   });
   const [mailClient, setMailClient] = useState<DefaultMailClient>({
-    supported: enabled && !isWindows(),
+    supported: enabled && !windows,
     busy: false,
     currentName: "",
     currentId: "",
@@ -160,7 +162,7 @@ export function FileAssociations() {
   async function setDefaultMailClient() {
     if (
       !enabled ||
-      isWindows() ||
+      windows ||
       pending.current ||
       mailClient.busy ||
       mailClientBusy
@@ -209,8 +211,9 @@ export function FileAssociations() {
         currentId: "",
         isDefault: false,
       }));
+  const mailApplication = mailClient.currentName || t("Not associated");
   return (
-    <Card>
+    <Card className="system-defaults-card">
       <CardHeader>
         <CardTitle>{t("System default apps")}</CardTitle>
         <CardDescription>
@@ -237,14 +240,6 @@ export function FileAssociations() {
             {t("Sample mode does not read or change system file associations.")}
           </p>
         )}
-        {!!items.length && (
-          <Badge variant="secondary" className="w-fit">
-            {t("Associated {count} of {total}", {
-              count: items.filter((x) => x.isDefault).length,
-              total: items.length,
-            })}
-          </Badge>
-        )}
         {data.busy && (
           <p className="text-sm" role="status">
             {t(
@@ -257,91 +252,93 @@ export function FileAssociations() {
             <AlertDescription>{error}</AlertDescription>
           </Alert>
         )}
-        <div className="divide-y">
-          {enabled && (
-            <div className="flex items-center justify-between gap-4 py-4 first:pt-0 last:pb-0">
-              <div className="min-w-0">
-                <Label>{t("Default mail app")}</Label>
-                <p className="mt-1 text-sm text-muted-foreground">
-                  {isWindows()
-                    ? t(
-                        "Windows manages the default mail app. Open default app settings to choose Anser.",
-                      )
-                    : mailClient.isDefault
-                      ? t("Anser is the default mail app")
-                      : t("Current default: {name}", {
-                          name: mailClient.currentName || t("Not associated"),
-                        })}
-                </p>
-              </div>
-              {isWindows() ? (
-                <Button variant="outline" size="sm" onClick={openDefaultApps}>
-                  {t("Open Windows default apps")}
-                </Button>
-              ) : mailClient.isDefault ? (
-                <Badge variant="secondary" className="shrink-0">
-                  {t("Already default")}
-                </Badge>
-              ) : (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="shrink-0"
-                  disabled={
-                    disabled ||
-                    !mailClient.supported ||
-                    mailClientBusy ||
-                    refreshing
-                  }
-                  onClick={() => void setDefaultMailClient()}
+        {enabled && (
+          <div className="system-default-mail">
+            <div className="grid min-w-0 gap-1">
+              <h3 className="text-sm font-semibold">{t("Default mail app")}</h3>
+              <p className="text-sm leading-snug text-muted-foreground [overflow-wrap:anywhere]">
+                {windows
+                  ? t(
+                      "Windows manages the default mail app. Open default app settings to choose Anser.",
+                    )
+                  : mailApplication}
+              </p>
+            </div>
+            {windows ? (
+              <Button variant="outline" size="sm" onClick={openDefaultApps}>
+                {t("Open Windows default apps")}
+              </Button>
+            ) : mailClient.isDefault ? (
+              <Badge variant="secondary">{t("Already default")}</Badge>
+            ) : (
+              <Button
+                variant="default"
+                size="sm"
+                aria-busy={mailClientBusy}
+                disabled={disabled || !mailClient.supported}
+                onClick={() => void setDefaultMailClient()}
+              >
+                <ButtonLabel
+                  reserve={[t("Set as default mail app"), t("Setting…")]}
                 >
                   {mailClientBusy
                     ? t("Setting…")
                     : t("Set as default mail app")}
-                </Button>
-              )}
-            </div>
-          )}
-          {enabled && !data.supported && !isWindows() && (
-            <p className="py-4 text-sm text-muted-foreground">
-              {t("File association settings are currently available on macOS.")}
-            </p>
-          )}
-          {items.map((item) => (
-            <div
-              key={item.extension}
-              className="flex items-center justify-between gap-4 py-4 first:pt-0 last:pb-0"
-            >
-              <div className="min-w-0">
-                <Label
-                  htmlFor={`file-association-${item.extension}`}
-                  className="gap-2"
-                >
-                  {item.extension.toUpperCase()}
-                  <span className="font-normal text-muted-foreground">
-                    .{item.extension}
-                  </span>
-                </Label>
-                <p className="mt-1 text-sm text-muted-foreground">
-                  {t("Default application: {name}", {
-                    name: item.currentName || t("Not associated"),
-                  })}
-                </p>
+                </ButtonLabel>
+              </Button>
+            )}
+          </div>
+        )}
+        {enabled && !data.supported && !windows && (
+          <p className="text-xs text-muted-foreground">
+            {t("File association settings are currently available on macOS.")}
+          </p>
+        )}
+        {!!items.length && (
+          <>
+            {enabled && <Separator />}
+            <section className="grid gap-2" aria-label={t("Mail files")}>
+              <div className="system-file-row text-sm font-semibold">
+                <h3>{t("Mail files")}</h3>
+                <span>{t("Default application")}</span>
               </div>
-              <Switch
-                id={`file-association-${item.extension}`}
-                checked={item.isDefault}
-                disabled={disabled}
-                aria-label={t("Open {extension} files with Anser", {
-                  extension: `.${item.extension}`,
-                })}
-                onCheckedChange={(checked) =>
-                  void change(item.extension, checked)
-                }
-              />
-            </div>
-          ))}
-        </div>
+              <div>
+                {items.map((item) => (
+                  <div
+                    key={item.extension}
+                    className="system-file-row py-2 first:pt-0 last:pb-0"
+                  >
+                    <Label
+                      htmlFor={`file-association-${item.extension}`}
+                      className="font-normal"
+                    >
+                      .{item.extension}
+                    </Label>
+                    <span
+                      id={`file-association-app-${item.extension}`}
+                      className="min-w-0 text-sm text-muted-foreground [overflow-wrap:anywhere]"
+                    >
+                      {item.currentName || t("Not associated")}
+                    </span>
+                    <Switch
+                      id={`file-association-${item.extension}`}
+                      className="justify-self-end"
+                      checked={item.isDefault}
+                      disabled={disabled}
+                      aria-label={t("Open {extension} files with Anser", {
+                        extension: `.${item.extension}`,
+                      })}
+                      aria-describedby={`file-association-app-${item.extension}`}
+                      onCheckedChange={(checked) =>
+                        void change(item.extension, checked)
+                      }
+                    />
+                  </div>
+                ))}
+              </div>
+            </section>
+          </>
+        )}
       </CardContent>
     </Card>
   );

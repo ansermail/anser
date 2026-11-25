@@ -281,6 +281,7 @@ export default function App({
   const updates = useAppUpdate();
   const { askConfirmation, confirmationDialog } = useConfirmation();
   const sidebarScrollFade = useScrollFade("vertical");
+  const accountTextFade = useScrollFade("horizontal");
   const mailListScrollFade = useScrollFade("vertical");
   useEffect(() => disableNativeContextMenu(document), []);
   useEffect(() => trackPointerFocus(document), []);
@@ -2314,8 +2315,20 @@ export default function App({
                           >
                             <span className={`account-dot color-${i % 4}`} />
                             <span>
-                              {a.name}
-                              <small>{a.email}</small>
+                              <span
+                                className="account-text"
+                                ref={accountTextFade}
+                                title={a.name}
+                              >
+                                <span>{a.name}</span>
+                              </span>
+                              <small
+                                className="account-text"
+                                ref={accountTextFade}
+                                title={a.email}
+                              >
+                                <span>{a.email}</span>
+                              </small>
                             </span>
                             {!a.enabled && <span className="paused-dot" />}
                           </Button>

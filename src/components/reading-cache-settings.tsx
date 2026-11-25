@@ -189,14 +189,14 @@ export function ReadingCacheSettings() {
         </div>
         <Separator />
         <div className="settings-tool-row items-center justify-between gap-4">
-          <strong className="text-sm">
+          <p className="text-sm font-medium tabular-nums">
             {status
               ? t("{value0} messages · {value1}", {
                   value0: status.entries,
                   value1: cacheSize(status.bytes),
                 })
               : t("Reading cache unavailable")}
-          </strong>
+          </p>
           <Button
             variant="outline"
             size="sm"

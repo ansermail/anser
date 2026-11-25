@@ -112,10 +112,12 @@ export function NetworkProxySettings() {
         <CardContent className="flex flex-wrap items-center justify-between gap-4">
           {proxy ? (
             <>
-              <p className="text-sm">
-                {proxy.name} · {proxy.kind.toUpperCase()} · {proxy.host}:
-                {proxy.port}
-              </p>
+              <div className="grid min-w-0 gap-1 [overflow-wrap:anywhere]">
+                <p className="text-sm font-medium">{proxy.name}</p>
+                <p className="text-xs text-muted-foreground tabular-nums">
+                  {proxy.kind.toUpperCase()} · {proxy.host}:{proxy.port}
+                </p>
+              </div>
               <Button
                 variant="outline"
                 size="sm"
@@ -129,9 +131,11 @@ export function NetworkProxySettings() {
               </Button>
             </>
           ) : (
-            <p className="text-sm text-muted-foreground leading-relaxed">
-              {t("Using a direct connection.")}
-            </p>
+            ready && (
+              <p className="text-xs text-muted-foreground">
+                {t("Using a direct connection.")}
+              </p>
+            )
           )}
         </CardContent>
       </Card>

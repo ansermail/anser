@@ -782,10 +782,11 @@ kbd {
   pointer-events: none;
 }
 .row-check {
+  display: flex;
+  align-items: center;
   flex: 0 0 30px;
   position: relative;
   padding-left: 8px;
-  padding-top: 13px;
   opacity: 0;
 }
 .mail-row:is(:hover, :focus-within) .row-check,
@@ -795,9 +796,10 @@ kbd {
 .row-check [data-slot="checkbox"]::before {
   content: "";
   position: absolute;
-  top: 8px;
-  inset-inline: 3px;
-  height: 26px;
+  inset-block: 0;
+  inset-inline: 1px;
+  height: 28px;
+  margin-block: auto;
 }
 .mail-row-main {
   flex: 1;
@@ -835,6 +837,7 @@ kbd {
 .row-top time {
   font-size: 11px;
   color: var(--muted);
+  font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
 .row-subject {
@@ -971,8 +974,13 @@ kbd {
 .batch-toolbar {
   justify-content: flex-start;
   gap: 1px;
-  padding-inline: 10px;
+  padding-inline: 8px;
   background: var(--secondary);
+}
+.batch-toolbar [data-slot="button"] {
+  flex-shrink: 0;
+  width: 28px;
+  height: 28px;
 }
 .batch-toolbar [data-slot="separator"] {
   height: 16px;
@@ -982,7 +990,8 @@ kbd {
   font-size: 12px;
   color: var(--muted);
   display: block;
-  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.2;
 }
 .reader {
   flex: 1;
@@ -2469,6 +2478,27 @@ kbd {
 .format-toolbar-controls > * {
   flex-shrink: 0;
 }
+:is(
+  [data-scroll-fade-top],
+  [data-scroll-fade-bottom],
+  [data-scroll-fade-left],
+  [data-scroll-fade-right]
+) {
+  /* A nested fade starts with opaque edges of its own. */
+  --scroll-fade-start-color: black;
+  --scroll-fade-end-color: black;
+  --scroll-fade-start: 0px;
+  --scroll-fade-end: 0px;
+  --scroll-fade-mask: linear-gradient(
+    var(--scroll-fade-direction),
+    var(--scroll-fade-start-color),
+    black var(--scroll-fade-start),
+    black calc(100% - var(--scroll-fade-end)),
+    var(--scroll-fade-end-color)
+  );
+  -webkit-mask-image: var(--scroll-fade-mask);
+  mask-image: var(--scroll-fade-mask);
+}
 :is([data-scroll-fade-top], [data-scroll-fade-bottom]) {
   --scroll-fade-direction: to bottom;
   --scroll-fade-size: min(18px, 50%);
@@ -2484,22 +2514,6 @@ kbd {
 :is([data-scroll-fade-bottom], [data-scroll-fade-right]) {
   --scroll-fade-end-color: transparent;
   --scroll-fade-end: var(--scroll-fade-size);
-}
-:is(
-  [data-scroll-fade-top],
-  [data-scroll-fade-bottom],
-  [data-scroll-fade-left],
-  [data-scroll-fade-right]
-) {
-  --scroll-fade-mask: linear-gradient(
-    var(--scroll-fade-direction),
-    var(--scroll-fade-start-color, black),
-    black var(--scroll-fade-start, 0px),
-    black calc(100% - var(--scroll-fade-end, 0px)),
-    var(--scroll-fade-end-color, black)
-  );
-  -webkit-mask-image: var(--scroll-fade-mask);
-  mask-image: var(--scroll-fade-mask);
 }
 .compose-body-actions {
   display: flex;
@@ -4559,10 +4573,18 @@ kbd {
   flex: 1;
   min-width: 0;
   width: auto;
+  padding-inline-end: 2px;
 }
-.account-navigation > [data-slot="collapsible-trigger"] {
+.account-item .account-text {
+  display: block;
+  overflow: hidden;
+}
+.account-text > span {
+  display: inline-block;
+}
+.account-navigation > [data-slot="collapsible-trigger"]:not(.account-item) {
   flex-shrink: 0;
-  margin-right: 8px;
+  margin-inline-end: 8px;
 }
 .remote-folder-list {
   padding: 4px 8px 8px 12px;
@@ -4944,6 +4966,30 @@ kbd {
   font-size: 12px;
   color: var(--muted);
   overflow-wrap: anywhere;
+}
+.system-defaults-card [data-slot="card-title"] {
+  font-size: 16px;
+  line-height: 1.25;
+}
+.system-default-mail {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px 16px;
+}
+.system-file-row {
+  display: grid;
+  grid-template-columns: minmax(4.25rem, 1fr) minmax(0, 2fr) 2rem;
+  align-items: center;
+  gap: 12px;
+}
+@container card-header (max-width: 300px) {
+  .system-defaults-card [data-slot="card-action"] {
+    grid-column: 1 / -1;
+    grid-row: auto;
+    justify-self: start;
+  }
 }
 .settings-preferences-grid {
   display: flex;
