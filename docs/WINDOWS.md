@@ -16,21 +16,21 @@ Windows 主窗口最小化或关闭后继续在后台运行，可通过系统托
 
 ## Windows 开发
 
-需要 Node.js 22.15+、Rust MSVC 工具链、Visual Studio Build Tools 的“使用 C++ 的桌面开发”及 Windows SDK、WebView2 Runtime。CI 固定 Rust 1.91.1，PowerShell 脚本使用 PowerShell 7。
+需要 Node.js 22.15+、pnpm 10（见 `packageManager`）、Rust MSVC 工具链、Visual Studio Build Tools 的“使用 C++ 的桌面开发”及 Windows SDK、WebView2 Runtime。CI 固定 Rust 1.91.1，PowerShell 脚本使用 PowerShell 7。
 
 ```powershell
-npm ci
-npm run desktop
+pnpm install --frozen-lockfile
+pnpm desktop
 ```
 
-`npm run desktop` 复用项目启动器，在 Windows 不执行 macOS 签名或应用包封装。OAuth 配置仍由仓库外配置或环境变量加载，不提交令牌或客户端配置。
+`pnpm desktop` 复用项目启动器，在 Windows 不执行 macOS 签名或应用包封装。OAuth 配置仍由仓库外配置或环境变量加载，不提交令牌或客户端配置。
 
 ```powershell
-npm run build
+pnpm build
 node scripts/windows-build.mjs
 ```
 
-上述命令生成不发布更新的验证安装器，输出在 `src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/`。本地构建需配置既有三项桌面 OAuth 环境变量。正式打包使用 `npm run desktop:build` 或 Release desktop 工作流，并要求既有 Tauri 更新私钥。
+上述命令生成不发布更新的验证安装器，输出在 `src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/`。本地构建需配置既有三项桌面 OAuth 环境变量。正式打包使用 `pnpm desktop:build` 或 Release desktop 工作流，并要求既有 Tauri 更新私钥。
 
 ## 验证与发布边界
 

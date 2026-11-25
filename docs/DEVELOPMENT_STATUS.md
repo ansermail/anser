@@ -2,7 +2,19 @@
 
 依据 PRD 第 5、8、9 节、实施记录和当前代码核查。当前仍为 Alpha；功能代码已存在与真实场景验收通过分别记录。早期回归使用临时存储/演示数据；2026-10-05 用户授权后增加当前腾讯企业邮箱与 QQ 邮箱互发测试，未向其他地址发送，未删除真实邮件。
 
-## 当前执行检查点：全量 70 项 UI 设计规范沉淀与 U1–U11 全量打磨已合入本地 main（2026-11-25）
+## 当前执行检查点：升级包管理器至 pnpm 10 并合入本地 main（2026-11-25）
+
+- **迁移范围**：
+  - [package.json](../package.json)：声明 `"packageManager": "pnpm@10.28.0"`，将内部脚本 `build` / `build:preview` 切换为 `pnpm`，配置 `pnpm.onlyBuiltDependencies: ["esbuild"]`（消除 pnpm 10 忽略构建脚本警告），并显式补全此前在 `npm` 扁平依赖下被隐式提升的直接依赖 `@tiptap/core`（`^3.31.3`）。
+  - 锁文件与配置：由 `package-lock.json` 导入并生成 `pnpm-lock.yaml`，移除 `package-lock.json`；[src-tauri/tauri.conf.json](../src-tauri/tauri.conf.json) 的 `beforeDevCommand` / `beforeBuildCommand` 切换为 `pnpm dev` / `pnpm build`。
+  - GitHub Actions 流水线：[ci.yml](../.github/workflows/ci.yml)、[windows.yml](../.github/workflows/windows.yml)、[release.yml](../.github/workflows/release.yml)、[signing-check.yml](../.github/workflows/signing-check.yml) 与 [preview.yml](../.github/workflows/preview.yml) 统一接入 `pnpm/action-setup@v4`（自动读取 `packageManager`）+ `actions/setup-node@v6` (`cache: pnpm`) + `pnpm install --frozen-lockfile`（[preview.yml](../.github/workflows/preview.yml) 路径触发同步改为 `package.json` + `pnpm-lock.yaml`；[homebrew.yml](../.github/workflows/homebrew.yml) 仅运行裸 `node` 脚本保持不变）。
+  - 文档同步：更新 [AGENTS.md](../AGENTS.md)、[README.md](../README.md)、[USAGE.md](USAGE.md)、[WINDOWS.md](WINDOWS.md)、[UPDATES.md](UPDATES.md)、[HOMEBREW.md](HOMEBREW.md) 与 `docs/guidelines/` 中的常用命令与四文件版本同步约定（`pnpm-lock.yaml` 不写入根包 `version`）。
+- **五阶段验证记录**：
+  - **代码完成**：已完成（已提交并快进合入本地 `main`，尚未推送远端）。
+  - **自动测试通过**：本机 macOS（Node `v22.18.0` / `pnpm 10.28.0`）全绿通过 `pnpm install --frozen-lockfile`（无忽略构建脚本警告）、`pnpm format:check`、`pnpm check:ui`、`pnpm check:i18n`（1,868 条双语键）、`pnpm release:check`、`pnpm test:desktop`（37 项）、`pnpm build`、`pnpm build:preview`、`pnpm test:ci`（78 文件 / 626 项）、`pnpm tauri --version`（`2.12.0`）与 `git diff --check`。
+  - **真实场景验收 / 云端构建 / 正式发布**：**未验证**（尚未提交推送触发 GitHub Actions 的 macOS / Windows / Pages 流水线，亦未在 Windows 实机执行 `pnpm install --frozen-lockfile` 与打包验证）。
+
+## 前一阶段：全量 70 项 UI 设计规范沉淀与 U1–U11 全量打磨已合入本地 main（2026-11-25）
 
 - **本机 Codex 配置与项目规范拆分**：备份 `~/.codex/config.toml` 为 `~/.codex/config.toml.backup-20261125`，设置 `project_doc_max_bytes = 131072`，移除不支持的 `mcp_servers.penpot.type` 字段，`codex doctor` 启动配置警告清零且 Penpot MCP 实测连通；根目录 [AGENTS.md](../AGENTS.md) 从 `82,757 B` 精简至 `8,494 B`，详细规范拆分至 `docs/guidelines/`（7 份）；[雁信 UI 设计规范](UI_DESIGN_GUIDELINES.md) 扩展为完整收录 Topinspo Design Vocabulary **全部 70 项设计词条**加「克制文案与反冗余副标题」原则，并同步更新 [WINDOWS.md](WINDOWS.md)、[KEYCHAIN.md](KEYCHAIN.md) 与 [docs/README.md](README.md)。
 - **UI/UX 走查与 Codex 三轮修复（U1–U11，共 36 个前端文件 +808/-420 行，未改动 `src-tauri/`）**：

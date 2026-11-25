@@ -112,30 +112,30 @@ QQ、网易等服务通常需要先启用 IMAP / POP3 / SMTP 并获取授权码�
 
 技术栈：**React 19 · TypeScript · shadcn/ui · Tauri 2 · Rust · SQLite**。
 
-macOS 开发环境需要 Node.js 22.15 或更新版本、Rust 工具链和 Xcode Command Line Tools。CI 当前使用 Rust 1.91.1。
+macOS 开发环境需要 Node.js 22.15 或更新版本、pnpm 10（见 `packageManager`）、Rust 工具链和 Xcode Command Line Tools。CI 当前使用 Rust 1.91.1。
 
 ```sh
-npm ci
-npm run desktop
+pnpm install --frozen-lockfile
+pnpm desktop
 ```
 
-`npm run desktop` 直接运行桌面开发预览，支持真实收发与本地存档，无需重复安装。前端支持热更新，Rust 修改后自动重新编译；本机开发签名要求见 [本地开发与签名](docs/USAGE.md#本地开发与签名)。
+`pnpm desktop` 直接运行桌面开发预览，支持真实收发与本地存档，无需重复安装。前端支持热更新，Rust 修改后自动重新编译；本机开发签名要求见 [本地开发与签名](docs/USAGE.md#本地开发与签名)。
 
-仅体验界面：运行 `npm run dev`，访问 `http://127.0.0.1:1420`，点击「先体验一下」。浏览器演示不连接真实邮箱，也不会发送邮件。
+仅体验界面：运行 `pnpm dev`，访问 `http://127.0.0.1:1420`，点击「先体验一下」。浏览器演示不连接真实邮箱，也不会发送邮件。
 
 常用检查命令：
 
 ```sh
-npm run test:changed
-npm run test:related -- src/components/mail-signatures.tsx
-npm test
-npm run test:rust
-npm run test:desktop
-npm run format:check
-npm run build
+pnpm test:changed
+pnpm test:related -- src/components/mail-signatures.tsx
+pnpm test
+pnpm test:rust
+pnpm test:desktop
+pnpm format:check
+pnpm build
 ```
 
-`test:changed` 根据当前 Git 改动选择关联测试，`test:related` 根据指定源码文件选择导入它的测试；日常迭代使用这两个入口，交付前仍以完整 `npm test` 为准。
+`test:changed` 根据当前 Git 改动选择关联测试，`test:related` 根据指定源码文件选择导入它的测试；日常迭代使用这两个入口，交付前仍以完整 `pnpm test` 为准。
 
 所有界面组件统一使用 shadcn/ui，开发约定见 [AGENTS.md](AGENTS.md)。发布构建、密钥配置和 GitHub Actions 流程见 [发布与应用内更新](docs/UPDATES.md)。
 

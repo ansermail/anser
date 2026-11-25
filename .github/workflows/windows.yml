@@ -22,24 +22,26 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v6
+      - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v6
         with:
           node-version: 22
-          cache: npm
-      - run: npm ci
-      - run: npm run format:check
-      - run: npm run test:ci
-      - run: npm run test:desktop
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm format:check
+      - run: pnpm test:ci
+      - run: pnpm test:desktop
   native:
     if: inputs.installer_run_id == ''
     runs-on: windows-2022
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v6
+      - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v6
         with:
           node-version: 22
-          cache: npm
+          cache: pnpm
       - uses: dtolnay/rust-toolchain@1.91.1
         with:
           components: rustfmt
@@ -48,9 +50,9 @@ jobs:
           workspaces: src-tauri
           key: windows-x64
           cache-on-failure: true
-      - run: npm ci
+      - run: pnpm install --frozen-lockfile
       - run: cargo fmt --manifest-path src-tauri/Cargo.toml --check
-      - run: npm run build
+      - run: pnpm build
       - run: cargo test --manifest-path src-tauri/Cargo.toml
       - run: cargo test --manifest-path src-tauri/vendor/imap-proto/Cargo.toml
       - name: Build Windows validation installer

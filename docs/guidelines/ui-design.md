@@ -1,6 +1,6 @@
 # UI 设计与交互专项规范
 
-本文件沉淀 Anser（雁信）界面组件体系、视觉层级与各页面交互的专项约定。新增、调整或走查 UI 时，**须先阅读通用视觉与验收基线 [雁信 UI 设计规范（Topinspo Design Vocabulary）](../UI_DESIGN_GUIDELINES.md)**（涵盖内边距/留白/分隔、内容层级、等宽数字、长内容截断、同心圆角与细边框、WCAG 对比度、渐进展开及走查验收清单），再遵循本页的页面与控件细则。修改 UI 后须执行 `npm run check:ui`、相关交互测试及 `npm run build`，并在开发预览中核对实际效果。
+本文件沉淀 Anser（雁信）界面组件体系、视觉层级与各页面交互的专项约定。新增、调整或走查 UI 时，**须先阅读通用视觉与验收基线 [雁信 UI 设计规范（Topinspo Design Vocabulary）](../UI_DESIGN_GUIDELINES.md)**（涵盖内边距/留白/分隔、内容层级、等宽数字、长内容截断、同心圆角与细边框、WCAG 对比度、渐进展开及走查验收清单），再遵循本页的页面与控件细则。修改 UI 后须执行 `pnpm check:ui`、相关交互测试及 `pnpm build`，并在开发预览中核对实际效果。
 
 ## 1. 组件体系铁律（shadcn/ui）
 

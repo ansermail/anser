@@ -22,10 +22,11 @@ jobs:
         target: [aarch64-apple-darwin, x86_64-apple-darwin]
     steps:
       - uses: actions/checkout@v6
+      - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v6
         with:
           node-version: 22
-          cache: npm
+          cache: pnpm
       - uses: dtolnay/rust-toolchain@1.91.1
         with:
           targets: ${{ matrix.target }}
@@ -33,7 +34,7 @@ jobs:
         with:
           workspaces: src-tauri
           key: signing-${{ matrix.target }}
-      - run: npm ci
+      - run: pnpm install --frozen-lockfile
       - name: Import fixed project certificate
         env:
           ANSER_CODESIGN_P12_BASE64: ${{ secrets.ANSER_CODESIGN_P12_BASE64 }}
@@ -46,7 +47,7 @@ jobs:
           MAIL_MICROSOFT_CLIENT_ID: ${{ secrets.MAIL_MICROSOFT_CLIENT_ID }}
         run: |
           node --input-type=module -e 'import fs from "node:fs"; const c=JSON.parse(fs.readFileSync("anser-signing.config.json")); c.bundle.createUpdaterArtifacts=false; fs.writeFileSync("anser-signing.config.json",JSON.stringify(c));'
-          npm run tauri -- build --target ${{ matrix.target }} --bundles app --config anser-signing.config.json
+          pnpm tauri build --target ${{ matrix.target }} --bundles app --config anser-signing.config.json
           node scripts/mac-ci-signing.mjs verify "src-tauri/target/${{ matrix.target }}/release/bundle/macos/雁信.app"
       - name: Remove temporary signing keychain
         if: always()

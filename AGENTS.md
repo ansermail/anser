@@ -24,12 +24,12 @@
    - 新增、调整或走查 UI 时，先读 [docs/UI_DESIGN_GUIDELINES.md](docs/UI_DESIGN_GUIDELINES.md)（基于 Topinspo Design Vocabulary 的排版/留白/层级/对比度/组件/验收通用基线），再遵循 [docs/guidelines/ui-design.md](docs/guidelines/ui-design.md) 的页面与组件专项约定。
    - 禁用业务界面的原生 `date`/`time`/`datetime-local`、`datalist`、`confirm`/`prompt`/`alert`，以及 24/60 项小时/分钟长下拉菜单。
 3. **国际化（i18n）**：
-   - 所有固定文案集中维护在 `src/locales/` 简体中文与 English JSON 中，新增或修改同步双语键与插值参数并运行 `npm run check:i18n`；不翻译用户邮件内容、服务器路径、协议身份、原件或历史日志。
+   - 所有固定文案集中维护在 `src/locales/` 简体中文与 English JSON 中，新增或修改同步双语键与插值参数并运行 `pnpm check:i18n`；不翻译用户邮件内容、服务器路径、协议身份、原件或历史日志。
 4. **数据、存档、协议与隐私红线**：
    - 完整原始 MIME 原件不可变，附件保留原字节；解析/显示修复仅改派生索引。
    - 应用持久身份 `dev.maildesk.desktop`、`credentials.vault` 与钥匙串条目 `anser-credentials-key-v2` 不可更改；密码、令牌、密钥、OAuth 私密配置、更新私钥与真实邮件严禁进入 Git、发布包、截图、公开日志或备份。
    - 严禁伪造 IMAP `UID/UIDVALIDITY`、复用失步连接、对结果不明的发件自动重发、修改 Windows `UserChoice` 绕过默认应用确认，或实现已明确取消的 IMAP 服务器导入。
-   - 开发预览（`npm run desktop`）与本地/云端打包沿用免费项目固定自签身份，不回退临时签名；Rust 重编译期间待 Tauri 输出 `Running` 后再操作原生 UI。
+   - 开发预览（`pnpm desktop`）与本地/云端打包沿用免费项目固定自签身份，不回退临时签名；Rust 重编译期间待 Tauri 输出 `Running` 后再操作原生 UI。
 5. **真实收发测试授权边界**：
    - 仅允许使用当前已登录的**腾讯企业邮箱 ↔ QQ 邮箱**互发“雁信联调”无敏感数据测试邮件；收件人/抄送/密送严禁包含其他地址（Gmail 已登录不扩大发信授权）；测试修改及时恢复，不顺手迁移、移动或删除真实存档。
 
@@ -45,23 +45,23 @@
 | **AI 功能与 Agent 协作**（写信 AI 助手、双语翻译/摘要/工作报告协议，开发记录维护、开发预览时序、截图脱敏） | [docs/guidelines/ai-and-agent.md](docs/guidelines/ai-and-agent.md) | [docs/DEVELOPMENT_STATUS.md](docs/DEVELOPMENT_STATUS.md)、[docs/screenshots/README.md](docs/screenshots/README.md) |
 | **架构、平台与安全**（跨平台架构、官网与 Pages、持久身份与固定签名、凭据库、OAuth 装包核对、许可边界） | [docs/guidelines/architecture-and-security.md](docs/guidelines/architecture-and-security.md) | [docs/WINDOWS.md](docs/WINDOWS.md)、[docs/KEYCHAIN.md](docs/KEYCHAIN.md)、[docs/HOMEBREW.md](docs/HOMEBREW.md)、[docs/LICENSING.md](docs/LICENSING.md) |
 | **性能优化**（短事务与锁边界、SQLite 分页/游标/WAL 快照、FTS 候选检索、正文防抖与统计像素过滤） | [docs/guidelines/performance.md](docs/guidelines/performance.md) | [docs/IMPLEMENTATION.md](docs/IMPLEMENTATION.md) |
-| **测试、验收与发布**（分层门禁、jsdom 超时定界、真实收发范围、原生实机验收、五文件版本核对、九资源发版与更新中心） | [docs/guidelines/testing-and-release.md](docs/guidelines/testing-and-release.md) | [docs/UPDATES.md](docs/UPDATES.md)、[docs/WINDOWS.md](docs/WINDOWS.md)、[docs/HOMEBREW.md](docs/HOMEBREW.md) |
+| **测试、验收与发布**（分层门禁、jsdom 超时定界、真实收发范围、原生实机验收、四文件版本核对、九资源发版与更新中心） | [docs/guidelines/testing-and-release.md](docs/guidelines/testing-and-release.md) | [docs/UPDATES.md](docs/UPDATES.md)、[docs/WINDOWS.md](docs/WINDOWS.md)、[docs/HOMEBREW.md](docs/HOMEBREW.md) |
 
 ## 常用验证命令速查
 
 ```sh
 # 日常按改动范围执行
-npm run check:ui && npm run check:i18n && npm run format:check
-npm run test:changed                          # 或 npm run test:related -- <file>
-npm run build                                 # 生产构建（含 check:ui / check:i18n / tsc）
-npm run build:preview                         # 官网与 /demo/ 预览隔离构建检查
-npm run test:desktop                          # 桌面/发布脚本测试
-npm run test:mac-print                        # macOS 打印布局验证（需先 npm run build）
+pnpm check:ui && pnpm check:i18n && pnpm format:check
+pnpm test:changed                             # 或 pnpm test:related -- <file>
+pnpm build                                    # 生产构建（含 check:ui / check:i18n / tsc）
+pnpm build:preview                            # 官网与 /demo/ 预览隔离构建检查
+pnpm test:desktop                             # 桌面/发布脚本测试
+pnpm test:mac-print                           # macOS 打印布局验证（需先 pnpm build）
 cargo fmt --manifest-path src-tauri/Cargo.toml -- --check
-npm run test:rust                             # Rust 后端回归
+pnpm test:rust                                # Rust 后端回归
 git diff --check
 
 # 发布前完整门槛（同时参照 .github/workflows/ci.yml）
-npm run release:check && npm run test:ci && npm run test:desktop && npm run build && npm run test:rust
+pnpm release:check && pnpm test:ci && pnpm test:desktop && pnpm build && pnpm test:rust
 cargo test --manifest-path src-tauri/vendor/imap-proto/Cargo.toml
 ```

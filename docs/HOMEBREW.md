@@ -48,7 +48,7 @@ gh workflow run homebrew.yml --repo ansermail/anser --ref main -f tag=v0.1.23
 
 省略 `tag` 则选择当前 latest。通过 `GITHUB_TOKEN` 发布 Release 不会再触发 `release.published`，此时应显式 dispatch；本地 `gh release edit` 或人工发布可触发事件。发布自动化若改变，须保留这条衔接。
 
-本地只生成和核对配方：`node scripts/homebrew.mjs generate`，不会写远端。测试入口为 `npm run test:desktop`。实际安装、原位升级与 Intel 实机运行仍单独验收，不能用配方和下载校验代替。
+本地只生成和核对配方：`node scripts/homebrew.mjs generate`，不会写远端。测试入口为 `pnpm test:desktop`。实际安装、原位升级与 Intel 实机运行仍单独验收，不能用配方和下载校验代替。
 
 ## 0.1.23 主仓库配方同步（2026-10-20）
 

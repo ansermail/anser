@@ -5,13 +5,13 @@
 ## 1. 分层检查命令与发布全量门槛
 
 - **按改动范围执行**：
-  - **UI / 前端改动**：`npm run check:ui`、`npm run check:i18n`（涉及文案）、相关 Vitest 回归（`npm run test:changed` / `npm run test:related -- <file>`）、`npm run build`，并在开发预览核对效果。
-  - **Rust / 协议改动**：`cargo fmt --manifest-path src-tauri/Cargo.toml -- --check` 及相关 Rust / IMAP 回归（`npm run test:rust`、vendored `imap-proto`）。
-  - **构建/发布脚本改动**：`npm run test:desktop`。
-  - **官网 / Web 预览改动**：`npm run build:preview`，核对虚构数据及禁用真实收发/文件读取边界。
-  - **打印布局改动**：`npm run build && npm run test:mac-print`，并实测系统打印面板分页。
-  - **通用提交前门禁**：`npm run format:check` 与 `git diff --check`。仅修改文档时无需反复构建桌面应用。
-- **发布前全量门槛**：遵循 `.github/workflows/ci.yml` 与 [docs/UPDATES.md](../UPDATES.md) 执行全量前端（`npm run test:ci`）、Rust、桌面脚本、vendored IMAP 解析器（`cargo test --manifest-path src-tauri/vendor/imap-proto/Cargo.toml`）、格式/UI/i18n/生产构建与 `npm run release:check`，不得以单项通过代替完整发布检查。
+  - **UI / 前端改动**：`pnpm check:ui`、`pnpm check:i18n`（涉及文案）、相关 Vitest 回归（`pnpm test:changed` / `pnpm test:related -- <file>`）、`pnpm build`，并在开发预览核对效果。
+  - **Rust / 协议改动**：`cargo fmt --manifest-path src-tauri/Cargo.toml -- --check` 及相关 Rust / IMAP 回归（`pnpm test:rust`、vendored `imap-proto`）。
+  - **构建/发布脚本改动**：`pnpm test:desktop`。
+  - **官网 / Web 预览改动**：`pnpm build:preview`，核对虚构数据及禁用真实收发/文件读取边界。
+  - **打印布局改动**：`pnpm build && pnpm test:mac-print`，并实测系统打印面板分页。
+  - **通用提交前门禁**：`pnpm format:check` 与 `git diff --check`。仅修改文档时无需反复构建桌面应用。
+- **发布前全量门槛**：遵循 `.github/workflows/ci.yml` 与 [docs/UPDATES.md](../UPDATES.md) 执行全量前端（`pnpm test:ci`）、Rust、桌面脚本、vendored IMAP 解析器（`cargo test --manifest-path src-tauri/vendor/imap-proto/Cargo.toml`）、格式/UI/i18n/生产构建与 `pnpm release:check`，不得以单项通过代替完整发布检查。
 
 ## 2. jsdom 大列表测试超时定界
 
@@ -40,7 +40,7 @@
 
 ## 5. 版本核对与正式发布流水线
 
-- **五处版本同步与暂存核对**：发版须同步 `package.json`、`package-lock.json`、`src-tauri/Cargo.toml`、`src-tauri/Cargo.lock` 与 `src-tauri/tauri.conf.json` 的版本并补充 `docs/releases/v<版本>.md`。提交前通过 Git 暂存对象核对五处版本，创建标签前再次从固定提交读取核对（工作树的 `release:check` 不能代替提交对象核对）；必须使用新标签，严禁改写已发布版本的标签或产物。
+- **四处版本同步与暂存核对**：发版须同步 `package.json`、`src-tauri/Cargo.toml`、`src-tauri/Cargo.lock` 与 `src-tauri/tauri.conf.json` 的版本（若涉及依赖变更同步更新 `pnpm-lock.yaml`）并补充 `docs/releases/v<版本>.md`。提交前通过 Git 暂存对象核对四处版本，创建标签前再次从固定提交读取核对（工作树的 `release:check` 不能代替提交对象核对）；必须使用新标签，严禁改写已发布版本的标签或产物。
 - **九资源草稿重建与串行保护**：正式发布使用组织仓库流水线收齐完整九资源（macOS Apple Silicon / Intel 各自 DMG、更新归档、签名，Windows NSIS EXE 与签名，以及三平台 `latest.json`）；沿用既有 Tauri 更新公钥与匹配私钥，无迁移方案不得换密钥。重建未发布草稿须同步固定源码提交与发布说明，同版本已有标签必须解析到本次源码（否则换新版本，不自动移动标签）。发布任务统一串行，上传前后重核草稿身份；网络/权限/查询失败不得当作版本不存在，正式公开前仍须独立核验全部产物。
 - **发布说明一致性与更新中心**：发布说明在源码、`latest.json` 更新清单与 GitHub Release 中保留同一原文（含末尾换行）；生成/消费集成测试使用真实清单生成入口，不以手写近似清单漏掉格式差异。更新中心展示当前版本至目标版本之间所有适用已发布版本的完整说明与实际版本数（按语义版本筛选、去重、倒序，不以 patch 差值猜数量，不把分页失败或缺失目标当完整历史；失败可展示标注目标说明并重试，正文继续净化，桌面外链走系统入口）。
 - **Homebrew 自动分发校验**：正式 Release 审计公开为 latest 后，`homebrew.yml` 下载并校验双架构 DMG 并仅更新主仓库 `Casks/anser.rb`；临时 runner 仅显式信任 `ansermail/tap/anser` 单个配方再跑 `brew style / audit / fetch`（不关闭 Tap Trust 或扩大信任范围）；草稿/预发布/非 latest 不分发，重复执行无变化不提交；详见 [docs/HOMEBREW.md](../HOMEBREW.md)。

@@ -177,7 +177,7 @@ QQ、网易等通常需在邮箱官网启用 IMAP/POP3/SMTP 并获取授权码�
 
 Gmail / Microsoft 的 OAuth 需要注册属于本产品的应用。可以在账号高级设置填写 Client ID，或构建前设置 `MAIL_GOOGLE_CLIENT_ID`、`MAIL_MICROSOFT_CLIENT_ID`；Google 桌面应用如需 client secret，可设置 `MAIL_GOOGLE_CLIENT_SECRET`。不要提交实际凭据。原生应用中的 client secret 不是可保密的服务端秘密。
 
-本机开发可在项目根目录的 `.env.local` 填写上述变量；`npm run desktop` 和 `npm run desktop:build` 会加载，已有进程环境变量优先。该文件已被 Git 忽略，建议权限设为 `600`，不要使用 `VITE_` 前缀暴露到前端。修改后需要重新启动开发应用，让 Rust 重新编译配置。添加账号时选择 Gmail、填写邮箱地址，OAuth Client ID 留空即可使用本机默认配置，再点击连接并在系统浏览器完成 Google 授权。Google 控制台处于测试状态时，需要将登录账号加入测试用户；实际登录与收发仍需验收。本机配置不会自动进入 GitHub 发布流水线；组织仓库通过同名 GitHub Secrets 单独配置 Google Client ID / Secret，在下一次双架构构建中生效，已发布安装包不变。换 Client 后，原客户端签发的令牌不能直接迁到新客户端，已有 Gmail 账号如刷新授权失败需重新连接授权；高级设置手填的 Client ID 优先于构建默认值，应与新客户端配置一致。
+本机开发可在项目根目录的 `.env.local` 填写上述变量；`pnpm desktop` 和 `pnpm desktop:build` 会加载，已有进程环境变量优先。该文件已被 Git 忽略，建议权限设为 `600`，不要使用 `VITE_` 前缀暴露到前端。修改后需要重新启动开发应用，让 Rust 重新编译配置。添加账号时选择 Gmail、填写邮箱地址，OAuth Client ID 留空即可使用本机默认配置，再点击连接并在系统浏览器完成 Google 授权。Google 控制台处于测试状态时，需要将登录账号加入测试用户；实际登录与收发仍需验收。本机配置不会自动进入 GitHub 发布流水线；组织仓库通过同名 GitHub Secrets 单独配置 Google Client ID / Secret，在下一次双架构构建中生效，已发布安装包不变。换 Client 后，原客户端签发的令牌不能直接迁到新客户端，已有 Gmail 账号如刷新授权失败需重新连接授权；高级设置手填的 Client ID 优先于构建默认值，应与新客户端配置一致。
 
 代码使用系统浏览器、PKCE 和本机临时端口回调；Google 应配置桌面客户端，Microsoft 应配置公共原生客户端与 localhost 重定向及邮件委托权限。OAuth 应用发布审核、租户策略和真实授权仍需验证。参考 [Google 原生应用 OAuth](https://developers.google.com/identity/protocols/oauth2/native-app)、[Microsoft 邮件协议 OAuth](https://learn.microsoft.com/en-us/exchange/client-developer/legacy-protocols/how-to-authenticate-an-imap-pop-smtp-application-by-using-oauth)。
 
@@ -281,7 +281,7 @@ IMAP 仅使用只读目录与大小查询，POP3 核对 UIDL/LIST；不发送正
 
 所有界面组件统一使用 **shadcn/ui**。新增功能通过组合官方组件完成，不再自行实现基础控件；具体要求见 [AGENTS.md](../AGENTS.md)。定时发送使用中文 Calendar + Popover 日历和 InputGroup 紧凑时分输入，写信和发送记录的修改时间共用同一个选择器。自动补全使用 Command + Popover，已读/未读切换使用 Tabs，账号勾选使用 Checkbox。
 
-`npm run check:ui` 检查业务代码中的原生控件、自绘按钮入口和原生日期/时间选择器，`npm run build` 会先执行该检查。`src/components/ui/` 保留官方组件源码及必要适配。
+`pnpm check:ui` 检查业务代码中的原生控件、自绘按钮入口和原生日期/时间选择器，`pnpm build` 会先执行该检查。`src/components/ui/` 保留官方组件源码及必要适配。
 
 ### 编码异常与发送回执
 
@@ -297,27 +297,27 @@ IMAP 仅使用只读目录与大小查询，POP3 核对 UIDL/LIST；不发送正
 
 ## 本地开发与签名
 
-需要 Node.js 22.15 或更新版本、Rust stable、Xcode Command Line Tools；本轮在 arm64 macOS 上验证。
+需要 Node.js 22.15 或更新版本、pnpm 10（见 `packageManager`）、Rust stable、Xcode Command Line Tools；本轮在 arm64 macOS 上验证。
 
 ```sh
-npm ci
-npm run desktop
+pnpm install --frozen-lockfile
+pnpm desktop
 ```
 
-`npm run desktop` 会启动 Vite 并直接打开 macOS 开发版，支持真实邮箱与本地存档，无需打包或安装。保持命令运行，前端修改自动刷新，Rust 修改自动重新编译并启动；按 Ctrl+C 停止。日常界面调整和联调使用此命令，交付应用时再运行 `npm run desktop:build`。
+`pnpm desktop` 会启动 Vite 并直接打开 macOS 开发版，支持真实邮箱与本地存档，无需打包或安装。保持命令运行，前端修改自动刷新，Rust 修改自动重新编译并启动；按 Ctrl+C 停止。日常界面调整和联调使用此命令，交付应用时再运行 `pnpm desktop:build`。
 
 开发启动器使用 execve 交接进程，Rust 重新构建会结束旧实例，不会累积 Dock 图标。应用采用单实例保护，再次启动只打开已有窗口。
 
-macOS 开发启动器和本地 `npm run desktop:build` 使用项目固定自签证书签名，固定使用 `dev.maildesk.desktop` 应用标识；临时签名的身份会随重建变化，因此不能替代固定证书。凭据库密钥由系统钥匙串程序读取，应用重建或升级后通常不再要求输入登录钥匙串密码；登录钥匙串被锁定时仍需先解锁。已有账号、凭据库位置及本地存档保持不变。
+macOS 开发启动器和本地 `pnpm desktop:build` 使用项目固定自签证书签名，固定使用 `dev.maildesk.desktop` 应用标识；临时签名的身份会随重建变化，因此不能替代固定证书。凭据库密钥由系统钥匙串程序读取，应用重建或升级后通常不再要求输入登录钥匙串密码；登录钥匙串被锁定时仍需先解锁。已有账号、凭据库位置及本地存档保持不变。
 
-若本机没有开发证书，在 Xcode 的账号管理中创建 Apple Development 证书；若有多个证书，通过 `ANSER_DEV_SIGNING_IDENTITY` 指定有效证书的完整名称或 SHA-1，例如 `ANSER_DEV_SIGNING_IDENTITY='<证书 SHA-1>' npm run desktop`。旧变量名 `YANXIN_DEV_SIGNING_IDENTITY` 仍作为兼容别名。签名失败会停止启动，不会退回临时签名。`npm run test:desktop` 验证签名选择与失败处理。此处仅为本机开发签名，正式分发的 Developer ID 签名与公证仍待配置。
+若本机没有开发证书，在 Xcode 的账号管理中创建 Apple Development 证书；若有多个证书，通过 `ANSER_DEV_SIGNING_IDENTITY` 指定有效证书的完整名称或 SHA-1，例如 `ANSER_DEV_SIGNING_IDENTITY='<证书 SHA-1>' pnpm desktop`。旧变量名 `YANXIN_DEV_SIGNING_IDENTITY` 仍作为兼容别名。签名失败会停止启动，不会退回临时签名。`pnpm test:desktop` 验证签名选择与失败处理。此处仅为本机开发签名，正式分发的 Developer ID 签名与公证仍待配置。
 
-只预览界面：`npm run dev`，访问 `http://127.0.0.1:1420`。浏览器不支持真实邮件收发，点击“先体验一下”加载演示账号和示例邮件。
+只预览界面：`pnpm dev`，访问 `http://127.0.0.1:1420`。浏览器不支持真实邮件收发，点击“先体验一下”加载演示账号和示例邮件。
 
 ```sh
-npm test
-npm run test:rust
-npm run desktop:build
+pnpm test
+pnpm test:rust
+pnpm desktop:build
 ```
 
 桌面产物：`src-tauri/target/release/bundle/macos/雁信.app` 及带更新签名的 `.app.tar.gz`/`.sig`。本机发布脚本从仓库外读取匹配的更新密钥，密钥缺失或不匹配会停止构建。Developer ID 分发签名及公证尚未配置。

@@ -15,10 +15,11 @@ jobs:
       build_required: ${{ steps.release.outputs.build_required }}
     steps:
       - uses: actions/checkout@v6
+      - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v6
         with:
           node-version: 22
-          cache: npm
+          cache: pnpm
       - id: release
         name: Skip versions already published
         env:
@@ -30,17 +31,17 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: src-tauri
-      - run: npm ci
+      - run: pnpm install --frozen-lockfile
       - run: node scripts/release-assets.mjs verify
-      - run: npm run format:check && cargo fmt --manifest-path src-tauri/Cargo.toml -- --check
+      - run: pnpm format:check && cargo fmt --manifest-path src-tauri/Cargo.toml -- --check
       - name: Frontend tests
-        run: npm run test:ci
+        run: pnpm test:ci
       - name: Desktop script tests
-        run: npm run test:desktop
+        run: pnpm test:desktop
       - name: Production frontend build
-        run: npm run build
+        run: pnpm build
       - name: Rust tests
-        run: npm run test:rust
+        run: pnpm test:rust
       - name: IMAP parser tests
         run: cargo test --manifest-path src-tauri/vendor/imap-proto/Cargo.toml
   build:
@@ -53,10 +54,11 @@ jobs:
         target: [aarch64-apple-darwin, x86_64-apple-darwin]
     steps:
       - uses: actions/checkout@v6
+      - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v6
         with:
           node-version: 22
-          cache: npm
+          cache: pnpm
       - uses: dtolnay/rust-toolchain@1.91.1
         with:
           targets: ${{ matrix.target }}
@@ -64,7 +66,7 @@ jobs:
         with:
           workspaces: src-tauri
           key: release-${{ matrix.target }}
-      - run: npm ci
+      - run: pnpm install --frozen-lockfile
       - name: Require updater signing key
         env:
           SIGNING_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
@@ -122,10 +124,11 @@ jobs:
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v6
+      - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v6
         with:
           node-version: 22
-          cache: npm
+          cache: pnpm
       - uses: dtolnay/rust-toolchain@1.91.1
         with:
           targets: x86_64-pc-windows-msvc
@@ -134,7 +137,7 @@ jobs:
           workspaces: src-tauri
           key: release-windows-x64
           cache-on-failure: true
-      - run: npm ci
+      - run: pnpm install --frozen-lockfile
       - name: Windows native regression tests
         run: cargo test --manifest-path src-tauri/Cargo.toml
       - name: Require signing and desktop OAuth configuration

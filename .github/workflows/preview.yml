@@ -8,7 +8,8 @@ on:
       - "preview/**"
       - "scripts/check-preview.mjs"
       - "vite.config.ts"
-      - "package*.json"
+      - "package.json"
+      - "pnpm-lock.yaml"
       - ".github/workflows/preview.yml"
   workflow_dispatch:
 permissions:
@@ -21,13 +22,14 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v6
+      - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v6
         with:
           node-version: 22
-          cache: npm
+          cache: pnpm
       - uses: actions/configure-pages@v5
-      - run: npm ci
-      - run: npm run build:preview
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build:preview
       - uses: actions/upload-pages-artifact@v4
         with:
           path: dist-preview

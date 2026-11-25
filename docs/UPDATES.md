@@ -342,12 +342,12 @@ Homebrew Tap 提交 [870f4b4](https://github.com/ansermail/homebrew-tap/commit/8
 
 本机更新密钥在 `~/.config/yanxin-release/updater.key`，权限 0600，公钥已写入 Tauri 配置。私钥已上传仓库 Secret `TAURI_SIGNING_PRIVATE_KEY`，没有提交到 Git 或写进日志。密钥没有密码，流水线明确使用空密码；应保管仓库外的密钥备份，后续版本复用同一密钥，不能重新生成替换已部署应用的公钥。
 
-换开发机时恢复原密钥和 `.pub` 文件，然后运行 `npm run release:secrets`。脚本先验证公钥匹配和 GitHub 登录，只通过 stdin 上传密钥。
+换开发机时恢复原密钥和 `.pub` 文件，然后运行 `pnpm release:secrets`。脚本先验证公钥匹配和 GitHub 登录，只通过 stdin 上传密钥。
 
 ## 下次发布
 
-1. 同步修改 package.json、package-lock.json（npm install --package-lock-only）、src-tauri/Cargo.toml、Cargo.lock 和 tauri.conf.json 的版本。
-2. 写 `docs/releases/v版本.md`，运行 `npm run release:check` 和回归，提交并推送。
+1. 同步修改 `package.json`、`src-tauri/Cargo.toml`、`src-tauri/Cargo.lock` 和 `src-tauri/tauri.conf.json` 的版本（若涉及依赖调整同步更新 `pnpm-lock.yaml`）。
+2. 写 `docs/releases/v版本.md`，运行 `pnpm release:check` 和回归，提交并推送。
 3. 推送对应 `v版本` tag，或者运行 `gh workflow run release.yml --ref main`。
 4. 等待两架构构建和草稿生成，核验 DMG、app.tar.gz、sig、latest.json 和版本说明；再发布草稿。当前仍属于 Alpha，不代表开发计划全部完成。
 5. 用含更新器的旧正式版检查新版本、下载安装并重启，确认账号、本地存档、窗口及新版本号。
@@ -390,9 +390,9 @@ v0.1.5 已在 ansermail/anser 正式发布为 latest。Checks 与 Release macOS 
 
 ## 独立界面预览
 
-公开地址为 https://ansermail.github.io/anser/ 。组织仓库 Pages 使用 GitHub Actions 发布源，`.github/workflows/preview.yml` 在 main 的前端相关变更后构建并部署，也支持手动启动。`npm run build:preview` 生成 `dist-preview`，仅包含虚构示例与展示组件，不包含真实账号连接、桌面命令或发信接口。
+公开地址为 https://ansermail.github.io/anser/ 。组织仓库 Pages 使用 GitHub Actions 发布源，`.github/workflows/preview.yml` 在 main 的前端相关变更后构建并部署，也支持手动启动。`pnpm build:preview` 生成 `dist-preview`，仅包含虚构示例与展示组件，不包含真实账号连接、桌面命令或发信接口。
 
-本地检查可运行 `npx vite preview --mode preview --host 127.0.0.1 --port 4174`，访问 `http://127.0.0.1:4174/anser/`。Pages 发布与桌面 Release 独立；网页部署成功不表示新版桌面包已发布。
+本地检查可运行 `pnpm exec vite preview --mode preview --host 127.0.0.1 --port 4174`，访问 `http://127.0.0.1:4174/anser/`。Pages 发布与桌面 Release 独立；网页部署成功不表示新版桌面包已发布。
 
 ## 0.1.6 云端发布结果
 

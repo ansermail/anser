@@ -3,10 +3,11 @@
   "private": true,
   "version": "0.1.45",
   "type": "module",
+  "packageManager": "pnpm@10.28.0",
   "scripts": {
     "dev": "vite --host 127.0.0.1",
-    "build": "npm run check:ui && npm run check:i18n && tsc -b && vite build",
-    "build:preview": "npm run check:ui && npm run check:i18n && tsc -b && vite build --mode preview && node scripts/check-preview.mjs",
+    "build": "pnpm check:ui && pnpm check:i18n && tsc -b && vite build",
+    "build:preview": "pnpm check:ui && pnpm check:i18n && tsc -b && vite build --mode preview && node scripts/check-preview.mjs",
     "preview": "vite preview --host 127.0.0.1",
     "tauri": "tauri",
     "desktop": "node scripts/desktop.mjs",
@@ -31,6 +32,7 @@
     "@tauri-apps/api": "^2",
     "@tauri-apps/plugin-dialog": "^2",
     "@tauri-apps/plugin-updater": "^2.13.1",
+    "@tiptap/core": "^3.31.3",
     "@tiptap/extension-find-and-replace": "^3.31.3",
     "@tiptap/extension-highlight": "^3.31.3",
     "@tiptap/extension-image": "^3.31.3",
@@ -74,5 +76,10 @@
     "vite": "^7.1.0",
     "vitest": "^3.2.0"
   },
-  "license": "SEE LICENSE IN LICENSE"
+  "license": "SEE LICENSE IN LICENSE",
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "esbuild"
+    ]
+  }
 }
