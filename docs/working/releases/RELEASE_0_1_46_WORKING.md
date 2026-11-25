@@ -9,5 +9,5 @@
 - 草稿审计：九份资源逐项匹配 GitHub 大小与 SHA-256，其中八份安装、更新和签名资源也与 Actions 产物逐字节一致。公开说明和清单说明均与固定源码原文一致，既有更新公钥通过三份签名校验，`latest.json` 的版本、三平台 URL 与签名对应。
 - 两架构 Mac 安装镜像和更新归档的包内文件一致。确认正式持久身份、版本、中文本地化能力、项目固定签名和新版 ICNS。Windows 安装与 WebView2 冒烟由云端通过，独立解包验证客户端 PE x64 GUI 子系统、版本与六个新图标尺寸。
 - [0.1.46 正式发行](https://github.com/ansermail/anser/releases/tag/v0.1.46) 于 15:28:02 公开为 latest，Release ID `457755894`。公开前后的标签、说明及资源身份一致，九份公开资源匿名请求均返回 HTTP 200，标准 `latest.json` 匿名下载与审计清单逐字节一致。
-- [Homebrew 45568357638](https://github.com/ansermail/anser/actions/runs/45568357638) 成功，提交 `b83e620` 只更新 `Casks/anser.rb`，两架构 DMG 摘要均匹配。官网待版本提交合入 main 后重新部署。
+- [Homebrew 45568357638](https://github.com/ansermail/anser/actions/runs/45568357638) 成功，提交 `b83e620` 只更新 `Casks/anser.rb`，两架构 DMG 摘要均匹配。公开后将发版版本和说明按线性历史同步到 main，[Preview Pages 45569324281](https://github.com/ansermail/anser/actions/runs/45569324281) 成功。浏览器核对线上官网的两条 Mac 下载链接、一条 Windows 下载链接和新版图标均正确。
 - 本机正式应用原位升级、真实邮箱 OAuth、Intel 与 Windows 实机使用未核验。

@@ -4,7 +4,7 @@
 
 ## 当前执行检查点：0.1.46 已公开（2026-11-25）
 
-新版品牌图标及界面修订已随 [0.1.46 Alpha](https://github.com/ansermail/anser/releases/tag/v0.1.46) 于 15:28 正式公开。三平台构建、九份草稿资源、更新签名和公开更新清单已核验，Homebrew 配方已同步。隔离预览已退出，已安装的正式应用由用户自行升级。验收状态见 [0.1.46 发布工作点](working/releases/RELEASE_0_1_46_WORKING.md)。
+新版品牌图标及界面修订已随 [0.1.46 Alpha](https://github.com/ansermail/anser/releases/tag/v0.1.46) 于 15:28 正式公开。三平台构建、九份资源、更新签名、公开更新清单及官网下载链接已核验，Homebrew 配方已同步。隔离预览已退出，已安装的正式应用由用户自行升级。验收状态见 [0.1.46 发布工作点](working/releases/RELEASE_0_1_46_WORKING.md)。
 
 ## 前一阶段：品牌图标替换（2026-11-25）
 
