@@ -1,4 +1,5 @@
 import { t } from "@/lib/i18n";
+import { useScrollFade } from "@/lib/scroll-fade";
 import { Fragment } from "react";
 import type { Editor } from "@tiptap/core";
 import { useEditorState } from "@tiptap/react";
@@ -160,6 +161,7 @@ export function RichToolbar({
   bodyActions?: React.ReactNode;
   tableAction?: React.ReactNode;
 }) {
+  const toolbarScrollFade = useScrollFade("horizontal");
   const state = useEditorState({
     editor,
     selector: ({ editor }) => ({
@@ -363,7 +365,7 @@ export function RichToolbar({
       role="toolbar"
       aria-label={t("Body formatting toolbar")}
     >
-      <div className="format-toolbar-controls">
+      <div className="format-toolbar-controls" ref={toolbarScrollFade}>
         <div
           className="flex shrink-0 items-center gap-1"
           role="group"

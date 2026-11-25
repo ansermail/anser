@@ -1438,7 +1438,10 @@ function WorkReport({
               </div>
             </div>
           </CardHeader>
-          <ScrollArea className="wb-report-scroll">
+          <ScrollArea
+            className="wb-report-scroll"
+            data-empty={!filtered.length || undefined}
+          >
             <CardContent>
               {report && (
                 <section className="wb-report-summary">
@@ -1501,7 +1504,21 @@ function WorkReport({
                 </section>
               ))}
               {!filtered.length && (
-                <p className="wb-empty">{t("No work items in this period.")}</p>
+                <Empty className="wb-structured-empty">
+                  <EmptyHeader>
+                    <EmptyMedia variant="icon">
+                      <FileText aria-hidden="true" />
+                    </EmptyMedia>
+                    <EmptyTitle>
+                      {t("No work items in this period.")}
+                    </EmptyTitle>
+                    <EmptyDescription>
+                      {t(
+                        "Choose another date range or project, or add a work record.",
+                      )}
+                    </EmptyDescription>
+                  </EmptyHeader>
+                </Empty>
               )}
             </CardContent>
           </ScrollArea>
@@ -2194,7 +2211,25 @@ export function Workbench({
         pageSize={14}
         keepEmptyFields
         showRecordCount
-        empty={t("No matching work items.")}
+        empty={
+          <Empty className="wb-structured-empty">
+            <EmptyHeader>
+              <EmptyMedia variant="icon">
+                <LayoutList aria-hidden="true" />
+              </EmptyMedia>
+              <EmptyTitle>
+                {items.length
+                  ? t("No matching work items.")
+                  : t("No work items yet")}
+              </EmptyTitle>
+              <EmptyDescription>
+                {items.length
+                  ? t("Adjust the filters or search terms to find work items.")
+                  : t("Select Add work record to create your first item.")}
+              </EmptyDescription>
+            </EmptyHeader>
+          </Empty>
+        }
         selectedRowId={contextItemId}
         renderRow={(row, rowElement) => {
           const item = entriesById.get(row.id);

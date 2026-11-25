@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, expect, it } from "vitest";
-import { installBackspaceGuard } from "./webview-keys";
+import { installBackspaceGuard, trackPointerFocus } from "./webview-keys";
 
 let removeGuard: (() => void) | undefined;
 
@@ -27,4 +27,26 @@ it("prevents Backspace from navigating the webview outside editable fields", () 
   document.body.append(input);
   expect(backspace(input).defaultPrevented).toBe(false);
   input.remove();
+});
+
+it("clears pointer focus suppression when keyboard navigation resumes", () => {
+  removeGuard = trackPointerFocus(document);
+  const hasPointerFocus = () =>
+    document.documentElement.hasAttribute("data-pointer-focus");
+  document.body.dispatchEvent(new Event("pointerdown", { bubbles: true }));
+  expect(hasPointerFocus()).toBe(true);
+
+  document.body.dispatchEvent(
+    new KeyboardEvent("keydown", {
+      key: "ArrowDown",
+      altKey: true,
+      bubbles: true,
+    }),
+  );
+  expect(hasPointerFocus()).toBe(true);
+
+  document.body.dispatchEvent(
+    new KeyboardEvent("keydown", { key: "Tab", shiftKey: true, bubbles: true }),
+  );
+  expect(hasPointerFocus()).toBe(false);
 });

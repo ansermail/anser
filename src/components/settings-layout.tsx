@@ -1,4 +1,5 @@
 import { t } from "@/lib/i18n";
+import { observeScrollFade } from "@/lib/scroll-fade";
 import {
   createContext,
   useContext,
@@ -86,6 +87,10 @@ export function SettingsLayout({
   useEffect(() => {
     if (panelContainer.current) panelContainer.current.scrollTop = 0;
   }, [value]);
+  useEffect(() => {
+    if (panelContainer.current)
+      return observeScrollFade(panelContainer.current, "vertical");
+  }, []);
   const [compact, setCompact] = useState(false);
   useEffect(() => {
     const element = container.current;

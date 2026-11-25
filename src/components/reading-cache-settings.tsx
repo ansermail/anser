@@ -6,7 +6,7 @@ import { t } from "@/lib/i18n";
 import { formatSize } from "@/lib/providers";
 import type { Preferences, ReadingCacheStatus } from "@/lib/types";
 import { useConfirmation } from "@/hooks/use-confirmation";
-import { Button } from "./ui/button";
+import { Button, ButtonLabel } from "./ui/button";
 import {
   Card,
   CardAction,
@@ -123,42 +123,39 @@ export function ReadingCacheSettings() {
     <Card>
       <CardHeader>
         <CardTitle>{t("Reading cache")}</CardTitle>
-        <CardDescription className="flex flex-col gap-1 leading-relaxed">
-          <span>
-            {t(
-              "Messages opened in online mode are kept locally for a limited time so reopening them is fast. Expired content is fetched from the server again.",
-            )}
-          </span>
-          <span>
-            {t(
-              "Reading cache is separate from full local archives. It does not make a message permanent and is excluded from archive backup and integrity checks.",
-            )}
-          </span>
+        <CardDescription>
+          {t(
+            "Temporary local copies of online mail are separate from full archives and are excluded from backup and integrity checks.",
+          )}
         </CardDescription>
         <CardAction className="self-center">
           <Button
             size="sm"
             variant="outline"
+            aria-busy={saving}
             disabled={loading || saving || !changed}
             onClick={() => void save()}
           >
-            {saving && (
-              <LoaderCircle data-icon="inline-start" className="animate-spin" />
-            )}
-            {saving ? t("Saving…") : t("Save")}
+            <ButtonLabel
+              reserve={[t("Save"), t("Saving…")]}
+              reserveIcon
+              icon={
+                saving && (
+                  <LoaderCircle
+                    data-icon="inline-start"
+                    className="animate-spin"
+                  />
+                )
+              }
+            >
+              {saving ? t("Saving…") : t("Save")}
+            </ButtonLabel>
           </Button>
         </CardAction>
       </CardHeader>
       <CardContent className="flex flex-col gap-4">
         <div className="settings-tool-row">
-          <div className="flex min-w-0 flex-col gap-1">
-            <Label htmlFor="reading-cache-days">{t("Keep for")}</Label>
-            <p className="text-sm text-muted-foreground leading-relaxed">
-              {t(
-                "Counted from the last time a message was opened. Choose Off to fetch every online message from the server.",
-              )}
-            </p>
-          </div>
+          <Label htmlFor="reading-cache-days">{t("Keep for")}</Label>
           <SelectField
             id="reading-cache-days"
             aria-label={t("Reading cache retention")}
@@ -175,14 +172,7 @@ export function ReadingCacheSettings() {
         </div>
         <Separator />
         <div className="settings-tool-row">
-          <div className="flex min-w-0 flex-col gap-1">
-            <Label htmlFor="reading-cache-limit">{t("Size limit")}</Label>
-            <p className="text-sm text-muted-foreground leading-relaxed">
-              {t(
-                "When the limit is reached, the least recently opened messages are removed first.",
-              )}
-            </p>
-          </div>
+          <Label htmlFor="reading-cache-limit">{t("Size limit")}</Label>
           <SelectField
             id="reading-cache-limit"
             aria-label={t("Reading cache size limit")}
@@ -199,24 +189,18 @@ export function ReadingCacheSettings() {
         </div>
         <Separator />
         <div className="settings-tool-row items-center justify-between gap-4">
-          <div className="flex min-w-0 flex-col gap-1">
-            <strong className="text-sm">
-              {status
-                ? t("{value0} messages · {value1}", {
-                    value0: status.entries,
-                    value1: cacheSize(status.bytes),
-                  })
-                : t("Reading cache unavailable")}
-            </strong>
-            <p className="text-sm text-muted-foreground leading-relaxed">
-              {t(
-                "Clearing the cache only removes temporary copies. Messages marked as fully saved stay in the local archive.",
-              )}
-            </p>
-          </div>
+          <strong className="text-sm">
+            {status
+              ? t("{value0} messages · {value1}", {
+                  value0: status.entries,
+                  value1: cacheSize(status.bytes),
+                })
+              : t("Reading cache unavailable")}
+          </strong>
           <Button
             variant="outline"
             size="sm"
+            aria-busy={clearing}
             disabled={loading || clearing || !status?.entries}
             onClick={() => void clear()}
           >
@@ -225,7 +209,9 @@ export function ReadingCacheSettings() {
             ) : (
               <Trash2 data-icon="inline-start" />
             )}
-            {clearing ? t("Clearing…") : t("Clear cache")}
+            <ButtonLabel reserve={[t("Clear cache"), t("Clearing…")]}>
+              {clearing ? t("Clearing…") : t("Clear cache")}
+            </ButtonLabel>
           </Button>
         </div>
       </CardContent>

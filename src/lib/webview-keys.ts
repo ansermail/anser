@@ -1,6 +1,23 @@
 const editableSelector =
   'input, textarea, select, [contenteditable]:not([contenteditable="false"])';
 
+// WebKit may keep keyboard focus on a button after a pointer click.
+export function trackPointerFocus(target: Document = document) {
+  const root = target.documentElement;
+  const pointerDown = () => root.setAttribute("data-pointer-focus", "");
+  const keyDown = (event: KeyboardEvent) => {
+    if (event.altKey || event.ctrlKey || event.metaKey) return;
+    root.removeAttribute("data-pointer-focus");
+  };
+  target.addEventListener("pointerdown", pointerDown, true);
+  target.addEventListener("keydown", keyDown, true);
+  return () => {
+    target.removeEventListener("pointerdown", pointerDown, true);
+    target.removeEventListener("keydown", keyDown, true);
+    root.removeAttribute("data-pointer-focus");
+  };
+}
+
 /**
  * WebKit treats Backspace on a non-editable page as browser back. The desktop
  * shell has no document history to restore, so the shortcut can navigate the

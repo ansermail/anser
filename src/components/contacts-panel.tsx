@@ -132,6 +132,7 @@ export function ContactsPanel({
               variant="ghost"
               size="icon-sm"
               title={t("Delete contact")}
+              className="contact-delete"
               onClick={async () => {
                 if (
                   await askConfirmation({

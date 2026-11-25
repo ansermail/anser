@@ -12,7 +12,7 @@ import {
   CardAction,
   CardContent,
 } from "./ui/card";
-import { Button } from "./ui/button";
+import { Button, ButtonLabel } from "./ui/button";
 import { Badge } from "./ui/badge";
 import { Label } from "./ui/label";
 import { Switch } from "./ui/switch";
@@ -214,19 +214,20 @@ export function FileAssociations() {
       <CardHeader>
         <CardTitle>{t("System default apps")}</CardTitle>
         <CardDescription>
-          {t(
-            "Choose the default mail app and open single-message EML, EMLX and MSG files read-only.",
-          )}
+          {t("Anser opens EML, EMLX and MSG files in read-only mode.")}
         </CardDescription>
         <CardAction>
           <Button
             variant="outline"
             size="sm"
+            aria-busy={refreshing}
             disabled={busy || refreshing || !enabled || !data.supported}
             onClick={() => void refresh()}
           >
             <RefreshCw className={refreshing ? "animate-spin" : ""} />
-            {refreshing ? t("Refreshing…") : t("Refresh")}
+            <ButtonLabel reserve={[t("Refresh"), t("Refreshing…")]}>
+              {refreshing ? t("Refreshing…") : t("Refresh")}
+            </ButtonLabel>
           </Button>
         </CardAction>
       </CardHeader>
@@ -234,13 +235,6 @@ export function FileAssociations() {
         {!enabled && (
           <p className="text-sm text-muted-foreground">
             {t("Sample mode does not read or change system file associations.")}
-          </p>
-        )}
-        {data.supported && (
-          <p className="text-sm text-muted-foreground">
-            {t(
-              "Mail file associations can be switched individually. Turning one off restores the previous default application.",
-            )}
           </p>
         )}
         {!!items.length && (

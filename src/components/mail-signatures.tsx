@@ -14,7 +14,7 @@ import { htmlToText, textToHtml } from "@/lib/compose-format";
 import { cn } from "@/lib/utils";
 import { MailContent } from "./mail-content";
 import { Badge } from "./ui/badge";
-import { Button } from "./ui/button";
+import { Button, ButtonLabel } from "./ui/button";
 import {
   Card,
   CardHeader,
@@ -148,7 +148,7 @@ export function MailSignatures({ accounts }: { accounts: Account[] }) {
           <CardTitle>{t("Email signature")}</CardTitle>
           <CardDescription>
             {t(
-              "Configure per sending account. Signatures are stored separately from the body. Switching accounts changes the signature; saved drafts retain their own.",
+              "Signatures are saved per sending account, and existing drafts keep their original signatures.",
             )}
           </CardDescription>
           <CardAction className="flex flex-wrap items-center gap-3">
@@ -278,7 +278,7 @@ export function MailSignatures({ accounts }: { accounts: Account[] }) {
               </div>
               <FieldDescription className="mail-signature-toolbar-hint">
                 {t(
-                  "Attach text, HTML or an image. Imported content is saved and remains available after the source file is moved.",
+                  "Imported content remains available if the source file is moved.",
                 )}
               </FieldDescription>
             </div>
@@ -315,13 +315,6 @@ export function MailSignatures({ accounts }: { accounts: Account[] }) {
                         : t("Best regards,\nName · Company\nContact details")
                     }
                   />
-                  <FieldDescription>
-                    {signature.useHtml
-                      ? t("Supports standard HTML tags and inline styles.")
-                      : t(
-                          "Plain text signature appended below the message body.",
-                        )}
-                  </FieldDescription>
                 </Field>
                 {(signature.useHtml || signature.fileHtml) && (
                   <Field>
@@ -341,9 +334,6 @@ export function MailSignatures({ accounts }: { accounts: Account[] }) {
                         />
                       </CardContent>
                     </Card>
-                    <FieldDescription>
-                      {t("Preview updates as you edit")}
-                    </FieldDescription>
                   </Field>
                 )}
               </div>
@@ -360,7 +350,7 @@ export function MailSignatures({ accounts }: { accounts: Account[] }) {
                   />
                   <FieldDescription>
                     {t(
-                      "File content follows the signature text. Import again to replace it.",
+                      "Import again to replace the file content appended after the signature text.",
                     )}
                   </FieldDescription>
                 </Field>
@@ -368,12 +358,15 @@ export function MailSignatures({ accounts }: { accounts: Account[] }) {
             </div>
             <div className="mail-signature-footer">
               <Button
+                aria-busy={busy}
                 disabled={
                   !accountId || busy || loading || loadedAccountId !== accountId
                 }
                 onClick={() => void save()}
               >
-                {busy ? t("Saving…") : t("Save signature")}
+                <ButtonLabel reserve={[t("Save signature"), t("Saving…")]}>
+                  {busy ? t("Saving…") : t("Save signature")}
+                </ButtonLabel>
               </Button>
               <Badge variant="outline">
                 {dirty ? t("Unsaved") : t("Saved")}

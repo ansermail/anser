@@ -57,7 +57,7 @@ import {
   DialogTitle,
   DialogDescription,
 } from "./ui/dialog";
-import { Button } from "./ui/button";
+import { Button, ButtonLabel } from "./ui/button";
 import { Input } from "./ui/input";
 import { Textarea } from "./ui/textarea";
 import { Toggle } from "./ui/toggle";
@@ -866,6 +866,7 @@ export function ComposeDialog({
                     <Label htmlFor="compose-sender">{t("From")}</Label>
                     <SelectField
                       id="compose-sender"
+                      className="compose-sender"
                       value={value.accountId}
                       onValueChange={(value) => update({ accountId: value })}
                     >
@@ -1256,6 +1257,7 @@ export function ComposeDialog({
               </fieldset>
               <div className="compose-footer">
                 <Button
+                  aria-busy={sending}
                   disabled={
                     sending ||
                     closing ||
@@ -1272,8 +1274,12 @@ export function ComposeDialog({
                     <LoaderCircle className="animate-spin" size={16} />
                   ) : (
                     <Send size={16} />
-                  )}{" "}
-                  {sending ? t("Preparing to send…") : t("Send message")}
+                  )}
+                  <ButtonLabel
+                    reserve={[t("Send message"), t("Preparing to send…")]}
+                  >
+                    {sending ? t("Preparing to send…") : t("Send message")}
+                  </ButtonLabel>
                 </Button>
                 <Popover
                   open={planning}

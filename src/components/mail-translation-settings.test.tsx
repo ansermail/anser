@@ -153,7 +153,12 @@ it("requires a saved model before translation preferences are enabled", async ()
     expect(
       host.querySelector<HTMLButtonElement>("#translation-language")!.disabled,
     ).toBe(true);
-    expect(host.textContent).toContain("请先保存模型配置，再启用邮件翻译。");
+    const preferences = host.querySelector(
+      '[aria-labelledby="translation-preferences-title"]',
+    )!;
+    expect(
+      [...preferences.querySelectorAll("p")].map((node) => node.textContent),
+    ).toEqual(["请先保存模型配置，再启用邮件翻译。"]);
     expect(button(host, "清除翻译缓存").disabled).toBe(true);
   } finally {
     await act(async () => root.unmount());
@@ -192,7 +197,20 @@ it("discovers the current service models, allows switching IDs, and requires sav
   const root = createRoot(host);
   try {
     await act(async () => root.render(<MailTranslationSettings />));
+    const preferences = host.querySelector(
+      '[aria-labelledby="translation-preferences-title"]',
+    )!;
+    const modelField = host
+      .querySelector("#translation-model")!
+      .closest('[data-slot="field"]')!;
+    expect(preferences.querySelector("p")).toBeNull();
+    expect(
+      modelField.querySelector('[data-slot="field-description"]'),
+    ).toBeNull();
     await act(async () => button(host, "获取模型列表").click());
+    expect(modelField.querySelector('[role="status"]')?.textContent).toBe(
+      "已获取 2 个模型。",
+    );
     const request = api.mock.calls.find(
       (c) => c[0] === "get_translation_models",
     )![1];

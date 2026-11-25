@@ -84,7 +84,8 @@ it("does not register a development preview as a broken login startup item", asy
   expect(host.querySelector<HTMLButtonElement>("#auto-start")?.disabled).toBe(
     true,
   );
-  expect(host.textContent).toContain("请在正式应用中开启开机自启");
+  expect(host.textContent).toContain("开机自启需使用正式版。");
+  expect(host.textContent).not.toContain("演示模式不修改系统启动项。");
 });
 const idleHealth: ArchiveHealth = {
   checked: 0,

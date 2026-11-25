@@ -62,18 +62,10 @@ export function LanguageSettings() {
     <Card className="language-settings-card">
       <CardHeader>
         <CardTitle>{t("Interface language")}</CardTitle>
-        <CardDescription
-          id="interface-language-description"
-          className="flex flex-col gap-1 leading-relaxed"
-        >
-          <span>
-            {t("Choose Anser's display language. Changes apply immediately.")}
-          </span>
-          <span>
-            {t(
-              "Changes the application interface only. Original messages and the body translation target keep their own settings.",
-            )}
-          </span>
+        <CardDescription id="interface-language-description">
+          {t(
+            "The interface language is independent of original messages and the translation target language.",
+          )}
         </CardDescription>
         <CardAction className="self-center">
           <Field orientation="horizontal" className="w-fit max-w-full">

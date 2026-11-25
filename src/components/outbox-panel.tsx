@@ -398,13 +398,11 @@ export function OutboxPanel({
     };
   });
 
-  const empty = loading
-    ? t("Loading send history…")
-    : failure
-      ? t("Could not read")
-      : t(
-          "Review send results here. Failed messages can be prepared for resending.",
-        );
+  const empty = failure
+    ? t("Could not read")
+    : t(
+        "Review send results here. Failed messages can be prepared for resending.",
+      );
 
   return (
     <section className="workspace-panel">
@@ -433,6 +431,7 @@ export function OutboxPanel({
         label={t("Send history")}
         rows={rows}
         empty={empty}
+        loadingLabel={loading ? t("Loading send history…") : undefined}
         pageSize={15}
         fields={[
           "status",

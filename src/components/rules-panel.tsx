@@ -394,7 +394,10 @@ export function RulesPanel({
           </div>
           <p>{t("Set rules once. Make time for what matters.")}</p>
         </div>
-        <Button onClick={createRule}>
+        <Button
+          variant={data.rules.length ? "default" : "outline"}
+          onClick={createRule}
+        >
           <Plus size={16} />
           {t("New rule")}
         </Button>

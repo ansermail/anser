@@ -116,12 +116,21 @@ it.each(cases)(
     const refresh = host.querySelector(
       `[aria-label="刷新${title}"]`,
     ) as HTMLButtonElement;
+    const measuredLabels = () =>
+      [
+        ...refresh.querySelectorAll('[data-label-width][aria-hidden="true"]'),
+      ].map((element) => element.getAttribute("data-label-width"));
+    expect(refresh.textContent).toBe("刷新");
+    const idleLabels = measuredLabels();
     await act(async () => {
       refresh.click();
       refresh.click();
     });
     expect(refresh.disabled).toBe(true);
     expect(refresh.getAttribute("aria-busy")).toBe("true");
+    expect(refresh.textContent).toBe("刷新中");
+    expect(measuredLabels()).toEqual(idleLabels);
+    expect(idleLabels).toEqual(["刷新", "刷新中"]);
     expect(
       refresh.querySelector("svg")?.classList.contains("animate-spin"),
     ).toBe(true);

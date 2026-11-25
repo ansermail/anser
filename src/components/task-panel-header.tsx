@@ -10,7 +10,7 @@ import {
 import { ChevronDown, RefreshCw } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
-import { Button } from "./ui/button";
+import { Button, ButtonLabel } from "./ui/button";
 import { CardHeader } from "./ui/card";
 import { Collapsible, CollapsibleTrigger } from "./ui/collapsible";
 
@@ -126,9 +126,12 @@ export function TaskPanelHeader({
             refreshing && "animate-spin motion-reduce:animate-none",
           )}
         />
-        <span aria-live="polite">
+        <ButtonLabel
+          aria-live="polite"
+          reserve={[t("Refresh"), t("Refreshing")]}
+        >
           {refreshing ? t("Refreshing") : t("Refresh")}
-        </span>
+        </ButtonLabel>
       </Button>
     </CardHeader>
   );

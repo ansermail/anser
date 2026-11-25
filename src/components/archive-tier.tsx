@@ -44,6 +44,15 @@ function formatArchiveSize(bytes: number) {
   return formatSize(bytes);
 }
 
+export function ArchiveSizeMetric({ bytes }: { bytes: number }) {
+  const [value, unit] = formatArchiveSize(bytes).split(" ");
+  return (
+    <strong>
+      {value} <small>{unit}</small>
+    </strong>
+  );
+}
+
 function actionLabel(action: string) {
   if (action === "archive") return t("Archived");
   if (action === "retrieve") return t("Retrieved to local");
@@ -257,7 +266,7 @@ export function ArchiveTier({ onChanged }: { onChanged: () => void }) {
               <span>{t("Attached originals")}</span>
             </div>
             <div>
-              <strong>{formatArchiveSize(status?.archivedBytes || 0)}</strong>
+              <ArchiveSizeMetric bytes={status?.archivedBytes ?? 0} />
               <span>{t("Attached original size")}</span>
             </div>
             <div>

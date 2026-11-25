@@ -1,4 +1,3 @@
-import { CalendarDays } from "lucide-react";
 import { t } from "@/lib/i18n";
 import {
   Card,
@@ -24,13 +23,10 @@ export function WorkspaceSettings({
   return (
     <Card className="workspace-settings-card">
       <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <CalendarDays aria-hidden="true" />
-          {t("Workbench")}
-        </CardTitle>
+        <CardTitle>{t("Workbench")}</CardTitle>
         <CardDescription id="show-workbench-description">
           {t(
-            "Show the workbench entry in the sidebar. Hide it when you do not use the calendar, task views or work reports.",
+            "The sidebar entry opens the calendar, quadrants, work items and reports.",
           )}
         </CardDescription>
         <CardAction className="self-center">

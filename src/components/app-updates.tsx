@@ -13,7 +13,7 @@ import { invoke, isTauri } from "@tauri-apps/api/core";
 import { check, type Update } from "@tauri-apps/plugin-updater";
 import { Download, RefreshCw, RotateCw, Github } from "lucide-react";
 import { toast } from "sonner";
-import { Button } from "./ui/button";
+import { Button, ButtonLabel } from "./ui/button";
 import {
   Card,
   CardContent,
@@ -409,6 +409,7 @@ export function UpdateIndicator({ updates }: { updates: Updates }) {
   );
 }
 export function UpdateSettings({ updates }: { updates: Updates }) {
+  const checking = updates.phase === "checking";
   return (
     <Card>
       <CardHeader>
@@ -422,9 +423,10 @@ export function UpdateSettings({ updates }: { updates: Updates }) {
       <CardContent className="flex flex-wrap items-center gap-3">
         <Button
           variant="outline"
+          aria-busy={checking}
           disabled={
             !updates.native ||
-            updates.phase === "checking" ||
+            checking ||
             [
               "downloading",
               "ready",
@@ -438,8 +440,15 @@ export function UpdateSettings({ updates }: { updates: Updates }) {
             void updates.checkNow();
           }}
         >
-          <RefreshCw data-icon="inline-start" />
-          {t("Check for updates")}
+          <RefreshCw
+            data-icon="inline-start"
+            className={checking ? "animate-spin" : undefined}
+          />
+          <ButtonLabel
+            reserve={[t("Check for updates"), t("Checking for updates…")]}
+          >
+            {checking ? t("Checking for updates…") : t("Check for updates")}
+          </ButtonLabel>
         </Button>
         <Button variant="ghost" asChild>
           <a

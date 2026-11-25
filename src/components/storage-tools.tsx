@@ -14,7 +14,7 @@ import {
   CardContent,
 } from "./ui/card";
 import { Separator } from "./ui/separator";
-import { Button } from "./ui/button";
+import { Button, ButtonLabel } from "./ui/button";
 import { toast } from "sonner";
 
 export function StorageTools({ testMailId = "" }: { testMailId?: string }) {
@@ -102,13 +102,10 @@ export function StorageTools({ testMailId = "" }: { testMailId?: string }) {
       <Card className="storage-checks-card">
         <CardHeader>
           <CardTitle>{t("Background checks")}</CardTitle>
-          <CardDescription className="flex flex-col gap-1 leading-relaxed">
-            <span>{t("Choose how often to check for new mail.")}</span>
-            <span>
-              {t(
-                "IMAP prioritizes real-time mail. This interval covers periodic checks and POP3. Checks continue after closing the window and catch up after waking.",
-              )}
-            </span>
+          <CardDescription>
+            {t(
+              "IMAP checks in real time when possible, with this interval for catch-up checks and POP3.",
+            )}
           </CardDescription>
           <CardAction className="self-center">
             <div className="settings-tool-row">
@@ -129,6 +126,7 @@ export function StorageTools({ testMailId = "" }: { testMailId?: string }) {
               <Button
                 variant="outline"
                 size="sm"
+                aria-busy={saving}
                 disabled={
                   !ready ||
                   saving ||
@@ -136,19 +134,18 @@ export function StorageTools({ testMailId = "" }: { testMailId?: string }) {
                 }
                 onClick={() => void save()}
               >
-                {saving ? t("Saving…") : t("Save")}
+                <ButtonLabel reserve={[t("Save"), t("Saving…")]}>
+                  {saving ? t("Saving…") : t("Save")}
+                </ButtonLabel>
               </Button>
             </div>
           </CardAction>
         </CardHeader>
       </Card>
       <Card className="storage-notifications-card">
-        <CardHeader>
+        <CardHeader className="grid-rows-1 items-center">
           <CardTitle>{t("Notifications & startup")}</CardTitle>
-          <CardDescription>
-            {t("Choose notification and startup behavior.")}
-          </CardDescription>
-          <CardAction>
+          <CardAction className="row-span-1 self-center">
             <Button
               variant="outline"
               size="sm"
@@ -199,7 +196,7 @@ export function StorageTools({ testMailId = "" }: { testMailId?: string }) {
           </div>
           <p className="text-sm text-muted-foreground leading-relaxed">
             {t(
-              "System notifications cover new mail and successful, failed or unconfirmed sends. Initial imports do not notify. Notification banners are controlled by system settings.",
+              "Notifications cover new mail and send results, excluding the initial import.",
             )}
           </p>
           <Separator />
@@ -208,18 +205,11 @@ export function StorageTools({ testMailId = "" }: { testMailId?: string }) {
               <Label htmlFor="auto-start">{t("Launch at login")}</Label>
               <p className="text-sm text-muted-foreground leading-relaxed">
                 {desktop?.autoStartAvailable === false
-                  ? t(
-                      "Development previews require the frontend server. Enable launch at login in the released app.",
-                    )
-                  : t(
-                      "Start in the background after signing into your computer, then continue checking mail and scheduled sends.",
-                    )}
+                  ? t("Launch at login requires the released app.")
+                  : isDemo()
+                    ? t("Demo mode does not change system login items.")
+                    : t("Starts in the background when you sign in.")}
               </p>
-              {isDemo() && (
-                <p className="text-sm text-muted-foreground leading-relaxed">
-                  {t("Demo mode does not change system login items.")}
-                </p>
-              )}
             </div>
             <Switch
               id="auto-start"

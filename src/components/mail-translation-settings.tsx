@@ -11,7 +11,7 @@ import {
   type TranslationModel,
   type TranslationConfig,
 } from "@/lib/mail-translation";
-import { Button } from "./ui/button";
+import { Button, ButtonLabel } from "./ui/button";
 import {
   Card,
   CardHeader,
@@ -172,7 +172,7 @@ export function MailTranslationSettings() {
         <CardTitle>{t("AI assistant")}</CardTitle>
         <CardDescription>
           {t(
-            "Translation, email summaries and writing repair share an OpenAI-compatible model configuration.",
+            "Translation, summaries and writing repair share one OpenAI-compatible configuration.",
           )}
         </CardDescription>
       </CardHeader>
@@ -191,11 +191,6 @@ export function MailTranslationSettings() {
                 <FieldLabel htmlFor="translation-provider">
                   {t("Model service")}
                 </FieldLabel>
-                <FieldDescription>
-                  {t(
-                    "Choose an OpenAI-compatible service or enter a custom endpoint.",
-                  )}
-                </FieldDescription>
               </FieldContent>
               <div className={controlColumn}>
                 <SelectField
@@ -237,7 +232,7 @@ export function MailTranslationSettings() {
                 </FieldLabel>
                 <FieldDescription>
                   {t(
-                    "Enter a base URL or full /chat/completions URL. Local models support HTTP.",
+                    "Use a base URL or the full /chat/completions URL, with HTTP supported for local models.",
                   )}
                 </FieldDescription>
               </FieldContent>
@@ -258,7 +253,7 @@ export function MailTranslationSettings() {
                 </FieldLabel>
                 <FieldDescription>
                   {t(
-                    "Keys are stored only in local Keychain. Enter a new key after changing the URL.",
+                    "Keys are kept only in the local Keychain and must be re-entered after a service URL change.",
                   )}
                 </FieldDescription>
               </FieldContent>
@@ -305,18 +300,11 @@ export function MailTranslationSettings() {
                 <FieldLabel htmlFor="translation-model">
                   {t("Model name")}
                 </FieldLabel>
-                <FieldDescription>
-                  {models.length
-                    ? t(
-                        "Found {value0} models. Select one or enter another ID.",
-                        {
-                          value0: models.length,
-                        },
-                      )
-                    : t(
-                        "Fetch available models. Enter an ID manually if the service does not provide a list.",
-                      )}
-                </FieldDescription>
+                {models.length > 0 && (
+                  <FieldDescription role="status">
+                    {t("Found {value0} models.", { value0: models.length })}
+                  </FieldDescription>
+                )}
               </FieldContent>
               <div className={`${controlColumn} flex flex-col gap-2`}>
                 <div className="flex min-w-0 items-center gap-2">
@@ -412,9 +400,13 @@ export function MailTranslationSettings() {
                   ) : (
                     <RefreshCw data-icon="inline-start" />
                   )}
-                  {loadingModels
-                    ? t("Cancel discovery")
-                    : t("Fetch model list")}
+                  <ButtonLabel
+                    reserve={[t("Fetch model list"), t("Cancel discovery")]}
+                  >
+                    {loadingModels
+                      ? t("Cancel discovery")
+                      : t("Fetch model list")}
+                  </ButtonLabel>
                 </Button>
               </div>
             </Field>
@@ -436,11 +428,13 @@ export function MailTranslationSettings() {
               >
                 {t("Translation preferences")}
               </h3>
-              <p className="text-sm text-muted-foreground">
-                {t(
-                  "A saved model configuration is required before email translation can be used.",
-                )}
-              </p>
+              {ready && !translationConfigured && (
+                <p className="text-sm text-muted-foreground">
+                  {t(
+                    "Save the model configuration first to enable email translation.",
+                  )}
+                </p>
+              )}
             </div>
             <FieldGroup className="gap-5">
               <Field className="translation-settings-field">
@@ -448,15 +442,6 @@ export function MailTranslationSettings() {
                   <FieldLabel htmlFor="translation-language">
                     {t("Target language")}
                   </FieldLabel>
-                  <FieldDescription>
-                    {translationConfigured
-                      ? t(
-                          "Applies after clicking the translation icon beside a message title.",
-                        )
-                      : t(
-                          "Save the model configuration first to enable email translation.",
-                        )}
-                  </FieldDescription>
                 </FieldContent>
                 <div className={controlColumn}>
                   <SelectField
@@ -481,9 +466,6 @@ export function MailTranslationSettings() {
               <Field className="translation-settings-field">
                 <FieldContent>
                   <FieldTitle>{t("Translation cache")}</FieldTitle>
-                  <FieldDescription>
-                    {t("Completed translations are cached locally for reuse.")}
-                  </FieldDescription>
                 </FieldContent>
                 <div className={controlColumn}>
                   <Button
@@ -527,17 +509,29 @@ export function MailTranslationSettings() {
                 !ready || busy || !config.baseUrl.trim() || !config.model.trim()
               }
             >
-              {busy && !loadingModels ? (
-                <LoaderCircle
-                  data-icon="inline-start"
-                  className="animate-spin"
-                />
-              ) : null}
-              {busy
-                ? loadingModels
-                  ? t("Fetching model list…")
-                  : t("Testing and saving…")
-                : t("Save model settings")}
+              <ButtonLabel
+                reserve={[
+                  t("Save model settings"),
+                  t("Fetching model list…"),
+                  t("Testing and saving…"),
+                ]}
+                reserveIcon
+                icon={
+                  busy &&
+                  !loadingModels && (
+                    <LoaderCircle
+                      data-icon="inline-start"
+                      className="animate-spin"
+                    />
+                  )
+                }
+              >
+                {busy
+                  ? loadingModels
+                    ? t("Fetching model list…")
+                    : t("Testing and saving…")
+                  : t("Save model settings")}
+              </ButtonLabel>
             </Button>
             <Badge variant="outline">{dirty ? t("Unsaved") : t("Saved")}</Badge>
           </div>

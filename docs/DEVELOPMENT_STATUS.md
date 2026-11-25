@@ -1,8 +1,28 @@
-# 开发计划与继续检查点（更新：2026-11-24）
+# 开发计划与继续检查点（更新：2026-11-25）
 
 依据 PRD 第 5、8、9 节、实施记录和当前代码核查。当前仍为 Alpha；功能代码已存在与真实场景验收通过分别记录。早期回归使用临时存储/演示数据；2026-10-05 用户授权后增加当前腾讯企业邮箱与 QQ 邮箱互发测试，未向其他地址发送，未删除真实邮件。
 
-## 当前执行检查点：0.1.45 已发布（2026-11-24）
+## 当前执行检查点：全量 70 项 UI 设计规范沉淀与 U1–U11 全量打磨已合入本地 main（2026-11-25）
+
+- **本机 Codex 配置与项目规范拆分**：备份 `~/.codex/config.toml` 为 `~/.codex/config.toml.backup-20261125`，设置 `project_doc_max_bytes = 131072`，移除不支持的 `mcp_servers.penpot.type` 字段，`codex doctor` 启动配置警告清零且 Penpot MCP 实测连通；根目录 [AGENTS.md](../AGENTS.md) 从 `82,757 B` 精简至 `8,494 B`，详细规范拆分至 `docs/guidelines/`（7 份）；[雁信 UI 设计规范](UI_DESIGN_GUIDELINES.md) 扩展为完整收录 Topinspo Design Vocabulary **全部 70 项设计词条**加「克制文案与反冗余副标题」原则，并同步更新 [WINDOWS.md](WINDOWS.md)、[KEYCHAIN.md](KEYCHAIN.md) 与 [docs/README.md](README.md)。
+- **UI/UX 走查与 Codex 三轮修复（U1–U11，共 36 个前端文件 +808/-420 行，未改动 `src-tauri/`）**：
+  - **U1–U8**：WKWebView `trackPointerFocus` 区分指针点击与键盘绿环、`--control-border` 提升复选框/周历/四象限对比度至 WCAG AA、写信三行左对齐（461px）、统一应用偏好标题与存档 8px 基线指标并精简冗余线、发送记录 7 列 shadcn `Skeleton` 骨架、过滤规则单一主按钮/工作台结构化空态/通讯录删除危险态、`tabular-nums` 与侧栏底部 20px 缓冲、全局 `prefers-reduced-motion`。
+  - **U9–U10**：删除设置页 8 条冗余副标题与 23 对废弃双语键并精简自解释小字；新增 `src/lib/scroll-fade.ts`，为主侧栏纵向（18px）与写信富文本工具栏横向（16px）接入透明通道 CSS `mask-image` 动态边缘渐隐。
+  - **U11**：补齐标题 `text-wrap: balance`、按钮/导航无缩放按压反馈、统一自然缓动 `--ease-out`（`cubic-bezier(0.22, 1, 0.36, 1)`）、高频异步按钮按双语最长文案稳定宽度（防宽跳）、设置右侧滚动区与邮件列表 18px 边缘渐隐，以及邮件行键盘焦点 `hover-reveal` 勾选框显现。详见 [0.1.45 UI 设计规范走查工作点](working/features/UI_DESIGN_AUDIT_0_1_45_WORKING.md)。
+- **五阶段验证记录**：
+  - **代码完成**：已完成（规范文档拆分与 U1–U11 纯前端 36 文件已提交并快进合入本地 `main`，尚未推送远端）。
+  - **自动测试通过**：Codex 三轮均全绿通过 `npm run check:ui`、`npm run check:i18n`、`npm run format:check`、`npm run test:ci`（**78 文件 / 626 项通过**）、`npm run build`、`npm run build:preview` 与 `git diff --check`。
+  - **真实场景验收（分层记录）**：
+    - **隔离 Chromium 实测（1920×1050 & 1000×760，明暗双主题）**：已完成，U1–U11 全部达标（含鼠标 `pointerdown` 隐藏焦点环、键盘绿环、Checkbox 3.65:1/4.77:1、写信三行 461px 左对齐、侧栏与写信工具栏渐隐、双语异步按钮稳宽、邮件行键盘焦点显现复选框）。
+    - **macOS 原生 WKWebView 隔离实包复验（`dev.maildesk.preview0145`，1440×900，0 账号，明暗双主题）**：已完成并清理临时包与数据目录——实测确认 U4/U9 设置页瘦身与 8px 基线存档指标、U10/U11 浅/深双主题 18px `-webkit-mask-image` 边缘渐隐、U2/U6/U7 工作台周历刻度/四象限/居中结构化空态与双列等宽统计、U1 粗黑三重框消除并收敛为单层品牌绿环。注：自动化经 `AXPress` 触发不派发 `pointerdown`，物理鼠标点击 `data-pointer-focus` 及带账号写信/签名勾选框在原生 WKWebView 下仍待带账号环境顺手点验。
+    - **Windows 10/11 原生 WebView2 实机验收**：**未验证**。
+  - **云端构建 / 正式发布**：**未验证**（尚未提交推送、未运行云端 CI/Release；正式发布版本仍为 **0.1.45 Alpha**）。
+
+## 前一阶段：UI 设计规范（2026-11-24）
+
+已将 Topinspo 词汇表中适用于雁信的间距、层级、状态、组件模式与交互反馈整理为 [雁信 UI 设计规范](UI_DESIGN_GUIDELINES.md)，并接入 AGENTS.md、UI 专项规范与文档索引。本轮范围为文档，后续 UI 任务使用新规范及其验收清单，界面与原生验收随实际 UI 改动开展。
+
+## 前一阶段：0.1.45 已发布（2026-11-24）
 
 基于本机已安装 `/Applications/雁信.app`（v0.1.44）只读全界面走查与前后端全量审计，已完成一轮前端（`src/` 40 文件）与 Rust 桌面后端（`src-tauri/` 21 文件）联合优化（详见 [0.1.44 真机走查与前后端优化工作点](working/features/UI_UX_AND_BACKEND_AUDIT_0_1_44_WORKING.md)），并正式发布 **0.1.45 Alpha**。按用户意见跳过左侧「我的账号」邮箱截断项（侧栏可拖动调宽），保留 macOS 菜单栏左键唤起主窗口及 SQLite 持久化级别约定。
 

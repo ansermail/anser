@@ -1,7 +1,7 @@
 import { t } from "@/lib/i18n";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
-import { Button } from "@/components/ui/button";
+import { Button, ButtonLabel } from "@/components/ui/button";
 import {
   Card,
   CardAction,
@@ -90,7 +90,7 @@ export function NetworkProxySettings() {
           <CardTitle>{t("Network proxy")}</CardTitle>
           <CardDescription>
             {t(
-              "All accounts use the same proxy for incoming/outgoing mail, body resources, model translation and OAuth tokens. Your proxy software decides which destinations to forward.",
+              "One proxy covers incoming and outgoing mail, message resources, model requests and OAuth tokens.",
             )}
           </CardDescription>
           <CardAction>
@@ -130,9 +130,7 @@ export function NetworkProxySettings() {
             </>
           ) : (
             <p className="text-sm text-muted-foreground leading-relaxed">
-              {t(
-                "Direct connection. Turn on the switch above to configure a SOCKS5, HTTP or HTTPS proxy.",
-              )}
+              {t("Using a direct connection.")}
             </p>
           )}
         </CardContent>
@@ -287,8 +285,10 @@ export function NetworkProxySettings() {
               >
                 {t("Cancel")}
               </Button>
-              <Button type="submit" disabled={busy}>
-                {busy ? t("Saving…") : t("Save")}
+              <Button type="submit" disabled={busy} aria-busy={busy}>
+                <ButtonLabel reserve={[t("Save"), t("Saving…")]}>
+                  {busy ? t("Saving…") : t("Save")}
+                </ButtonLabel>
               </Button>
             </DialogFooter>
           </form>

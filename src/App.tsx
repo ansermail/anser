@@ -83,6 +83,8 @@ import { FolderInput } from "./components/folder-input";
 import { applyThemeClass, useTheme } from "./lib/theme";
 import { Tabs, TabsList, TabsTrigger } from "./components/ui/tabs";
 import { disableNativeContextMenu } from "./lib/context-menu";
+import { trackPointerFocus } from "./lib/webview-keys";
+import { useScrollFade } from "./lib/scroll-fade";
 import { NavigationLayout, MailLayout } from "./components/resizable-layout";
 import {
   MailBodySkeleton,
@@ -185,7 +187,7 @@ import { MailActionTooltip } from "./components/mail-action-tooltip";
 import { ContactsPanel } from "./components/contacts-panel";
 import { OutboxPanel } from "./components/outbox-panel";
 import { ArchiveIntegrity } from "./components/archive-integrity";
-import { ArchiveTier } from "./components/archive-tier";
+import { ArchiveSizeMetric, ArchiveTier } from "./components/archive-tier";
 import { StorageTools } from "./components/storage-tools";
 import { MailTranslationSettings } from "./components/mail-translation-settings";
 import { NetworkProxySettings } from "./components/network-proxy-settings";
@@ -216,7 +218,7 @@ import {
   restoreDemo,
   newDraft,
 } from "./lib/api";
-import { senderName, formatSize, providers } from "./lib/providers";
+import { senderName, providers } from "./lib/providers";
 import type {
   MailPage,
   MailNeighbor,
@@ -278,7 +280,10 @@ export default function App({
   useLanguage();
   const updates = useAppUpdate();
   const { askConfirmation, confirmationDialog } = useConfirmation();
+  const sidebarScrollFade = useScrollFade("vertical");
+  const mailListScrollFade = useScrollFade("vertical");
   useEffect(() => disableNativeContextMenu(document), []);
+  useEffect(() => trackPointerFocus(document), []);
   const [data, setData] = useState<MailPage>(() => ({
       ...initialSnapshot(),
       nextCursor: null,
@@ -2227,7 +2232,7 @@ export default function App({
                 <kbd>{shortcut("⌘ N")}</kbd>
               </Button>
             </SidebarHeader>
-            <SidebarContent className="sidebar">
+            <SidebarContent className="sidebar" ref={sidebarScrollFade}>
               <nav className="primary-nav">
                 {nav("all", Inbox, data.stats.unread)}
                 {nav("starred", Star)}
@@ -2723,15 +2728,12 @@ export default function App({
           ) : page === "settings" || page === "storage" ? (
             <section className="workspace-panel settings-workspace">
               <div className="panel-heading">
-                <div>
-                  <div className="page-title-row">
-                    <SidebarTrigger
-                      title={t("Toggle sidebar")}
-                      aria-label={t("Toggle sidebar")}
-                    />
-                    <h1>{t("Settings & accounts")}</h1>
-                  </div>
-                  <p>{t("Manage accounts, local archives and preferences.")}</p>
+                <div className="page-title-row">
+                  <SidebarTrigger
+                    title={t("Toggle sidebar")}
+                    aria-label={t("Toggle sidebar")}
+                  />
+                  <h1>{t("Settings & accounts")}</h1>
                 </div>
               </div>
               <Separator className="settings-heading-divider" />
@@ -2742,14 +2744,7 @@ export default function App({
                 accounts={
                   <>
                     <div className="settings-section-heading">
-                      <div>
-                        <h2>{t("Email accounts")}</h2>
-                        <p>
-                          {t(
-                            "Manage connected accounts and how their mail is fetched and saved.",
-                          )}
-                        </p>
-                      </div>
+                      <h2>{t("Email accounts")}</h2>
                       <Button
                         disabled={publicPreview}
                         onClick={() => setAccountDialog(true)}
@@ -2778,7 +2773,7 @@ export default function App({
                                   : t("Save locally")}
                               </Badge>
                             </p>
-                            <small>
+                            <small className="tabular-nums">
                               {a.error ||
                                 (!a.enabled
                                   ? t("Account paused")
@@ -2894,14 +2889,7 @@ export default function App({
                 archive={
                   <>
                     <div className="settings-section-heading">
-                      <div>
-                        <h2>{t("Local archive")}</h2>
-                        <p>
-                          {t(
-                            "Review saved messages, manage locations and backups.",
-                          )}
-                        </p>
-                      </div>
+                      <h2>{t("Local archive")}</h2>
                     </div>
                     <Card className="storage-card">
                       <div className="storage-card-header">
@@ -2929,13 +2917,13 @@ export default function App({
                           <span>{t("Full local archives")}</span>
                         </div>
                         <div>
-                          <strong>{formatSize(data.stats.bytes)}</strong>
+                          <ArchiveSizeMetric bytes={data.stats.bytes} />
                           <span>{t("Original message size")}</span>
                         </div>
                         <div>
-                          <strong>
-                            {formatSize(data.stats.indexBytes || 0)}
-                          </strong>
+                          <ArchiveSizeMetric
+                            bytes={data.stats.indexBytes ?? 0}
+                          />
                           <span>{t("Built-in index size")}</span>
                         </div>
                       </div>
@@ -2989,14 +2977,7 @@ export default function App({
                 preferences={
                   <>
                     <div className="settings-section-heading">
-                      <div>
-                        <h2>{t("Preferences")}</h2>
-                        <p>
-                          {t(
-                            "Configure display language, notifications, startup, background checks, reading cache, network proxy and system default apps.",
-                          )}
-                        </p>
-                      </div>
+                      <h2>{t("Preferences")}</h2>
                     </div>
                     <div className="settings-preferences-grid">
                       <LanguageSettings />
@@ -3018,14 +2999,7 @@ export default function App({
                 composing={
                   <>
                     <div className="settings-section-heading">
-                      <div>
-                        <h2>{t("Reading & composing")}</h2>
-                        <p>
-                          {t(
-                            "Configure email signatures and the AI assistant for reading and writing mail.",
-                          )}
-                        </p>
-                      </div>
+                      <h2>{t("Reading & composing")}</h2>
                     </div>
                     <MailSignatures accounts={data.accounts} />
                     <MailTranslationSettings />
@@ -3036,14 +3010,7 @@ export default function App({
                     value={taskPanelExpansion.current}
                   >
                     <div className="settings-section-heading">
-                      <div>
-                        <h2>{t("Background tasks")}</h2>
-                        <p>
-                          {t(
-                            "Review saving and sync progress. Check recent activity for problems.",
-                          )}
-                        </p>
-                      </div>
+                      <h2>{t("Background tasks")}</h2>
                     </div>
                     <ArchiveJobsPanel defaultCollapsed />
                     <EmlImports
@@ -3123,10 +3090,7 @@ export default function App({
                 about={
                   <>
                     <div className="settings-section-heading">
-                      <div>
-                        <h2>{t("About Anser")}</h2>
-                        <p>{t("Version, updates and background operation.")}</p>
-                      </div>
+                      <h2>{t("About Anser")}</h2>
                     </div>
                     <UpdateSettings updates={updates} />
                     <div className="info-strip">
@@ -3532,7 +3496,7 @@ export default function App({
                       </Button>
                     </div>
                   )}
-                  <div className="mail-rows">
+                  <div className="mail-rows" ref={mailListScrollFade}>
                     {loading ? (
                       <MailListSkeleton />
                     ) : data.messages.length ? (

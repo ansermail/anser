@@ -107,6 +107,31 @@ async function pressInDialog(label: string) {
   });
 }
 
+it("keeps the table structure and announces its first load until records arrive", async () => {
+  let resolve!: (records: OutboxRecord[]) => void;
+  const pending = new Promise<OutboxRecord[]>((done) => {
+    resolve = done;
+  });
+  vi.mocked(api.call).mockImplementationOnce(
+    async <T,>() => (await pending) as T,
+  );
+  await render();
+  const table = host.querySelector("table")!;
+  expect(table.getAttribute("aria-busy")).toBe("true");
+  expect(host.querySelector('[role="status"]')?.textContent).toBe(
+    "正在读取发送记录…",
+  );
+  expect(table.querySelectorAll('th[scope="col"]')).toHaveLength(7);
+  expect(table.querySelectorAll("tbody tr")).toHaveLength(3);
+  expect(table.querySelectorAll('[data-slot="skeleton"]')).toHaveLength(21);
+
+  await act(async () => resolve(records));
+  expect(table.getAttribute("aria-busy")).toBe("false");
+  expect(table.querySelector('[data-slot="skeleton"]')).toBeNull();
+  expect(table.querySelector('th[data-column="scheduled"]')).toBeNull();
+  expect(row("completed")).toBeTruthy();
+});
+
 it("splits send records into a compact table and keeps diagnostics in details", async () => {
   await render();
   expect(host.querySelectorAll("tbody tr")).toHaveLength(7);

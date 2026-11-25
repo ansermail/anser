@@ -9,6 +9,7 @@ import {
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { t } from "@/lib/i18n";
 import { Button } from "./ui/button";
+import { Skeleton } from "./ui/skeleton";
 import {
   Table,
   TableBody,
@@ -135,6 +136,7 @@ export function TaskDataTable({
   label,
   rows,
   empty,
+  loadingLabel,
   fields,
   actionsWidth = 9,
   columnWidths,
@@ -146,7 +148,8 @@ export function TaskDataTable({
 }: {
   label: string;
   rows: TaskTableRow[];
-  empty: string;
+  empty: ReactNode;
+  loadingLabel?: string;
   fields: readonly TaskColumn[];
   actionsWidth?: number;
   columnWidths?: Partial<Record<TaskColumn, number>>;
@@ -156,13 +159,15 @@ export function TaskDataTable({
   selectedRowId?: string | null;
   renderRow?: (row: TaskTableRow, rowElement: ReactNode) => ReactNode;
 }) {
-  const visibleFields = keepEmptyFields
-    ? fields
-    : rows.length
-      ? fields.filter((field) =>
-          rows.some((row) => row[field] != null && row[field] !== ""),
-        )
-      : fields.slice(0, 1);
+  const showSkeleton = !!loadingLabel && !rows.length;
+  const visibleFields =
+    keepEmptyFields || showSkeleton
+      ? fields
+      : rows.length
+        ? fields.filter((field) =>
+            rows.some((row) => row[field] != null && row[field] !== ""),
+          )
+        : fields.slice(0, 1);
   const columns = visibleFields.map((field) => columnsById[field]);
   const widthFor = (field: TaskColumn) =>
     columnWidths?.[field] ??
@@ -188,8 +193,17 @@ export function TaskDataTable({
 
   return (
     <div className="task-data-table flex min-w-0 flex-col gap-2">
+      {loadingLabel && (
+        <p role="status" className="sr-only">
+          {loadingLabel}
+        </p>
+      )}
       <div className="overflow-hidden rounded-md border">
-        <Table aria-label={label} style={{ minWidth: `${minWidth}rem` }}>
+        <Table
+          aria-label={label}
+          aria-busy={!!loadingLabel}
+          style={{ minWidth: `${minWidth}rem` }}
+        >
           <TableHeader className="bg-secondary/60">
             {table.getHeaderGroups().map((group) => (
               <TableRow key={group.id}>
@@ -212,8 +226,22 @@ export function TaskDataTable({
               </TableRow>
             ))}
           </TableHeader>
-          <TableBody>
-            {rows.length ? (
+          <TableBody aria-hidden={showSkeleton || undefined}>
+            {showSkeleton ? (
+              [0, 1, 2].map((index) => (
+                <TableRow key={index}>
+                  {visibleFields.map((field) => (
+                    <TableCell
+                      key={field}
+                      data-column={field}
+                      className="h-9 px-2.5 py-1.5 align-middle"
+                    >
+                      <Skeleton className="h-3 w-3/4" />
+                    </TableCell>
+                  ))}
+                </TableRow>
+              ))
+            ) : rows.length ? (
               table.getRowModel().rows.map((row) => {
                 const rowElement = (
                   <TableRow

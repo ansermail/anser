@@ -126,6 +126,60 @@ function reportDate(date: string) {
   );
 }
 
+it("guides users from empty items and reports without showing the work-table checkbox column", async () => {
+  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+  backend.items = [];
+  const host = document.createElement("div");
+  document.body.append(host);
+  const root = createRoot(host);
+  const openTab = async (label: string) => {
+    const tab = [...host.querySelectorAll('[role="tab"]')].find(
+      (node) => node.textContent === label,
+    )!;
+    await act(async () =>
+      tab.dispatchEvent(
+        new MouseEvent("mousedown", { bubbles: true, button: 0 }),
+      ),
+    );
+  };
+  try {
+    await act(async () =>
+      root.render(
+        <Workbench
+          onSeedConsumed={() => {}}
+          openMail={() => {}}
+          writeMail={() => {}}
+        />,
+      ),
+    );
+    await openTab("事项");
+    expect(host.querySelector("th[data-column=complete]")).toBeNull();
+    expect(
+      host.querySelector('tbody [data-slot="empty-title"]')?.textContent,
+    ).toBe("还没有事项");
+    expect(
+      host.querySelector('tbody [data-slot="empty-description"]')?.textContent,
+    ).toContain("添加工作记录");
+
+    await openTab("工作报告");
+    const report = host.querySelector(".wb-report-paper")!;
+    expect(report.querySelector('[data-slot="empty-title"]')?.textContent).toBe(
+      "此时间范围内没有事项",
+    );
+    expect(
+      report.querySelector('[data-slot="empty-description"]')?.textContent,
+    ).toContain("选择其他日期范围或项目");
+    expect(
+      [...host.querySelectorAll(".wb-report-numbers strong")].map(
+        (node) => node.textContent,
+      ),
+    ).toEqual(["0", "0"]);
+  } finally {
+    await act(async () => root.unmount());
+    host.remove();
+  }
+});
+
 it("shares a calendar quick entry across table and board and reloads it from storage", async () => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   vi.stubGlobal(

@@ -83,6 +83,52 @@ it("collapses account, local storage and tag sections from their headings", asyn
     expect(host.querySelector(content)?.hasAttribute("hidden")).toBe(false);
   }
 });
+it("tracks fading edges on the mail and settings scroll viewports", async () => {
+  const scroll = (element: HTMLElement, offset: number) => {
+    element.scrollTop = offset;
+    element.dispatchEvent(new Event("scroll"));
+  };
+  const setOverflow = (element: HTMLElement) => {
+    Object.defineProperties(element, {
+      clientHeight: { value: 200 },
+      scrollHeight: { value: 500 },
+    });
+  };
+  const mail = host.querySelector<HTMLElement>(".mail-rows")!;
+  setOverflow(mail);
+  scroll(mail, 150);
+  expect(mail.hasAttribute("data-scroll-fade-top")).toBe(true);
+  expect(mail.hasAttribute("data-scroll-fade-bottom")).toBe(true);
+
+  await click(nav("设置与账号"));
+  expect(mail.hasAttribute("data-scroll-fade-top")).toBe(false);
+  expect(mail.hasAttribute("data-scroll-fade-bottom")).toBe(false);
+  const settings = host.querySelector<HTMLElement>(".settings-panels")!;
+  setOverflow(settings);
+  scroll(settings, 0);
+  expect(settings.hasAttribute("data-scroll-fade-top")).toBe(false);
+  expect(settings.hasAttribute("data-scroll-fade-bottom")).toBe(true);
+  scroll(settings, 300);
+  expect(settings.hasAttribute("data-scroll-fade-top")).toBe(true);
+  expect(settings.hasAttribute("data-scroll-fade-bottom")).toBe(false);
+});
+it("keeps mail-row selection in the keyboard tab order", async () => {
+  const checkbox = host.querySelector<HTMLButtonElement>(
+    '.row-check [role="checkbox"]',
+  )!;
+  expect(checkbox.tabIndex).toBe(0);
+  await act(async () => checkbox.focus());
+  expect(document.activeElement).toBe(checkbox);
+  expect(checkbox.getAttribute("aria-checked")).toBe("false");
+
+  await act(async () => {
+    checkbox.dispatchEvent(
+      new MouseEvent("click", { bubbles: true, detail: 0 }),
+    );
+  });
+  expect(checkbox.getAttribute("aria-checked")).toBe("true");
+  expect(document.activeElement).toBe(checkbox);
+});
 it("creates a local tag, assigns it from the reader and filters the list", async () => {
   await click(host.querySelector('button[aria-label="新增标签"]'));
   const input = document.querySelector(
@@ -363,7 +409,16 @@ it("keeps unsaved translation input when switching settings categories", async (
     ) || null;
   const visiblePanel = () =>
     host.querySelector(".settings-section:not([hidden])");
-  expect(visiblePanel()?.textContent).toContain("管理已连接的邮箱");
+  expect(visiblePanel()?.querySelector("h2")?.textContent).toBe("邮箱账号");
+  expect(
+    visiblePanel()?.querySelector(".settings-section-heading button")
+      ?.textContent,
+  ).toBe("添加账号");
+  expect(
+    host.querySelectorAll(
+      ".settings-workspace > .panel-heading p, .settings-section-heading p",
+    ),
+  ).toHaveLength(0);
   await click(tab("阅读与写信"));
   expect(visiblePanel()?.textContent).toContain("邮件签名");
   const input = host.querySelector(
