@@ -1,8 +1,7 @@
 import { dateLocale, t } from "@/lib/i18n";
 import { useConfirmation } from "@/hooks/use-confirmation";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
-  RefreshCw,
   Eye,
   AlertCircle,
   CheckCircle2,
@@ -28,6 +27,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "./ui/dialog";
+import { TaskRefreshButton } from "./task-panel-header";
 import { TaskCellText, TaskDataTable } from "./task-data-table";
 
 const uploadLabels: Record<string, string> = {
@@ -157,23 +157,31 @@ export function OutboxPanel({
   const [editing, setEditing] = useState(""),
     [time, setTime] = useState(localDateTime);
   const [now, setNow] = useState(Date.now);
+  const latestRefresh = useRef(0);
   const selected = records.find((record) => record.id === detailsId);
 
   async function refresh() {
+    const ticket = ++latestRefresh.current;
     try {
-      setRecords(await call<OutboxRecord[]>("list_outbox"));
-      setFailure("");
+      const next = await call<OutboxRecord[]>("list_outbox");
+      if (latestRefresh.current === ticket) {
+        setRecords(next);
+        setFailure("");
+      }
     } catch (error) {
-      setFailure(String(error));
+      if (latestRefresh.current === ticket) setFailure(String(error));
     } finally {
-      setLoading(false);
+      if (latestRefresh.current === ticket) setLoading(false);
     }
   }
 
   useEffect(() => {
     void refresh();
     const timer = setInterval(() => void refresh(), 10000);
-    return () => clearInterval(timer);
+    return () => {
+      latestRefresh.current++;
+      clearInterval(timer);
+    };
   }, []);
 
   useEffect(() => {
@@ -407,20 +415,18 @@ export function OutboxPanel({
   return (
     <section className="workspace-panel">
       <div className="panel-heading">
-        <div>
-          <div className="page-title-row">
-            <SidebarTrigger
-              title={t("Toggle sidebar")}
-              aria-label={t("Toggle sidebar")}
-            />
-            <h1>{t("Send history")}</h1>
-          </div>
-          <p>{t("Review successful, failed and unconfirmed send receipts")}</p>
+        <div className="page-title-row">
+          <SidebarTrigger
+            title={t("Toggle sidebar")}
+            aria-label={t("Toggle sidebar")}
+          />
+          <h1>{t("Send history")}</h1>
         </div>
-        <Button variant="outline" onClick={() => void refresh()}>
-          <RefreshCw size={15} />
-          {t("Refresh")}
-        </Button>
+        <TaskRefreshButton
+          variant="outline"
+          label={t("Refresh")}
+          onRefresh={refresh}
+        />
       </div>
       {failure && records.length > 0 && (
         <p className="form-error" role="alert">
@@ -430,6 +436,7 @@ export function OutboxPanel({
       <TaskDataTable
         label={t("Send history")}
         rows={rows}
+        columnWidths={{ status: 12 }}
         empty={empty}
         loadingLabel={loading ? t("Loading send history…") : undefined}
         pageSize={15}

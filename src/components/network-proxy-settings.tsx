@@ -1,5 +1,5 @@
 import { t } from "@/lib/i18n";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { Button, ButtonLabel } from "@/components/ui/button";
 import {
@@ -21,10 +21,14 @@ import {
 import {
   Field,
   FieldDescription,
+  FieldError,
   FieldGroup,
   FieldLabel,
+  FieldLegend,
+  FieldSet,
 } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Switch } from "@/components/ui/switch";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { call } from "@/lib/api";
@@ -48,6 +52,17 @@ export function NetworkProxySettings() {
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [ready, setReady] = useState(false);
+  const [validated, setValidated] = useState(false);
+  const trigger = useRef<HTMLButtonElement>(null);
+  const editButton = useRef<HTMLButtonElement>(null);
+  const returnFocus = useRef<HTMLButtonElement | null>(null);
+  const nameInput = useRef<HTMLInputElement>(null);
+  const hostInput = useRef<HTMLInputElement>(null);
+  const portInput = useRef<HTMLInputElement>(null);
+  const missingName = !draft.name.trim();
+  const missingHost = !draft.host.trim();
+  const invalidPort =
+    !Number.isInteger(draft.port) || draft.port < 1 || draft.port > 65535;
 
   useEffect(() => {
     let active = true;
@@ -95,12 +110,16 @@ export function NetworkProxySettings() {
           </CardDescription>
           <CardAction>
             <Switch
+              ref={trigger}
               aria-label={t("Enable network proxy")}
               checked={!!proxy}
               disabled={!ready || busy}
               onCheckedChange={(enabled) => {
                 if (enabled) {
                   setDraft(proxy || emptyProxy);
+                  setPassword("");
+                  setValidated(false);
+                  returnFocus.current = trigger.current;
                   setOpen(true);
                 } else {
                   void save(null);
@@ -109,7 +128,7 @@ export function NetworkProxySettings() {
             />
           </CardAction>
         </CardHeader>
-        <CardContent className="flex flex-wrap items-center justify-between gap-4">
+        <CardContent className="settings-proxy-summary">
           {proxy ? (
             <>
               <div className="grid min-w-0 gap-1 [overflow-wrap:anywhere]">
@@ -119,11 +138,14 @@ export function NetworkProxySettings() {
                 </p>
               </div>
               <Button
+                ref={editButton}
                 variant="outline"
                 size="sm"
                 onClick={() => {
                   setDraft(proxy);
                   setPassword("");
+                  setValidated(false);
+                  returnFocus.current = editButton.current;
                   setOpen(true);
                 }}
               >
@@ -132,7 +154,7 @@ export function NetworkProxySettings() {
             </>
           ) : (
             ready && (
-              <p className="text-xs text-muted-foreground">
+              <p className="text-sm text-muted-foreground">
                 {t("Using a direct connection.")}
               </p>
             )
@@ -145,9 +167,20 @@ export function NetworkProxySettings() {
           if (!busy) setOpen(value);
         }}
       >
-        <DialogContent className="sm:max-w-lg">
+        <DialogContent
+          className="settings-proxy-dialog"
+          onCloseAutoFocus={(event) => {
+            const target = returnFocus.current;
+            if (target?.isConnected) {
+              event.preventDefault();
+              target.focus();
+            }
+          }}
+        >
           <DialogHeader>
-            <DialogTitle>{t("Edit proxy")}</DialogTitle>
+            <DialogTitle>
+              {proxy ? t("Edit proxy") : t("Configure proxy")}
+            </DialogTitle>
             <DialogDescription>
               {t(
                 "Enter the local address and port provided by your proxy software.",
@@ -155,34 +188,47 @@ export function NetworkProxySettings() {
             </DialogDescription>
           </DialogHeader>
           <form
+            noValidate
+            className="flex min-h-0 flex-col gap-5"
             onSubmit={(event) => {
               event.preventDefault();
+              if (busy) return;
+              setValidated(true);
               const name = draft.name.trim();
               const host = draft.host.trim();
-              if (
-                !name ||
-                !host ||
-                !Number.isInteger(draft.port) ||
-                draft.port < 1 ||
-                draft.port > 65535
-              ) {
-                toast.error(t("Enter a valid name, server address and port"));
+              if (missingName || missingHost || invalidPort) {
+                (missingName
+                  ? nameInput
+                  : missingHost
+                    ? hostInput
+                    : portInput
+                ).current?.focus();
                 return;
               }
               void save({ ...draft, name, host }, password);
             }}
           >
-            <FieldGroup className="gap-4">
-              <Field>
+            <FieldGroup className="settings-proxy-fields">
+              <Field data-invalid={validated && missingName}>
                 <FieldLabel htmlFor="proxy-name">{t("Proxy name")}</FieldLabel>
                 <Input
                   id="proxy-name"
+                  ref={nameInput}
+                  aria-invalid={validated && missingName}
+                  aria-describedby={
+                    validated && missingName ? "proxy-name-error" : undefined
+                  }
                   value={draft.name}
                   onChange={(event) =>
                     setDraft({ ...draft, name: event.target.value })
                   }
                   required
                 />
+                {validated && missingName && (
+                  <FieldError id="proxy-name-error">
+                    {t("Enter a proxy name.")}
+                  </FieldError>
+                )}
               </Field>
               <Field>
                 <FieldLabel>{t("Type")}</FieldLabel>
@@ -204,23 +250,39 @@ export function NetworkProxySettings() {
                   <ToggleGroupItem value="https">HTTPS</ToggleGroupItem>
                 </ToggleGroup>
               </Field>
-              <Field>
+              <Field data-invalid={validated && missingHost}>
                 <FieldLabel htmlFor="proxy-host">
                   {t("Server address")}
                 </FieldLabel>
                 <Input
                   id="proxy-host"
+                  ref={hostInput}
+                  aria-invalid={validated && missingHost}
+                  aria-describedby={
+                    validated && missingHost ? "proxy-host-error" : undefined
+                  }
                   value={draft.host}
                   onChange={(event) =>
                     setDraft({ ...draft, host: event.target.value })
                   }
                   required
                 />
+                {validated && missingHost && (
+                  <FieldError id="proxy-host-error">
+                    {t("Enter a server address.")}
+                  </FieldError>
+                )}
               </Field>
-              <Field>
+              <Field data-invalid={validated && invalidPort}>
                 <FieldLabel htmlFor="proxy-port">{t("Port")}</FieldLabel>
                 <Input
                   id="proxy-port"
+                  ref={portInput}
+                  aria-invalid={validated && invalidPort}
+                  aria-describedby={
+                    validated && invalidPort ? "proxy-port-error" : undefined
+                  }
+                  className="tabular-nums"
                   type="number"
                   min={1}
                   max={65535}
@@ -230,57 +292,73 @@ export function NetworkProxySettings() {
                   }
                   required
                 />
+                {validated && invalidPort && (
+                  <FieldError id="proxy-port-error">
+                    {t("Enter a port from 1 to 65535.")}
+                  </FieldError>
+                )}
               </Field>
-              <Field>
-                <FieldLabel htmlFor="proxy-username">
-                  {t("Username (optional)")}
-                </FieldLabel>
-                <Input
-                  id="proxy-username"
-                  autoComplete="off"
-                  value={draft.username}
-                  onChange={(event) =>
-                    setDraft({ ...draft, username: event.target.value })
-                  }
-                />
-              </Field>
-              <Field>
-                <FieldLabel htmlFor="proxy-password">
-                  {t("Password (optional)")}
-                </FieldLabel>
-                <Input
-                  id="proxy-password"
-                  type="password"
-                  autoComplete="new-password"
-                  value={password}
-                  onChange={(event) => setPassword(event.target.value)}
-                  placeholder={
-                    proxy ? t("Leave blank to keep the current password") : ""
-                  }
-                />
-                <FieldDescription>
-                  {t("Passwords are stored only in local Keychain.")}
+              <FieldSet className="settings-proxy-auth">
+                <FieldLegend variant="label">{t("Authentication")}</FieldLegend>
+                <FieldGroup className="settings-proxy-fields">
+                  <Field>
+                    <FieldLabel htmlFor="proxy-username">
+                      {t("Username (optional)")}
+                    </FieldLabel>
+                    <Input
+                      id="proxy-username"
+                      autoComplete="off"
+                      value={draft.username}
+                      onChange={(event) =>
+                        setDraft({ ...draft, username: event.target.value })
+                      }
+                    />
+                  </Field>
+                  <Field>
+                    <FieldLabel htmlFor="proxy-password">
+                      {t("Password (optional)")}
+                    </FieldLabel>
+                    <Input
+                      id="proxy-password"
+                      aria-describedby="proxy-password-hint"
+                      type="password"
+                      autoComplete="new-password"
+                      value={password}
+                      onChange={(event) => setPassword(event.target.value)}
+                      placeholder={
+                        proxy
+                          ? t("Leave blank to keep the current password")
+                          : ""
+                      }
+                    />
+                  </Field>
+                </FieldGroup>
+                <FieldDescription id="proxy-password-hint">
+                  {t("Passwords are stored in the local credential vault.")}
+                </FieldDescription>
+              </FieldSet>
+              <Field className="settings-proxy-fallback">
+                <Field orientation="horizontal">
+                  <Checkbox
+                    id="proxy-fallback"
+                    aria-describedby="proxy-fallback-hint"
+                    checked={draft.directOnFailure}
+                    onCheckedChange={(checked) =>
+                      setDraft({ ...draft, directOnFailure: checked === true })
+                    }
+                  />
+                  <FieldLabel htmlFor="proxy-fallback">
+                    {t("Connect directly if proxy connection fails")}
+                  </FieldLabel>
+                </Field>
+                <FieldDescription id="proxy-fallback-hint">
+                  {t(
+                    "Fallback is limited to proxy connection or tunnel setup failures. Messages with an uncertain send result are never resent automatically.",
+                  )}
                 </FieldDescription>
               </Field>
-              <Field orientation="horizontal">
-                <Switch
-                  id="proxy-fallback"
-                  checked={draft.directOnFailure}
-                  onCheckedChange={(checked) =>
-                    setDraft({ ...draft, directOnFailure: checked })
-                  }
-                />
-                <FieldLabel htmlFor="proxy-fallback">
-                  {t("Connect directly if proxy connection fails")}
-                </FieldLabel>
-              </Field>
-              <FieldDescription>
-                {t(
-                  "Fallback is limited to proxy connection or tunnel setup failures. Messages with an uncertain send result are never resent automatically.",
-                )}
-              </FieldDescription>
             </FieldGroup>
-            <DialogFooter className="mt-6">
+            <DialogFooter>
               <Button
                 type="button"
                 variant="outline"

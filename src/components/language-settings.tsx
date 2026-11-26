@@ -16,7 +16,6 @@ import {
   CardHeader,
   CardTitle,
 } from "./ui/card";
-import { Field, FieldLabel } from "./ui/field";
 import { SelectField, SelectOption } from "./ui/select-field";
 import { SelectGroup } from "./ui/select";
 
@@ -61,34 +60,30 @@ export function LanguageSettings() {
   return (
     <Card className="language-settings-card">
       <CardHeader>
-        <CardTitle>{t("Interface language")}</CardTitle>
+        <CardTitle id="interface-language-title">
+          {t("Interface language")}
+        </CardTitle>
         <CardDescription id="interface-language-description">
-          {t(
-            "The interface language is independent of original messages and the translation target language.",
-          )}
+          {t("Interface language and translation language are set separately.")}
         </CardDescription>
         <CardAction className="self-center">
-          <Field orientation="horizontal" className="w-fit max-w-full">
-            <FieldLabel htmlFor="interface-language">
-              {t("Language / 语言")}
-            </FieldLabel>
-            <SelectField
-              id="interface-language"
-              className="w-40 shrink-0"
-              aria-describedby="interface-language-description"
-              value={language}
-              disabled={!ready || busy}
-              onValueChange={(value) => void change(value)}
-            >
-              <SelectGroup>
-                {languageOptions.map((option) => (
-                  <SelectOption key={option.code} value={option.code}>
-                    {option.label}
-                  </SelectOption>
-                ))}
-              </SelectGroup>
-            </SelectField>
-          </Field>
+          <SelectField
+            id="interface-language"
+            className="settings-choice"
+            aria-labelledby="interface-language-title"
+            aria-describedby="interface-language-description"
+            value={language}
+            disabled={!ready || busy}
+            onValueChange={(value) => void change(value)}
+          >
+            <SelectGroup>
+              {languageOptions.map((option) => (
+                <SelectOption key={option.code} value={option.code}>
+                  {option.label}
+                </SelectOption>
+              ))}
+            </SelectGroup>
+          </SelectField>
         </CardAction>
       </CardHeader>
     </Card>

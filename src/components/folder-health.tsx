@@ -7,12 +7,11 @@ import { listen } from "@tauri-apps/api/event";
 import { AlertCircle, RefreshCw } from "lucide-react";
 import { call, native, isDemo } from "@/lib/api";
 import { coalesceRefresh } from "@/lib/refresh-queue";
-import { Button } from "./ui/button";
+import { Button, ButtonLabel } from "./ui/button";
 import { CollapsibleContent } from "./ui/collapsible";
 import { Badge } from "./ui/badge";
 import { Card, CardContent } from "./ui/card";
 import { Alert, AlertTitle, AlertDescription } from "./ui/alert";
-import { Skeleton } from "./ui/skeleton";
 export type SelectionEvidence = {
   exists: number | null;
   uidCount: number | null;
@@ -132,15 +131,10 @@ export function FolderHealthPanel({
                 <AlertDescription>{error || loadError}</AlertDescription>
               </Alert>
             )}
-            {!items && !error && !loadError && (
-              <Skeleton
-                className="h-16 w-full"
-                aria-label={t("Loading folder checks")}
-              />
-            )}
-            {items && (
+            {(items || (!error && !loadError)) && (
               <TaskDataTable
-                actionsWidth={7}
+                loadingLabel={!items ? t("Loading folder checks") : undefined}
+                actionsWidth={9}
                 label={t("Folder source checks")}
                 empty={t("No quarantined folders.")}
                 fields={[
@@ -151,7 +145,7 @@ export function FolderHealthPanel({
                   "checked",
                   "actions",
                 ]}
-                rows={items.map((item) => {
+                rows={(items ?? []).map((item) => {
                   const key = JSON.stringify([item.accountId, item.folder]);
                   const review =
                     result?.key === key
@@ -212,6 +206,7 @@ export function FolderHealthPanel({
                           variant="outline"
                           size="xs"
                           disabled={!!busy}
+                          aria-busy={busy === key}
                           onClick={() => void probe(item)}
                           aria-label={t("Recheck {value0} {value1}", {
                             value0: item.accountEmail,
@@ -221,7 +216,11 @@ export function FolderHealthPanel({
                           <RefreshCw
                             className={busy === key ? "animate-spin" : ""}
                           />
-                          {busy === key ? t("Rechecking…") : t("Recheck")}
+                          <ButtonLabel
+                            reserve={[t("Recheck"), t("Rechecking…")]}
+                          >
+                            {busy === key ? t("Rechecking…") : t("Recheck")}
+                          </ButtonLabel>
                         </Button>
                       </div>
                     ),

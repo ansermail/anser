@@ -133,7 +133,8 @@ export function EmlImports({
   const [folderChoice, setFolderChoice] = useState("new");
   const [folderName, setFolderName] = useState(() => t("Imported mail"));
   const [job, setJob] = useState<ImportJob | null>(null);
-  const [jobs, setJobs] = useState<ImportJob[]>([]);
+  const [loadedJobs, setJobs] = useState<ImportJob[] | null>(null);
+  const jobs = loadedJobs ?? [];
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const generation = useRef(0);
@@ -152,7 +153,7 @@ export function EmlImports({
 
   const resultFields = (
     ["added", "upgraded", "duplicate", "failed", "warnings"] as const
-  ).filter((field) => jobs.some((entry) => entry[field] > 0));
+  ).filter((field) => !loadedJobs || jobs.some((entry) => entry[field] > 0));
 
   async function discard(id: string) {
     await call("eml_import_action", { id, action: "cancel" });
@@ -377,11 +378,16 @@ export function EmlImports({
                   </Alert>
                 )}
                 <TaskDataTable
+                  loadingLabel={
+                    !loadedJobs && !error
+                      ? t("Loading mail import tasks…")
+                      : undefined
+                  }
                   actionsWidth={9}
                   columnWidths={{
-                    folder: 5.5,
-                    account: 7,
-                    status: 7.5,
+                    folder: 8,
+                    account: 9,
+                    status: 9.5,
                     progress: 5.5,
                     reason: 5,
                   }}
@@ -454,7 +460,8 @@ export function EmlImports({
                           <DropdownMenuTrigger asChild>
                             <Button
                               variant="ghost"
-                              size="icon-xs"
+                              size="icon-sm"
+                              data-reveal-row-action=""
                               aria-label={t("Actions for {value0}", {
                                 value0: current.folder,
                               })}

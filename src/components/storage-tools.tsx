@@ -16,6 +16,7 @@ import {
 import { Separator } from "./ui/separator";
 import { Button, ButtonLabel } from "./ui/button";
 import { toast } from "sonner";
+import { LoaderCircle } from "lucide-react";
 
 export function StorageTools({ testMailId = "" }: { testMailId?: string }) {
   const [preferences, setPreferences] = useState<Preferences>({
@@ -30,7 +31,10 @@ export function StorageTools({ testMailId = "" }: { testMailId?: string }) {
     autoStartAvailable: boolean;
   } | null>(null);
   const [desktopBusy, setDesktopBusy] = useState(false);
-  const [saving, setSaving] = useState(false);
+  const [saving, setSaving] = useState<
+    "interval" | "newMailNotifications" | "sendResultNotifications" | null
+  >(null);
+  const [testing, setTesting] = useState(false);
   useEffect(() => {
     let live = true;
     void call<Preferences>("get_preferences")
@@ -54,7 +58,8 @@ export function StorageTools({ testMailId = "" }: { testMailId?: string }) {
     };
   }, []);
   async function save() {
-    setSaving(true);
+    if (saving) return;
+    setSaving("interval");
     try {
       const current = await call<Preferences>("get_preferences");
       const p = { ...current, syncIntervalMinutes: interval };
@@ -64,14 +69,15 @@ export function StorageTools({ testMailId = "" }: { testMailId?: string }) {
     } catch (e) {
       toast.error(String(e));
     } finally {
-      setSaving(false);
+      setSaving(null);
     }
   }
   async function notifications(
     key: "newMailNotifications" | "sendResultNotifications",
     enabled: boolean,
   ) {
-    setSaving(true);
+    if (saving) return;
+    setSaving(key);
     try {
       const current = await call<Preferences>("get_preferences");
       const p = { ...current, [key]: enabled };
@@ -80,7 +86,7 @@ export function StorageTools({ testMailId = "" }: { testMailId?: string }) {
     } catch (e) {
       toast.error(String(e));
     } finally {
-      setSaving(false);
+      setSaving(null);
     }
   }
   async function autoStart(enabled: boolean) {
@@ -97,6 +103,21 @@ export function StorageTools({ testMailId = "" }: { testMailId?: string }) {
       setDesktopBusy(false);
     }
   }
+  async function testNotification() {
+    setTesting(true);
+    try {
+      await call("test_notification", { id: testMailId || null });
+      toast.success(
+        isDemo()
+          ? t("Demo mode does not send system notifications")
+          : t("Test notification submitted. Check Notification Center."),
+      );
+    } catch (error) {
+      toast.error(String(error));
+    } finally {
+      setTesting(false);
+    }
+  }
   return (
     <div className="storage-tools">
       <Card className="storage-checks-card">
@@ -110,9 +131,10 @@ export function StorageTools({ testMailId = "" }: { testMailId?: string }) {
           <CardAction className="self-center">
             <div className="settings-tool-row">
               <SelectField
+                className="settings-choice"
                 aria-label={t("Background check interval")}
                 value={interval}
-                disabled={!ready || saving}
+                disabled={!ready || !!saving}
                 onValueChange={(value) => setInterval(Number(value))}
               >
                 {[1, 5, 10, 15, 30, 60].map((n) => (
@@ -124,18 +146,22 @@ export function StorageTools({ testMailId = "" }: { testMailId?: string }) {
                 ))}
               </SelectField>
               <Button
-                variant="outline"
+                variant={
+                  interval === preferences.syncIntervalMinutes
+                    ? "outline"
+                    : "default"
+                }
                 size="sm"
-                aria-busy={saving}
+                aria-busy={saving === "interval"}
                 disabled={
                   !ready ||
-                  saving ||
+                  !!saving ||
                   interval === preferences.syncIntervalMinutes
                 }
                 onClick={() => void save()}
               >
                 <ButtonLabel reserve={[t("Save"), t("Saving…")]}>
-                  {saving ? t("Saving…") : t("Save")}
+                  {saving === "interval" ? t("Saving…") : t("Save")}
                 </ButtonLabel>
               </Button>
             </div>
@@ -143,27 +169,31 @@ export function StorageTools({ testMailId = "" }: { testMailId?: string }) {
         </CardHeader>
       </Card>
       <Card className="storage-notifications-card">
-        <CardHeader className="grid-rows-1 items-center">
+        <CardHeader>
           <CardTitle>{t("Notifications & startup")}</CardTitle>
-          <CardAction className="row-span-1 self-center">
+          <CardDescription>
+            {t("Initial imports do not send notifications.")}
+          </CardDescription>
+          <CardAction className="self-center">
             <Button
               variant="outline"
               size="sm"
-              onClick={() =>
-                void call("test_notification", { id: testMailId || null })
-                  .then(() =>
-                    toast.success(
-                      isDemo()
-                        ? t("Demo mode does not send system notifications")
-                        : t(
-                            "Test notification submitted. Check Notification Center.",
-                          ),
-                    ),
-                  )
-                  .catch((e) => toast.error(String(e)))
-              }
+              aria-busy={testing}
+              disabled={testing}
+              onClick={() => void testNotification()}
             >
-              {t("Test system notification")}
+              <ButtonLabel
+                reserve={[
+                  t("Test system notification"),
+                  t("Sending test notification…"),
+                ]}
+                reserveIcon
+                icon={testing && <LoaderCircle className="animate-spin" />}
+              >
+                {testing
+                  ? t("Sending test notification…")
+                  : t("Test system notification")}
+              </ButtonLabel>
             </Button>
           </CardAction>
         </CardHeader>
@@ -174,8 +204,9 @@ export function StorageTools({ testMailId = "" }: { testMailId?: string }) {
             </Label>
             <Switch
               id="new-mail-notifications"
+              aria-busy={saving === "newMailNotifications"}
               checked={preferences.newMailNotifications ?? true}
-              disabled={!ready || saving}
+              disabled={!ready || !!saving}
               onCheckedChange={(enabled) =>
                 void notifications("newMailNotifications", enabled)
               }
@@ -187,23 +218,22 @@ export function StorageTools({ testMailId = "" }: { testMailId?: string }) {
             </Label>
             <Switch
               id="send-result-notifications"
+              aria-busy={saving === "sendResultNotifications"}
               checked={preferences.sendResultNotifications ?? true}
-              disabled={!ready || saving}
+              disabled={!ready || !!saving}
               onCheckedChange={(enabled) =>
                 void notifications("sendResultNotifications", enabled)
               }
             />
           </div>
-          <p className="text-sm text-muted-foreground leading-relaxed">
-            {t(
-              "Notifications cover new mail and send results, excluding the initial import.",
-            )}
-          </p>
           <Separator />
           <div className="settings-tool-row items-center justify-between gap-4">
             <div className="flex min-w-0 flex-col gap-1">
               <Label htmlFor="auto-start">{t("Launch at login")}</Label>
-              <p className="text-sm text-muted-foreground leading-relaxed">
+              <p
+                id="auto-start-description"
+                className="text-xs text-muted-foreground leading-relaxed"
+              >
                 {desktop?.autoStartAvailable === false
                   ? t("Launch at login requires the released app.")
                   : isDemo()
@@ -213,6 +243,7 @@ export function StorageTools({ testMailId = "" }: { testMailId?: string }) {
             </div>
             <Switch
               id="auto-start"
+              aria-describedby="auto-start-description"
               checked={desktop?.autoStart || false}
               disabled={
                 !desktop ||

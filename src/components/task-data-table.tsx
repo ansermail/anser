@@ -8,6 +8,7 @@ import {
 } from "@tanstack/react-table";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { t } from "@/lib/i18n";
+import { useScrollFade } from "@/lib/scroll-fade";
 import { Button } from "./ui/button";
 import { Skeleton } from "./ui/skeleton";
 import {
@@ -68,12 +69,16 @@ const columnsById = Object.fromEntries(
     column.display({
       id,
       header: headers[id],
-      cell: ({ row }) =>
-        row.original[id] === "" ? (
-          <span className="text-muted-foreground">—</span>
+      cell: ({ row }) => {
+        const value = row.original[id];
+        if (value == null || value === "" || typeof value === "boolean")
+          return <span className="text-muted-foreground">—</span>;
+        return typeof value === "string" ? (
+          <TaskCellText text={value} />
         ) : (
-          (row.original[id] ?? <span className="text-muted-foreground">—</span>)
-        ),
+          value
+        );
+      },
     }),
   ]),
 );
@@ -119,18 +124,18 @@ const widths: Partial<Record<TaskColumn, number>> = {
   copy: 10,
   operation: 6,
   step: 9,
-  status: 8,
+  status: 10,
   progress: 6,
   matched: 4.5,
   folder: 10,
   target: 10,
   reason: 11,
-  checked: 9.5,
+  checked: 11,
   added: 4,
-  upgraded: 4,
-  duplicate: 5,
+  upgraded: 5.5,
+  duplicate: 5.5,
   failed: 4,
-  warnings: 4.5,
+  warnings: 5.5,
 };
 export function TaskDataTable({
   label,
@@ -142,6 +147,7 @@ export function TaskDataTable({
   columnWidths,
   pageSize = 10,
   keepEmptyFields = false,
+  scrollRows = true,
   showRecordCount = false,
   selectedRowId,
   renderRow,
@@ -155,17 +161,24 @@ export function TaskDataTable({
   columnWidths?: Partial<Record<TaskColumn, number>>;
   pageSize?: number;
   keepEmptyFields?: boolean;
+  scrollRows?: boolean;
   showRecordCount?: boolean;
   selectedRowId?: string | null;
   renderRow?: (row: TaskTableRow, rowElement: ReactNode) => ReactNode;
 }) {
+  const viewportRef = useScrollFade("horizontal");
   const showSkeleton = !!loadingLabel && !rows.length;
   const visibleFields =
     keepEmptyFields || showSkeleton
       ? fields
       : rows.length
         ? fields.filter((field) =>
-            rows.some((row) => row[field] != null && row[field] !== ""),
+            rows.some((row) => {
+              const value = row[field];
+              return (
+                value != null && value !== "" && typeof value !== "boolean"
+              );
+            }),
           )
         : fields.slice(0, 1);
   const columns = visibleFields.map((field) => columnsById[field]);
@@ -176,6 +189,11 @@ export function TaskDataTable({
     (sum, field) => sum + (widthFor(field) ?? 8),
     0,
   );
+  const pinActions =
+    scrollRows &&
+    visibleFields.length > 1 &&
+    visibleFields.at(-1) === "actions" &&
+    (widthFor("actions") ?? 0) <= 9;
   const [page, setPage] = useState(0);
   const pageCount = Math.max(1, Math.ceil(rows.length / pageSize));
   const pageIndex = Math.min(page, pageCount - 1);
@@ -192,7 +210,11 @@ export function TaskDataTable({
   });
 
   return (
-    <div className="task-data-table flex min-w-0 flex-col gap-2">
+    <div
+      className="task-data-table flex min-w-0 flex-col gap-2"
+      data-scroll-rows={scrollRows || undefined}
+      data-pin-actions={pinActions || undefined}
+    >
       {loadingLabel && (
         <p role="status" className="sr-only">
           {loadingLabel}
@@ -202,30 +224,39 @@ export function TaskDataTable({
         <Table
           aria-label={label}
           aria-busy={!!loadingLabel}
+          scrollRows={scrollRows}
+          viewportRef={scrollRows ? viewportRef : undefined}
+          viewportProps={
+            scrollRows && rows.length
+              ? { tabIndex: 0, role: "region", "aria-label": label }
+              : undefined
+          }
           style={{ minWidth: `${minWidth}rem` }}
         >
-          <TableHeader className="bg-secondary/60">
-            {table.getHeaderGroups().map((group) => (
-              <TableRow key={group.id}>
-                {group.headers.map((header) => (
-                  <TableHead
-                    key={header.id}
-                    scope="col"
-                    data-column={header.column.id}
-                    className="h-8 truncate px-2.5"
-                    title={headers[header.column.id as TaskColumn]()}
-                    style={{
-                      width:
-                        widthFor(header.column.id as TaskColumn) &&
-                        `${widthFor(header.column.id as TaskColumn)}rem`,
-                    }}
-                  >
-                    <table.FlexRender header={header} />
-                  </TableHead>
-                ))}
-              </TableRow>
-            ))}
-          </TableHeader>
+          {(showSkeleton || rows.length > 0 || keepEmptyFields) && (
+            <TableHeader className="bg-secondary/60">
+              {table.getHeaderGroups().map((group) => (
+                <TableRow key={group.id}>
+                  {group.headers.map((header) => (
+                    <TableHead
+                      key={header.id}
+                      scope="col"
+                      data-column={header.column.id}
+                      className="h-8 truncate px-2.5"
+                      title={headers[header.column.id as TaskColumn]()}
+                      style={{
+                        width:
+                          widthFor(header.column.id as TaskColumn) &&
+                          `${widthFor(header.column.id as TaskColumn)}rem`,
+                      }}
+                    >
+                      <table.FlexRender header={header} />
+                    </TableHead>
+                  ))}
+                </TableRow>
+              ))}
+            </TableHeader>
+          )}
           <TableBody aria-hidden={showSkeleton || undefined}>
             {showSkeleton ? (
               [0, 1, 2].map((index) => (
@@ -282,9 +313,7 @@ export function TaskDataTable({
       </div>
       {(showRecordCount || pageCount > 1) && (
         <div className="task-data-table-footer">
-          {showRecordCount && (
-            <span>{t("{value0} records", { value0: rows.length })}</span>
-          )}
+          <span>{t("{value0} records", { value0: rows.length })}</span>
           <div className="task-data-table-pagination">
             {pageCount > 1 && (
               <>

@@ -94,6 +94,33 @@ function button(host: HTMLElement, text: string) {
   )!;
 }
 
+it("reports cache clearing on its own button", async () => {
+  let finish!: () => void;
+  const pending = new Promise<void>((resolve) => {
+    finish = resolve;
+  });
+  api.mockImplementation(async (command: string) => {
+    if (command === "get_translation_settings") return savedConfig;
+    if (command === "clear_translation_cache") await pending;
+  });
+  const host = document.createElement("div");
+  document.body.append(host);
+  const root = createRoot(host);
+  try {
+    await act(async () => root.render(<MailTranslationSettings />));
+    const clear = button(host, "清除翻译缓存");
+    const save = host.querySelector('button[type="submit"]')!;
+    await act(async () => clear.click());
+    expect(clear.getAttribute("aria-busy")).toBe("true");
+    expect(save.getAttribute("aria-busy")).toBe("false");
+    await act(async () => finish());
+    expect(clear.getAttribute("aria-busy")).toBe("false");
+  } finally {
+    await act(async () => root.unmount());
+    host.remove();
+  }
+});
+
 it("keeps a failed model validation unsaved in English", async () => {
   setInterfaceLanguage("en");
   api.mockImplementation(async (command: string) => {
@@ -109,7 +136,8 @@ it("keeps a failed model validation unsaved in English", async () => {
   try {
     await act(async () => root.render(<MailTranslationSettings />));
     expect(
-      host.querySelector('[data-slot="badge"]:last-child')?.textContent,
+      host.querySelector('.settings-form-actions [aria-live="polite"]')
+        ?.textContent,
     ).toBe("Saved");
     const model = host.querySelector<HTMLInputElement>("#translation-model")!;
     await act(async () => {

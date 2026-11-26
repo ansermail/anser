@@ -2,10 +2,26 @@ import * as React from "react";
 import { cn } from "cn";
 import { ScrollArea } from "./scroll-area";
 
-function Table({ className, ...props }: React.ComponentProps<"table">) {
+function Table({
+  className,
+  scrollRows = false,
+  viewportProps,
+  viewportRef,
+  ...props
+}: React.ComponentProps<"table"> & {
+  scrollRows?: boolean;
+  viewportProps?: React.ComponentProps<"div">;
+  viewportRef?: React.Ref<HTMLDivElement>;
+}) {
   return (
     <div data-slot="table-container" className="relative w-full">
-      <ScrollArea type="always" orientation="horizontal" className="w-full">
+      <ScrollArea
+        type="always"
+        orientation={scrollRows ? "both" : "horizontal"}
+        className="w-full"
+        viewportProps={viewportProps}
+        viewportRef={viewportRef}
+      >
         <table
           data-slot="table"
           className={cn("w-full caption-bottom text-sm", className)}

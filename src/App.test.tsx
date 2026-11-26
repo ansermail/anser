@@ -719,9 +719,9 @@ describe("bulk draft clearing", () => {
     await click(nav("草稿箱"));
     return api.call<import("./lib/types").Compose[]>("list_drafts");
   }
-  it("disables empty clearing, cancels without deleting, and clears only after confirmation", async () => {
+  it("shows clearing only with drafts and clears only after confirmation", async () => {
     await click(nav("草稿箱"));
-    expect(clearButton().disabled).toBe(true);
+    expect(clearButton()).toBeUndefined();
     await seedDrafts();
     await click(clearButton());
     expect(
@@ -734,7 +734,7 @@ describe("bulk draft clearing", () => {
     await click(confirmation("清空草稿"));
     expect(await api.call("list_drafts")).toHaveLength(0);
     expect(host.querySelector(".draft-card")).toBeNull();
-    expect(clearButton().disabled).toBe(true);
+    expect(clearButton()).toBeUndefined();
     expect(host.textContent).toContain("暂时没有草稿");
   });
   it("keeps drafts and reports a clearing failure", async () => {

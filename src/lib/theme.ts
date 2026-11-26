@@ -1,13 +1,20 @@
 import { useMemo, useSyncExternalStore } from "react";
+import { normalizeThemePalette, type ThemePalette } from "./theme-palettes";
 
 export type ThemeMode = "light" | "dark" | "system";
+export type ThemeAppearance = Exclude<ThemeMode, "system">;
 
 const storageKey = "mail-theme";
+const paletteKeys = {
+  light: "mail-theme-light-palette",
+  dark: "mail-theme-dark-palette",
+} as const;
 const darkQuery = "(prefers-color-scheme: dark)";
 const listeners = new Set<() => void>();
 let memoryMode: ThemeMode | null = null;
+const memoryPalettes: Partial<Record<ThemeAppearance, ThemePalette>> = {};
 let mediaQuery: MediaQueryList | null | undefined;
-let mediaListener: (() => void) | null = null;
+let restoreTransitionsFrame = 0;
 
 export function normalizeTheme(value: unknown): ThemeMode {
   return value === "dark" || value === "system" ? value : "light";
@@ -23,21 +30,60 @@ export function resolvesToDark(mode: ThemeMode, systemDark: boolean) {
   return mode === "dark" || (mode === "system" && systemDark);
 }
 
-/** Apply the resolved appearance before anything reads theme CSS variables. */
-export function applyThemeClass(dark: boolean) {
+export function applyThemeAppearance(
+  appearance: ThemeAppearance,
+  palette: ThemePalette,
+) {
   if (typeof document === "undefined") return;
-  document.documentElement.classList.toggle("dark", dark);
+  const root = document.documentElement;
+  const changed =
+    root.dataset.themeAppearance !== appearance ||
+    root.dataset.themePalette !== palette;
+  if (
+    changed &&
+    root.dataset.themeAppearance &&
+    typeof requestAnimationFrame === "function"
+  ) {
+    root.dataset.themeChanging = "";
+    cancelAnimationFrame(restoreTransitionsFrame);
+    restoreTransitionsFrame = requestAnimationFrame(() => {
+      restoreTransitionsFrame = requestAnimationFrame(() => {
+        delete root.dataset.themeChanging;
+        restoreTransitionsFrame = 0;
+      });
+    });
+  }
+  root.classList.toggle("dark", appearance === "dark");
+  if (root.dataset.themeAppearance !== appearance)
+    root.dataset.themeAppearance = appearance;
+  if (root.dataset.themePalette !== palette)
+    root.dataset.themePalette = palette;
 }
 
-function readTheme(): ThemeMode {
-  if (memoryMode) return memoryMode;
+function readPreference(key: string) {
   try {
-    const value = localStorage.getItem(storageKey);
-    memoryMode = normalizeTheme(value);
+    return localStorage.getItem(key);
   } catch {
-    memoryMode = "light";
+    return null;
   }
-  return memoryMode;
+}
+
+function savePreference(key: string, value: string) {
+  try {
+    localStorage.setItem(key, value);
+  } catch {
+    // The in-memory preference still works when storage is unavailable.
+  }
+}
+
+function readTheme() {
+  return (memoryMode ??= normalizeTheme(readPreference(storageKey)));
+}
+
+function readPalette(appearance: ThemeAppearance) {
+  return (memoryPalettes[appearance] ??= normalizeThemePalette(
+    readPreference(paletteKeys[appearance]),
+  ));
 }
 
 function systemMedia() {
@@ -49,62 +95,87 @@ function systemMedia() {
   return mediaQuery;
 }
 
-function systemTheme(): "light" | "dark" {
-  return systemMedia()?.matches ? "dark" : "light";
+function readAppearance(mode: ThemeMode): ThemeAppearance {
+  return resolvesToDark(mode, systemMedia()?.matches === true)
+    ? "dark"
+    : "light";
 }
 
 export function themeSnapshot() {
-  return `${readTheme()}:${systemTheme()}`;
+  const mode = readTheme();
+  return `${mode}:${readAppearance(mode)}:${readPalette("light")}:${readPalette("dark")}`;
+}
+
+export function initializeAppearance() {
+  const appearance = readAppearance(readTheme());
+  applyThemeAppearance(appearance, readPalette(appearance));
 }
 
 function publish() {
+  initializeAppearance();
   listeners.forEach((listener) => listener());
 }
 
+function onStorage(event: StorageEvent) {
+  const { key, storageArea } = event;
+  if (storageArea && storageArea !== window.localStorage) return;
+  if (
+    key !== null &&
+    key !== storageKey &&
+    key !== paletteKeys.light &&
+    key !== paletteKeys.dark
+  )
+    return;
+  if (key === null || key === storageKey) memoryMode = null;
+  if (key === null || key === paletteKeys.light) delete memoryPalettes.light;
+  if (key === null || key === paletteKeys.dark) delete memoryPalettes.dark;
+  publish();
+}
+
 export function subscribeToTheme(listener: () => void) {
-  listeners.add(listener);
-  const media = systemMedia();
-  const storage = (event: StorageEvent) => {
-    if (event.key !== storageKey && event.key !== null) return;
-    memoryMode = null;
-    publish();
-  };
-  const system = () => publish();
-  window.addEventListener("storage", storage);
-  if (media && !mediaListener) {
-    mediaListener = system;
-    media.addEventListener("change", mediaListener);
+  if (!listeners.size) {
+    window.addEventListener("storage", onStorage);
+    systemMedia()?.addEventListener("change", publish);
+    initializeAppearance();
   }
+  listeners.add(listener);
   return () => {
     listeners.delete(listener);
-    window.removeEventListener("storage", storage);
-    if (media && mediaListener && listeners.size === 0) {
-      media.removeEventListener("change", mediaListener);
-      mediaListener = null;
+    if (!listeners.size) {
+      window.removeEventListener("storage", onStorage);
+      systemMedia()?.removeEventListener("change", publish);
     }
   };
 }
 
 export function setThemeMode(mode: ThemeMode, persist = true) {
   memoryMode = mode;
-  try {
-    if (persist) localStorage.setItem(storageKey, mode);
-  } catch {
-    // The in-memory preference still works when storage is unavailable.
-  }
-  // The body iframe reads --background in a layout effect, which runs before a
-  // parent effect would add the class; apply it here so the same render pass
-  // already sees the new colors instead of keeping the previous scheme until
-  // the mail is reopened.
-  applyThemeClass(resolvesToDark(mode, systemTheme() === "dark"));
+  if (persist) savePreference(storageKey, mode);
+  publish();
+}
+
+export function setThemePalette(
+  appearance: ThemeAppearance,
+  palette: ThemePalette,
+) {
+  memoryPalettes[appearance] = palette;
+  savePreference(paletteKeys[appearance], palette);
   publish();
 }
 
 /** Test-only reset for the module-level durable preference cache. */
 export function resetThemeForTest() {
   memoryMode = null;
+  delete memoryPalettes.light;
+  delete memoryPalettes.dark;
+  if (typeof window !== "undefined") {
+    window.removeEventListener("storage", onStorage);
+    mediaQuery?.removeEventListener("change", publish);
+    if (restoreTransitionsFrame) cancelAnimationFrame(restoreTransitionsFrame);
+    restoreTransitionsFrame = 0;
+    delete document.documentElement.dataset.themeChanging;
+  }
   mediaQuery = undefined;
-  mediaListener = null;
   listeners.clear();
 }
 
@@ -112,18 +183,25 @@ export function useTheme() {
   const value = useSyncExternalStore(
     subscribeToTheme,
     themeSnapshot,
-    () => "light:light",
+    () => "light:light:pine:pine",
   );
-  const separator = value.indexOf(":");
-  const mode = normalizeTheme(value.slice(0, separator));
-  const dark = resolvesToDark(mode, value.slice(separator + 1) === "dark");
+  const [storedMode, resolvedAppearance, light, dark] = value.split(":");
+  const mode = normalizeTheme(storedMode);
+  const appearance: ThemeAppearance =
+    resolvedAppearance === "dark" ? "dark" : "light";
+  const lightPalette = normalizeThemePalette(light);
+  const darkPalette = normalizeThemePalette(dark);
   return useMemo(
     () => ({
       mode,
-      dark,
+      appearance,
+      dark: appearance === "dark",
+      palette: appearance === "dark" ? darkPalette : lightPalette,
+      palettes: { light: lightPalette, dark: darkPalette },
       setMode: setThemeMode,
+      setPalette: setThemePalette,
       cycleMode: () => setThemeMode(nextTheme(readTheme())),
     }),
-    [dark, mode],
+    [appearance, darkPalette, lightPalette, mode],
   );
 }

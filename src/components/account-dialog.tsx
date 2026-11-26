@@ -1,6 +1,5 @@
 import { ScrollArea } from "./ui/scroll-area";
 import { t } from "@/lib/i18n";
-import { Switch } from "./ui/switch";
 import { Checkbox } from "./ui/checkbox";
 import { SelectField, SelectOption } from "@/components/ui/select-field";
 import { useEffect, useId, useState } from "react";
@@ -53,6 +52,7 @@ export function AccountDialog({
     [stage, setStage] = useState(""),
     [cancelling, setCancelling] = useState(false),
     [error, setError] = useState("");
+  const advancedId = useId();
   useEffect(() => {
     if (!open) return;
     setAccount(editing ? { ...editing } : null);
@@ -182,12 +182,12 @@ export function AccountDialog({
               ? t("Edit email settings")
               : account
                 ? t("Connect your mailbox")
-                : t("Your mailboxes, together")}
+                : t("Add account")}
           </DialogTitle>
           <DialogDescription>
             {account
               ? t("Configure mail servers and local retention.")
-              : t("A quiet space for work and personal mail.")}
+              : t("Choose your email provider.")}
           </DialogDescription>
         </DialogHeader>
         {!account ? (
@@ -286,9 +286,7 @@ export function AccountDialog({
                         onChange={(e) => setPassword(e.target.value)}
                         placeholder={
                           editing
-                            ? t(
-                                "Keep the credentials already saved in Keychain",
-                              )
+                            ? t("Leave blank to keep the current password")
                             : t(
                                 "Some providers require enabling IMAP/POP3 and generating an app password",
                               )
@@ -327,6 +325,8 @@ export function AccountDialog({
                     variant="ghost"
                     className="advanced-toggle"
                     type="button"
+                    aria-expanded={advanced}
+                    aria-controls={advanced ? advancedId : undefined}
                     onClick={() => setAdvanced(!advanced)}
                   >
                     {t("Servers & advanced settings")}
@@ -336,11 +336,14 @@ export function AccountDialog({
                     />
                   </Button>
                   {advanced && (
-                    <div className="advanced-fields">
+                    <div className="advanced-fields" id={advancedId}>
                       <div className="field-row">
                         <div className="field">
-                          <Label>{t("Incoming protocol")}</Label>
+                          <Label htmlFor="account-protocol">
+                            {t("Incoming protocol")}
+                          </Label>
                           <SelectField
+                            id="account-protocol"
                             value={account.protocol}
                             onValueChange={(value) => {
                               const protocol = value as "imap" | "pop3";
@@ -377,8 +380,11 @@ export function AccountDialog({
                           </SelectField>
                         </div>
                         <div className="field">
-                          <Label>{t("Authentication")}</Label>
+                          <Label htmlFor="account-auth">
+                            {t("Authentication")}
+                          </Label>
                           <SelectField
+                            id="account-auth"
                             value={account.auth}
                             onValueChange={(value) =>
                               update({ auth: value as Account["auth"] })
@@ -408,17 +414,21 @@ export function AccountDialog({
                         update={update}
                       />
                       <div className="field">
-                        <Label>{t("Incoming username")}</Label>
+                        <Label htmlFor="account-username">
+                          {t("Incoming username")}
+                        </Label>
                         <Input
+                          id="account-username"
                           value={account.username}
                           onChange={(e) => update({ username: e.target.value })}
                         />
                       </div>
                       <div className="field">
-                        <Label>
+                        <Label htmlFor="account-smtp-username">
                           {t("SMTP username (blank uses incoming username)")}
                         </Label>
                         <Input
+                          id="account-smtp-username"
                           value={account.smtpUsername}
                           onChange={(e) =>
                             update({ smtpUsername: e.target.value })
@@ -427,7 +437,7 @@ export function AccountDialog({
                       </div>
                       {account.auth === "password" ? (
                         <div className="field">
-                          <Label>
+                          <Label htmlFor="account-smtp-password">
                             {editing
                               ? t("New SMTP password (leave blank to keep)")
                               : t(
@@ -435,6 +445,7 @@ export function AccountDialog({
                                 )}
                           </Label>
                           <Input
+                            id="account-smtp-password"
                             type="password"
                             value={smtpPassword}
                             disabled={smtpUseIncoming}
@@ -456,8 +467,11 @@ export function AccountDialog({
                         </div>
                       ) : (
                         <div className="field">
-                          <Label>OAuth Client ID</Label>
+                          <Label htmlFor="account-oauth-client">
+                            OAuth Client ID
+                          </Label>
                           <Input
+                            id="account-oauth-client"
                             value={account.oauthClientId}
                             placeholder={t(
                               "Desktop / public client application Client ID",
@@ -472,17 +486,20 @@ export function AccountDialog({
                   )}
                 </fieldset>
                 <div className="archive-promise">
-                  <Switch
+                  <Checkbox
                     id="save-locally"
+                    aria-describedby="account-storage-description"
                     checked={account.saveLocally !== false}
                     disabled={busy}
-                    onCheckedChange={(value) => update({ saveLocally: value })}
+                    onCheckedChange={(value) =>
+                      update({ saveLocally: value === true })
+                    }
                   />
                   <div>
                     <Label htmlFor="save-locally">
                       {t("Save received messages locally")}
                     </Label>
-                    <small>
+                    <small id="account-storage-description">
                       {account.saveLocally !== false
                         ? t(
                             "Keep full messages and attachments, even after server deletion.",
@@ -577,16 +594,19 @@ function ServerFields({
   update: (p: Partial<Account>) => void;
 }) {
   const portId = useId();
+  const hostId = useId();
+  const encryptionId = useId();
   const host = kind === "incoming" ? "incomingHost" : "smtpHost",
     port = kind === "incoming" ? "incomingPort" : "smtpPort",
     tls = kind === "incoming" ? "incomingTls" : "smtpTls";
   return (
     <div className="server-row">
       <div className="field">
-        <Label>
+        <Label htmlFor={hostId}>
           {kind === "incoming" ? t("Incoming server") : t("SMTP server")}
         </Label>
         <Input
+          id={hostId}
           required
           value={account[host]}
           placeholder="mail.example.com"
@@ -598,6 +618,7 @@ function ServerFields({
         <Input
           id={portId}
           type="number"
+          className="tabular-nums"
           min={1}
           max={65535}
           required
@@ -606,8 +627,9 @@ function ServerFields({
         />
       </div>
       <div className="field">
-        <Label>{t("Encryption")}</Label>
+        <Label htmlFor={encryptionId}>{t("Encryption")}</Label>
         <SelectField
+          id={encryptionId}
           value={account[tls]}
           onValueChange={(value) => update({ [tls]: value })}
         >

@@ -12,7 +12,6 @@ import { coalesceRefresh } from "@/lib/refresh-queue";
 import { Button } from "./ui/button";
 import { Badge } from "./ui/badge";
 import { Alert, AlertTitle, AlertDescription } from "./ui/alert";
-import { Skeleton } from "./ui/skeleton";
 import { Card, CardContent } from "./ui/card";
 export type DirectoryOperation = {
   receiptOrigin?: "observed" | null;
@@ -177,14 +176,11 @@ export function DirectoryOperationsPanel({
                 <AlertDescription>{error || loadError}</AlertDescription>
               </Alert>
             )}
-            {!items && (
-              <Skeleton
-                className="h-16"
-                aria-label={t("Loading folder operations")}
-              />
-            )}
-            {items && (
+            {(items || !loadError) && (
               <TaskDataTable
+                loadingLabel={
+                  !items ? t("Loading folder operations") : undefined
+                }
                 actionsWidth={12}
                 columnWidths={{
                   task: 8.5,
@@ -207,7 +203,7 @@ export function DirectoryOperationsPanel({
                   "reason",
                   "actions",
                 ]}
-                rows={items.map((item) => {
+                rows={(items ?? []).map((item) => {
                   const verify =
                     item.status === "confirmed" ||
                     item.status === "cleanup_uncertain" ||

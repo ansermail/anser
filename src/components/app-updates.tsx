@@ -16,11 +16,13 @@ import { toast } from "sonner";
 import { Button, ButtonLabel } from "./ui/button";
 import {
   Card,
+  CardAction,
   CardContent,
   CardDescription,
   CardHeader,
   CardTitle,
 } from "./ui/card";
+import { Badge } from "./ui/badge";
 import {
   Dialog,
   DialogContent,
@@ -415,14 +417,19 @@ export function UpdateSettings({ updates }: { updates: Updates }) {
       <CardHeader>
         <CardTitle>{t("About & updates")}</CardTitle>
         <CardDescription>
-          {t("Anser ")}
-          {updates.version || "—"}
-          {t(" · Updates from GitHub Releases")}
+          {t("Updates are published on GitHub Releases.")}
         </CardDescription>
+        {updates.version && (
+          <CardAction>
+            <Badge variant="secondary" className="tabular-nums">
+              v{updates.version}
+            </Badge>
+          </CardAction>
+        )}
       </CardHeader>
       <CardContent className="flex flex-wrap items-center gap-3">
         <Button
-          variant="outline"
+          variant={updates.update ? "outline" : "default"}
           aria-busy={checking}
           disabled={
             !updates.native ||
@@ -474,7 +481,7 @@ export function UpdateSettings({ updates }: { updates: Updates }) {
           </a>
         </Button>
         {updates.update && (
-          <Button variant="ghost" onClick={() => updates.setOpen(true)}>
+          <Button onClick={() => updates.setOpen(true)}>
             {t("View update")}
           </Button>
         )}

@@ -22,7 +22,7 @@ import {
   type MailColorScheme,
 } from "../lib/mail-html";
 import { mailDocumentHeight } from "../lib/mail-layout";
-import { applyThemeClass, useTheme } from "../lib/theme";
+import { applyThemeAppearance, useTheme } from "../lib/theme";
 
 export function MailContent({
   html,
@@ -41,9 +41,9 @@ export function MailContent({
   onOpenLink: (href: string) => void;
   statusOverlay?: ReactNode;
 }) {
-  const { dark } = useTheme();
+  const { appearance, palette } = useTheme();
   const colorScheme: MailColorScheme =
-    dark && !originalColors ? "dark" : "light";
+    appearance === "dark" && !originalColors ? "dark" : "light";
   const [themeBackground, setThemeBackground] = useState<{
     colorScheme: MailColorScheme;
     value: string;
@@ -52,7 +52,7 @@ export function MailContent({
     // Read the variable only after the resolved appearance is on the root:
     // the parent's effect runs later than this layout effect, so a theme
     // switch would otherwise pick up the previous scheme's background.
-    applyThemeClass(dark);
+    applyThemeAppearance(appearance, palette);
     setThemeBackground({
       colorScheme,
       value:
@@ -62,7 +62,7 @@ export function MailContent({
               .getPropertyValue("--background")
               .trim(),
     });
-  }, [colorScheme, dark]);
+  }, [appearance, colorScheme, palette]);
   const background =
     themeBackground?.colorScheme === colorScheme
       ? themeBackground.value

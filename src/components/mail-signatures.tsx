@@ -143,13 +143,15 @@ export function MailSignatures({ accounts }: { accounts: Account[] }) {
     signature.fileHtml !== saved.fileHtml;
   return (
     <Collapsible open={signature.enabled} asChild>
-      <Card>
+      <Card className="signature-settings-card">
         <CardHeader>
           <CardTitle>{t("Email signature")}</CardTitle>
           <CardDescription>
-            {t(
-              "Signatures are saved per sending account, and existing drafts keep their original signatures.",
-            )}
+            {accounts.length
+              ? t(
+                  "Each account has its own signature. Existing drafts keep theirs.",
+                )
+              : t("Add a sending account to set up a signature.")}
           </CardDescription>
           <CardAction className="flex flex-wrap items-center gap-3">
             <Field className="w-56 max-w-full">
@@ -157,6 +159,7 @@ export function MailSignatures({ accounts }: { accounts: Account[] }) {
                 {t("Sending account")}
               </FieldLabel>
               <SelectField
+                className="w-full"
                 aria-label={t("Signature account")}
                 value={accountId}
                 disabled={busy || !accounts.length}

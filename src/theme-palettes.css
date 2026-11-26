@@ -1,0 +1,290 @@
+[data-theme-palette="pine"][data-theme-appearance="light"] {
+  --palette-canvas: #ffffff;
+  --palette-sidebar: #f5f7f6;
+  --palette-panel: #ffffff;
+  --palette-text: #19241e;
+  --palette-muted: #53635a;
+  --palette-border: #dce4df;
+  --palette-accent: #315f50;
+  --palette-accent-text: #ffffff;
+  --palette-selected: #edf4ef;
+  --palette-navigation: #e5eee8;
+}
+
+[data-theme-palette="pine"][data-theme-appearance="dark"] {
+  --palette-canvas: #121714;
+  --palette-sidebar: #1a201d;
+  --palette-panel: #202723;
+  --palette-text: #edf2ee;
+  --palette-muted: #aab8af;
+  --palette-border: #38443d;
+  --palette-accent: #a9d0b9;
+  --palette-accent-text: #16241c;
+  --palette-selected: #25382d;
+  --palette-navigation: #273c30;
+}
+
+[data-theme-palette="github"][data-theme-appearance="light"] {
+  --palette-canvas: #ffffff;
+  --palette-sidebar: #f6f8fa;
+  --palette-panel: #ffffff;
+  --palette-text: #1f2328;
+  --palette-muted: #57606a;
+  --palette-border: #d0d7de;
+  --palette-accent: #0969da;
+  --palette-accent-text: #ffffff;
+  --palette-selected: #ddedff;
+  --palette-navigation: #e4edf7;
+}
+
+[data-theme-palette="github"][data-theme-appearance="dark"] {
+  --palette-canvas: #0d1117;
+  --palette-sidebar: #010409;
+  --palette-panel: #161b22;
+  --palette-text: #e6edf3;
+  --palette-muted: #9da7b3;
+  --palette-border: #30363d;
+  --palette-accent: #58a6ff;
+  --palette-accent-text: #0d1117;
+  --palette-selected: #172b46;
+  --palette-navigation: #18263a;
+}
+
+[data-theme-palette="vscode"][data-theme-appearance="light"] {
+  --palette-canvas: #ffffff;
+  --palette-sidebar: #f8f8f8;
+  --palette-panel: #ffffff;
+  --palette-text: #1f1f1f;
+  --palette-muted: #616161;
+  --palette-border: #e5e5e5;
+  --palette-accent: #005fb8;
+  --palette-accent-text: #ffffff;
+  --palette-selected: #e5ebf1;
+  --palette-navigation: #e8e8e8;
+}
+
+[data-theme-palette="vscode"][data-theme-appearance="dark"] {
+  --palette-canvas: #1f1f1f;
+  --palette-sidebar: #181818;
+  --palette-panel: #252526;
+  --palette-text: #cccccc;
+  --palette-muted: #adadad;
+  --palette-border: #383838;
+  --palette-accent: #1683dc;
+  --palette-accent-text: #080d12;
+  --palette-selected: #04395e;
+  --palette-navigation: #313137;
+}
+
+[data-theme-palette="dracula"][data-theme-appearance="light"] {
+  --palette-canvas: #fffbeb;
+  --palette-sidebar: #f2e9d2;
+  --palette-panel: #fff6df;
+  --palette-text: #1f1f1f;
+  --palette-muted: #625c44;
+  --palette-border: #ded5be;
+  --palette-accent: #644ac9;
+  --palette-accent-text: #ffffff;
+  --palette-selected: #eae2fa;
+  --palette-navigation: #ece3d0;
+}
+
+[data-theme-palette="dracula"][data-theme-appearance="dark"] {
+  --palette-canvas: #282a36;
+  --palette-sidebar: #21222c;
+  --palette-panel: #2c2e3b;
+  --palette-text: #f8f8f2;
+  --palette-muted: #c1c4da;
+  --palette-border: #494b5e;
+  --palette-accent: #bd93f9;
+  --palette-accent-text: #282a36;
+  --palette-selected: #44475a;
+  --palette-navigation: #3c3950;
+}
+
+[data-theme-palette="catppuccin"][data-theme-appearance="light"] {
+  --palette-canvas: #eff1f5;
+  --palette-sidebar: #e6e9ef;
+  --palette-panel: #f7f8fb;
+  --palette-text: #4c4f69;
+  --palette-muted: #5c5f77;
+  --palette-border: #ccd0da;
+  --palette-accent: #8839ef;
+  --palette-accent-text: #ffffff;
+  --palette-selected: #e8def7;
+  --palette-navigation: #dce0e8;
+  --palette-control-weight: 65%;
+}
+
+[data-theme-palette="catppuccin"][data-theme-appearance="dark"] {
+  --palette-canvas: #1e1e2e;
+  --palette-sidebar: #181825;
+  --palette-panel: #242437;
+  --palette-text: #cdd6f4;
+  --palette-muted: #bac2de;
+  --palette-border: #45475a;
+  --palette-accent: #cba6f7;
+  --palette-accent-text: #1e1e2e;
+  --palette-selected: #36334d;
+  --palette-navigation: #313244;
+}
+
+[data-theme-palette="solarized"][data-theme-appearance="light"] {
+  --palette-canvas: #fdf6e3;
+  --palette-sidebar: #eee8d5;
+  --palette-panel: #fdf6e3;
+  --palette-text: #073642;
+  --palette-muted: #455e65;
+  --palette-border: #d8d0bb;
+  --palette-accent: #006c75;
+  --palette-accent-text: #ffffff;
+  --palette-selected: #e9ede0;
+  --palette-navigation: #e7e5d5;
+}
+
+[data-theme-palette="solarized"][data-theme-appearance="dark"] {
+  --palette-canvas: #002b36;
+  --palette-sidebar: #00242e;
+  --palette-panel: #073642;
+  --palette-text: #fdf6e3;
+  --palette-muted: #9cb1b1;
+  --palette-border: #2b4b56;
+  --palette-accent: #63c7c8;
+  --palette-accent-text: #002b36;
+  --palette-selected: #164651;
+  --palette-navigation: #123e48;
+}
+
+[data-theme-palette="nord"][data-theme-appearance="light"] {
+  --palette-canvas: #eceff4;
+  --palette-sidebar: #e5e9f0;
+  --palette-panel: #f8f9fb;
+  --palette-text: #2e3440;
+  --palette-muted: #4c566a;
+  --palette-border: #c4ccd8;
+  --palette-accent: #426580;
+  --palette-accent-text: #ffffff;
+  --palette-selected: #d9e5f0;
+  --palette-navigation: #d8dee9;
+}
+
+[data-theme-palette="nord"][data-theme-appearance="dark"] {
+  --palette-canvas: #2e3440;
+  --palette-sidebar: #252a33;
+  --palette-panel: #3b4252;
+  --palette-text: #eceff4;
+  --palette-muted: #c5cedc;
+  --palette-border: #4c566a;
+  --palette-accent: #88c0d0;
+  --palette-accent-text: #2e3440;
+  --palette-selected: #414f65;
+  --palette-navigation: #3b495d;
+}
+
+[data-theme-palette="tokyo"][data-theme-appearance="light"] {
+  --palette-canvas: #e1e2e7;
+  --palette-sidebar: #d5d6db;
+  --palette-panel: #e7e8ed;
+  --palette-text: #343b58;
+  --palette-muted: #4d5579;
+  --palette-border: #b9bdcf;
+  --palette-accent: #2959aa;
+  --palette-accent-text: #ffffff;
+  --palette-selected: #d4dff7;
+  --palette-navigation: #cbd2e5;
+  --palette-control-weight: 60%;
+}
+
+[data-theme-palette="tokyo"][data-theme-appearance="dark"] {
+  --palette-canvas: #1a1b26;
+  --palette-sidebar: #16161e;
+  --palette-panel: #202231;
+  --palette-text: #c0caf5;
+  --palette-muted: #a9b1d6;
+  --palette-border: #383d57;
+  --palette-accent: #7aa2f7;
+  --palette-accent-text: #1a1b26;
+  --palette-selected: #283456;
+  --palette-navigation: #252e48;
+}
+
+[data-theme-palette="blue"][data-theme-appearance="light"] {
+  --palette-canvas: #fcfdff;
+  --palette-sidebar: #edf3fa;
+  --palette-panel: #ffffff;
+  --palette-text: #17263a;
+  --palette-muted: #4c6076;
+  --palette-border: #d6e2ef;
+  --palette-accent: #285b90;
+  --palette-accent-text: #ffffff;
+  --palette-selected: #e6effb;
+  --palette-navigation: #dfeaf8;
+}
+
+[data-theme-palette="blue"][data-theme-appearance="dark"] {
+  --palette-canvas: #101725;
+  --palette-sidebar: #151f30;
+  --palette-panel: #1b273a;
+  --palette-text: #eaf2ff;
+  --palette-muted: #afbed4;
+  --palette-border: #334563;
+  --palette-accent: #a7caff;
+  --palette-accent-text: #162744;
+  --palette-selected: #223a59;
+  --palette-navigation: #233b5c;
+}
+
+[data-theme-palette="sand"][data-theme-appearance="light"] {
+  --palette-canvas: #fffdf8;
+  --palette-sidebar: #f6eee0;
+  --palette-panel: #fffaf0;
+  --palette-text: #30251e;
+  --palette-muted: #695647;
+  --palette-border: #e6d8c6;
+  --palette-accent: #814b31;
+  --palette-accent-text: #ffffff;
+  --palette-selected: #f5e8d7;
+  --palette-navigation: #f0e0cd;
+}
+
+[data-theme-palette="sand"][data-theme-appearance="dark"] {
+  --palette-canvas: #1b1613;
+  --palette-sidebar: #231c17;
+  --palette-panel: #2b221c;
+  --palette-text: #f4ece2;
+  --palette-muted: #c9b8a9;
+  --palette-border: #4a3a30;
+  --palette-accent: #f0bb94;
+  --palette-accent-text: #322117;
+  --palette-selected: #423022;
+  --palette-navigation: #493327;
+}
+
+:root[data-theme-palette]:not([data-theme-palette="pine"]) {
+  --background: var(--palette-canvas);
+  --foreground: var(--palette-text);
+  --sidebar: var(--palette-sidebar);
+  --card: var(--palette-panel);
+  --popover: var(--palette-panel);
+  --field: var(--palette-canvas);
+  --primary: var(--palette-accent);
+  --primary-foreground: var(--palette-accent-text);
+  --secondary: color-mix(in srgb, var(--palette-panel), var(--palette-text) 4%);
+  --muted: var(--palette-muted);
+  --border: var(--palette-border);
+  --control-border: color-mix(
+    in srgb,
+    var(--palette-canvas),
+    var(--palette-text) var(--palette-control-weight, 55%)
+  );
+  --item-selected-background: var(--palette-selected);
+  --item-selected-foreground: var(--palette-text);
+  --item-selected-indicator: var(--palette-accent);
+  --navigation-selected-background: var(--palette-navigation);
+}
+
+:root.dark[data-theme-palette]:not([data-theme-palette="pine"]) {
+  --popover: color-mix(in srgb, var(--palette-panel), var(--palette-text) 7%);
+  --field: color-mix(in srgb, var(--palette-canvas), var(--palette-panel) 50%);
+  --palette-control-weight: 47%;
+}

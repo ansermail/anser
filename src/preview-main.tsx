@@ -3,7 +3,7 @@ import ReactDOM from "react-dom/client";
 import App from "./App";
 import { call, newDraft, snapshot } from "./lib/api";
 import { setInterfaceLanguage } from "./lib/i18n";
-import { setThemeMode } from "./lib/theme";
+import { initializeAppearance, setThemeMode } from "./lib/theme";
 import "./index.css";
 
 async function renderPreview() {
@@ -16,6 +16,7 @@ async function renderPreview() {
     setInterfaceLanguage(language);
   }
   if (embedded) setThemeMode("dark", false);
+  else initializeAppearance();
 
   const sample =
     view === "inbox" || view === "compose"

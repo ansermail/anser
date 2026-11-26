@@ -12,6 +12,7 @@ it("keeps the current task page on refresh and clamps it when records are cleare
   const rows = Array.from({ length: 11 }, (_, index) => ({
     id: String(index),
     task: `Task ${index + 1}`,
+    actions: false,
   }));
   const render = async (data: typeof rows) =>
     act(async () =>
@@ -37,6 +38,7 @@ it("keeps the current task page on refresh and clamps it when records are cleare
       ),
     ).toBeTruthy();
     expect(host.querySelectorAll("tbody tr")).toHaveLength(10);
+    expect(host.querySelector('th[data-column="actions"]')).toBeNull();
     await act(async () => next().click());
     expect(host.querySelector("tbody")?.textContent).toBe("Task 11");
     await render(

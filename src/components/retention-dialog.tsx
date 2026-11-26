@@ -374,10 +374,10 @@ export function RetentionDialog({
                     <FieldLabel htmlFor="server-retention-days">
                       {t("Server retention (days, optional)")}
                     </FieldLabel>
-                    <FieldDescription>
+                    <FieldDescription id="server-retention-description">
                       {validDays
                         ? t(
-                            "Used for saving reminders only; server deletion rules are unchanged. Enter 1–3650 days. Only fully downloaded messages have local copies.",
+                            "Used for saving reminders. Server deletion rules stay the same.",
                           )
                         : t(
                             "Enter an integer from 1 to 3650, or leave blank if unknown.",
@@ -393,9 +393,10 @@ export function RetentionDialog({
                     value={days}
                     disabled={busy || loading}
                     aria-invalid={!validDays}
+                    aria-describedby="server-retention-description"
                     placeholder={t("For example: 3. Leave blank if unknown.")}
                     onChange={(e) => setDays(e.target.value)}
-                    className="w-40 shrink-0"
+                    className="w-40 shrink-0 tabular-nums"
                   />
                 </Field>
                 {folders.map((folder, i) => (

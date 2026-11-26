@@ -8,11 +8,10 @@ import { listen } from "@tauri-apps/api/event";
 import { AlertCircle } from "lucide-react";
 import { call, native, isDemo } from "@/lib/api";
 import { coalesceRefresh } from "@/lib/refresh-queue";
-import { Button } from "./ui/button";
+import { Button, ButtonLabel } from "./ui/button";
 import { Badge } from "./ui/badge";
 import { Card, CardContent } from "./ui/card";
 import { Alert, AlertTitle, AlertDescription } from "./ui/alert";
-import { Skeleton } from "./ui/skeleton";
 
 export type ServerOperation = {
   id: string;
@@ -152,133 +151,131 @@ export function ServerOperations({
                 <AlertDescription>{error}</AlertDescription>
               </Alert>
             )}
-            {!data && !error && (
-              <Skeleton
-                className="h-16 w-full"
-                aria-label={t("Loading sync tasks")}
-              />
-            )}
             {data && (
-              <>
-                <div className="flex flex-wrap gap-2">
+              <div className="flex flex-wrap gap-2 tabular-nums">
+                <Badge variant="secondary">
+                  {t("Pending ")}
+                  {data.pending}
+                </Badge>
+                <Badge variant={data.blocked ? "destructive" : "secondary"}>
+                  {t("Needs attention ")}
+                  {data.blocked}
+                </Badge>
+                <Badge variant="outline">
+                  {t("Synced ")}
+                  {data.completed}
+                </Badge>
+                {!!data.isolated && (
                   <Badge variant="secondary">
-                    {t("Pending ")}
-                    {data.pending}
+                    {t("Source quarantined ")}
+                    {data.isolated}
                   </Badge>
-                  <Badge variant={data.blocked ? "destructive" : "secondary"}>
-                    {t("Needs attention ")}
-                    {data.blocked}
-                  </Badge>
-                  <Badge variant="outline">
-                    {t("Synced ")}
-                    {data.completed}
-                  </Badge>
-                  {!!data.isolated && (
-                    <Badge variant="secondary">
-                      {t("Source quarantined ")}
-                      {data.isolated}
-                    </Badge>
-                  )}
-                </div>
-                <TaskDataTable
-                  actionsWidth={9}
-                  columnWidths={{
-                    task: 10,
-                    account: 9,
-                    folder: 7,
-                    operation: 5.5,
-                    status: 8,
-                    reason: 8,
-                  }}
-                  label={t("Server sync tasks")}
-                  empty={t("No sync tasks")}
-                  fields={[
-                    "task",
-                    "account",
-                    "folder",
-                    "operation",
-                    "status",
-                    "reason",
-                    "actions",
-                  ]}
-                  rows={data.items.map((item) => {
-                    const retired = data.retired?.includes(item.id);
-                    return {
-                      id: item.id,
-                      task: (
-                        <TaskCellText
-                          text={item.subject || t("(No subject)")}
-                        />
-                      ),
-                      account: item.accountEmail && (
-                        <TaskCellText text={item.accountEmail} />
-                      ),
-                      folder: item.folder && (
-                        <TaskCellText text={item.folder} />
-                      ),
-                      operation: (
-                        <TaskCellText
-                          text={
-                            item.action === "read"
-                              ? item.value
-                                ? t("Mark read")
-                                : t("Mark unread")
-                              : item.value
-                                ? t("Add star")
-                                : t("Unstar")
-                          }
-                        />
-                      ),
-                      reason: retired ? (
-                        <TaskCellText
-                          text={t("Account removed. Local archives are kept.")}
-                          detail={item.error}
-                        />
-                      ) : (
-                        item.error && <TaskCellText text={item.error} />
-                      ),
-                      status: (
-                        <Badge
-                          variant={
-                            item.status === "blocked"
-                              ? "destructive"
-                              : "outline"
-                          }
-                        >
-                          {retired
-                            ? t("Removed account")
-                            : item.status === "queued" && item.error
-                              ? t("Waiting to retry")
-                              : states[item.status]}
-                        </Badge>
-                      ),
-                      actions:
-                        item.status === "blocked" ||
-                        (item.status === "queued" && item.error) ? (
-                          <div className="flex flex-wrap items-center justify-end gap-1">
-                            <Button
-                              variant="outline"
-                              size="xs"
-                              disabled={busy !== null}
-                              onClick={() => void updateTask(item, !!retired)}
+                )}
+              </div>
+            )}
+            {(data || !error) && (
+              <TaskDataTable
+                loadingLabel={!data ? t("Loading sync tasks") : undefined}
+                actionsWidth={9}
+                columnWidths={{
+                  task: 10,
+                  account: 9,
+                  folder: 7,
+                  operation: 5.5,
+                  status: 8,
+                  reason: 8,
+                }}
+                label={t("Server sync tasks")}
+                empty={t("No sync tasks")}
+                fields={[
+                  "task",
+                  "account",
+                  "folder",
+                  "operation",
+                  "status",
+                  "reason",
+                  "actions",
+                ]}
+                rows={(data?.items ?? []).map((item) => {
+                  const retired = data?.retired?.includes(item.id);
+                  return {
+                    id: item.id,
+                    task: (
+                      <TaskCellText text={item.subject || t("(No subject)")} />
+                    ),
+                    account: item.accountEmail && (
+                      <TaskCellText text={item.accountEmail} />
+                    ),
+                    folder: item.folder && <TaskCellText text={item.folder} />,
+                    operation: (
+                      <TaskCellText
+                        text={
+                          item.action === "read"
+                            ? item.value
+                              ? t("Mark read")
+                              : t("Mark unread")
+                            : item.value
+                              ? t("Add star")
+                              : t("Unstar")
+                        }
+                      />
+                    ),
+                    reason: retired ? (
+                      <TaskCellText
+                        text={t("Account removed. Local archives are kept.")}
+                        detail={item.error}
+                      />
+                    ) : (
+                      item.error && <TaskCellText text={item.error} />
+                    ),
+                    status: (
+                      <Badge
+                        variant={
+                          item.status === "blocked" ? "destructive" : "outline"
+                        }
+                      >
+                        {retired
+                          ? t("Removed account")
+                          : item.status === "queued" && item.error
+                            ? t("Waiting to retry")
+                            : states[item.status]}
+                      </Badge>
+                    ),
+                    actions:
+                      item.status === "blocked" ||
+                      (item.status === "queued" && item.error) ? (
+                        <div className="flex flex-wrap items-center justify-end gap-1">
+                          <Button
+                            variant="outline"
+                            size="xs"
+                            disabled={busy !== null}
+                            aria-busy={busy === item.id}
+                            onClick={() => void updateTask(item, !!retired)}
+                          >
+                            <ButtonLabel
+                              reserve={[
+                                t("Dismiss"),
+                                t("Retrying…"),
+                                t("Retry"),
+                              ]}
                             >
                               {retired
                                 ? t("Dismiss")
                                 : busy === item.id
                                   ? t("Retrying…")
                                   : t("Retry")}
-                            </Button>
-                          </div>
-                        ) : undefined,
-                    };
-                  })}
-                />
-                {data.items.length >= 50 && (
-                  <p className="text-xs text-muted-foreground">
-                    {t("Up to 50 entries, with pending tasks first.")}
-                  </p>
-                )}
-              </>
+                            </ButtonLabel>
+                          </Button>
+                        </div>
+                      ) : undefined,
+                  };
+                })}
+              />
+            )}
+            {(data?.items.length ?? 0) >= 50 && (
+              <p className="text-xs text-muted-foreground">
+                {t("Up to 50 entries, with pending tasks first.")}
+              </p>
             )}
           </CardContent>
         </CollapsibleContent>

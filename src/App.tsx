@@ -80,7 +80,8 @@ import { coalesceRefresh, throttledRefresh } from "./lib/refresh-queue";
 import { ConversationReader } from "./components/conversation-reader";
 import { replyHeaders } from "./lib/conversations";
 import { FolderInput } from "./components/folder-input";
-import { applyThemeClass, useTheme } from "./lib/theme";
+import { useTheme } from "./lib/theme";
+import { AppearanceSettings } from "./components/appearance-settings";
 import { Tabs, TabsList, TabsTrigger } from "./components/ui/tabs";
 import { disableNativeContextMenu } from "./lib/context-menu";
 import { trackPointerFocus } from "./lib/webview-keys";
@@ -153,7 +154,13 @@ import {
   SidebarProvider,
   SidebarTrigger,
 } from "./components/ui/sidebar";
-import { Card, CardContent } from "./components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "./components/ui/card";
 import { Badge } from "./components/ui/badge";
 import { Checkbox } from "./components/ui/checkbox";
 import {
@@ -169,6 +176,12 @@ import {
   DropdownMenuTrigger,
 } from "./components/ui/dropdown-menu";
 import { Input } from "./components/ui/input";
+import {
+  InputGroup,
+  InputGroupAddon,
+  InputGroupButton,
+  InputGroupInput,
+} from "./components/ui/input-group";
 import {
   Dialog,
   DialogContent,
@@ -715,9 +728,6 @@ export default function App({
     );
     return () => clearTimeout(timer);
   }, [search]);
-  useEffect(() => {
-    applyThemeClass(theme.dark);
-  }, [theme.dark]);
   useEffect(() => {
     let live = true;
     const metadataAtStart = refreshedReaderMetadata.current;
@@ -2759,13 +2769,15 @@ export default function App({
                   <>
                     <div className="settings-section-heading">
                       <h2>{t("Email accounts")}</h2>
-                      <Button
-                        disabled={publicPreview}
-                        onClick={() => setAccountDialog(true)}
-                      >
-                        <Plus data-icon="inline-start" />
-                        {t("Add account")}
-                      </Button>
+                      {!!data.accounts.length && (
+                        <Button
+                          disabled={publicPreview}
+                          onClick={() => setAccountDialog(true)}
+                        >
+                          <Plus data-icon="inline-start" />
+                          {t("Add account")}
+                        </Button>
+                      )}
                     </div>
                     <div className="settings-accounts">
                       {data.accounts.map((a) => (
@@ -2778,16 +2790,13 @@ export default function App({
                                 {a.protocol.toUpperCase()}
                               </Badge>
                             </h3>
-                            <p>
-                              {a.email}{" "}
-                              <Badge variant="outline">
-                                {t("Default: ")}
-                                {a.saveLocally === false
-                                  ? t("Read online")
-                                  : t("Save locally")}
-                              </Badge>
-                            </p>
-                            <small className="tabular-nums">
+                            <p title={a.email}>{a.email}</p>
+                            <small
+                              className={`tabular-nums ${a.error ? "account-check-error" : ""}`}
+                            >
+                              {a.error && (
+                                <AlertCircle aria-hidden="true" size={14} />
+                              )}
                               {a.error ||
                                 (!a.enabled
                                   ? t("Account paused")
@@ -2802,101 +2811,134 @@ export default function App({
                                       ))}
                             </small>
                           </div>
-                          <DropdownMenu>
-                            <DropdownMenuTrigger asChild>
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                title={t("Account actions")}
-                                aria-label={t("Actions for {value0}", {
-                                  value0: a.name,
-                                })}
-                              >
-                                <MoreHorizontal size={18} />
-                              </Button>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent align="end">
-                              <DropdownMenuGroup>
-                                <DropdownMenuItem
-                                  onClick={() => {
-                                    setEditingAccount(a);
-                                    setAccountDialog(true);
-                                  }}
+                          <div className="settings-account-policy">
+                            <span>{t("Default storage")}</span>
+                            <strong>
+                              {a.saveLocally === false
+                                ? t("Read online")
+                                : t("Save locally")}
+                            </strong>
+                          </div>
+                          <div className="settings-account-actions">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              title={t("Edit account settings")}
+                              aria-label={t("Edit settings for {value0}", {
+                                value0: a.name,
+                              })}
+                              onClick={() => {
+                                setEditingAccount(a);
+                                setAccountDialog(true);
+                              }}
+                            >
+                              <PenLine data-icon="inline-start" />
+                              <span>{t("Edit settings")}</span>
+                            </Button>
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <Button
+                                  variant="ghost"
+                                  size="icon-sm"
+                                  title={t("Account actions")}
+                                  data-reveal-row-action=""
+                                  aria-label={t("Actions for {value0}", {
+                                    value0: a.name,
+                                  })}
                                 >
-                                  {t("Edit account settings")}
-                                </DropdownMenuItem>
-                                <DropdownMenuItem
-                                  onClick={() => {
-                                    setRetentionIntro(false);
-                                    setRetentionAccount(a);
-                                  }}
-                                >
-                                  {a.protocol === "imap"
-                                    ? t("Folder retention scope")
-                                    : t("Local storage settings")}
-                                </DropdownMenuItem>
-                                {a.protocol === "imap" && (
+                                  <MoreHorizontal size={18} />
+                                </Button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end">
+                                <DropdownMenuGroup>
                                   <DropdownMenuItem
-                                    onClick={() => setMappingAccount(a)}
+                                    onClick={() => {
+                                      setRetentionIntro(false);
+                                      setRetentionAccount(a);
+                                    }}
                                   >
-                                    {t("Special folders")}
+                                    {a.protocol === "imap"
+                                      ? t("Folder retention scope")
+                                      : t("Local storage settings")}
                                   </DropdownMenuItem>
-                                )}
-                                <DropdownMenuItem
-                                  onClick={() =>
-                                    void call("account_action", {
-                                      id: a.id,
-                                      remove: false,
-                                    })
-                                      .then(refresh)
-                                      .catch((e) => toast.error(String(e)))
-                                  }
-                                >
-                                  {a.enabled
-                                    ? t("Pause mail checks")
-                                    : t("Enable mail checks")}
-                                </DropdownMenuItem>
-                                <DropdownMenuSeparator />
-                                <DropdownMenuItem
-                                  variant="destructive"
-                                  onClick={async () => {
-                                    if (
-                                      await askConfirmation({
-                                        title: t("Remove account?"),
-                                        description: t(
-                                          "Removing {value0} stops mail checks. Full local archives remain; unarchived list entries are removed.",
-                                          { value0: a.email },
-                                        ),
-                                        action: t("Remove account"),
-                                        destructive: true,
-                                      })
-                                    )
+                                  {a.protocol === "imap" && (
+                                    <DropdownMenuItem
+                                      onClick={() => setMappingAccount(a)}
+                                    >
+                                      {t("Special folders")}
+                                    </DropdownMenuItem>
+                                  )}
+                                  <DropdownMenuItem
+                                    onClick={() =>
                                       void call("account_action", {
                                         id: a.id,
-                                        remove: true,
+                                        remove: false,
                                       })
                                         .then(refresh)
-                                        .catch((e) => toast.error(String(e)));
-                                  }}
-                                >
-                                  {t("Remove account, keep archives")}
-                                </DropdownMenuItem>
-                              </DropdownMenuGroup>
-                            </DropdownMenuContent>
-                          </DropdownMenu>
+                                        .catch((e) => toast.error(String(e)))
+                                    }
+                                  >
+                                    {a.enabled
+                                      ? t("Pause mail checks")
+                                      : t("Enable mail checks")}
+                                  </DropdownMenuItem>
+                                  <DropdownMenuSeparator />
+                                  <DropdownMenuItem
+                                    variant="destructive"
+                                    onClick={async () => {
+                                      if (
+                                        await askConfirmation({
+                                          title: t("Remove account?"),
+                                          description: t(
+                                            "Removing {value0} stops mail checks. Full local archives remain; unarchived list entries are removed.",
+                                            { value0: a.email },
+                                          ),
+                                          action: t("Remove account"),
+                                          destructive: true,
+                                        })
+                                      )
+                                        void call("account_action", {
+                                          id: a.id,
+                                          remove: true,
+                                        })
+                                          .then(refresh)
+                                          .catch((e) => toast.error(String(e)));
+                                    }}
+                                  >
+                                    {t("Remove account, keep archives")}
+                                  </DropdownMenuItem>
+                                </DropdownMenuGroup>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
+                          </div>
                         </Card>
                       ))}
                     </div>
                     {!data.accounts.length && (
-                      <div className="panel-empty">
-                        <MailIcon size={36} />
-                        <h3>{t("Start by connecting a mailbox")}</h3>
-                        <p>
-                          {t(
-                            "Supports Gmail, Outlook, QQ, NetEase and custom servers.",
-                          )}
-                        </p>
-                      </div>
+                      <Empty>
+                        <EmptyHeader>
+                          <EmptyMedia variant="icon">
+                            <MailIcon />
+                          </EmptyMedia>
+                          <EmptyTitle>
+                            {t("Start by connecting a mailbox")}
+                          </EmptyTitle>
+                          <EmptyDescription>
+                            {t(
+                              "Supports Gmail, Outlook, QQ, NetEase and custom servers.",
+                            )}
+                          </EmptyDescription>
+                        </EmptyHeader>
+                        <EmptyContent>
+                          <Button
+                            disabled={publicPreview}
+                            onClick={() => setAccountDialog(true)}
+                          >
+                            <Plus data-icon="inline-start" />
+                            {t("Add account")}
+                          </Button>
+                        </EmptyContent>
+                      </Empty>
                     )}
                   </>
                 }
@@ -2908,19 +2950,16 @@ export default function App({
                     <Card className="storage-card">
                       <div className="storage-card-header">
                         <span>
-                          <ShieldCheck size={25} />
+                          <ShieldCheck size={20} />
                         </span>
                         <div>
-                          <h3>
-                            {t("Save complete copies, keep them independently")}
-                          </h3>
+                          <h3>{t("Complete originals")}</h3>
                           <p>
                             {t(
-                              "Accounts with local saving enabled retain full messages and attachments. Removing an account keeps existing archives.",
+                              "Removing an account keeps its archived messages and attachments.",
                             )}
                           </p>
                         </div>
-                        <Badge variant="secondary">{t("Per account")}</Badge>
                       </div>
                       <div className="storage-metrics">
                         <div>
@@ -2994,6 +3033,7 @@ export default function App({
                       <h2>{t("Preferences")}</h2>
                     </div>
                     <div className="settings-preferences-grid">
+                      <AppearanceSettings theme={theme} />
                       <LanguageSettings />
                       <WorkspaceSettings
                         visible={showWorkbench}
@@ -3056,9 +3096,7 @@ export default function App({
                             <TaskDataTable
                               label={t("Recent activity")}
                               fields={["time", "account", "activity"]}
-                              empty={t(
-                                "Mail checks, sends, rule actions and model translations appear here.",
-                              )}
+                              empty={t("No recent activity")}
                               rows={data.logs.map((log, index) => {
                                 const [, time, message] =
                                   /^(\d{2}-\d{2} \d{2}:\d{2})\s+([\s\S]+)$/.exec(
@@ -3107,14 +3145,16 @@ export default function App({
                       <h2>{t("About Anser")}</h2>
                     </div>
                     <UpdateSettings updates={updates} />
-                    <div className="info-strip">
-                      <Info size={17} />
-                      <span>
-                        {t(
-                          "Mail checks continue after closing the window. Quitting, sleep or loss of connectivity pauses them. Download complete messages before the server deletes them.",
-                        )}
-                      </span>
-                    </div>
+                    <Card>
+                      <CardHeader>
+                        <CardTitle>{t("Background checks")}</CardTitle>
+                        <CardDescription>
+                          {t(
+                            "Mail checks continue after closing the window. Quitting, sleep or loss of connectivity pauses them. Download complete messages before the server deletes them.",
+                          )}
+                        </CardDescription>
+                      </CardHeader>
+                    </Card>
                     {import.meta.env.DEV && (
                       <Button
                         variant="ghost"
@@ -3132,31 +3172,29 @@ export default function App({
           ) : page === "drafts" ? (
             <section className="workspace-panel">
               <div className="panel-heading">
-                <div>
-                  <span className="eyebrow">TAKE YOUR TIME</span>
-                  <div className="page-title-row">
-                    <SidebarTrigger
-                      title={t("Toggle sidebar")}
-                      aria-label={t("Toggle sidebar")}
-                    />
-                    <h1>{t("Drafts")}</h1>
+                <div className="page-title-row">
+                  <SidebarTrigger
+                    title={t("Toggle sidebar")}
+                    aria-label={t("Toggle sidebar")}
+                  />
+                  <h1>{t("Drafts")}</h1>
+                </div>
+                {drafts.length > 0 && (
+                  <div className="flex items-center gap-2">
+                    <Button
+                      variant="outline"
+                      disabled={clearingDrafts || !!draft}
+                      onClick={() => void clearDrafts()}
+                    >
+                      <Trash2 data-icon="inline-start" />
+                      {clearingDrafts ? t("Clearing…") : t("Clear drafts")}
+                    </Button>
+                    <Button disabled={clearingDrafts} onClick={() => compose()}>
+                      <SquarePen data-icon="inline-start" />
+                      {t("Compose")}
+                    </Button>
                   </div>
-                  <p>{t("Drafts are saved locally. Continue anytime.")}</p>
-                </div>
-                <div className="flex items-center gap-2">
-                  <Button
-                    variant="outline"
-                    disabled={!drafts.length || clearingDrafts || !!draft}
-                    onClick={() => void clearDrafts()}
-                  >
-                    <Trash2 data-icon="inline-start" />
-                    {clearingDrafts ? t("Clearing…") : t("Clear drafts")}
-                  </Button>
-                  <Button disabled={clearingDrafts} onClick={() => compose()}>
-                    <SquarePen data-icon="inline-start" />
-                    {t("Compose")}
-                  </Button>
-                </div>
+                )}
               </div>
               {drafts.length ? (
                 drafts.map((d) => (
@@ -3202,11 +3240,23 @@ export default function App({
                   </article>
                 ))
               ) : (
-                <div className="panel-empty">
-                  <FileText size={36} />
-                  <h3>{t("No drafts yet")}</h3>
-                  <p>{t("Your unfinished messages will wait for you here.")}</p>
-                </div>
+                <Empty>
+                  <EmptyHeader>
+                    <EmptyMedia variant="icon">
+                      <FileText />
+                    </EmptyMedia>
+                    <EmptyTitle>{t("No drafts yet")}</EmptyTitle>
+                    <EmptyDescription>
+                      {t("Drafts are saved locally. Continue anytime.")}
+                    </EmptyDescription>
+                  </EmptyHeader>
+                  <EmptyContent>
+                    <Button disabled={clearingDrafts} onClick={() => compose()}>
+                      <SquarePen data-icon="inline-start" />
+                      {t("Compose")}
+                    </Button>
+                  </EmptyContent>
+                </Empty>
               )}
             </section>
           ) : (
@@ -3262,27 +3312,35 @@ export default function App({
                       </Alert>
                     )}
                   <div className="mail-search-row">
-                    <div className="search-box">
-                      <Search size={16} />
-                      <Input
+                    <InputGroup className="search-box">
+                      <InputGroupAddon>
+                        <Search />
+                      </InputGroupAddon>
+                      <InputGroupInput
                         ref={searchRef}
                         value={search}
                         onChange={(e) => setSearch(e.target.value)}
                         placeholder={t("Search mail in this scope…")}
                         aria-label={t("Search mail")}
                       />
-                      {search ? (
-                        <Button
-                          variant="ghost"
-                          onClick={() => setSearch("")}
-                          title={t("Clear search")}
-                        >
-                          <X size={14} />
-                        </Button>
-                      ) : (
-                        <kbd>{shortcut("⌘ K")}</kbd>
-                      )}
-                    </div>
+                      <InputGroupAddon align="inline-end">
+                        {search ? (
+                          <InputGroupButton
+                            size="icon-sm"
+                            aria-label={t("Clear search")}
+                            title={t("Clear search")}
+                            onClick={() => {
+                              setSearch("");
+                              searchRef.current?.focus();
+                            }}
+                          >
+                            <X />
+                          </InputGroupButton>
+                        ) : (
+                          <kbd>{shortcut("⌘ K")}</kbd>
+                        )}
+                      </InputGroupAddon>
+                    </InputGroup>
                     <MailFilters
                       query={query}
                       open={filterOpen}
@@ -3542,7 +3600,10 @@ export default function App({
                                 onClick={() => void openMail(m)}
                               >
                                 <div className="row-top">
-                                  <span className="sender-name">
+                                  <span
+                                    className="sender-name"
+                                    title={senderName(m.sender)}
+                                  >
                                     {senderName(m.sender)}
                                   </span>
                                   <time
@@ -3559,7 +3620,10 @@ export default function App({
                                       title={t("Unread")}
                                     />
                                   )}
-                                  <span className="row-subject-text">
+                                  <span
+                                    className="row-subject-text"
+                                    title={m.subject}
+                                  >
                                     {m.subject}
                                   </span>
                                   {grouped &&
@@ -3576,7 +3640,9 @@ export default function App({
                                       </Badge>
                                     )}
                                 </div>
-                                {m.preview && <p>{m.preview}</p>}
+                                {m.preview && (
+                                  <p title={m.preview}>{m.preview}</p>
+                                )}
                                 <div className="row-meta">
                                   <span
                                     className={`mini-dot color-${
@@ -4004,82 +4070,90 @@ export default function App({
                             </Button>
                           </div>
                           <div className="reader-actions">
-                            <MailActionTooltip
-                              action="reply"
-                              label={t("Reply")}
-                            >
-                              <Button
-                                variant="secondary"
-                                size="sm"
-                                className="reader-primary-action"
-                                aria-label={t("Reply")}
-                                aria-keyshortcuts="Meta+R Control+R"
-                                disabled={!bodyReady}
-                                onClick={() =>
-                                  compose(
-                                    activeMail,
-                                    false,
-                                    false,
-                                    detail || undefined,
-                                  )
-                                }
+                            <div className="reader-reply-group">
+                              <MailActionTooltip
+                                action="reply"
+                                label={t("Reply")}
                               >
-                                <Reply size={15} />
-                                <span className="action-label">
-                                  {t("Reply")}
-                                </span>
-                              </Button>
-                            </MailActionTooltip>
-                            <DropdownMenu>
-                              <DropdownMenuTrigger asChild>
                                 <Button
-                                  variant="ghost"
-                                  size="icon-sm"
-                                  title={t("More reply actions")}
-                                  aria-label={t("More reply actions")}
+                                  variant="secondary"
+                                  size="sm"
+                                  className="reader-primary-action"
+                                  aria-label={t("Reply")}
+                                  aria-keyshortcuts="Meta+R Control+R"
+                                  disabled={!bodyReady}
+                                  onClick={() =>
+                                    compose(
+                                      activeMail,
+                                      false,
+                                      false,
+                                      detail || undefined,
+                                    )
+                                  }
                                 >
-                                  <ChevronDown size={12} />
+                                  <Reply size={15} />
+                                  <span className="action-label">
+                                    {t("Reply")}
+                                  </span>
                                 </Button>
-                              </DropdownMenuTrigger>
-                              <DropdownMenuContent align="end">
-                                <DropdownMenuGroup>
-                                  <DropdownMenuItem
-                                    aria-keyshortcuts="Meta+Shift+R Control+Shift+R"
-                                    disabled={!bodyReady}
-                                    onClick={() =>
-                                      detail &&
-                                      compose(detail.mail, false, true, detail)
-                                    }
+                              </MailActionTooltip>
+                              <DropdownMenu>
+                                <DropdownMenuTrigger asChild>
+                                  <Button
+                                    variant="secondary"
+                                    size="icon-sm"
+                                    className="reader-reply-options"
+                                    title={t("More reply actions")}
+                                    aria-label={t("More reply actions")}
                                   >
-                                    <ReplyAll size={15} />
-                                    {t("Reply all")}
-                                    <DropdownMenuShortcut>
-                                      {mailShortcutKeys.replyAll}
-                                    </DropdownMenuShortcut>
-                                  </DropdownMenuItem>
-                                  <DropdownMenuItem
-                                    onClick={() => {
-                                      const address = parseAddresses(
-                                        activeMail.sender,
-                                      )[0];
-                                      if (!address) {
-                                        toast.error(
-                                          t(
-                                            "Could not identify the sender's email address",
-                                          ),
-                                        );
-                                        return;
+                                    <ChevronDown size={12} />
+                                  </Button>
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent align="end">
+                                  <DropdownMenuGroup>
+                                    <DropdownMenuItem
+                                      aria-keyshortcuts="Meta+Shift+R Control+Shift+R"
+                                      disabled={!bodyReady}
+                                      onClick={() =>
+                                        detail &&
+                                        compose(
+                                          detail.mail,
+                                          false,
+                                          true,
+                                          detail,
+                                        )
                                       }
-                                      setContactSeed(address);
-                                      setPage("contacts");
-                                    }}
-                                  >
-                                    <UsersRound size={15} />
-                                    {t("Add sender to contacts")}
-                                  </DropdownMenuItem>
-                                </DropdownMenuGroup>
-                              </DropdownMenuContent>
-                            </DropdownMenu>
+                                    >
+                                      <ReplyAll size={15} />
+                                      {t("Reply all")}
+                                      <DropdownMenuShortcut>
+                                        {mailShortcutKeys.replyAll}
+                                      </DropdownMenuShortcut>
+                                    </DropdownMenuItem>
+                                    <DropdownMenuItem
+                                      onClick={() => {
+                                        const address = parseAddresses(
+                                          activeMail.sender,
+                                        )[0];
+                                        if (!address) {
+                                          toast.error(
+                                            t(
+                                              "Could not identify the sender's email address",
+                                            ),
+                                          );
+                                          return;
+                                        }
+                                        setContactSeed(address);
+                                        setPage("contacts");
+                                      }}
+                                    >
+                                      <UsersRound size={15} />
+                                      {t("Add sender to contacts")}
+                                    </DropdownMenuItem>
+                                  </DropdownMenuGroup>
+                                </DropdownMenuContent>
+                              </DropdownMenu>
+                            </div>
                             <MailActionTooltip
                               action="forward"
                               label={t("Forward")}

@@ -9,7 +9,6 @@ import { useConfirmation } from "@/hooks/use-confirmation";
 import { Button, ButtonLabel } from "./ui/button";
 import {
   Card,
-  CardAction,
   CardContent,
   CardDescription,
   CardHeader,
@@ -18,6 +17,7 @@ import {
 import { Label } from "./ui/label";
 import { SelectField, SelectOption } from "./ui/select-field";
 import { Separator } from "./ui/separator";
+import { Skeleton } from "./ui/skeleton";
 
 const retentionOptions = [0, 7, 30, 90, 365];
 const limitOptions = [
@@ -85,8 +85,8 @@ export function ReadingCacheSettings() {
         readingCacheLimitMb: limitMb,
       };
       await call("save_preferences", { preferences: next });
-      const nextStatus = await call<ReadingCacheStatus>("reading_cache_status");
       setPreferences(next);
+      const nextStatus = await call<ReadingCacheStatus>("reading_cache_status");
       setStatus(nextStatus);
       toast.success(t("Reading cache settings saved"));
     } catch (error) {
@@ -120,7 +120,7 @@ export function ReadingCacheSettings() {
   }
 
   return (
-    <Card>
+    <Card className="reading-cache-card">
       <CardHeader>
         <CardTitle>{t("Reading cache")}</CardTitle>
         <CardDescription>
@@ -128,10 +128,53 @@ export function ReadingCacheSettings() {
             "Temporary local copies of online mail are separate from full archives and are excluded from backup and integrity checks.",
           )}
         </CardDescription>
-        <CardAction className="self-center">
+      </CardHeader>
+      <CardContent className="flex flex-col gap-4">
+        <div className="settings-cache-fields">
+          <div className="settings-tool-row">
+            <Label htmlFor="reading-cache-days">{t("Keep for")}</Label>
+            <SelectField
+              id="reading-cache-days"
+              className="settings-choice"
+              aria-label={t("Reading cache retention")}
+              value={days}
+              disabled={loading || saving}
+              onValueChange={(value) => setDays(Number(value))}
+            >
+              {retentionOptions.map((value) => (
+                <SelectOption key={value} value={value}>
+                  {value === 0
+                    ? t("Off")
+                    : t("{value0} days", { value0: value })}
+                </SelectOption>
+              ))}
+            </SelectField>
+          </div>
+          <div className="settings-tool-row">
+            <Label htmlFor="reading-cache-limit">{t("Size limit")}</Label>
+            <SelectField
+              id="reading-cache-limit"
+              className="settings-choice"
+              aria-label={t("Reading cache size limit")}
+              value={limitMb}
+              disabled={loading || saving}
+              onValueChange={(value) => setLimitMb(Number(value))}
+            >
+              {limitOptions.map((option) => (
+                <SelectOption key={option.value} value={option.value}>
+                  {option.label}
+                </SelectOption>
+              ))}
+            </SelectField>
+          </div>
+        </div>
+        <div className="settings-form-actions">
+          <span className="text-xs text-muted-foreground" aria-live="polite">
+            {changed ? t("Unsaved") : ""}
+          </span>
           <Button
             size="sm"
-            variant="outline"
+            variant={changed ? "default" : "outline"}
             aria-busy={saving}
             disabled={loading || saving || !changed}
             onClick={() => void save()}
@@ -151,54 +194,29 @@ export function ReadingCacheSettings() {
               {saving ? t("Saving…") : t("Save")}
             </ButtonLabel>
           </Button>
-        </CardAction>
-      </CardHeader>
-      <CardContent className="flex flex-col gap-4">
-        <div className="settings-tool-row">
-          <Label htmlFor="reading-cache-days">{t("Keep for")}</Label>
-          <SelectField
-            id="reading-cache-days"
-            aria-label={t("Reading cache retention")}
-            value={days}
-            disabled={loading || saving}
-            onValueChange={(value) => setDays(Number(value))}
-          >
-            {retentionOptions.map((value) => (
-              <SelectOption key={value} value={value}>
-                {value === 0 ? t("Off") : t("{value0} days", { value0: value })}
-              </SelectOption>
-            ))}
-          </SelectField>
         </div>
         <Separator />
-        <div className="settings-tool-row">
-          <Label htmlFor="reading-cache-limit">{t("Size limit")}</Label>
-          <SelectField
-            id="reading-cache-limit"
-            aria-label={t("Reading cache size limit")}
-            value={limitMb}
-            disabled={loading || saving}
-            onValueChange={(value) => setLimitMb(Number(value))}
-          >
-            {limitOptions.map((option) => (
-              <SelectOption key={option.value} value={option.value}>
-                {option.label}
-              </SelectOption>
-            ))}
-          </SelectField>
-        </div>
-        <Separator />
-        <div className="settings-tool-row items-center justify-between gap-4">
-          <p className="text-sm font-medium tabular-nums">
-            {status
-              ? t("{value0} messages · {value1}", {
-                  value0: status.entries,
-                  value1: cacheSize(status.bytes),
-                })
-              : t("Reading cache unavailable")}
-          </p>
+        <div className="settings-tool-row flex-wrap items-center justify-between gap-4">
+          <div className="flex flex-col gap-1">
+            <span className="text-xs text-muted-foreground">
+              {t("Cache usage")}
+            </span>
+            {loading ? (
+              <Skeleton aria-label={t("Loading…")} className="h-4 w-24" />
+            ) : (
+              <p className="text-sm font-medium tabular-nums">
+                {status
+                  ? t("{value0} messages · {value1}", {
+                      value0: status.entries,
+                      value1: cacheSize(status.bytes),
+                    })
+                  : t("Reading cache unavailable")}
+              </p>
+            )}
+          </div>
           <Button
             variant="outline"
+            className="text-destructive hover:text-destructive"
             size="sm"
             aria-busy={clearing}
             disabled={loading || clearing || !status?.entries}

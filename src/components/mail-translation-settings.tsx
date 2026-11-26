@@ -30,7 +30,6 @@ import {
 import { Input } from "./ui/input";
 import { SelectField, SelectOption } from "./ui/select-field";
 import { Separator } from "./ui/separator";
-import { Badge } from "./ui/badge";
 import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
 import {
   Command,
@@ -54,12 +53,17 @@ export function MailTranslationSettings() {
   const [models, setModels] = useState<TranslationModel[]>([]);
   const [modelsOpen, setModelsOpen] = useState(false);
   const [modelsError, setModelsError] = useState("");
-  const [loadingModels, setLoadingModels] = useState(false);
   const activeModels = useRef("");
   const [saved, setSaved] = useState<TranslationConfig | null>(null);
   const [key, setKey] = useState("");
   const [clearKey, setClearKey] = useState(false);
-  const [busy, setBusy] = useState(false);
+  const [operation, setOperation] = useState<
+    "save" | "discover" | "clearCache" | null
+  >(null);
+  const busy = operation !== null;
+  const loadingModels = operation === "discover";
+  const saving = operation === "save";
+  const clearingCache = operation === "clearCache";
   const [ready, setReady] = useState(false);
   const mounted = useRef(true);
   useEffect(() => {
@@ -87,7 +91,7 @@ export function MailTranslationSettings() {
   }, []);
   async function save() {
     if (busy) return;
-    setBusy(true);
+    setOperation("save");
     try {
       const next = await call<TranslationConfig>("save_translation_settings", {
         config,
@@ -103,16 +107,15 @@ export function MailTranslationSettings() {
     } catch (e) {
       toast.error(String(e));
     } finally {
-      setBusy(false);
+      setOperation(null);
     }
   }
   const sameAddress =
     !!saved && config.baseUrl.trim().replace(/\/+$/, "") === saved.baseUrl;
   const dirty =
-    !saved ||
-    !sameAddress ||
-    config.model.trim() !== saved.model ||
-    config.targetLanguage !== saved.targetLanguage ||
+    (saved ? !sameAddress : !!config.baseUrl.trim()) ||
+    config.model.trim() !== (saved?.model ?? empty.model) ||
+    config.targetLanguage !== (saved?.targetLanguage ?? empty.targetLanguage) ||
     !!key ||
     clearKey;
   const translationConfigured = !!saved?.baseUrl.trim() && !!saved.model.trim();
@@ -129,8 +132,7 @@ export function MailTranslationSettings() {
     if (busy || activeModels.current) return;
     const requestId = crypto.randomUUID();
     activeModels.current = requestId;
-    setBusy(true);
-    setLoadingModels(true);
+    setOperation("discover");
     setModelsError("");
     try {
       const result = await call<TranslationModel[]>("get_translation_models", {
@@ -150,8 +152,7 @@ export function MailTranslationSettings() {
       if (activeModels.current === requestId) {
         activeModels.current = "";
         if (mounted.current) {
-          setBusy(false);
-          setLoadingModels(false);
+          setOperation(null);
         }
       }
     }
@@ -159,8 +160,7 @@ export function MailTranslationSettings() {
   function cancelModels() {
     const requestId = activeModels.current;
     activeModels.current = "";
-    setBusy(false);
-    setLoadingModels(false);
+    setOperation(null);
     if (requestId)
       void call("cancel_translation", { requestId }).catch((error) =>
         toast.error(String(error)),
@@ -408,14 +408,14 @@ export function MailTranslationSettings() {
                       : t("Fetch model list")}
                   </ButtonLabel>
                 </Button>
+                {modelsError && (
+                  <Alert variant="destructive">
+                    <AlertDescription>{modelsError}</AlertDescription>
+                  </Alert>
+                )}
               </div>
             </Field>
           </FieldGroup>
-          {modelsError && (
-            <Alert variant="destructive">
-              <AlertDescription>{modelsError}</AlertDescription>
-            </Alert>
-          )}
           <Separator />
           <section
             className="flex flex-col gap-4"
@@ -472,8 +472,9 @@ export function MailTranslationSettings() {
                     type="button"
                     variant="outline"
                     disabled={!translationConfigured || busy}
+                    aria-busy={clearingCache}
                     onClick={() => {
-                      setBusy(true);
+                      setOperation("clearCache");
                       void call("clear_translation_cache")
                         .then(async () => {
                           const next = await call<TranslationConfig | null>(
@@ -492,33 +493,53 @@ export function MailTranslationSettings() {
                           toast.success(t("Translation cache cleared"));
                         })
                         .catch((error) => toast.error(String(error)))
-                        .finally(() => setBusy(false));
+                        .finally(() => setOperation(null));
                     }}
                   >
-                    {t("Clear translation cache")}
+                    <ButtonLabel
+                      reserve={[t("Clear translation cache"), t("Clearing…")]}
+                      reserveIcon
+                      icon={
+                        clearingCache && (
+                          <LoaderCircle className="animate-spin" />
+                        )
+                      }
+                    >
+                      {clearingCache
+                        ? t("Clearing…")
+                        : t("Clear translation cache")}
+                    </ButtonLabel>
                   </Button>
                 </div>
               </Field>
             </FieldGroup>
           </section>
           <Separator />
-          <div className="flex flex-wrap items-center gap-3">
+          <div className="settings-form-actions">
+            {ready && (
+              <span
+                className="text-xs text-muted-foreground"
+                aria-live="polite"
+              >
+                {dirty
+                  ? t("Unsaved")
+                  : translationConfigured
+                    ? t("Saved")
+                    : t("Not configured")}
+              </span>
+            )}
             <Button
               type="submit"
+              aria-busy={saving}
               disabled={
                 !ready || busy || !config.baseUrl.trim() || !config.model.trim()
               }
             >
               <ButtonLabel
-                reserve={[
-                  t("Save model settings"),
-                  t("Fetching model list…"),
-                  t("Testing and saving…"),
-                ]}
+                reserve={[t("Save model settings"), t("Testing and saving…")]}
                 reserveIcon
                 icon={
-                  busy &&
-                  !loadingModels && (
+                  saving && (
                     <LoaderCircle
                       data-icon="inline-start"
                       className="animate-spin"
@@ -526,14 +547,9 @@ export function MailTranslationSettings() {
                   )
                 }
               >
-                {busy
-                  ? loadingModels
-                    ? t("Fetching model list…")
-                    : t("Testing and saving…")
-                  : t("Save model settings")}
+                {saving ? t("Testing and saving…") : t("Save model settings")}
               </ButtonLabel>
             </Button>
-            <Badge variant="outline">{dirty ? t("Unsaved") : t("Saved")}</Badge>
           </div>
         </form>
       </CardContent>

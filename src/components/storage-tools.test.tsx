@@ -87,6 +87,32 @@ it("does not register a development preview as a broken login startup item", asy
   expect(host.textContent).toContain("开机自启需使用正式版。");
   expect(host.textContent).not.toContain("演示模式不修改系统启动项。");
 });
+it("shows busy feedback only on the notification preference being written", async () => {
+  const original = api.call;
+  let finish!: () => void;
+  const pending = new Promise<void>((resolve) => {
+    finish = resolve;
+  });
+  vi.spyOn(api, "call").mockImplementation(
+    async <T,>(command: string, args: Record<string, unknown> = {}) => {
+      if (command === "save_preferences") await pending;
+      return original<T>(command, args);
+    },
+  );
+  await act(async () => root.render(<StorageTools />));
+  const notification = host.querySelector<HTMLButtonElement>(
+    "#new-mail-notifications",
+  )!;
+  const intervalSave = host.querySelector(
+    ".storage-checks-card button[aria-busy]",
+  )!;
+  await act(async () => notification.click());
+  expect(notification.getAttribute("aria-busy")).toBe("true");
+  expect(intervalSave.getAttribute("aria-busy")).toBe("false");
+  expect(intervalSave.textContent).toBe("保存");
+  await act(async () => finish());
+  expect(notification.getAttribute("aria-busy")).toBe("false");
+});
 const idleHealth: ArchiveHealth = {
   checked: 0,
   healthy: 0,

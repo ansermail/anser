@@ -57,6 +57,45 @@ export function TaskPanelHeader({
   badge?: ReactNode;
   onRefresh: () => Promise<void>;
 }) {
+  return (
+    <CardHeader className="task-panel-header flex flex-row items-center gap-2 px-4">
+      <CollapsibleTrigger asChild>
+        <Button
+          variant="ghost"
+          aria-label={t("Expand or collapse {value0}", { value0: title })}
+          className="group h-auto min-w-0 flex-1 items-center justify-start gap-4 px-2 py-1 text-left whitespace-normal"
+        >
+          <span className="flex min-w-0 flex-1 flex-col gap-2">
+            <span className="flex flex-wrap items-center gap-2">
+              <span className="font-semibold">{title}</span>
+              {badge}
+            </span>
+            <span className="text-sm leading-relaxed font-normal text-muted-foreground">
+              {description}
+            </span>
+          </span>
+          <ChevronDown className="shrink-0 transition-transform group-data-[state=open]:rotate-180 motion-reduce:transition-none" />
+        </Button>
+      </CollapsibleTrigger>
+      <TaskRefreshButton
+        label={t("Refresh {value0}", { value0: title })}
+        onRefresh={onRefresh}
+      />
+    </CardHeader>
+  );
+}
+
+export function TaskRefreshButton({
+  label,
+  onRefresh,
+  variant = "ghost",
+  iconOnly = false,
+}: {
+  label: string;
+  onRefresh: () => Promise<void>;
+  variant?: "ghost" | "outline";
+  iconOnly?: boolean;
+}) {
   const [refreshing, setRefreshing] = useState(false);
   const pending = useRef(false);
   const live = useRef(false);
@@ -93,46 +132,27 @@ export function TaskPanelHeader({
   }
 
   return (
-    <CardHeader className="flex flex-row items-center gap-2 px-4">
-      <CollapsibleTrigger asChild>
-        <Button
-          variant="ghost"
-          aria-label={t("Expand or collapse {value0}", { value0: title })}
-          className="group h-auto min-w-0 flex-1 items-center justify-start gap-4 px-2 py-1 text-left whitespace-normal"
-        >
-          <span className="flex min-w-0 flex-1 flex-col gap-2">
-            <span className="flex flex-wrap items-center gap-2">
-              <span className="font-semibold">{title}</span>
-              {badge}
-            </span>
-            <span className="text-sm leading-relaxed font-normal text-muted-foreground">
-              {description}
-            </span>
-          </span>
-          <ChevronDown className="shrink-0 transition-transform group-data-[state=open]:rotate-180 motion-reduce:transition-none" />
-        </Button>
-      </CollapsibleTrigger>
-      <Button
-        variant="ghost"
-        size="sm"
-        aria-label={t("Refresh {value0}", { value0: title })}
-        aria-busy={refreshing}
-        disabled={refreshing}
-        onClick={() => void refresh()}
-      >
-        <RefreshCw
-          data-icon="inline-start"
-          className={cn(
-            refreshing && "animate-spin motion-reduce:animate-none",
-          )}
-        />
+    <Button
+      variant={variant}
+      size={iconOnly ? "icon-sm" : "sm"}
+      aria-label={label}
+      title={iconOnly ? label : undefined}
+      aria-busy={refreshing}
+      disabled={refreshing}
+      onClick={() => void refresh()}
+    >
+      <RefreshCw
+        data-icon="inline-start"
+        className={cn(refreshing && "animate-spin motion-reduce:animate-none")}
+      />
+      {!iconOnly && (
         <ButtonLabel
           aria-live="polite"
           reserve={[t("Refresh"), t("Refreshing")]}
         >
           {refreshing ? t("Refreshing") : t("Refresh")}
         </ButtonLabel>
-      </Button>
-    </CardHeader>
+      )}
+    </Button>
   );
 }

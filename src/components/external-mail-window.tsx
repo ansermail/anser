@@ -58,8 +58,7 @@ export function ExternalMailWindow() {
   const [error, setError] = useState("");
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [draft, setDraft] = useState<Compose | null>(null);
-  const theme = useTheme();
-  const dark = theme.dark;
+  const { dark, mode } = useTheme();
   const readerRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (!native) return;
@@ -87,10 +86,9 @@ export function ExternalMailWindow() {
     useState<HTMLDivElement | null>(null);
   useEffect(() => {
     const element = window.document.documentElement;
-    element.classList.toggle("dark", theme.dark);
     element.classList.add("external-mail-document");
     return () => element.classList.remove("external-mail-document");
-  }, [theme.dark]);
+  }, []);
   useEffect(() => disableNativeContextMenu(window.document), []);
   useEffect(() => {
     let live = true;
@@ -230,12 +228,7 @@ export function ExternalMailWindow() {
     <TooltipProvider>
       <div className="external-mail">
         <DesktopTitlebar />
-        <Toaster
-          position="bottom-center"
-          theme={theme.mode}
-          richColors
-          closeButton
-        />
+        <Toaster position="bottom-center" theme={mode} richColors closeButton />
         {error ? (
           <main className="external-mail-error">
             <Alert variant="destructive">

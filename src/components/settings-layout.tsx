@@ -4,6 +4,7 @@ import {
   createContext,
   useContext,
   useEffect,
+  useLayoutEffect,
   useRef,
   useState,
   type ReactNode,
@@ -84,8 +85,11 @@ export function SettingsLayout({
 } & Record<Section, ReactNode>) {
   const container = useRef<HTMLDivElement>(null);
   const panelContainer = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    if (panelContainer.current) panelContainer.current.scrollTop = 0;
+  const scrollPositions = useRef(new Map<string, number>());
+  useLayoutEffect(() => {
+    if (panelContainer.current)
+      panelContainer.current.scrollTop =
+        scrollPositions.current.get(value) ?? 0;
   }, [value]);
   useEffect(() => {
     if (panelContainer.current)
@@ -118,15 +122,21 @@ export function SettingsLayout({
             <TabsTrigger key={section.value} value={section.value}>
               <section.icon />
               <span>{section.label}</span>
-              {section.value === "accounts" && (
-                <Badge variant="secondary" className="ml-auto">
+              {section.value === "accounts" && accountCount > 0 && (
+                <Badge variant="secondary" className="ml-auto tabular-nums">
                   {accountCount}
                 </Badge>
               )}
             </TabsTrigger>
           ))}
         </TabsList>
-        <div ref={panelContainer} className="settings-panels">
+        <div
+          ref={panelContainer}
+          className="settings-panels"
+          onScroll={(event) =>
+            scrollPositions.current.set(value, event.currentTarget.scrollTop)
+          }
+        >
           {sections.map((section) => (
             <TabsContent
               key={section.value}

@@ -2210,6 +2210,7 @@ export function Workbench({
         ]}
         pageSize={14}
         keepEmptyFields
+        scrollRows={false}
         showRecordCount
         empty={
           <Empty className="wb-structured-empty">
@@ -3059,7 +3060,7 @@ export function Workbench({
                         ) : (
                           <Empty className="wb-agenda-empty">
                             <EmptyHeader>
-                              <EmptyMedia>
+                              <EmptyMedia variant="icon">
                                 <CalendarDays aria-hidden="true" />
                               </EmptyMedia>
                               <EmptyTitle>

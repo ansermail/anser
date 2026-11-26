@@ -1,3 +1,4 @@
+import { TaskRefreshButton } from "./task-panel-header";
 import { useSettingsTabActive } from "./settings-layout";
 import { dateLocale, t } from "@/lib/i18n";
 import { formatSize } from "@/lib/providers";
@@ -10,7 +11,6 @@ import {
   FolderOpen,
   HardDrive,
   LoaderCircle,
-  RefreshCw,
   Wand2,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -20,6 +20,8 @@ import { useConfirmation } from "@/hooks/use-confirmation";
 import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
 import { Card } from "./ui/card";
+import { Label } from "./ui/label";
+import { ArchivePath } from "./archive-path";
 import { Alert, AlertDescription } from "./ui/alert";
 import { Progress } from "./ui/progress";
 import {
@@ -238,13 +240,13 @@ export function ArchiveTier({ onChanged }: { onChanged: () => void }) {
       <Card className="storage-card">
         <div className="storage-card-header">
           <span>
-            <Archive size={25} />
+            <Archive size={20} />
           </span>
           <div>
             <h3>{t("Attached archive")}</h3>
             <p>
               {t(
-                "Move complete originals older than the retention period to a connected disk. Accounts and recent mail stay available without it; opening an old message asks for the original disk.",
+                "Move older originals to a connected disk. Keep the disk connected to open those messages.",
               )}
             </p>
           </div>
@@ -257,59 +259,68 @@ export function ArchiveTier({ onChanged }: { onChanged: () => void }) {
           </Badge>
         </div>
         <div className="flex flex-col gap-4">
-          <div className="storage-metrics">
-            <div>
-              <strong>
-                {status?.archivedCount || 0}
-                <small>{t("messages (attached)")}</small>
-              </strong>
-              <span>{t("Attached originals")}</span>
+          {configured && (
+            <div className="storage-metrics">
+              <div>
+                <strong>
+                  {status?.archivedCount || 0}
+                  <small>{t("messages (attached)")}</small>
+                </strong>
+                <span>{t("Attached originals")}</span>
+              </div>
+              <div>
+                <ArchiveSizeMetric bytes={status?.archivedBytes ?? 0} />
+                <span>{t("Attached original size")}</span>
+              </div>
+              <div>
+                <strong>
+                  {status?.pendingCount || 0}
+                  <small>{t("messages pending")}</small>
+                </strong>
+                <span>{t("Waiting to archive")}</span>
+              </div>
             </div>
-            <div>
-              <ArchiveSizeMetric bytes={status?.archivedBytes ?? 0} />
-              <span>{t("Attached original size")}</span>
+          )}
+
+          <div className="settings-archive-location">
+            <div className="min-w-0">
+              <h4>{t("Storage location")}</h4>
+              <div className="min-w-0 text-xs text-muted-foreground">
+                {status?.path ? (
+                  <ArchivePath path={status.path} />
+                ) : (
+                  t("No attached archive folder selected yet.")
+                )}
+              </div>
             </div>
-            <div>
-              <strong>
-                {status?.pendingCount || 0}
-                <small>{t("messages pending")}</small>
-              </strong>
-              <span>{t("Waiting to archive")}</span>
+            <div className="flex flex-wrap items-center gap-2">
+              <Button
+                variant={configured ? "outline" : "default"}
+                disabled={disabled}
+                onClick={() => void chooseDirectory()}
+              >
+                <HardDrive data-icon="inline-start" />
+                {configured ? t("Change directory") : t("Choose directory")}
+              </Button>
+              <TaskRefreshButton
+                iconOnly
+                label={t("Refresh attached archive")}
+                onRefresh={reload}
+              />
             </div>
           </div>
 
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="min-w-0 flex-1 basis-64 break-all text-xs text-muted-foreground">
-              {status?.path || t("No attached archive folder selected yet.")}
-            </span>
-            <Button
-              variant="outline"
-              disabled={disabled}
-              onClick={() => void chooseDirectory()}
-            >
-              <HardDrive data-icon="inline-start" />
-              {configured ? t("Change directory") : t("Choose directory")}
-            </Button>
-            <Button
-              variant="ghost"
-              size="icon-sm"
-              aria-label={t("Refresh attached archive")}
-              onClick={() => void reload()}
-            >
-              <RefreshCw />
-            </Button>
-          </div>
-
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="text-sm text-muted-foreground">
-              {t("Keep originals local for")}
-            </span>
+          <div className="settings-archive-location">
+            <Label htmlFor="archive-tier-retention">
+              {t("Local retention before archiving")}
+            </Label>
             <Select
               value={String(retention)}
               onValueChange={(value) => void changeRetention(value)}
               disabled={disabled || (configured && !available)}
             >
               <SelectTrigger
+                id="archive-tier-retention"
                 className="w-28"
                 aria-label={t("Attached archive retention days")}
               >
@@ -323,59 +334,58 @@ export function ArchiveTier({ onChanged }: { onChanged: () => void }) {
                 ))}
               </SelectContent>
             </Select>
-            <span className="text-sm text-muted-foreground">
-              {t("then move complete originals to the attached disk.")}
-            </span>
           </div>
 
-          <div className="storage-actions flex-wrap">
-            <Button
-              variant="outline"
-              disabled={disabled || !configured || !available}
-              onClick={() =>
-                void call("open_archive_tier").catch((e) =>
-                  toast.error(String(e)),
-                )
-              }
-            >
-              <FolderOpen data-icon="inline-start" />
-              {t("Open archive")}
-            </Button>
-            <Button
-              variant="outline"
-              disabled={disabled || !configured || !available}
-              onClick={() => void archiveNow()}
-            >
-              <Archive data-icon="inline-start" />
-              {t("Archive now")}
-            </Button>
-            <Button
-              variant="outline"
-              disabled={
-                disabled ||
-                !configured ||
-                !available ||
-                (status?.archivedCount || 0) === 0
-              }
-              onClick={() => void retrieveLocal()}
-            >
-              <ArrowDownToLine data-icon="inline-start" />
-              {t("Retrieve local copies")}
-            </Button>
-            <Button
-              variant="outline"
-              disabled={
-                disabled ||
-                !configured ||
-                !available ||
-                (status?.archivedCount || 0) === 0
-              }
-              onClick={() => void normalize()}
-            >
-              <Wand2 data-icon="inline-start" />
-              {t("Normalize directory")}
-            </Button>
-          </div>
+          {configured && (
+            <div className="storage-actions flex-wrap">
+              <Button
+                variant="outline"
+                disabled={disabled || !configured || !available}
+                onClick={() =>
+                  void call("open_archive_tier").catch((e) =>
+                    toast.error(String(e)),
+                  )
+                }
+              >
+                <FolderOpen data-icon="inline-start" />
+                {t("Open archive")}
+              </Button>
+              <Button
+                variant="outline"
+                disabled={disabled || !configured || !available}
+                onClick={() => void archiveNow()}
+              >
+                <Archive data-icon="inline-start" />
+                {t("Archive now")}
+              </Button>
+              <Button
+                variant="outline"
+                disabled={
+                  disabled ||
+                  !configured ||
+                  !available ||
+                  (status?.archivedCount || 0) === 0
+                }
+                onClick={() => void retrieveLocal()}
+              >
+                <ArrowDownToLine data-icon="inline-start" />
+                {t("Retrieve local copies")}
+              </Button>
+              <Button
+                variant="outline"
+                disabled={
+                  disabled ||
+                  !configured ||
+                  !available ||
+                  (status?.archivedCount || 0) === 0
+                }
+                onClick={() => void normalize()}
+              >
+                <Wand2 data-icon="inline-start" />
+                {t("Normalize directory")}
+              </Button>
+            </div>
+          )}
 
           {running && (
             <div className="flex flex-col gap-2">

@@ -23,23 +23,23 @@ export function WorkspaceSettings({
   return (
     <Card className="workspace-settings-card">
       <CardHeader>
-        <CardTitle>{t("Workbench")}</CardTitle>
+        <CardTitle>
+          <Label htmlFor="show-workbench">{t("Workbench")}</Label>
+        </CardTitle>
         <CardDescription id="show-workbench-description">
           {t(
             "The sidebar entry opens the calendar, quadrants, work items and reports.",
           )}
         </CardDescription>
         <CardAction className="self-center">
-          <div className="settings-tool-row">
-            <Label htmlFor="show-workbench">{t("Show workbench")}</Label>
-            <Switch
-              id="show-workbench"
-              aria-describedby="show-workbench-description"
-              checked={visible}
-              disabled={!ready || saving}
-              onCheckedChange={onVisibilityChange}
-            />
-          </div>
+          <Switch
+            id="show-workbench"
+            aria-label={t("Show workbench")}
+            aria-describedby="show-workbench-description"
+            checked={visible}
+            disabled={!ready || saving}
+            onCheckedChange={onVisibilityChange}
+          />
         </CardAction>
       </CardHeader>
     </Card>

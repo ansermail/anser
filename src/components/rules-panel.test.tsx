@@ -120,23 +120,24 @@ afterEach(async () => {
   vi.unstubAllGlobals();
 });
 
-it("gives the empty-state action primary emphasis and restores it to the heading when rules exist", async () => {
+it("places a single primary rule action with the empty state or heading", async () => {
   await render();
   const createButtons = () =>
     [...host.querySelectorAll("button")].filter(
       (button) => button.textContent === "新建规则",
     );
-  expect(createButtons().map((button) => button.dataset.variant)).toEqual([
-    "outline",
-    "default",
-  ]);
-  await act(async () => createButtons()[1].click());
+  const [emptyAction] = createButtons();
+  expect(createButtons()).toHaveLength(1);
+  expect(emptyAction.dataset.variant).toBe("default");
+  expect(emptyAction.closest('[data-slot="empty"]')).not.toBeNull();
+  await act(async () => emptyAction.click());
   expect(document.querySelector('[role="dialog"]')).toBeTruthy();
 
   await render([legacyServerRule("serverMove")]);
   expect(createButtons().map((button) => button.dataset.variant)).toEqual([
     "default",
   ]);
+  expect(createButtons()[0].closest(".panel-heading")).not.toBeNull();
 });
 
 it("requires account/source/target, excludes isolated and same folders, and only previews before saving", async () => {

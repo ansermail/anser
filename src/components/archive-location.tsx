@@ -1,7 +1,8 @@
+import { TaskRefreshButton } from "./task-panel-header";
 import { useSettingsTabActive } from "./settings-layout";
 import { t } from "@/lib/i18n";
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { FolderOpen, HardDrive, RefreshCw } from "lucide-react";
+import { FolderOpen, HardDrive } from "lucide-react";
 import { toast } from "sonner";
 import { call, native, isDemo } from "@/lib/api";
 import { useConfirmation } from "@/hooks/use-confirmation";
@@ -147,58 +148,65 @@ export function ArchiveLocation({
           <div className="storage-actions flex-wrap">{children}</div>
         )}
         <Separator />
-        <div className="storage-actions flex-wrap">
-          <Button
-            variant="outline"
-            disabled={
-              !native ||
-              isDemo() ||
-              busy ||
-              !!status?.migrating ||
-              !status?.available
-            }
-            onClick={() => void select()}
-          >
-            <HardDrive data-icon="inline-start" />
-            {t("Change archive location")}
-          </Button>
-          {status?.external && (
+        <div className="settings-archive-location">
+          <div className="min-w-0">
+            <h4>{t("Storage location")}</h4>
+            <div className="min-w-0 text-xs text-muted-foreground">
+              {status ? (
+                <ArchivePath
+                  path={status.path}
+                  defaultPath={status.defaultPath}
+                />
+              ) : error && initialPath ? (
+                <ArchivePath path={initialPath} />
+              ) : (
+                t("Reading archive location…")
+              )}
+            </div>
+          </div>
+          <div className="storage-actions flex-wrap">
             <Button
               variant="outline"
-              disabled={busy || status.migrating || !status.available}
-              onClick={() => void move("")}
+              disabled={
+                !native ||
+                isDemo() ||
+                busy ||
+                !!status?.migrating ||
+                !status?.available
+              }
+              onClick={() => void select()}
             >
-              {t("Restore default location")}
+              <HardDrive data-icon="inline-start" />
+              {t("Change archive location")}
             </Button>
-          )}
-          <Button
-            variant="ghost"
-            disabled={!status?.available}
-            onClick={() =>
-              void call("open_data_folder").catch((e) => toast.error(String(e)))
-            }
-          >
-            <FolderOpen data-icon="inline-start" />
-            {t("Open storage location")}
-          </Button>
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            aria-label={t("Refresh archive location")}
-            onClick={() => void reload()}
-          >
-            <RefreshCw />
-          </Button>
+            {status?.external && (
+              <Button
+                variant="outline"
+                disabled={busy || status.migrating || !status.available}
+                onClick={() => void move("")}
+              >
+                {t("Restore default location")}
+              </Button>
+            )}
+            <Button
+              variant="ghost"
+              disabled={!status?.available}
+              onClick={() =>
+                void call("open_data_folder").catch((e) =>
+                  toast.error(String(e)),
+                )
+              }
+            >
+              <FolderOpen data-icon="inline-start" />
+              {t("Open storage location")}
+            </Button>
+            <TaskRefreshButton
+              iconOnly
+              label={t("Refresh archive location")}
+              onRefresh={reload}
+            />
+          </div>
         </div>
-        <p className="min-w-0 text-xs text-muted-foreground">
-          {status ? (
-            <ArchivePath path={status.path} defaultPath={status.defaultPath} />
-          ) : error && initialPath ? (
-            <ArchivePath path={initialPath} />
-          ) : (
-            t("Reading archive location…")
-          )}
-        </p>
         {(error || status?.error) && (
           <Alert variant="destructive">
             <AlertDescription>{error || status?.error}</AlertDescription>

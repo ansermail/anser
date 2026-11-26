@@ -384,23 +384,19 @@ export function RulesPanel({
   return (
     <section className="workspace-panel">
       <div className="panel-heading">
-        <div>
-          <div className="page-title-row">
-            <SidebarTrigger
-              title={t("Toggle sidebar")}
-              aria-label={t("Toggle sidebar")}
-            />
-            <h1>{t("Mail rules")}</h1>
-          </div>
-          <p>{t("Set rules once. Make time for what matters.")}</p>
+        <div className="page-title-row">
+          <SidebarTrigger
+            title={t("Toggle sidebar")}
+            aria-label={t("Toggle sidebar")}
+          />
+          <h1>{t("Mail rules")}</h1>
         </div>
-        <Button
-          variant={data.rules.length ? "default" : "outline"}
-          onClick={createRule}
-        >
-          <Plus size={16} />
-          {t("New rule")}
-        </Button>
+        {data.rules.length > 0 && (
+          <Button onClick={createRule}>
+            <Plus size={16} />
+            {t("New rule")}
+          </Button>
+        )}
       </div>
       <div className="info-strip">
         <SlidersHorizontal size={17} />

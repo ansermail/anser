@@ -9,7 +9,6 @@ import { Button } from "./ui/button";
 import { CollapsibleContent } from "./ui/collapsible";
 import { Badge } from "./ui/badge";
 import { Alert, AlertDescription } from "./ui/alert";
-import { Skeleton } from "./ui/skeleton";
 import { Card, CardContent, CardFooter } from "./ui/card";
 export type ArchiveJob = {
   id: string;
@@ -96,13 +95,9 @@ export function ArchiveJobsPanel({
       <Card>
         <TaskPanelHeader
           title={t("Full-message saving tasks")}
-          description={
-            <>
-              {t(
-                "The latest 100 manual saves. Save complete messages even for online-only accounts. Tasks continue after closing the window and resume after relaunch. Canceling keeps saved originals.",
-              )}
-            </>
-          }
+          description={t(
+            "The last 100 manual saves continue in the background. Canceling keeps completed originals.",
+          )}
           onRefresh={() => reload()}
         />
         <CollapsibleContent className="flex flex-col gap-6">
@@ -112,14 +107,9 @@ export function ArchiveJobsPanel({
                 <AlertDescription>{error}</AlertDescription>
               </Alert>
             )}
-            {!items && !error && (
-              <Skeleton
-                className="h-20"
-                aria-label={t("Loading saving tasks")}
-              />
-            )}
-            {items && (
+            {(items || !error) && (
               <TaskDataTable
+                loadingLabel={!items ? t("Loading saving tasks") : undefined}
                 actionsWidth={16}
                 label={t("Full-message saving history")}
                 empty={t(
@@ -133,7 +123,7 @@ export function ArchiveJobsPanel({
                   "reason",
                   "actions",
                 ]}
-                rows={items.map((job) => ({
+                rows={(items ?? []).map((job) => ({
                   id: job.id,
                   task: (
                     <TaskCellText text={job.subject || t("(No subject)")} />

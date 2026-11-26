@@ -1,15 +1,29 @@
 import { t } from "@/lib/i18n";
 import { useConfirmation } from "@/hooks/use-confirmation";
-import { useEffect, useState } from "react";
-import { Plus, Search, UserRound, Pencil, Trash2, Mail } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { Plus, Search, UserRound, Pencil, Trash2, Mail, X } from "lucide-react";
 import { call } from "@/lib/api";
 import { hasAddressName } from "@/lib/addresses";
 import type { Address, Contact } from "@/lib/types";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
-import { InputGroup, InputGroupAddon, InputGroupInput } from "./ui/input-group";
+import {
+  InputGroup,
+  InputGroupAddon,
+  InputGroupButton,
+  InputGroupInput,
+} from "./ui/input-group";
+import {
+  Empty,
+  EmptyContent,
+  EmptyDescription,
+  EmptyHeader,
+  EmptyMedia,
+  EmptyTitle,
+} from "./ui/empty";
 import { Label } from "./ui/label";
 import { SidebarTrigger } from "./ui/sidebar";
+import { Skeleton } from "./ui/skeleton";
 import {
   Dialog,
   DialogContent,
@@ -33,11 +47,15 @@ export function ContactsPanel({
     initial ? { ...initial, id: crypto.randomUUID() } : null,
   );
   const [busy, setBusy] = useState(false),
-    [loading, setLoading] = useState(true);
+    [loading, setLoading] = useState(true),
+    [loadFailed, setLoadFailed] = useState(false);
+  const searchInput = useRef<HTMLInputElement>(null);
   async function refresh() {
     try {
       setContacts(await call<Contact[]>("list_contacts"));
+      setLoadFailed(false);
     } catch (e) {
+      setLoadFailed(true);
       toast.error(String(e));
     } finally {
       setLoading(false);
@@ -63,6 +81,12 @@ export function ContactsPanel({
   const visible = contacts.filter((c) =>
     `${c.name} ${c.email}`.toLowerCase().includes(search.toLowerCase()),
   );
+  const addContact = () =>
+    setEditing({ id: crypto.randomUUID(), name: "", email: "" });
+  const clearSearch = () => {
+    setSearch("");
+    searchInput.current?.focus();
+  };
   return (
     <section className="workspace-panel">
       <div className="panel-heading">
@@ -74,39 +98,53 @@ export function ContactsPanel({
             />
             <h1>{t("Contacts")}</h1>
           </div>
-          <p>
-            {contacts.length === 1
-              ? t("1 local contact")
-              : t("{value0} local contacts", { value0: contacts.length })}
-          </p>
+          {contacts.length > 0 && (
+            <p className="tabular-nums">
+              {contacts.length === 1
+                ? t("1 local contact")
+                : t("{value0} local contacts", { value0: contacts.length })}
+            </p>
+          )}
         </div>
-        <Button
-          onClick={() =>
-            setEditing({ id: crypto.randomUUID(), name: "", email: "" })
-          }
-        >
-          <Plus size={16} />
-          {t("Add contact")}
-        </Button>
+        {(loading || contacts.length > 0) && (
+          <Button onClick={addContact}>
+            <Plus />
+            {t("Add contact")}
+          </Button>
+        )}
       </div>
-      <InputGroup className="contact-search">
-        <InputGroupAddon>
-          <Search />
-        </InputGroupAddon>
-        <InputGroupInput
-          aria-label={t("Search contacts")}
-          placeholder={t("Search by name or email…")}
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-        />
-      </InputGroup>
+      {(loading || contacts.length > 0 || search) && (
+        <InputGroup className="contact-search">
+          <InputGroupAddon>
+            <Search />
+          </InputGroupAddon>
+          <InputGroupInput
+            ref={searchInput}
+            aria-label={t("Search contacts")}
+            placeholder={t("Search by name or email…")}
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
+          {search && visible.length > 0 && (
+            <InputGroupAddon align="inline-end">
+              <InputGroupButton
+                size="icon-sm"
+                aria-label={t("Clear search")}
+                onClick={clearSearch}
+              >
+                <X />
+              </InputGroupButton>
+            </InputGroupAddon>
+          )}
+        </InputGroup>
+      )}
       <div className="contact-list">
         {visible.map((c) => (
           <article className="contact-card" key={c.id}>
             <span className="contact-avatar">
               <UserRound size={19} />
             </span>
-            <div>
+            <div className="contact-identity">
               <strong title={hasAddressName(c) ? c.name : c.email}>
                 {hasAddressName(c) ? c.name : c.email}
               </strong>
@@ -132,6 +170,7 @@ export function ContactsPanel({
               variant="ghost"
               size="icon-sm"
               title={t("Delete contact")}
+              data-reveal-row-action=""
               className="contact-delete"
               onClick={async () => {
                 if (
@@ -154,18 +193,73 @@ export function ContactsPanel({
             </Button>
           </article>
         ))}
-        {!visible.length && (
-          <div className="panel-empty">
-            <UserRound size={32} />
-            <h3>
-              {loading
-                ? t("Loading contacts…")
-                : search
+        {loading && (
+          <>
+            <span role="status" className="sr-only">
+              {t("Loading contacts…")}
+            </span>
+            {[0, 1, 2].map((index) => (
+              <div className="contact-card" aria-hidden="true" key={index}>
+                <Skeleton className="contact-avatar" />
+                <div className="contact-identity flex flex-col gap-2">
+                  <Skeleton className="h-3 w-24" />
+                  <Skeleton className="h-3 w-40 max-w-full" />
+                </div>
+              </div>
+            ))}
+          </>
+        )}
+        {!loading && !visible.length && loadFailed && (
+          <Empty>
+            <EmptyHeader>
+              <EmptyMedia variant="icon">
+                <UserRound />
+              </EmptyMedia>
+              <EmptyTitle>{t("Could not read")}</EmptyTitle>
+            </EmptyHeader>
+            <EmptyContent>
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setLoading(true);
+                  void refresh();
+                }}
+              >
+                {t("Retry")}
+              </Button>
+            </EmptyContent>
+          </Empty>
+        )}
+        {!loading && !visible.length && !loadFailed && (
+          <Empty>
+            <EmptyHeader>
+              <EmptyMedia variant="icon">
+                {search ? <Search /> : <UserRound />}
+              </EmptyMedia>
+              <EmptyTitle>
+                {search
                   ? t("No matching contacts")
                   : t("Save frequent contacts")}
-            </h3>
-            <p>{t("You can also add contacts from the sender menu.")}</p>
-          </div>
+              </EmptyTitle>
+              {!search && (
+                <EmptyDescription>
+                  {t("You can also add contacts from the sender menu.")}
+                </EmptyDescription>
+              )}
+            </EmptyHeader>
+            <EmptyContent>
+              {search ? (
+                <Button variant="outline" onClick={clearSearch}>
+                  {t("Clear search")}
+                </Button>
+              ) : (
+                <Button onClick={addContact}>
+                  <Plus />
+                  {t("Add contact")}
+                </Button>
+              )}
+            </EmptyContent>
+          </Empty>
         )}
       </div>
       <Dialog

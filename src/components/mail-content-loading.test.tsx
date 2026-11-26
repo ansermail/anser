@@ -4,7 +4,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { MailContent } from "./mail-content";
 import { MAIL_IMAGE_TIMEOUT_MS } from "../lib/mail-images";
-import { resetThemeForTest, setThemeMode } from "../lib/theme";
+import { resetThemeForTest, setThemeMode, setThemePalette } from "../lib/theme";
 const platform = vi.hoisted(() => ({ native: false }));
 vi.mock("@tauri-apps/api/core", () => ({ isTauri: () => platform.native }));
 let host: HTMLDivElement, root: Root;
@@ -106,6 +106,17 @@ it("updates the isolated body when the application theme changes", async () => {
   expect(themed.className).toContain("mail-html-dark");
   expect(themed.srcdoc).toContain("color-scheme:dark");
   expect(themed.srcdoc).toContain("background-color:oklch(0.2 0 0)!important");
+});
+it("refreshes the isolated dark background when only the active palette changes", async () => {
+  await act(async () => setThemeMode("dark"));
+  document.documentElement.style.setProperty("--background", "#121714");
+  const { frame } = await load();
+  const previous = frame.srcdoc;
+  document.documentElement.style.setProperty("--background", "#282a36");
+  await act(async () => setThemePalette("light", "github"));
+  expect(frame.srcdoc).toBe(previous);
+  await act(async () => setThemePalette("dark", "dracula"));
+  expect(frame.srcdoc).toContain("background-color:#282a36!important");
 });
 it("can use original light colors for one body without changing the application theme or disabling sanitization", async () => {
   await act(async () => setThemeMode("dark"));
