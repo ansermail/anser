@@ -8,10 +8,11 @@ import { ExternalMailWindow } from "./components/external-mail-window";
 import "./index.css";
 import { isWindows } from "./lib/platform";
 import { initializeAppearance } from "./lib/theme";
-import { installBackspaceGuard } from "./lib/webview-keys";
+import { installBackspaceGuard, trackPointerFocus } from "./lib/webview-keys";
 document.documentElement.dataset.platform = isWindows() ? "windows" : "macos";
 document.documentElement.dataset.desktop = String(isTauri());
 installBackspaceGuard();
+trackPointerFocus(document);
 initializeAppearance();
 const label = isTauri() ? getCurrentWebviewWindow().label : "main";
 ReactDOM.createRoot(document.getElementById("root")!).render(

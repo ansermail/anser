@@ -70,7 +70,7 @@
   --palette-text: #cccccc;
   --palette-muted: #adadad;
   --palette-border: #383838;
-  --palette-accent: #1683dc;
+  --palette-accent: #4ea6f0;
   --palette-accent-text: #080d12;
   --palette-selected: #04395e;
   --palette-navigation: #313137;
@@ -286,5 +286,6 @@
 :root.dark[data-theme-palette]:not([data-theme-palette="pine"]) {
   --popover: color-mix(in srgb, var(--palette-panel), var(--palette-text) 7%);
   --field: color-mix(in srgb, var(--palette-canvas), var(--palette-panel) 50%);
-  --palette-control-weight: 47%;
+  --border: color-mix(in srgb, var(--palette-text) 14%, transparent);
+  --palette-control-weight: 56%;
 }

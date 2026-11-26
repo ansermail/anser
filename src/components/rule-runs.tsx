@@ -104,7 +104,7 @@ export function RuleRunsPanel() {
             </Badge>
           }
           description={t(
-            "The latest 100 tasks. Online bodies are checked as needed; filing follows successful complete saving. Verification, saving or queueing failures stop later rules. See linked tasks for server results.",
+            "Latest 100 tasks; failures stop later rules until resolved.",
           )}
           onRefresh={() => reload.current()}
         />

@@ -1,4 +1,5 @@
 import { calendarLocale, t } from "@/lib/i18n";
+import { useConfirmation } from "@/hooks/use-confirmation";
 import {
   Empty,
   EmptyHeader,
@@ -16,6 +17,7 @@ import {
   ArrowUp,
   ArrowRight,
   CalendarDays,
+  LoaderCircle,
   SlidersHorizontal,
   Trash2,
   Play,
@@ -25,15 +27,18 @@ import {
   MoreHorizontal,
 } from "lucide-react";
 import { SidebarTrigger } from "./ui/sidebar";
-import { Button } from "./ui/button";
+import { Button, ButtonLabel } from "./ui/button";
+import { Checkbox } from "./ui/checkbox";
 import { Input } from "./ui/input";
 import { Label } from "./ui/label";
 import { Calendar } from "./ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
+import { ScrollArea } from "./ui/scroll-area";
 import { Switch } from "./ui/switch";
 import {
   Dialog,
   DialogContent,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
   DialogDescription,
@@ -298,7 +303,10 @@ export function RulesPanel({
 }) {
   const [editing, setEditing] = useState<Rule | null>(null),
     [busy, setBusy] = useState(false),
+    [saving, setSaving] = useState(false),
+    [previewing, setPreviewing] = useState(false),
     [preview, setPreview] = useState<string[] | null>(null);
+  const { askConfirmation, confirmationDialog } = useConfirmation();
   const hasEnabledRule = data.rules.some((rule) => rule.enabled);
   const remote = (r: Rule) => ruleActions(r).some(remoteAction);
   const valid = editing !== null && canSaveRule(editing, data.accounts);
@@ -561,17 +569,17 @@ export function RulesPanel({
       <Dialog
         open={!!editing}
         onOpenChange={(v) => {
-          if (!v) setEditing(null);
+          if (!v && !saving) setEditing(null);
         }}
       >
-        <DialogContent className="w-[900px] max-w-[calc(100%-2rem)] sm:max-w-[900px] max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
+        <DialogContent className="flex max-h-[90vh] w-[900px] max-w-[calc(100%-2rem)] flex-col gap-0 overflow-hidden p-0 sm:max-w-[900px]">
+          <DialogHeader className="shrink-0 border-b px-6 py-4 pr-12">
             <DialogTitle>
               {editing && data.rules.some((rule) => rule.id === editing.id)
                 ? t("Edit mail rule")
                 : t("Create mail rule")}
             </DialogTitle>
-            <DialogDescription>
+            <DialogDescription className="sr-only">
               {t(
                 "Set accounts, conditions and actions. Preview before saving.",
               )}
@@ -579,354 +587,465 @@ export function RulesPanel({
           </DialogHeader>
           {editing && (
             <form
-              className="rule-form"
+              className="rule-form flex min-h-0 flex-1 flex-col overflow-hidden"
               onSubmit={async (e) => {
                 e.preventDefault();
-                if (!valid) return;
-                const rs = data.rules.some((r) => r.id === editing.id)
-                  ? data.rules.map((r) => (r.id === editing.id ? editing : r))
-                  : [...data.rules, editing];
-                if (await save(rs)) {
-                  setEditing(null);
-                  toast.success(t("Rule saved"));
+                if (!valid || saving) return;
+                setSaving(true);
+                try {
+                  const rs = data.rules.some((r) => r.id === editing.id)
+                    ? data.rules.map((r) => (r.id === editing.id ? editing : r))
+                    : [...data.rules, editing];
+                  if (await save(rs)) {
+                    setEditing(null);
+                    toast.success(t("Rule saved"));
+                  }
+                } finally {
+                  setSaving(false);
                 }
               }}
             >
-              <div className="field">
-                <Label>{t("Rule name")}</Label>
-                <Input
-                  required
-                  value={editing.name}
-                  onChange={(e) =>
-                    setEditing({ ...editing, name: e.target.value })
-                  }
-                  placeholder={t("For example: File project mail")}
-                />
-              </div>
-              <div className="field-row">
-                <div className="field">
-                  <Label>{t("Accounts")}</Label>
-                  <SelectField
-                    value={editing.accountId}
-                    aria-label={t("Rule accounts")}
-                    onValueChange={(value) =>
-                      setEditing(
-                        withActions(
-                          { ...editing, accountId: value },
-                          ruleActions(editing).map((step) =>
-                            remoteAction(step)
-                              ? { ...step, sourceFolder: "", destination: "" }
-                              : step,
-                          ),
-                        ),
-                      )
-                    }
-                  >
-                    <SelectGroup>
-                      <SelectOption value="" disabled={remote(editing)}>
-                        {t("All accounts")}
-                      </SelectOption>
-                      {data.accounts.map((a) => (
-                        <SelectOption
-                          key={a.id}
-                          value={a.id}
-                          disabled={
-                            remote(editing) &&
-                            (!a.enabled ||
-                              a.protocol !== "imap" ||
-                              a.provider === "gmail")
-                          }
-                        >
-                          {a.email}
-                        </SelectOption>
-                      ))}
-                    </SelectGroup>
-                  </SelectField>
-                </div>
-                <div className="field">
-                  <Label>{t("Match mode")}</Label>
-                  <SelectField
-                    value={editing.mode}
-                    onValueChange={(value) =>
-                      setEditing({
-                        ...editing,
-                        mode: value as "all" | "any",
-                      })
-                    }
-                  >
-                    <SelectGroup>
-                      <SelectOption value="all">
-                        {t("Match all conditions")}
-                      </SelectOption>
-                      <SelectOption value="any">
-                        {t("Match any condition")}
-                      </SelectOption>
-                    </SelectGroup>
-                  </SelectField>
-                </div>
-              </div>
-              <div className="conditions">
-                {editing.conditions.map((c, i) => (
-                  <div className="condition" key={i}>
-                    <SelectField
-                      aria-label={t("Condition field")}
-                      value={c.field}
-                      onValueChange={(value) =>
-                        setEditing({
-                          ...editing,
-                          conditions: editing.conditions.map((x, j) =>
-                            j === i
-                              ? {
-                                  field: value,
-                                  operator:
-                                    value === "date"
-                                      ? "after"
-                                      : ["sizeKb", "ageDays"].includes(value)
-                                        ? "greaterThan"
-                                        : choiceConditions[value]
-                                          ? "equals"
-                                          : "contains",
-                                  value:
-                                    value === "priority"
-                                      ? "normal"
-                                      : choiceConditions[value]
-                                        ? "true"
-                                        : "",
-                                }
-                              : x,
-                          ),
-                        })
+              <ScrollArea fade="vertical" className="min-h-0 flex-1">
+                <div className="flex flex-col gap-4 px-6 py-4">
+                  <div className="field">
+                    <Label>{t("Rule name")}</Label>
+                    <Input
+                      required
+                      value={editing.name}
+                      onChange={(e) =>
+                        setEditing({ ...editing, name: e.target.value })
                       }
-                    >
-                      <SelectGroup>
-                        {Object.entries(fields).map(([k, v]) => (
-                          <SelectOption key={k} value={k}>
-                            {v}
-                          </SelectOption>
-                        ))}
-                      </SelectGroup>
-                    </SelectField>
-                    <SelectField
-                      aria-label={t("Condition operator")}
-                      key={`${i}-${c.field}`}
-                      value={c.operator}
-                      onValueChange={(value) =>
-                        setEditing({
-                          ...editing,
-                          conditions: editing.conditions.map((x, j) =>
-                            j === i ? { ...x, operator: value } : x,
-                          ),
-                        })
-                      }
-                    >
-                      <SelectGroup>
-                        {(c.field === "date"
-                          ? [
-                              ["before", t("Before")],
-                              ["after", t("After")],
-                            ]
-                          : choiceConditions[c.field]
-                            ? [["equals", t("Equals")]]
-                            : c.field === "ageDays"
-                              ? [
-                                  ["greaterThan", t("Greater than")],
-                                  ["lessThan", t("Less than")],
-                                  ["equals", t("Equals")],
-                                ]
-                              : c.field === "sizeKb"
-                                ? [
-                                    ["greaterThan", t("Greater than")],
-                                    ["lessThan", t("Less than")],
-                                    ["equals", t("Equals")],
-                                  ]
-                                : [
-                                    ["contains", t("Contains")],
-                                    ["equals", t("Equals")],
-                                    ["notContains", t("Does not contain")],
-                                    ["startsWith", t("Starts with")],
-                                    ["endsWith", t("Ends with")],
-                                  ]
-                        ).map(([k, v]) => (
-                          <SelectOption key={k} value={k}>
-                            {v}
-                          </SelectOption>
-                        ))}
-                      </SelectGroup>
-                    </SelectField>
-                    {choiceConditions[c.field] ? (
-                      <SelectField
-                        className="condition-value"
-                        aria-label={t("Condition value")}
-                        value={c.value}
-                        onValueChange={(value) =>
-                          setEditing({
-                            ...editing,
-                            conditions: editing.conditions.map((x, j) =>
-                              j === i ? { ...x, value } : x,
-                            ),
-                          })
-                        }
-                      >
-                        <SelectGroup>
-                          {choiceConditions[c.field].map(([k, v]) => (
-                            <SelectOption key={k} value={k}>
-                              {t(v)}
-                            </SelectOption>
-                          ))}
-                        </SelectGroup>
-                      </SelectField>
-                    ) : c.field === "date" ? (
-                      <ConditionDatePicker
-                        value={c.value}
-                        onChange={(value) =>
-                          setEditing({
-                            ...editing,
-                            conditions: editing.conditions.map((x, j) =>
-                              j === i ? { ...x, value } : x,
-                            ),
-                          })
-                        }
-                      />
-                    ) : (
-                      <Input
-                        aria-label={t("Condition value")}
-                        required
-                        type={
-                          ["sizeKb", "ageDays"].includes(c.field)
-                            ? "number"
-                            : "text"
-                        }
-                        min={
-                          ["sizeKb", "ageDays"].includes(c.field)
-                            ? 0
-                            : undefined
-                        }
-                        step={
-                          ["sizeKb", "ageDays"].includes(c.field)
-                            ? 1
-                            : undefined
-                        }
-                        placeholder={
-                          c.field === "sizeKb"
-                            ? t("Integer KB")
-                            : c.field === "ageDays"
-                              ? t("Days")
-                              : c.field === "cc"
-                                ? t("For example: Cc address or keyword")
-                                : c.field === "recipientsOrCc"
-                                  ? t("To or Cc address")
-                                  : t("Keyword")
-                        }
-                        value={c.value}
-                        onChange={(e) =>
-                          setEditing({
-                            ...editing,
-                            conditions: editing.conditions.map((x, j) =>
-                              j === i ? { ...x, value: e.target.value } : x,
-                            ),
-                          })
-                        }
-                      />
-                    )}
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon-sm"
-                      disabled={editing.conditions.length === 1}
-                      title={t("Remove condition")}
-                      onClick={() =>
-                        setEditing({
-                          ...editing,
-                          conditions: editing.conditions.filter(
-                            (_, j) => j !== i,
-                          ),
-                        })
-                      }
-                    >
-                      <Trash2 size={14} />
-                    </Button>
+                      placeholder={t("For example: File project mail")}
+                    />
                   </div>
-                ))}
-              </div>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={() =>
-                  setEditing({
-                    ...editing,
-                    conditions: [
-                      ...editing.conditions,
-                      { field: "sender", operator: "contains", value: "" },
-                    ],
-                  })
-                }
-              >
-                <Plus size={14} />
-                {t("Add condition")}
-              </Button>
-              <div className="field">
-                <Label>{t("Run actions in order")}</Label>
-                {ruleActions(editing).map((step, index) => (
-                  <div className="rounded-md border p-3 space-y-3" key={index}>
-                    <div className="flex items-center gap-3">
-                      <span className="text-sm text-muted-foreground shrink-0">
-                        {index + 1}.
-                      </span>
+                  <div className="field-row">
+                    <div className="field">
+                      <Label>{t("Accounts")}</Label>
                       <SelectField
-                        className="w-[230px] shrink-0"
-                        aria-label={
-                          index === 0
-                            ? t("Rule action")
-                            : t("Rule action {value0}", { value0: index + 1 })
-                        }
-                        value={step.action}
+                        value={editing.accountId}
+                        aria-label={t("Rule accounts")}
                         onValueChange={(value) =>
                           setEditing(
                             withActions(
-                              editing,
-                              ruleActions(editing).map((item, position) =>
-                                position === index
+                              { ...editing, accountId: value },
+                              ruleActions(editing).map((step) =>
+                                remoteAction(step)
                                   ? {
-                                      action: value,
-                                      destination: "",
+                                      ...step,
                                       sourceFolder: "",
+                                      destination: "",
                                     }
-                                  : item,
+                                  : step,
                               ),
                             ),
                           )
                         }
                       >
                         <SelectGroup>
-                          {Object.entries(actions)
-                            .filter(
-                              ([key]) =>
-                                !["serverCopy", "serverMove"].includes(key) ||
-                                key === step.action,
-                            )
-                            .map(([key, label]) => (
-                              <SelectOption key={key} value={key}>
-                                {label}
-                              </SelectOption>
-                            ))}
+                          <SelectOption value="" disabled={remote(editing)}>
+                            {t("All accounts")}
+                          </SelectOption>
+                          {data.accounts.map((a) => (
+                            <SelectOption
+                              key={a.id}
+                              value={a.id}
+                              disabled={
+                                remote(editing) &&
+                                (!a.enabled ||
+                                  a.protocol !== "imap" ||
+                                  a.provider === "gmail")
+                              }
+                            >
+                              {a.email}
+                            </SelectOption>
+                          ))}
                         </SelectGroup>
                       </SelectField>
-                      {["folder", "saveFolder"].includes(step.action) && (
-                        <div className="flex min-w-0 flex-1 items-center gap-2">
-                          <Label
-                            className="shrink-0"
-                            htmlFor={`rule-local-folder-${index}`}
+                    </div>
+                    <div className="field">
+                      <Label>{t("Match mode")}</Label>
+                      <SelectField
+                        value={editing.mode}
+                        onValueChange={(value) =>
+                          setEditing({
+                            ...editing,
+                            mode: value as "all" | "any",
+                          })
+                        }
+                      >
+                        <SelectGroup>
+                          <SelectOption value="all">
+                            {t("Match all conditions")}
+                          </SelectOption>
+                          <SelectOption value="any">
+                            {t("Match any condition")}
+                          </SelectOption>
+                        </SelectGroup>
+                      </SelectField>
+                    </div>
+                  </div>
+                  <div className="conditions">
+                    {editing.conditions.map((c, i) => (
+                      <div className="condition" key={i}>
+                        <SelectField
+                          aria-label={t("Condition field")}
+                          value={c.field}
+                          onValueChange={(value) =>
+                            setEditing({
+                              ...editing,
+                              conditions: editing.conditions.map((x, j) =>
+                                j === i
+                                  ? {
+                                      field: value,
+                                      operator:
+                                        value === "date"
+                                          ? "after"
+                                          : ["sizeKb", "ageDays"].includes(
+                                                value,
+                                              )
+                                            ? "greaterThan"
+                                            : choiceConditions[value]
+                                              ? "equals"
+                                              : "contains",
+                                      value:
+                                        value === "priority"
+                                          ? "normal"
+                                          : choiceConditions[value]
+                                            ? "true"
+                                            : "",
+                                    }
+                                  : x,
+                              ),
+                            })
+                          }
+                        >
+                          <SelectGroup>
+                            {Object.entries(fields).map(([k, v]) => (
+                              <SelectOption key={k} value={k}>
+                                {v}
+                              </SelectOption>
+                            ))}
+                          </SelectGroup>
+                        </SelectField>
+                        <SelectField
+                          aria-label={t("Condition operator")}
+                          key={`${i}-${c.field}`}
+                          value={c.operator}
+                          onValueChange={(value) =>
+                            setEditing({
+                              ...editing,
+                              conditions: editing.conditions.map((x, j) =>
+                                j === i ? { ...x, operator: value } : x,
+                              ),
+                            })
+                          }
+                        >
+                          <SelectGroup>
+                            {(c.field === "date"
+                              ? [
+                                  ["before", t("Before")],
+                                  ["after", t("After")],
+                                ]
+                              : choiceConditions[c.field]
+                                ? [["equals", t("Equals")]]
+                                : c.field === "ageDays"
+                                  ? [
+                                      ["greaterThan", t("Greater than")],
+                                      ["lessThan", t("Less than")],
+                                      ["equals", t("Equals")],
+                                    ]
+                                  : c.field === "sizeKb"
+                                    ? [
+                                        ["greaterThan", t("Greater than")],
+                                        ["lessThan", t("Less than")],
+                                        ["equals", t("Equals")],
+                                      ]
+                                    : [
+                                        ["contains", t("Contains")],
+                                        ["equals", t("Equals")],
+                                        ["notContains", t("Does not contain")],
+                                        ["startsWith", t("Starts with")],
+                                        ["endsWith", t("Ends with")],
+                                      ]
+                            ).map(([k, v]) => (
+                              <SelectOption key={k} value={k}>
+                                {v}
+                              </SelectOption>
+                            ))}
+                          </SelectGroup>
+                        </SelectField>
+                        {choiceConditions[c.field] ? (
+                          <SelectField
+                            className="condition-value"
+                            aria-label={t("Condition value")}
+                            value={c.value}
+                            onValueChange={(value) =>
+                              setEditing({
+                                ...editing,
+                                conditions: editing.conditions.map((x, j) =>
+                                  j === i ? { ...x, value } : x,
+                                ),
+                              })
+                            }
                           >
-                            {t("Local folder")}
-                          </Label>
+                            <SelectGroup>
+                              {choiceConditions[c.field].map(([k, v]) => (
+                                <SelectOption key={k} value={k}>
+                                  {t(v)}
+                                </SelectOption>
+                              ))}
+                            </SelectGroup>
+                          </SelectField>
+                        ) : c.field === "date" ? (
+                          <ConditionDatePicker
+                            value={c.value}
+                            onChange={(value) =>
+                              setEditing({
+                                ...editing,
+                                conditions: editing.conditions.map((x, j) =>
+                                  j === i ? { ...x, value } : x,
+                                ),
+                              })
+                            }
+                          />
+                        ) : (
                           <Input
-                            id={`rule-local-folder-${index}`}
-                            className="min-w-0 flex-1"
+                            aria-label={t("Condition value")}
                             required
-                            placeholder={t("For example: Projects / Design")}
-                            value={step.destination}
-                            onChange={(event) =>
+                            type={
+                              ["sizeKb", "ageDays"].includes(c.field)
+                                ? "number"
+                                : "text"
+                            }
+                            min={
+                              ["sizeKb", "ageDays"].includes(c.field)
+                                ? 0
+                                : undefined
+                            }
+                            step={
+                              ["sizeKb", "ageDays"].includes(c.field)
+                                ? 1
+                                : undefined
+                            }
+                            placeholder={
+                              c.field === "sizeKb"
+                                ? t("Integer KB")
+                                : c.field === "ageDays"
+                                  ? t("Days")
+                                  : c.field === "cc"
+                                    ? t("For example: Cc address or keyword")
+                                    : c.field === "recipientsOrCc"
+                                      ? t("To or Cc address")
+                                      : t("Keyword")
+                            }
+                            value={c.value}
+                            onChange={(e) =>
+                              setEditing({
+                                ...editing,
+                                conditions: editing.conditions.map((x, j) =>
+                                  j === i ? { ...x, value: e.target.value } : x,
+                                ),
+                              })
+                            }
+                          />
+                        )}
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon-sm"
+                          className="hover:bg-destructive/10 hover:text-destructive focus-visible:text-destructive"
+                          disabled={editing.conditions.length === 1}
+                          title={t("Remove condition")}
+                          onClick={() =>
+                            setEditing({
+                              ...editing,
+                              conditions: editing.conditions.filter(
+                                (_, j) => j !== i,
+                              ),
+                            })
+                          }
+                        >
+                          <Trash2 size={14} />
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() =>
+                      setEditing({
+                        ...editing,
+                        conditions: [
+                          ...editing.conditions,
+                          { field: "sender", operator: "contains", value: "" },
+                        ],
+                      })
+                    }
+                  >
+                    <Plus size={14} />
+                    {t("Add condition")}
+                  </Button>
+                  <div className="field">
+                    <Label>{t("Run actions in order")}</Label>
+                    {ruleActions(editing).map((step, index) => (
+                      <div
+                        className="flex flex-col gap-3 rounded-lg bg-secondary/45 p-3"
+                        key={index}
+                      >
+                        <div className="flex flex-wrap items-center gap-3">
+                          <span className="shrink-0 text-sm text-muted-foreground tabular-nums">
+                            {index + 1}.
+                          </span>
+                          <SelectField
+                            className="min-w-[200px] max-w-full flex-1 sm:w-[260px] sm:flex-none"
+                            aria-label={
+                              index === 0
+                                ? t("Rule action")
+                                : t("Rule action {value0}", {
+                                    value0: index + 1,
+                                  })
+                            }
+                            value={step.action}
+                            onValueChange={(value) =>
+                              setEditing(
+                                withActions(
+                                  editing,
+                                  ruleActions(editing).map((item, position) =>
+                                    position === index
+                                      ? {
+                                          action: value,
+                                          destination: "",
+                                          sourceFolder: "",
+                                        }
+                                      : item,
+                                  ),
+                                ),
+                              )
+                            }
+                          >
+                            <SelectGroup>
+                              {Object.entries(actions)
+                                .filter(
+                                  ([key]) =>
+                                    !["serverCopy", "serverMove"].includes(
+                                      key,
+                                    ) || key === step.action,
+                                )
+                                .map(([key, label]) => (
+                                  <SelectOption key={key} value={key}>
+                                    {label}
+                                  </SelectOption>
+                                ))}
+                            </SelectGroup>
+                          </SelectField>
+                          {["folder", "saveFolder"].includes(step.action) && (
+                            <div className="flex min-w-0 flex-1 items-center gap-2">
+                              <Label
+                                className="shrink-0"
+                                htmlFor={`rule-local-folder-${index}`}
+                              >
+                                {t("Local folder")}
+                              </Label>
+                              <Input
+                                id={`rule-local-folder-${index}`}
+                                className="min-w-0 flex-1"
+                                required
+                                placeholder={t(
+                                  "For example: Projects / Design",
+                                )}
+                                value={step.destination}
+                                onChange={(event) =>
+                                  setEditing(
+                                    withActions(
+                                      editing,
+                                      ruleActions(editing).map(
+                                        (item, position) =>
+                                          position === index
+                                            ? {
+                                                ...item,
+                                                destination: event.target.value,
+                                              }
+                                            : item,
+                                      ),
+                                    ),
+                                  )
+                                }
+                              />
+                            </div>
+                          )}
+                          <div className="ml-auto flex shrink-0 items-center gap-1">
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon-sm"
+                              title={t("Move action up")}
+                              disabled={index === 0}
+                              onClick={() => {
+                                const next = [...ruleActions(editing)];
+                                [next[index - 1], next[index]] = [
+                                  next[index],
+                                  next[index - 1],
+                                ];
+                                setEditing(withActions(editing, next));
+                              }}
+                            >
+                              <ArrowUp size={14} />
+                            </Button>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon-sm"
+                              title={t("Move action down")}
+                              disabled={
+                                index === ruleActions(editing).length - 1
+                              }
+                              onClick={() => {
+                                const next = [...ruleActions(editing)];
+                                [next[index + 1], next[index]] = [
+                                  next[index],
+                                  next[index + 1],
+                                ];
+                                setEditing(withActions(editing, next));
+                              }}
+                            >
+                              <ArrowDown size={14} />
+                            </Button>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon-sm"
+                              className="hover:bg-destructive/10 hover:text-destructive focus-visible:text-destructive"
+                              title={t("Remove action")}
+                              disabled={ruleActions(editing).length === 1}
+                              onClick={() =>
+                                setEditing(
+                                  withActions(
+                                    editing,
+                                    ruleActions(editing).filter(
+                                      (_, position) => position !== index,
+                                    ),
+                                  ),
+                                )
+                              }
+                            >
+                              <Trash2 size={14} />
+                            </Button>
+                          </div>
+                        </div>
+                        {remoteAction(step) && (
+                          <RuleServerFolders
+                            rule={{
+                              ...editing,
+                              action: step.action,
+                              destination: step.destination,
+                              sourceFolder: step.sourceFolder,
+                            }}
+                            account={data.accounts.find(
+                              (a) => a.id === editing.accountId,
+                            )}
+                            onChange={(changed) =>
                               setEditing(
                                 withActions(
                                   editing,
@@ -934,7 +1053,9 @@ export function RulesPanel({
                                     position === index
                                       ? {
                                           ...item,
-                                          destination: event.target.value,
+                                          destination: changed.destination,
+                                          sourceFolder:
+                                            changed.sourceFolder || "",
                                         }
                                       : item,
                                   ),
@@ -942,188 +1063,152 @@ export function RulesPanel({
                               )
                             }
                           />
-                        </div>
-                      )}
-                      <div className="ml-auto flex shrink-0 items-center gap-1">
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="icon-sm"
-                          title={t("Move action up")}
-                          disabled={index === 0}
-                          onClick={() => {
-                            const next = [...ruleActions(editing)];
-                            [next[index - 1], next[index]] = [
-                              next[index],
-                              next[index - 1],
-                            ];
-                            setEditing(withActions(editing, next));
-                          }}
-                        >
-                          <ArrowUp size={14} />
-                        </Button>
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="icon-sm"
-                          title={t("Move action down")}
-                          disabled={index === ruleActions(editing).length - 1}
-                          onClick={() => {
-                            const next = [...ruleActions(editing)];
-                            [next[index + 1], next[index]] = [
-                              next[index],
-                              next[index + 1],
-                            ];
-                            setEditing(withActions(editing, next));
-                          }}
-                        >
-                          <ArrowDown size={14} />
-                        </Button>
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="icon-sm"
-                          title={t("Remove action")}
-                          disabled={ruleActions(editing).length === 1}
-                          onClick={() =>
-                            setEditing(
-                              withActions(
-                                editing,
-                                ruleActions(editing).filter(
-                                  (_, position) => position !== index,
-                                ),
-                              ),
-                            )
-                          }
-                        >
-                          <Trash2 size={14} />
-                        </Button>
-                      </div>
-                    </div>
-                    {remoteAction(step) && (
-                      <RuleServerFolders
-                        rule={{
-                          ...editing,
-                          action: step.action,
-                          destination: step.destination,
-                          sourceFolder: step.sourceFolder,
-                        }}
-                        account={data.accounts.find(
-                          (a) => a.id === editing.accountId,
                         )}
-                        onChange={(changed) =>
-                          setEditing(
-                            withActions(
-                              editing,
-                              ruleActions(editing).map((item, position) =>
-                                position === index
-                                  ? {
-                                      ...item,
-                                      destination: changed.destination,
-                                      sourceFolder: changed.sourceFolder || "",
-                                    }
-                                  : item,
-                              ),
-                            ),
-                          )
-                        }
-                      />
-                    )}
+                      </div>
+                    ))}
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      disabled={ruleActions(editing).length >= 8}
+                      onClick={() =>
+                        setEditing(
+                          withActions(editing, [
+                            ...ruleActions(editing),
+                            {
+                              action: "read",
+                              destination: "",
+                              sourceFolder: "",
+                            },
+                          ]),
+                        )
+                      }
+                    >
+                      <Plus size={14} />
+                      {t("Add action")}
+                    </Button>
                   </div>
-                ))}
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  disabled={ruleActions(editing).length >= 8}
-                  onClick={() =>
-                    setEditing(
-                      withActions(editing, [
-                        ...ruleActions(editing),
-                        { action: "read", destination: "", sourceFolder: "" },
-                      ]),
-                    )
-                  }
-                >
-                  <Plus size={14} />
-                  {t("Add action")}
-                </Button>
-              </div>
-              <Label className="switch-label">
-                <Switch
-                  checked={editing.stop}
-                  onCheckedChange={(v) => setEditing({ ...editing, stop: v })}
-                />
-                {t("Stop processing later rules after a match")}
-              </Label>
-              <Button
-                type="button"
-                variant="outline"
-                onClick={async () => {
-                  try {
-                    setPreview(
-                      await call<string[]>("preview_rule", { rule: editing }),
-                    );
-                  } catch (e) {
-                    toast.error(String(e));
-                  }
-                }}
-              >
-                {t("Preview matches without running actions")}
-              </Button>
-              {preview && (
-                <div className="rule-preview">
-                  <p>
-                    {matchedPreview === 1
-                      ? t("This preview: 1 match.")
-                      : t("This preview: {value0} matches.", {
-                          value0: matchedPreview,
-                        })}
-                  </p>
-                  {waitingPreview > 0 && (
-                    <p>
-                      {waitingPreview === 1
-                        ? t(
-                            "1 more message awaits complete-message verification.",
-                          )
-                        : t(
-                            "{value0} more messages await complete-message verification.",
-                            {
-                              value0: waitingPreview,
-                            },
-                          )}
-                    </p>
+                  <Label className="switch-label">
+                    <Checkbox
+                      checked={editing.stop}
+                      onCheckedChange={(v) =>
+                        setEditing({ ...editing, stop: v === true })
+                      }
+                    />
+                    {t("Stop processing later rules after a match")}
+                  </Label>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    aria-busy={previewing || undefined}
+                    disabled={previewing || saving}
+                    onClick={async () => {
+                      if (previewing) return;
+                      setPreviewing(true);
+                      try {
+                        setPreview(
+                          await call<string[]>("preview_rule", {
+                            rule: editing,
+                          }),
+                        );
+                      } catch (e) {
+                        toast.error(String(e));
+                      } finally {
+                        setPreviewing(false);
+                      }
+                    }}
+                  >
+                    <ButtonLabel
+                      reserve={[
+                        t("Previewing matches…"),
+                        t("Preview matches without running actions"),
+                      ]}
+                      reserveIcon
+                      icon={
+                        previewing ? (
+                          <LoaderCircle size={14} className="animate-spin" />
+                        ) : undefined
+                      }
+                    >
+                      {previewing
+                        ? t("Previewing matches…")
+                        : t("Preview matches without running actions")}
+                    </ButtonLabel>
+                  </Button>
+                  {preview && (
+                    <div className="rule-preview tabular-nums">
+                      <p>
+                        {matchedPreview === 1
+                          ? t("This preview: 1 match.")
+                          : t("This preview: {value0} matches.", {
+                              value0: matchedPreview,
+                            })}
+                      </p>
+                      {waitingPreview > 0 && (
+                        <p>
+                          {waitingPreview === 1
+                            ? t(
+                                "1 more message awaits complete-message verification.",
+                              )
+                            : t(
+                                "{value0} more messages await complete-message verification.",
+                                {
+                                  value0: waitingPreview,
+                                },
+                              )}
+                        </p>
+                      )}
+                      {preview.slice(0, 3).map((subject, i) => (
+                        <p key={i}>
+                          {subject.endsWith(waitingPreviewSuffix)
+                            ? t(
+                                "{value0} (awaiting complete-message verification)",
+                                {
+                                  value0: subject.slice(
+                                    0,
+                                    -waitingPreviewSuffix.length,
+                                  ),
+                                },
+                              )
+                            : subject}
+                        </p>
+                      ))}
+                    </div>
                   )}
-                  {preview.slice(0, 3).map((subject, i) => (
-                    <p key={i}>
-                      {subject.endsWith(waitingPreviewSuffix)
-                        ? t(
-                            "{value0} (awaiting complete-message verification)",
-                            {
-                              value0: subject.slice(
-                                0,
-                                -waitingPreviewSuffix.length,
-                              ),
-                            },
-                          )
-                        : subject}
-                    </p>
-                  ))}
                 </div>
-              )}
-              <div className="dialog-actions">
+              </ScrollArea>
+              <DialogFooter className="shrink-0 border-t px-6 py-4">
                 {data.rules.some((r) => r.id === editing.id) && (
                   <Button
                     type="button"
-                    variant="ghost"
-                    className="text-destructive mr-auto"
+                    variant="outline"
+                    className="mr-auto border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive"
+                    disabled={saving}
                     onClick={async () => {
                       if (
-                        await save(
-                          data.rules.filter((r) => r.id !== editing.id),
-                        )
+                        saving ||
+                        !(await askConfirmation({
+                          title: t("Delete rule"),
+                          description: t(
+                            "Delete “{value0}”? Existing filed messages are not affected.",
+                            { value0: editing.name || t("Mail rules") },
+                          ),
+                          action: t("Delete rule"),
+                          destructive: true,
+                        }))
                       )
-                        setEditing(null);
+                        return;
+                      setSaving(true);
+                      try {
+                        if (
+                          await save(
+                            data.rules.filter((r) => r.id !== editing.id),
+                          )
+                        )
+                          setEditing(null);
+                      } finally {
+                        setSaving(false);
+                      }
                     }}
                   >
                     {t("Delete rule")}
@@ -1132,18 +1217,34 @@ export function RulesPanel({
                 <Button
                   type="button"
                   variant="outline"
+                  disabled={saving}
                   onClick={() => setEditing(null)}
                 >
                   {t("Cancel")}
                 </Button>
-                <Button type="submit" disabled={!valid}>
-                  {t("Save rule")}
+                <Button
+                  type="submit"
+                  aria-busy={saving || undefined}
+                  disabled={!valid || saving}
+                >
+                  <ButtonLabel
+                    reserve={[t("Saving…"), t("Save rule")]}
+                    reserveIcon
+                    icon={
+                      saving ? (
+                        <LoaderCircle size={14} className="animate-spin" />
+                      ) : undefined
+                    }
+                  >
+                    {saving ? t("Saving…") : t("Save rule")}
+                  </ButtonLabel>
                 </Button>
-              </div>
+              </DialogFooter>
             </form>
           )}
         </DialogContent>
       </Dialog>
+      {confirmationDialog}
     </section>
   );
 }

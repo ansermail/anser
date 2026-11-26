@@ -1,3 +1,4 @@
+import { MiddleTruncateFilename } from "./middle-truncate-filename";
 import { t } from "@/lib/i18n";
 import { useEffect, useRef, useState } from "react";
 import { AlertCircle, FileUp, X } from "lucide-react";
@@ -231,8 +232,8 @@ export function MailSignatures({ accounts }: { accounts: Account[] }) {
                   </Button>
                   {signature.fileName && (
                     <>
-                      <Badge variant="secondary" className="max-w-52 truncate">
-                        {signature.fileName}
+                      <Badge variant="secondary" className="max-w-52">
+                        <MiddleTruncateFilename name={signature.fileName} />
                       </Badge>
                       <Button
                         variant="ghost"
@@ -324,19 +325,19 @@ export function MailSignatures({ accounts }: { accounts: Account[] }) {
                     <FieldLabel id="signature-preview-label">
                       {t("Signature preview")}
                     </FieldLabel>
-                    <Card
-                      className="signature-preview-frame min-w-0 rounded-md py-0 shadow-none"
+                    <div
+                      className="signature-preview-frame min-w-0 rounded-md border border-border/70 bg-secondary/35"
                       role="region"
                       aria-labelledby="signature-preview-label"
                     >
-                      <CardContent className="min-h-0 flex-1 overflow-auto px-3 py-2">
+                      <div className="min-h-0 flex-1 overflow-auto px-3 py-2">
                         <MailContent
                           html={content.html || textToHtml(content.body)}
                           title={t("Signature preview")}
                           onOpenLink={() => {}}
                         />
-                      </CardContent>
-                    </Card>
+                      </div>
+                    </div>
                   </Field>
                 )}
               </div>
@@ -361,6 +362,7 @@ export function MailSignatures({ accounts }: { accounts: Account[] }) {
             </div>
             <div className="mail-signature-footer">
               <Button
+                variant={dirty ? "default" : "outline"}
                 aria-busy={busy}
                 disabled={
                   !accountId || busy || loading || loadedAccountId !== accountId

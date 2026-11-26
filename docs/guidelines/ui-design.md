@@ -8,7 +8,7 @@
 
 - **引入原则**：新增组件先检查 `src/components/ui/`；缺少时从 shadcn 官方 registry 引入，保持与现有 `new-york` 样式及 Radix 体系一致。
 - **组合原则**：业务组件通过组合 shadcn 组件完成，允许业务数据、布局、尺寸与主题适配；禁止重写按钮、输入框、选择器、菜单、弹层、复选框、分栏、加载占位等基础交互组件。`src/components/ui/` 官方组件内部的原生元素属于正常实现；业务代码中的 HTML 语义结构、邮件正文 `iframe`、富文本编辑内容不属于另造 UI 组件。
-- **写信 AI 助手**：对话、消息与指令输入使用 `assistant-ui` 官方 React primitives，外壳及通用控件沿用 shadcn/ui；详见 [AI 功能与 Agent 协作规范](ai-and-agent.md)。
+- **写信 AI 助手**：遵循 shadcn AI Elements 组合模式，在 `src/components/ai-elements/` 中基于现有 shadcn/ui 基础组件实现 `Conversation`、`Message`、`ChainOfThought`、`Reasoning`、`Plan`、`Suggestions`、`PromptInput` 与 `Shimmer`；详见 [AI 功能与 Agent 协作规范](ai-and-agent.md)。
 - **日期与时间控件**：
   - 日期选择使用 `Calendar` + `Popover`；时分使用组合 shadcn `InputGroup` 的紧凑可编辑数字框，支持直接输入、键盘上下键、聚焦时滚轮及输入框内上下按钮，小时限制 `00–23`、分钟限制 `00–59`。数字与调节箭头保持紧凑平衡，箭头不能贴住右边框。
   - 定时发送只能选择未来时间：早于今天的日期禁用；当天输入与调节范围从不早于下一分钟开始，越界输入恢复有效值、按钮停在边界；面板保持打开时，时间一旦过期自动推进到下一可发送分钟。界面不显示过去时间错误提示，提交函数仍须复核。

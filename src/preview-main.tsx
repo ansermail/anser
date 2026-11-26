@@ -4,7 +4,10 @@ import App from "./App";
 import { call, newDraft, snapshot } from "./lib/api";
 import { setInterfaceLanguage } from "./lib/i18n";
 import { initializeAppearance, setThemeMode } from "./lib/theme";
+import { trackPointerFocus } from "./lib/webview-keys";
 import "./index.css";
+
+trackPointerFocus(document);
 
 async function renderPreview() {
   const params = new URLSearchParams(window.location.search);

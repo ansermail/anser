@@ -25,7 +25,9 @@ vi.mock("@/lib/api", () => ({
   isDemo: () => mode.demo,
   call: mode.call,
 }));
-vi.mock("sonner", () => ({ toast: { error: vi.fn(), info: vi.fn() } }));
+vi.mock("sonner", () => ({
+  toast: { error: vi.fn(), info: vi.fn(), success: vi.fn() },
+}));
 const picker = vi.hoisted(() => ({ open: vi.fn() }));
 vi.mock("@tauri-apps/plugin-dialog", () => picker);
 const png =
@@ -280,7 +282,11 @@ it("previews AI revisions without saving and applies them as one undoable transa
     if (command === "run_mail_ai") {
       const input = args?.input as { paragraphs: string[] };
       expect(input.paragraphs).toEqual(["原正文", "保留这一段"]);
-      return { message: "已调整", edits: [{ index: 0, text: "修改后" }] };
+      return {
+        message: "已调整",
+        reasoning: "先核对两段原文，只精简第一段。",
+        edits: [{ index: 0, text: "修改后" }],
+      };
     }
   });
   await act(async () =>
@@ -308,21 +314,31 @@ it("previews AI revisions without saving and applies them as one undoable transa
   expect(host.querySelector(".compose-repair-added")?.textContent).toContain(
     "修改后",
   );
+  expect(host.querySelector('[data-slot="ai-chain-of-thought"]')).toBeTruthy();
+  expect(host.querySelector('[data-slot="ai-plan"]')?.textContent).toContain(
+    "修改计划",
+  );
+  expect(host.querySelector('[data-slot="ai-plan"]')?.textContent).toContain(
+    "第 1 段",
+  );
+  expect(host.querySelector('[data-slot="ai-reasoning"]')).toBeTruthy();
+  await act(async () => button("模型思考过程").click());
+  expect(host.textContent).toContain("先核对两段原文，只精简第一段。");
   expect(change).not.toHaveBeenCalled();
   await act(async () => button("应用到正文").click());
   expect(change).toHaveBeenLastCalledWith(
     "修改后\n保留这一段",
     "<p><strong>修改后</strong></p><p>保留这一段</p>",
   );
-  const undo = host.querySelector(
-    'button[aria-label="撤销编辑"]',
-  ) as HTMLButtonElement;
-  expect(undo).toBeTruthy();
-  await act(async () => undo.click());
+  const toastArgs = vi.mocked(toast.success).mock.calls.at(-1)?.[1] as
+    { action?: { label?: string; onClick?: () => void } } | undefined;
+  expect(toastArgs?.action?.label).toBe("撤销");
+  await act(async () => toastArgs?.action?.onClick?.());
   expect(change).toHaveBeenLastCalledWith(
     "原正文\n保留这一段",
     "<p><strong>原正文</strong></p><p>保留这一段</p>",
   );
+  expect(host.textContent).toContain("已撤销 AI 修改");
 });
 
 it("ignores IME Enter, cancels an in-flight repair and discards suggestions after typing", async () => {
@@ -402,7 +418,7 @@ it("ignores IME Enter, cancels an in-flight repair and discards suggestions afte
   expect(body.querySelector(".compose-repair-added")).toBeNull();
 });
 
-it("shows a specific repair failure without assistant-ui's loading dot", async () => {
+it("shows a specific repair failure without stray loading dots", async () => {
   mode.call.mockImplementation(async (command) => {
     if (command === "get_translation_settings") return { revision: "r1" };
     if (command === "run_mail_ai") throw "模型返回的内容不符合格式，请重试";

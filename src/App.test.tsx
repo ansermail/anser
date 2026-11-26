@@ -2824,7 +2824,10 @@ describe("reading unread mail within its current category", () => {
     expect(host.querySelector(".list-heading h1")?.textContent).toBe(
       "本地存档",
     );
-    expect(filter("未读")?.getAttribute("aria-selected") === "true").toBe(true);
+    expect(
+      filter("未读")?.getAttribute("aria-checked") === "true" ||
+        filter("未读")?.getAttribute("data-state") === "on",
+    ).toBe(true);
   });
   it.each(["全部邮件", "本地存档", "项目协作", "星标邮件", "工作邮箱"])(
     "keeps an opened message readable in %s after marking it read",

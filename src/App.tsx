@@ -82,7 +82,7 @@ import { replyHeaders } from "./lib/conversations";
 import { FolderInput } from "./components/folder-input";
 import { useTheme } from "./lib/theme";
 import { AppearanceSettings } from "./components/appearance-settings";
-import { Tabs, TabsList, TabsTrigger } from "./components/ui/tabs";
+import { ToggleGroup, ToggleGroupItem } from "./components/ui/toggle-group";
 import { disableNativeContextMenu } from "./lib/context-menu";
 import { trackPointerFocus } from "./lib/webview-keys";
 import { useScrollFade } from "./lib/scroll-fade";
@@ -118,6 +118,7 @@ import {
   List,
   ListChecks,
   Paperclip,
+  PauseCircle,
   Plus,
   Printer,
   RefreshCw,
@@ -2136,8 +2137,17 @@ export default function App({
       <Toaster
         position="bottom-center"
         theme={theme.mode}
-        richColors
         closeButton
+        toastOptions={{
+          classNames: {
+            toast: "anser-toast",
+            success: "anser-toast-success",
+            warning: "anser-toast-warning",
+            error: "anser-toast-error",
+            info: "anser-toast-info",
+            actionButton: "anser-toast-action",
+          },
+        }}
       />
       <div className="top-actions app-actions">
         <EmlViewer />
@@ -2154,7 +2164,13 @@ export default function App({
           variant="ghost"
           size="sm"
           className="connection"
-          title={t("Background tasks")}
+          title={
+            syncEmail
+              ? `${t("Background tasks")} · ${t("Checking mail for {value0}", { value0: syncEmail })}`
+              : syncing
+                ? `${t("Background tasks")} · ${t("Checking mail")}`
+                : t("Background tasks")
+          }
           onClick={() => {
             setSettingsSection("tasks");
             setPage("settings");
@@ -2340,7 +2356,13 @@ export default function App({
                                 <span>{a.email}</span>
                               </small>
                             </span>
-                            {!a.enabled && <span className="paused-dot" />}
+                            {!a.enabled && (
+                              <PauseCircle
+                                size={13}
+                                className="paused-account-icon shrink-0 text-muted-foreground"
+                                aria-label={t("Account paused")}
+                              />
+                            )}
                           </Button>
                         </CollapsibleTrigger>
                         {sidebarAccountError(a, serverFolders) && (
@@ -2514,6 +2536,7 @@ export default function App({
                         <Button
                           variant="ghost"
                           className={`nav-item folder-item ${query.folder === f && page === "mail" ? "active" : ""}`}
+                          title={f}
                           onClick={() => navigate("local", "", f)}
                         >
                           <Folder size={16} />
@@ -2589,6 +2612,7 @@ export default function App({
                         <Button
                           variant="ghost"
                           className={`nav-item folder-item tag-item ${query.tag === tag && page === "mail" ? "active" : ""}`}
+                          title={tag}
                           onClick={() =>
                             navigate("all", "", "", "", false, "", tag)
                           }
@@ -3147,10 +3171,10 @@ export default function App({
                     <UpdateSettings updates={updates} />
                     <Card>
                       <CardHeader>
-                        <CardTitle>{t("Background checks")}</CardTitle>
+                        <CardTitle>{t("Background sync scope")}</CardTitle>
                         <CardDescription>
                           {t(
-                            "Mail checks continue after closing the window. Quitting, sleep or loss of connectivity pauses them. Download complete messages before the server deletes them.",
+                            "Checks continue after closing the window, pause on quit or sleep, and require full saving before server deletion.",
                           )}
                         </CardDescription>
                       </CardHeader>
@@ -3183,6 +3207,7 @@ export default function App({
                   <div className="flex items-center gap-2">
                     <Button
                       variant="outline"
+                      className="border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive"
                       disabled={clearingDrafts || !!draft}
                       onClick={() => void clearDrafts()}
                     >
@@ -3216,7 +3241,9 @@ export default function App({
                     <Button
                       variant="ghost"
                       size="icon"
+                      className="hover:bg-destructive/10 hover:text-destructive focus-visible:text-destructive"
                       title={t("Delete draft")}
+                      aria-label={t("Delete draft")}
                       disabled={clearingDrafts}
                       onClick={async () => {
                         if (clearingDraftsNow.current) return;
@@ -3270,22 +3297,27 @@ export default function App({
                         title={t("Toggle sidebar")}
                         aria-label={t("Toggle sidebar")}
                       />
-                      <h1>{title}</h1>
-                      <span>
-                        {grouped
-                          ? data.matched === 1
-                            ? t("1 conversation")
-                            : t("{value0} conversations", {
-                                value0: data.matched,
-                              })
-                          : data.matched === 1
-                            ? t("1 message")
-                            : t("{value0} messages", { value0: data.matched })}
+                      <span className="list-heading-text inline-flex min-w-0 items-baseline gap-2">
+                        <h1 title={title}>{title}</h1>
+                        <span className="shrink-0 tabular-nums">
+                          {grouped
+                            ? data.matched === 1
+                              ? t("1 conversation")
+                              : t("{value0} conversations", {
+                                  value0: data.matched,
+                                })
+                            : data.matched === 1
+                              ? t("1 message")
+                              : t("{value0} messages", {
+                                  value0: data.matched,
+                                })}
+                        </span>
                       </span>
                     </div>
                     <Button
                       variant="ghost"
                       size="icon-sm"
+                      aria-busy={syncing || undefined}
                       disabled={syncing || !data.accounts.length}
                       title={t("Check mail")}
                       onClick={() => void sync()}
@@ -3395,22 +3427,26 @@ export default function App({
                   </div>
                   {checked.length === 0 ? (
                     <div className="list-filters">
-                      <Tabs
+                      <ToggleGroup
+                        type="single"
+                        className="mail-filter-segmented"
+                        aria-label={t("Read status filter")}
                         value={query.unreadOnly ? "unread" : "all"}
-                        onValueChange={(value) =>
+                        onValueChange={(value) => {
+                          if (!value) return;
                           setQuery((q) => ({
                             ...q,
                             unreadOnly: value === "unread",
-                          }))
-                        }
+                          }));
+                        }}
                       >
-                        <TabsList>
-                          <TabsTrigger value="all">{t("All")}</TabsTrigger>
-                          <TabsTrigger value="unread">
-                            {t("Unread")}
-                          </TabsTrigger>
-                        </TabsList>
-                      </Tabs>
+                        <ToggleGroupItem value="all">
+                          {t("All")}
+                        </ToggleGroupItem>
+                        <ToggleGroupItem value="unread">
+                          {t("Unread")}
+                        </ToggleGroupItem>
+                      </ToggleGroup>
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
                           <Button
@@ -3656,13 +3692,21 @@ export default function App({
                                     aria-hidden="true"
                                     title={t("Account color indicator")}
                                   />
-                                  <span>
+                                  <span
+                                    title={
+                                      data.accounts.find(
+                                        (a) => a.id === m.accountId,
+                                      )?.name || t("Removed account")
+                                    }
+                                  >
                                     {data.accounts.find(
                                       (a) => a.id === m.accountId,
                                     )?.name || t("Removed account")}
                                   </span>
                                   {m.localFolder !== "全部存档" && (
-                                    <small>{m.localFolder}</small>
+                                    <small title={m.localFolder}>
+                                      {m.localFolder}
+                                    </small>
                                   )}
                                   {!!m.tags?.length && (
                                     <span

@@ -31,10 +31,12 @@ import { Alert, AlertDescription } from "./ui/alert";
 import { MailRecipients } from "./mail-recipients";
 import { SenderIdentity } from "./contact-address";
 import { Button } from "./ui/button";
+import { Separator } from "./ui/separator";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuShortcut,
   DropdownMenuTrigger,
 } from "./ui/dropdown-menu";
 import {
@@ -45,6 +47,9 @@ import {
 } from "./ui/tooltip";
 import { ComposeDialog } from "./compose-dialog";
 import { ConversationReader } from "./conversation-reader";
+import { MailActionTooltip } from "./mail-action-tooltip";
+import { MiddleTruncateFilename } from "./middle-truncate-filename";
+import { mailShortcutKeys } from "../lib/mail-shortcuts";
 
 interface EmlDocument {
   token: string;
@@ -228,7 +233,21 @@ export function ExternalMailWindow() {
     <TooltipProvider>
       <div className="external-mail">
         <DesktopTitlebar />
-        <Toaster position="bottom-center" theme={mode} richColors closeButton />
+        <Toaster
+          position="bottom-center"
+          theme={mode}
+          closeButton
+          toastOptions={{
+            classNames: {
+              toast: "anser-toast",
+              success: "anser-toast-success",
+              warning: "anser-toast-warning",
+              error: "anser-toast-error",
+              info: "anser-toast-info",
+              actionButton: "anser-toast-action",
+            },
+          }}
+        />
         {error ? (
           <main className="external-mail-error">
             <Alert variant="destructive">
@@ -265,93 +284,119 @@ export function ExternalMailWindow() {
                   <div>
                     <Tooltip>
                       <TooltipTrigger asChild>
-                        <Button
-                          variant="ghost"
-                          size="icon-sm"
-                          aria-label={t("Previous message")}
-                          disabled
-                        >
-                          <ArrowLeft size={17} />
-                        </Button>
+                        <span tabIndex={0} className="inline-flex">
+                          <Button
+                            variant="ghost"
+                            size="icon-sm"
+                            aria-label={t("Previous message")}
+                            disabled
+                          >
+                            <ArrowLeft size={17} />
+                          </Button>
+                        </span>
                       </TooltipTrigger>
                       <TooltipContent>{t("Previous message")}</TooltipContent>
                     </Tooltip>
                     <Tooltip>
                       <TooltipTrigger asChild>
-                        <Button
-                          variant="ghost"
-                          size="icon-sm"
-                          aria-label={t("Next message")}
-                          disabled
-                        >
-                          <ArrowRight size={17} />
-                        </Button>
+                        <span tabIndex={0} className="inline-flex">
+                          <Button
+                            variant="ghost"
+                            size="icon-sm"
+                            aria-label={t("Next message")}
+                            disabled
+                          >
+                            <ArrowRight size={17} />
+                          </Button>
+                        </span>
                       </TooltipTrigger>
                       <TooltipContent>{t("Next message")}</TooltipContent>
                     </Tooltip>
-                    <span className="toolbar-divider" />
-                    <Button
-                      variant="ghost"
-                      size="icon-sm"
-                      title={t("Print this message")}
-                      aria-label={t("Print this message")}
-                      onClick={() =>
-                        void printMail(document.detail).catch((cause) =>
-                          toast.error(
-                            t("Printing failed: {value0}", {
-                              value0: String(cause),
-                            }),
-                          ),
-                        )
-                      }
-                    >
-                      <Printer size={17} />
-                    </Button>
-                  </div>
-                  <div className="reader-actions">
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      aria-label={t("Reply")}
-                      title={t("Reply")}
-                      aria-keyshortcuts="Meta+R Control+R"
-                      onClick={() => compose()}
-                    >
-                      <Reply size={15} />
-                      <span className="action-label">{t("Reply")}</span>
-                    </Button>
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
+                    <Separator
+                      orientation="vertical"
+                      className="toolbar-divider mx-1 !h-4 self-center"
+                    />
+                    <Tooltip>
+                      <TooltipTrigger asChild>
                         <Button
                           variant="ghost"
                           size="icon-sm"
-                          title={t("More reply actions")}
-                          aria-label={t("More reply actions")}
+                          aria-label={t("Print this message")}
+                          onClick={() =>
+                            void printMail(document.detail).catch((cause) =>
+                              toast.error(
+                                t("Printing failed: {value0}", {
+                                  value0: String(cause),
+                                }),
+                              ),
+                            )
+                          }
                         >
-                          <ChevronDown size={12} />
+                          <Printer size={17} />
                         </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end">
-                        <DropdownMenuItem
-                          aria-keyshortcuts="Meta+Shift+R Control+Shift+R"
-                          onClick={() => compose(false, true)}
+                      </TooltipTrigger>
+                      <TooltipContent>{t("Print this message")}</TooltipContent>
+                    </Tooltip>
+                  </div>
+                  <div className="reader-actions">
+                    <div className="reader-reply-group">
+                      <MailActionTooltip action="reply" label={t("Reply")}>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="reader-primary-action"
+                          aria-label={t("Reply")}
+                          aria-keyshortcuts="Meta+R Control+R"
+                          onClick={() => compose()}
                         >
-                          <ReplyAll size={15} />
-                          {t("Reply all")}
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      aria-label={t("Forward")}
-                      title={t("Forward")}
-                      aria-keyshortcuts="Meta+Shift+F Control+Shift+F"
-                      onClick={() => compose(true)}
-                    >
-                      <Send size={15} />
-                      <span className="action-label">{t("Forward")}</span>
-                    </Button>
+                          <Reply size={15} />
+                          <span className="action-label">{t("Reply")}</span>
+                        </Button>
+                      </MailActionTooltip>
+                      <DropdownMenu>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <DropdownMenuTrigger asChild>
+                              <Button
+                                variant="ghost"
+                                size="icon-sm"
+                                className="reader-reply-options"
+                                aria-label={t("More reply actions")}
+                              >
+                                <ChevronDown size={12} />
+                              </Button>
+                            </DropdownMenuTrigger>
+                          </TooltipTrigger>
+                          <TooltipContent>
+                            {t("More reply actions")}
+                          </TooltipContent>
+                        </Tooltip>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem
+                            aria-keyshortcuts="Meta+Shift+R Control+Shift+R"
+                            onClick={() => compose(false, true)}
+                          >
+                            <ReplyAll size={15} />
+                            {t("Reply all")}
+                            <DropdownMenuShortcut>
+                              {mailShortcutKeys.replyAll}
+                            </DropdownMenuShortcut>
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </div>
+                    <MailActionTooltip action="forward" label={t("Forward")}>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        aria-label={t("Forward")}
+                        aria-keyshortcuts="Meta+Shift+F Control+Shift+F"
+                        onClick={() => compose(true)}
+                      >
+                        <Send size={15} />
+                        <span className="action-label">{t("Forward")}</span>
+                      </Button>
+                    </MailActionTooltip>
                   </div>
                 </div>
               </div>
@@ -374,7 +419,9 @@ export function ExternalMailWindow() {
                   <time dateTime={document.detail.mail.date}>
                     {formatMailTime(document.detail.mail.date)}
                   </time>
-                  <span className="saved-chip">{document.filename}</span>
+                  <span className="saved-chip max-w-[200px]">
+                    <MiddleTruncateFilename name={document.filename} />
+                  </span>
                 </div>
               </div>
               <div className="message-title-row">

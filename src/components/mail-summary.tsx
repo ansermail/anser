@@ -15,6 +15,7 @@ import {
   Copy,
   LoaderCircle,
   Minus,
+  Quote,
   Sparkles,
   X,
 } from "lucide-react";
@@ -47,6 +48,10 @@ const SummaryLayer = createContext<{
   host: HTMLElement | null;
   claim: (reset: () => void) => void;
 } | null>(null);
+
+export function useMailOverlayHost() {
+  return useContext(SummaryLayer)?.host ?? null;
+}
 
 export function MailSummaryLayer({ children }: { children: ReactNode }) {
   const [host, setHost] = useState<HTMLDivElement | null>(null);
@@ -396,15 +401,16 @@ export function useMailSummary(
         </CardHeader>
         <ScrollArea
           type="auto"
+          fade="vertical"
           className="mail-summary-scroll"
           data-more-content={moreContent}
           viewportRef={setSummaryViewport}
           viewportProps={{ tabIndex: 0, "aria-label": t("Email summary") }}
         >
-          <CardContent className="space-y-2.5 px-3 py-2.5 break-words select-text">
+          <CardContent className="flex flex-col gap-2.5 px-3 py-2.5 break-words select-text">
             <p className="leading-relaxed font-medium">{conclusion}</p>
             {!!points.length && (
-              <ul className="list-disc space-y-1 pl-4 leading-relaxed text-muted-foreground">
+              <ul className="flex list-disc flex-col gap-1 pl-4 leading-relaxed text-muted-foreground">
                 {points.map((text, i) => (
                   <li key={i}>{text}</li>
                 ))}
@@ -413,7 +419,7 @@ export function useMailSummary(
             {!!reminders.length && (
               <div className="mail-summary-dates pt-1">
                 <p className="font-medium">{t("Email reminders")}</p>
-                <ul className="mt-1 space-y-1.5 leading-relaxed">
+                <ul className="mt-1.5 flex flex-col gap-2 leading-relaxed">
                   {reminders.map((reminder, i) => {
                     const instant =
                       offset && reminder.time
@@ -434,14 +440,27 @@ export function useMailSummary(
                         key={i}
                         className="flex items-start justify-between gap-1.5"
                       >
-                        <div className="min-w-0">
-                          <p>{reminder.title}</p>
-                          <p className="text-muted-foreground">
+                        <div className="flex min-w-0 flex-1 flex-col gap-1">
+                          <p className="font-medium text-foreground">
+                            {reminder.title}
+                          </p>
+                          <p className="text-muted-foreground tabular-nums">
                             {date} {time}
                           </p>
-                          <p className="text-muted-foreground">
-                            {reminder.evidence}
-                          </p>
+                          {reminder.evidence && (
+                            <p
+                              className="mail-summary-citation inline-flex max-w-full items-start gap-1 rounded-md bg-secondary/75 px-2 py-1 text-[11px] text-muted-foreground"
+                              title={reminder.evidence}
+                            >
+                              <Quote
+                                className="mt-0.5 size-3 shrink-0 opacity-75"
+                                aria-hidden
+                              />
+                              <span className="line-clamp-2 min-w-0">
+                                {reminder.evidence}
+                              </span>
+                            </p>
+                          )}
                         </div>
                         {onAddWorkItem && (
                           <Button
@@ -471,9 +490,9 @@ export function useMailSummary(
             )}
           </CardContent>
         </ScrollArea>
-        <CardFooter className="justify-end px-2 py-0.5">
+        <CardFooter className="justify-end px-2 py-1">
           <Button
-            className="h-6 text-[11px] [&_svg]:size-3"
+            className="h-7 text-[11px] [&_svg]:size-3"
             size="sm"
             variant="ghost"
             onClick={() =>

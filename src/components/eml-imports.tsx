@@ -6,6 +6,7 @@ import {
   DropdownMenuItem,
   DropdownMenuGroup,
 } from "./ui/dropdown-menu";
+import { MiddleTruncateFilename } from "./middle-truncate-filename";
 import { TaskCellText, TaskDataTable } from "./task-data-table";
 import { mailFileError as importError } from "@/lib/mail-file-errors";
 import { useEffect, useRef, useState } from "react";
@@ -525,7 +526,7 @@ export function EmlImports({
         }}
       >
         <DialogContent
-          className={`flex max-h-[calc(100dvh-2rem)] flex-col gap-3 overflow-hidden p-4 sm:max-w-xl ${job ? "h-[min(48rem,calc(100dvh-2rem))]" : ""}`}
+          className={`flex max-h-[calc(100dvh-2rem)] flex-col gap-4 overflow-hidden p-6 sm:max-w-xl ${job ? "h-[min(48rem,calc(100dvh-2rem))]" : ""}`}
         >
           <DialogHeader className="shrink-0 pr-6">
             <DialogTitle>{t("Import mail")}</DialogTitle>
@@ -632,13 +633,9 @@ export function EmlImports({
                 </Field>
               )}
               <div className="flex items-center gap-3">
-                <FieldDescription className="min-w-0 flex-1 text-xs leading-snug">
-                  {t("Supports EML, MBOX, EMLX and Outlook MSG.")}{" "}
+                <FieldDescription className="min-w-0 flex-1 text-xs leading-relaxed">
                   {t(
-                    "Select mail files totaling up to 1 GiB, with at most 1,000 messages per batch.",
-                  )}{" "}
-                  {t(
-                    "Each message can be up to 64 MiB. New messages are marked read; automatic rules and notifications do not run.",
+                    "EML, MBOX, EMLX and MSG up to 1 GiB (1,000 messages, 64 MiB each); imported read without running rules or notifications.",
                   )}
                 </FieldDescription>
                 <Button
@@ -700,6 +697,7 @@ export function EmlImports({
               )}
               {!!job.items.length && (
                 <ScrollArea
+                  fade="vertical"
                   className="import-results-scroll min-h-0 min-w-0 flex-1 basis-48 overflow-hidden rounded-md border"
                   type="always"
                   aria-label={t("Import file results")}
@@ -722,12 +720,10 @@ export function EmlImports({
                           className="w-full min-w-0 text-sm"
                         >
                           <div className="flex w-full min-w-0 items-center gap-3">
-                            <span
-                              className="min-w-0 flex-1 truncate"
-                              title={item.filename}
-                            >
-                              {item.filename}
-                            </span>
+                            <MiddleTruncateFilename
+                              name={item.filename}
+                              className="flex-1"
+                            />
                             <Badge
                               data-import-item-status={item.status}
                               variant="outline"

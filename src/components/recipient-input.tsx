@@ -18,12 +18,16 @@ export function RecipientInput({
   onChange,
   suggestions,
   autoFocus = false,
+  ariaInvalid,
+  ariaDescribedBy,
 }: {
   id: string;
   value: string;
   onChange: (s: string) => void;
   suggestions: Address[];
   autoFocus?: boolean;
+  ariaInvalid?: boolean;
+  ariaDescribedBy?: string;
 }) {
   const [open, setOpen] = useState(false),
     [active, setActive] = useState(0);
@@ -76,6 +80,8 @@ export function RecipientInput({
             aria-expanded={open && options.length > 0}
             aria-controls={aria.controls}
             aria-activedescendant={aria.activeDescendant}
+            aria-invalid={ariaInvalid || undefined}
+            aria-describedby={ariaDescribedBy}
             onFocus={() => setOpen(true)}
             onBlur={() => setOpen(false)}
             onChange={(e) => {

@@ -1,4 +1,5 @@
 import { ScrollArea } from "./ui/scroll-area";
+import { PasswordInput } from "./password-input";
 import { t } from "@/lib/i18n";
 import { Checkbox } from "./ui/checkbox";
 import { SelectField, SelectOption } from "@/components/ui/select-field";
@@ -184,14 +185,14 @@ export function AccountDialog({
                 ? t("Connect your mailbox")
                 : t("Add account")}
           </DialogTitle>
-          <DialogDescription>
+          <DialogDescription className="sr-only">
             {account
               ? t("Configure mail servers and local retention.")
               : t("Choose your email provider.")}
           </DialogDescription>
         </DialogHeader>
         {!account ? (
-          <ScrollArea className="dialog-form-scroll">
+          <ScrollArea fade="vertical" className="dialog-form-scroll">
             <div className="providers">
               {providers.map((p) => (
                 <Button
@@ -224,7 +225,7 @@ export function AccountDialog({
             }}
             className="account-form min-h-0"
           >
-            <ScrollArea className="dialog-form-scroll">
+            <ScrollArea fade="vertical" className="dialog-form-scroll">
               <div className="account-form-fields pb-1">
                 {!editing && (
                   <Button
@@ -277,9 +278,8 @@ export function AccountDialog({
                             )
                           : t("Password / app password")}
                       </Label>
-                      <Input
+                      <PasswordInput
                         id="password"
-                        type="password"
                         autoComplete="off"
                         required={!editing || editing.auth !== "password"}
                         value={password}
@@ -444,9 +444,8 @@ export function AccountDialog({
                                   "SMTP password (blank uses incoming password)",
                                 )}
                           </Label>
-                          <Input
+                          <PasswordInput
                             id="account-smtp-password"
-                            type="password"
                             value={smtpPassword}
                             disabled={smtpUseIncoming}
                             onChange={(e) => setSmtpPassword(e.target.value)}

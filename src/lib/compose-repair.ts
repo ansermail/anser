@@ -115,7 +115,17 @@ export function showDraftEdits(editor: Editor, edits: DraftEdit[]) {
           () => {
             const addition = document.createElement("span");
             addition.className = "compose-repair-added";
-            addition.textContent = "+ " + edit.replacement;
+            const lines = edit.replacement.trim().split(/\r?\n\s*/);
+            if (lines.length > 1) {
+              lines.forEach((line, index) => {
+                const row = document.createElement("span");
+                row.className = "compose-repair-added-line";
+                row.textContent = index === 0 ? "+ " + line : line;
+                addition.append(row);
+              });
+            } else {
+              addition.textContent = "+ " + edit.replacement;
+            }
             return addition;
           },
           { side: -1 },

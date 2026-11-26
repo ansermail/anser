@@ -12,6 +12,7 @@ import { Alert, AlertDescription } from "./ui/alert";
 import { signatureContent } from "@/lib/signatures";
 import type { MailSignature } from "@/lib/types";
 import { useConfirmation } from "@/hooks/use-confirmation";
+import { MiddleTruncateFilename } from "./middle-truncate-filename";
 import { MailContent } from "./mail-content";
 import { Switch } from "./ui/switch";
 import { Label } from "./ui/label";
@@ -22,6 +23,7 @@ import {
   FieldGroup,
   Field,
   FieldContent,
+  FieldError,
   FieldLabel,
 } from "./ui/field";
 import {
@@ -128,6 +130,12 @@ export function ComposeDialog({
     [closing, setClosing] = useState(false),
     [extra, setExtra] = useState(false);
   const [signatureError, setSignatureError] = useState("");
+  const [fieldErrors, setFieldErrors] = useState<{
+    account?: string;
+    to?: string;
+    cc?: string;
+    bcc?: string;
+  }>({});
   const [forwardError, setForwardError] = useState("");
   const [forwardLoading, setForwardLoading] = useState(false);
   const [imageLoading, setImageLoading] = useState(false);
@@ -475,7 +483,14 @@ export function ComposeDialog({
       return false;
     }
     if (!value?.accountId || !value.to.trim()) {
-      toast.error(t("Select a sending account and enter recipients"));
+      const message = t("Select a sending account and enter recipients");
+      setFieldErrors(
+        !value?.accountId ? { account: message } : { to: message },
+      );
+      document
+        .getElementById(!value?.accountId ? "compose-sender" : "to")
+        ?.focus();
+      toast.error(message);
       return false;
     }
     if (value.signature?.accountId !== value.accountId) {
@@ -486,21 +501,26 @@ export function ComposeDialog({
       );
       return false;
     }
-    for (const [name, addresses] of [
-      [t("To"), value.to],
-      [t("Cc"), value.cc],
-      [t("Bcc"), value.bcc],
-    ]) {
+    for (const [key, id, name, addresses] of [
+      ["to", "to", t("To"), value.to],
+      ["cc", "cc", t("Cc"), value.cc],
+      ["bcc", "bcc", t("Bcc"), value.bcc],
+    ] as const) {
       if (
         addressTokens(addresses).filter(Boolean).length !==
         parseAddresses(addresses).length
       ) {
-        toast.error(
-          t("{value0} contains an invalid email address", { value0: name }),
-        );
+        const message = t("{value0} contains an invalid email address", {
+          value0: name,
+        });
+        setFieldErrors({ [key]: message });
+        if (key !== "to") setExtra(true);
+        requestAnimationFrame(() => document.getElementById(id)?.focus());
+        toast.error(message);
         return false;
       }
     }
+    setFieldErrors({});
     if (
       !value.subject.trim() &&
       !(await askConfirmation({
@@ -532,9 +552,49 @@ export function ComposeDialog({
     setSending(true);
     try {
       await persistence.current;
-      await call("queue_send", { draft: prepareCompose(latest.current, dark) });
+      const queuedDraft = prepareCompose(latest.current, dark);
+      await call("queue_send", { draft: queuedDraft });
       toast.success(
         t("Added to send history. Cancel or send now within 8 seconds."),
+        {
+          duration: 8000,
+          action: {
+            label: t("Undo"),
+            onClick: () => {
+              void call<
+                {
+                  id: string;
+                  status: string;
+                  sendKind?: string;
+                  draft: Compose;
+                }[]
+              >("outbox")
+                .then((records) => {
+                  const match = records.find(
+                    (r) =>
+                      r.status === "scheduled" &&
+                      r.sendKind === "undo" &&
+                      r.draft.id === queuedDraft.id,
+                  );
+                  if (!match) {
+                    toast.info(
+                      t("This message has already left the delay window."),
+                    );
+                    return;
+                  }
+                  return call("cancel_schedule", { id: match.id }).then(() => {
+                    toast.success(
+                      t(
+                        "Schedule canceled. Body and attachments restored as a draft.",
+                      ),
+                    );
+                    onSent();
+                  });
+                })
+                .catch((err) => toast.error(String(err)));
+            },
+          },
+        },
       );
       onSent();
       onQueued?.();
@@ -868,7 +928,17 @@ export function ComposeDialog({
                       id="compose-sender"
                       className="compose-sender"
                       value={value.accountId}
-                      onValueChange={(value) => update({ accountId: value })}
+                      aria-invalid={!!fieldErrors.account || undefined}
+                      aria-describedby={
+                        fieldErrors.account ? "compose-sender-error" : undefined
+                      }
+                      onValueChange={(accountId) => {
+                        setFieldErrors((prev) => ({
+                          ...prev,
+                          account: undefined,
+                        }));
+                        update({ accountId });
+                      }}
                     >
                       <SelectOption value="" disabled>
                         {t("Select sending account")}
@@ -882,13 +952,28 @@ export function ComposeDialog({
                         ))}
                     </SelectField>
                   </div>
+                  {fieldErrors.account && (
+                    <FieldError
+                      id="compose-sender-error"
+                      className="px-6 text-xs"
+                    >
+                      {fieldErrors.account}
+                    </FieldError>
+                  )}
                   <div className="compose-row">
                     <Label htmlFor="to">{t("To")}</Label>
                     <RecipientInput
                       id="to"
                       autoFocus
                       value={value.to}
-                      onChange={(to) => update({ to })}
+                      ariaInvalid={!!fieldErrors.to}
+                      ariaDescribedBy={
+                        fieldErrors.to ? "compose-to-error" : undefined
+                      }
+                      onChange={(to) => {
+                        setFieldErrors((prev) => ({ ...prev, to: undefined }));
+                        update({ to });
+                      }}
                       suggestions={suggestions}
                     />
                     <Button
@@ -900,6 +985,11 @@ export function ComposeDialog({
                       {t("Cc / Bcc")}
                     </Button>
                   </div>
+                  {fieldErrors.to && (
+                    <FieldError id="compose-to-error" className="px-6 text-xs">
+                      {fieldErrors.to}
+                    </FieldError>
+                  )}
                   {extra && (
                     <>
                       <div className="compose-row">
@@ -907,19 +997,55 @@ export function ComposeDialog({
                         <RecipientInput
                           id="cc"
                           value={value.cc}
-                          onChange={(cc) => update({ cc })}
+                          ariaInvalid={!!fieldErrors.cc}
+                          ariaDescribedBy={
+                            fieldErrors.cc ? "compose-cc-error" : undefined
+                          }
+                          onChange={(cc) => {
+                            setFieldErrors((prev) => ({
+                              ...prev,
+                              cc: undefined,
+                            }));
+                            update({ cc });
+                          }}
                           suggestions={suggestions}
                         />
                       </div>
+                      {fieldErrors.cc && (
+                        <FieldError
+                          id="compose-cc-error"
+                          className="px-6 text-xs"
+                        >
+                          {fieldErrors.cc}
+                        </FieldError>
+                      )}
                       <div className="compose-row">
                         <Label htmlFor="bcc">{t("Bcc")}</Label>
                         <RecipientInput
                           id="bcc"
                           value={value.bcc}
-                          onChange={(bcc) => update({ bcc })}
+                          ariaInvalid={!!fieldErrors.bcc}
+                          ariaDescribedBy={
+                            fieldErrors.bcc ? "compose-bcc-error" : undefined
+                          }
+                          onChange={(bcc) => {
+                            setFieldErrors((prev) => ({
+                              ...prev,
+                              bcc: undefined,
+                            }));
+                            update({ bcc });
+                          }}
                           suggestions={suggestions}
                         />
                       </div>
+                      {fieldErrors.bcc && (
+                        <FieldError
+                          id="compose-bcc-error"
+                          className="px-6 text-xs"
+                        >
+                          {fieldErrors.bcc}
+                        </FieldError>
+                      )}
                     </>
                   )}
                   <div className="compose-row">
@@ -1218,10 +1344,17 @@ export function ComposeDialog({
                               />
                               <FieldContent className="min-w-0">
                                 <FieldLabel
-                                  className="max-w-full break-words"
+                                  className="min-w-0 max-w-full"
                                   htmlFor={`forward-file-${file.id}`}
                                 >
-                                  {file.name} · {formatSize(file.size)}
+                                  <MiddleTruncateFilename
+                                    name={file.name}
+                                    className="max-w-[260px]"
+                                  />
+                                  <span className="shrink-0 text-muted-foreground tabular-nums">
+                                    {" "}
+                                    · {formatSize(file.size)}
+                                  </span>
                                 </FieldLabel>
                               </FieldContent>
                             </Field>
@@ -1231,25 +1364,29 @@ export function ComposeDialog({
                     )}
                     {value.attachments.length > 0 && (
                       <div className="compose-attachments">
-                        {value.attachments.map((p, i) => (
-                          <span key={p + i}>
-                            <Paperclip size={13} />
-                            {p.split(/[\\/]/).pop() || p}
-                            <Button
-                              variant="ghost"
-                              title={t("Remove attachment")}
-                              onClick={() =>
-                                update({
-                                  attachments: value.attachments.filter(
-                                    (_, j) => i !== j,
-                                  ),
-                                })
-                              }
-                            >
-                              <X size={13} />
-                            </Button>
-                          </span>
-                        ))}
+                        {value.attachments.map((p, i) => {
+                          const name = p.split(/[\\/]/).pop() || p;
+                          return (
+                            <span key={p + i} className="max-w-[260px]">
+                              <Paperclip size={13} className="shrink-0" />
+                              <MiddleTruncateFilename name={name} />
+                              <Button
+                                variant="ghost"
+                                title={t("Remove attachment")}
+                                aria-label={t("Remove attachment")}
+                                onClick={() =>
+                                  update({
+                                    attachments: value.attachments.filter(
+                                      (_, j) => i !== j,
+                                    ),
+                                  })
+                                }
+                              >
+                                <X size={13} />
+                              </Button>
+                            </span>
+                          );
+                        })}
                       </div>
                     )}
                   </div>
@@ -1351,7 +1488,14 @@ export function ComposeDialog({
                   <Alert role="status" className="compose-attachment-reminder">
                     <AlertDescription className="compose-attachment-reminder-content">
                       <Paperclip aria-hidden="true" />
-                      <span title={attachmentReminder.keywords.join(" / ")}>
+                      <span
+                        title={t(
+                          "The message mentions “{value0}”, but no file is attached.",
+                          {
+                            value0: attachmentReminder.keywords.join(" / "),
+                          },
+                        )}
+                      >
                         {t(
                           "The message mentions “{value0}”, but no file is attached.",
                           {

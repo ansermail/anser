@@ -266,10 +266,47 @@ function firstContent(container: Element) {
   );
 }
 
+function preserveBlockSpaces(block: Element) {
+  let atLineStart = true;
+  const walk = (node: Node) => {
+    if (node.nodeType === Node.TEXT_NODE) {
+      const value = node.nodeValue || "";
+      if (!value) return;
+      let next = value;
+      if (atLineStart) {
+        next = next.replace(/^ +/, (spaces) => "\u00a0".repeat(spaces.length));
+      }
+      next = next.replace(/ {2,}/g, (spaces) => {
+        return "\u00a0".repeat(spaces.length - 1) + " ";
+      });
+      if (next !== value) node.nodeValue = next;
+      if (value.length > 0) atLineStart = false;
+      return;
+    }
+    if (node.nodeType !== Node.ELEMENT_NODE) return;
+    const el = node as Element;
+    if (/^(PRE|CODE|SCRIPT|STYLE|TABLE)$/.test(el.tagName)) return;
+    if (el.tagName === "BR") {
+      atLineStart = true;
+      return;
+    }
+    if (/^(P|DIV|H[1-6]|LI|TD|TH|BLOCKQUOTE|UL|OL)$/.test(el.tagName)) {
+      preserveBlockSpaces(el);
+      atLineStart = true;
+      return;
+    }
+    for (const child of [...el.childNodes]) walk(child);
+  };
+  for (const child of [...block.childNodes]) walk(child);
+}
+
 function deliveryMarkup(html: string, visual: boolean, dark: boolean): string {
   if (!html || (!visual && !html.includes("taskItem"))) return html;
   const doc = new DOMParser().parseFromString(html, "text/html");
-  if (visual) applyComposePresentation(doc, dark);
+  if (visual) {
+    applyComposePresentation(doc, dark);
+    preserveBlockSpaces(doc.body);
+  }
   for (const item of doc.querySelectorAll<HTMLLIElement>(
     'li[data-type="taskItem"]',
   )) {

@@ -120,8 +120,8 @@
 
 | 术语（Topinspo） | 雁信执行规则 |
 | --- | --- |
-| [提示词输入框（Prompt Composer）](https://www.topinspo.design/vocabulary?term=prompt-composer) | 写信 AI 助手指令区基于 `assistant-ui` 官方 primitives + shadcn 外壳，保持多行自适应输入、清晰发送/停止按钮与简洁占位提示，不嵌入邮件正文编辑器内部。 |
-| [流式文本（Streaming Text）](https://www.topinspo.design/vocabulary?term=streaming-text) | AI 生成期间保持单套清晰运行中反馈（已按规范去掉 `assistant-ui` 默认尾注圆点），流式输出平滑追加且不抢夺用户手动回滚查看的滚动位置。 |
+| [提示词输入框（Prompt Composer）](https://www.topinspo.design/vocabulary?term=prompt-composer) | 写信 AI 助手指令区基于 shadcn `InputGroup` 与 `src/components/ai-elements/prompt-input.tsx`，保持多行自适应输入、清晰发送/停止按钮与简洁占位提示，不嵌入邮件正文编辑器内部。 |
+| [流式文本（Streaming Text）](https://www.topinspo.design/vocabulary?term=streaming-text) | AI 生成期间保持单套清晰运行中反馈（`ChainOfThought` + `Shimmer`，无多余尾注圆点），输出平滑追加且不抢夺用户手动回滚查看的滚动位置。 |
 | [思考过程折叠（Thinking Disclosure）](https://www.topinspo.design/vocabulary?term=thinking-disclosure) | 若接入带推理过程（reasoning）的模型，思考内容默认折叠收纳、仅展示轻量状态摘要，点击按需展开，不挤占最终正文建议或回答的首屏视野。 |
 | [引用来源胶囊（Citation Pill）](https://www.topinspo.design/vocabulary?term=citation-pill) | AI 摘要中的时间提醒或未来跨邮件问答引用，必须附带可核对的原文证据/来源锚点（如摘要原文证据、点击直达源邮件），绝不凭空编造来源。 |
 | [斜杠命令（Slash Command）](https://www.topinspo.design/vocabulary?term=slash-command) | 未来若在写信助手或编辑器提供 `/` 快捷指令菜单，采用紧凑浮层支持键盘筛选与 `Escape` 恢复原正文焦点，不干扰正常输入带 `/` 的网址或日期。 |

@@ -5,17 +5,30 @@ import { mailShortcutKeys, type MailShortcut } from "@/lib/mail-shortcuts";
 export function MailActionTooltip({
   action,
   label,
+  disabledReason,
   children,
 }: {
   action: MailShortcut;
   label: string;
-  children: ReactElement;
+  disabledReason?: string;
+  children: ReactElement<{ disabled?: boolean }>;
 }) {
+  const disabled = Boolean(children.props?.disabled);
   return (
     <Tooltip>
-      <TooltipTrigger asChild>{children}</TooltipTrigger>
+      <TooltipTrigger asChild>
+        {disabled ? (
+          <span tabIndex={0} className="inline-flex">
+            {children}
+          </span>
+        ) : (
+          children
+        )}
+      </TooltipTrigger>
       <TooltipContent>
-        {label} · {mailShortcutKeys[action]}
+        {disabled && disabledReason
+          ? disabledReason
+          : `${label} · ${mailShortcutKeys[action]}`}
       </TooltipContent>
     </Tooltip>
   );

@@ -565,16 +565,29 @@ export function planMailTranslation(
         // HTML source indentation is not visible whitespace. Preserve authored
         // PRE/BR formatting, without exposing pretty-printed source as gaps.
         view.style.setProperty("white-space", whitespace);
-        view.style.setProperty("margin-top", "0.35em");
-        view.style.setProperty("margin-bottom", "0.5em");
+        view.style.setProperty("margin-top", "0.3em");
+        view.style.setProperty("margin-bottom", "0.7em");
         view.style.setProperty("overflow-wrap", "break-word");
         const action = group.parent.closest("a[data-mail-href],a[href]");
         if (!action || !actionLink(action)) {
+          const cellStyle = /^(TD|TH)$/.test(group.parent.tagName)
+            ? styleOf(group.parent)
+            : null;
+          const tightCell =
+            !!cellStyle &&
+            parseFloat(cellStyle.paddingLeft || "0") === 0 &&
+            parseFloat(cellStyle.paddingRight || "0") === 0;
           view.style.setProperty(
-            "border-inline-start",
-            "2px solid color-mix(in srgb, currentColor 40%, transparent)",
+            "background-color",
+            "color-mix(in srgb, currentColor 5.5%, transparent)",
           );
-          view.style.setProperty("padding-inline-start", "0.6em");
+          view.style.setProperty("border-radius", "6px");
+          if (tightCell) {
+            view.style.setProperty("padding", "0.25em 0");
+          } else {
+            view.style.setProperty("padding", "0.3em 0.55em");
+            view.style.setProperty("margin-inline", "-0.55em");
+          }
         }
         if (action && actionLink(action)) {
           view.style.setProperty("white-space", "normal");

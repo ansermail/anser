@@ -507,6 +507,45 @@ function QuickReply({
       });
       toast.success(
         t("Queued to send. Cancel within 8 seconds in Send history."),
+        {
+          duration: 8000,
+          action: {
+            label: t("Undo"),
+            onClick: () => {
+              void call<
+                {
+                  id: string;
+                  status: string;
+                  sendKind?: string;
+                  draft: Compose;
+                }[]
+              >("outbox")
+                .then((records) => {
+                  const match = records.find(
+                    (r) =>
+                      r.status === "scheduled" &&
+                      r.sendKind === "undo" &&
+                      r.draft.id === draft.id,
+                  );
+                  if (!match) {
+                    toast.info(
+                      t("This message has already left the delay window."),
+                    );
+                    return;
+                  }
+                  return call("cancel_schedule", { id: match.id }).then(() => {
+                    toast.success(
+                      t(
+                        "Schedule canceled. Body and attachments restored as a draft.",
+                      ),
+                    );
+                    onSent();
+                  });
+                })
+                .catch((err) => toast.error(String(err)));
+            },
+          },
+        },
       );
       onSent();
     } catch (e) {
@@ -549,7 +588,7 @@ function QuickReply({
       {account ? (
         <>
           <div className="quick-reply-heading">
-            <span>
+            <span title={draft?.to || senderName(target.mail.sender)}>
               {t("Reply to")}{" "}
               <strong>{draft?.to || senderName(target.mail.sender)}</strong>
             </span>
@@ -921,18 +960,18 @@ export function ConversationReader({
             </div>
           </ScrollArea>
         )}
+        {!showSingle && newBelow && (
+          <Button
+            variant="secondary"
+            size="sm"
+            className="new-conversation-mail"
+            onClick={bottom}
+          >
+            <ArrowDown size={14} />
+            {t("New messages · View")}
+          </Button>
+        )}
       </MailSummaryLayer>
-      {!showSingle && newBelow && (
-        <Button
-          variant="secondary"
-          size="sm"
-          className="new-conversation-mail"
-          onClick={bottom}
-        >
-          <ArrowDown size={14} />
-          {t("New messages · View")}
-        </Button>
-      )}
       {!showSingle && targetDetail && !editorOpen && !selected.mail.trashed && (
         <QuickReply
           key={targetDetail.mail.id}

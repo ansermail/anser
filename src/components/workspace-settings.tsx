@@ -27,9 +27,7 @@ export function WorkspaceSettings({
           <Label htmlFor="show-workbench">{t("Workbench")}</Label>
         </CardTitle>
         <CardDescription id="show-workbench-description">
-          {t(
-            "The sidebar entry opens the calendar, quadrants, work items and reports.",
-          )}
+          {t("Hiding the entry keeps all locally saved work items.")}
         </CardDescription>
         <CardAction className="self-center">
           <Switch

@@ -5,6 +5,7 @@ import {
   Eye,
   AlertCircle,
   CheckCircle2,
+  History,
   LoaderCircle,
   Clock3,
 } from "lucide-react";
@@ -12,6 +13,15 @@ import type { Compose, OutboxRecord } from "@/lib/types";
 import { call } from "@/lib/api";
 import { addressTokens, displayAddress, parseAddresses } from "@/lib/addresses";
 import { Button } from "./ui/button";
+import {
+  Empty,
+  EmptyContent,
+  EmptyDescription,
+  EmptyHeader,
+  EmptyMedia,
+  EmptyTitle,
+} from "./ui/empty";
+import { ScrollArea } from "./ui/scroll-area";
 import { SidebarTrigger } from "./ui/sidebar";
 import { toast } from "sonner";
 import { localDateTime, scheduledIso } from "@/lib/schedule-time";
@@ -433,23 +443,48 @@ export function OutboxPanel({
           {failure}
         </p>
       )}
-      <TaskDataTable
-        label={t("Send history")}
-        rows={rows}
-        columnWidths={{ status: 12 }}
-        empty={empty}
-        loadingLabel={loading ? t("Loading send history…") : undefined}
-        pageSize={15}
-        fields={[
-          "status",
-          "task",
-          "recipient",
-          "scheduled",
-          "time",
-          "copy",
-          "actions",
-        ]}
-      />
+      {!loading && records.length === 0 ? (
+        <Empty className="min-h-[260px] rounded-xl border bg-card">
+          <EmptyHeader>
+            <EmptyMedia variant="icon">
+              {failure ? <AlertCircle /> : <History />}
+            </EmptyMedia>
+            <EmptyTitle>
+              {failure ? t("Could not read") : t("No send history yet")}
+            </EmptyTitle>
+            <EmptyDescription>{failure || empty}</EmptyDescription>
+          </EmptyHeader>
+          {failure && (
+            <EmptyContent>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => void refresh()}
+              >
+                {t("Retry")}
+              </Button>
+            </EmptyContent>
+          )}
+        </Empty>
+      ) : (
+        <TaskDataTable
+          label={t("Send history")}
+          rows={rows}
+          columnWidths={{ status: 12 }}
+          empty={empty}
+          loadingLabel={loading ? t("Loading send history…") : undefined}
+          pageSize={15}
+          fields={[
+            "status",
+            "task",
+            "recipient",
+            "scheduled",
+            "time",
+            "copy",
+            "actions",
+          ]}
+        />
+      )}
       <Dialog
         open={!!selected}
         onOpenChange={(open) => {
@@ -462,13 +497,13 @@ export function OutboxPanel({
         <DialogContent className="outbox-details-dialog">
           {selected && (
             <>
-              <DialogHeader className="outbox-detail-header">
-                <DialogTitle className="pr-8 break-words">
+              <DialogHeader className="outbox-detail-header shrink-0 border-b px-6 py-4 pr-12">
+                <DialogTitle className="break-words">
                   {selected.draft.subject || t("(No subject)")}
                 </DialogTitle>
                 <DialogDescription className="outbox-detail-description">
                   <span
-                    className={`outbox-status ${selected.status}`}
+                    className={`outbox-status tabular-nums ${selected.status}`}
                     title={statusText(selected)}
                   >
                     {statusGlyph(selected)}
@@ -476,219 +511,224 @@ export function OutboxPanel({
                   </span>
                 </DialogDescription>
               </DialogHeader>
-              <dl className="outbox-detail-meta">
-                <div className="outbox-detail-address-field">
-                  <dt>
-                    {t("Recipient")}
-                    {!!selected.draft.to && (
-                      <span className="outbox-detail-address-count">
-                        {
-                          addressTokens(selected.draft.to).filter(Boolean)
-                            .length
-                        }
-                      </span>
-                    )}
-                  </dt>
-                  <dd>
-                    {selected.draft.to ? (
-                      <OutboxAddressList value={selected.draft.to} />
-                    ) : (
-                      "—"
-                    )}
-                  </dd>
-                </div>
-                {!!selected.draft.cc?.trim() && (
-                  <div className="outbox-detail-address-field">
-                    <dt>
-                      {t("Cc")}
-                      <span className="outbox-detail-address-count">
-                        {
-                          addressTokens(selected.draft.cc).filter(Boolean)
-                            .length
-                        }
-                      </span>
-                    </dt>
-                    <dd>
-                      <OutboxAddressList value={selected.draft.cc} />
-                    </dd>
-                  </div>
-                )}
-                {!!selected.draft.bcc?.trim() && (
-                  <div className="outbox-detail-address-field">
-                    <dt>
-                      {t("Bcc")}
-                      <span className="outbox-detail-address-count">
-                        {
-                          addressTokens(selected.draft.bcc).filter(Boolean)
-                            .length
-                        }
-                      </span>
-                    </dt>
-                    <dd>
-                      <OutboxAddressList value={selected.draft.bcc} />
-                    </dd>
-                  </div>
-                )}
-                {selected.scheduledAt && selected.sendKind !== "undo" && (
-                  <div>
-                    <dt>{t("Scheduled time")}</dt>
-                    <dd>{displayTime(selected.scheduledAt)}</dd>
-                  </div>
-                )}
-                <div
-                  className={
-                    selected.scheduledAt && selected.sendKind !== "undo"
-                      ? undefined
-                      : "outbox-detail-time-only"
-                  }
-                >
-                  <dt>{t("Time")}</dt>
-                  <dd>
-                    {selected.updatedAt
-                      ? displayTime(selected.updatedAt)
-                      : t("Earlier send history")}
-                  </dd>
-                </div>
-              </dl>
-              <div className="outbox-detail-content">
-                {selected.status === "uncertain" && (
-                  <div className="outbox-detail-result is-attention">
-                    <AlertCircle aria-hidden="true" />
-                    <p>
-                      {t(
-                        "Send was not confirmed; the message may have arrived. Check the server's Sent folder first.",
-                      )}
-                    </p>
-                  </div>
-                )}
-                {selected.status === "sent" && (
-                  <div className="outbox-detail-result is-sent">
-                    <CheckCircle2 aria-hidden="true" />
-                    <div>
-                      <p>
-                        {t(
-                          "The outgoing server accepted the message. This does not confirm recipient delivery.",
+              <ScrollArea fade="vertical" className="min-h-0 flex-1">
+                <div className="flex flex-col gap-5 px-6 py-4">
+                  <dl className="outbox-detail-meta">
+                    <div className="outbox-detail-address-field">
+                      <dt>
+                        {t("Recipient")}
+                        {!!selected.draft.to && (
+                          <span className="outbox-detail-address-count">
+                            {
+                              addressTokens(selected.draft.to).filter(Boolean)
+                                .length
+                            }
+                          </span>
                         )}
-                      </p>
-                      <span>
-                        {selected.archived
-                          ? t("Local sent copy saved")
-                          : t(
-                              "Local copy is not yet archived. The original remains in Send history.",
+                      </dt>
+                      <dd>
+                        {selected.draft.to ? (
+                          <OutboxAddressList value={selected.draft.to} />
+                        ) : (
+                          "—"
+                        )}
+                      </dd>
+                    </div>
+                    {!!selected.draft.cc?.trim() && (
+                      <div className="outbox-detail-address-field">
+                        <dt>
+                          {t("Cc")}
+                          <span className="outbox-detail-address-count">
+                            {
+                              addressTokens(selected.draft.cc).filter(Boolean)
+                                .length
+                            }
+                          </span>
+                        </dt>
+                        <dd>
+                          <OutboxAddressList value={selected.draft.cc} />
+                        </dd>
+                      </div>
+                    )}
+                    {!!selected.draft.bcc?.trim() && (
+                      <div className="outbox-detail-address-field">
+                        <dt>
+                          {t("Bcc")}
+                          <span className="outbox-detail-address-count">
+                            {
+                              addressTokens(selected.draft.bcc).filter(Boolean)
+                                .length
+                            }
+                          </span>
+                        </dt>
+                        <dd>
+                          <OutboxAddressList value={selected.draft.bcc} />
+                        </dd>
+                      </div>
+                    )}
+                    {selected.scheduledAt && selected.sendKind !== "undo" && (
+                      <div>
+                        <dt>{t("Scheduled time")}</dt>
+                        <dd>{displayTime(selected.scheduledAt)}</dd>
+                      </div>
+                    )}
+                    <div
+                      className={
+                        selected.scheduledAt && selected.sendKind !== "undo"
+                          ? undefined
+                          : "outbox-detail-time-only"
+                      }
+                    >
+                      <dt>{t("Time")}</dt>
+                      <dd>
+                        {selected.updatedAt
+                          ? displayTime(selected.updatedAt)
+                          : t("Earlier send history")}
+                      </dd>
+                    </div>
+                  </dl>
+                  <div className="outbox-detail-content">
+                    {selected.status === "uncertain" && (
+                      <div className="outbox-detail-result is-attention">
+                        <AlertCircle aria-hidden="true" />
+                        <p>
+                          {t(
+                            "Send was not confirmed; the message may have arrived. Check the server's Sent folder first.",
+                          )}
+                        </p>
+                      </div>
+                    )}
+                    {selected.status === "sent" && (
+                      <div className="outbox-detail-result is-sent">
+                        <CheckCircle2 aria-hidden="true" />
+                        <div>
+                          <p>
+                            {t(
+                              "The outgoing server accepted the message. This does not confirm recipient delivery.",
                             )}
-                      </span>
-                    </div>
-                  </div>
-                )}
-                {selected.error && selected.status !== "sent" && (
-                  <div className="outbox-detail-result is-error">
-                    <AlertCircle aria-hidden="true" />
-                    <p>{selected.error}</p>
-                  </div>
-                )}
-                {selected.status === "sent" && selected.serverCopy && (
-                  <div className="outbox-detail-copy">
-                    <div className="outbox-detail-copy-heading">
-                      <span>{t("Server copy")}</span>
-                      <Badge variant="secondary">
-                        {uploadLabels[selected.serverCopy.status] ||
-                          t("Save status needs verification")}
-                      </Badge>
-                    </div>
-                    {selected.serverCopy.target && (
-                      <p className="outbox-detail-copy-note">
-                        {t("Server folder: ")}
-                        {selected.serverCopy.targetLabel ||
-                          selected.serverCopy.target}
-                      </p>
+                          </p>
+                          <span>
+                            {selected.archived
+                              ? t("Local sent copy saved")
+                              : t(
+                                  "Local copy is not yet archived. The original remains in Send history.",
+                                )}
+                          </span>
+                        </div>
+                      </div>
                     )}
-                    {selected.serverCopy.error && (
-                      <Popover>
-                        <PopoverTrigger asChild>
-                          <Button
-                            variant="outline"
-                            size="xs"
-                            className="self-start"
-                          >
-                            {t("Technical details")}
-                          </Button>
-                        </PopoverTrigger>
-                        <PopoverContent
-                          align="start"
-                          className="max-h-48 overflow-auto text-xs break-words select-text"
-                        >
-                          {selected.serverCopy.error}
-                        </PopoverContent>
-                      </Popover>
+                    {selected.error && selected.status !== "sent" && (
+                      <div className="outbox-detail-result is-error">
+                        <AlertCircle aria-hidden="true" />
+                        <p>{selected.error}</p>
+                      </div>
                     )}
-                    {selected.serverCopy.origin === "existing" && (
-                      <p className="outbox-detail-copy-note">
-                        {t(
-                          "An identical copy exists on the server. No duplicate upload.",
+                    {selected.status === "sent" && selected.serverCopy && (
+                      <div className="outbox-detail-copy">
+                        <div className="outbox-detail-copy-heading">
+                          <span>{t("Server copy")}</span>
+                          <Badge variant="secondary">
+                            {uploadLabels[selected.serverCopy.status] ||
+                              t("Save status needs verification")}
+                          </Badge>
+                        </div>
+                        {selected.serverCopy.target && (
+                          <p className="outbox-detail-copy-note">
+                            {t("Server folder: ")}
+                            {selected.serverCopy.targetLabel ||
+                              selected.serverCopy.target}
+                          </p>
                         )}
-                      </p>
-                    )}
-                    {selected.serverCopy.origin === "smtpReported" && (
-                      <p className="outbox-detail-copy-note">
-                        {selected.serverCopy.status === "completed"
-                          ? t(
-                              "The server reported an SMTP-saved copy. The unique copy was verified; no duplicate upload.",
-                            )
-                          : ["checking", "verifying"].includes(
-                                selected.serverCopy.status,
-                              )
-                            ? t(
-                                "The server reported an SMTP-saved copy. Checking the unique copy; no repeat upload.",
-                              )
-                            : t(
-                                "The server reported an SMTP-saved copy, but the result is unconfirmed. Read-only verification only; no repeat upload.",
-                              )}
-                      </p>
-                    )}
-                    {selected.serverCopy.status === "uncertain" && (
-                      <p className="outbox-detail-copy-note">
-                        {t(
-                          "SMTP sending succeeded and the copy may already be saved. Verification only; no automatic repeat upload.",
+                        {selected.serverCopy.error && (
+                          <Popover>
+                            <PopoverTrigger asChild>
+                              <Button
+                                variant="outline"
+                                size="xs"
+                                className="self-start"
+                              >
+                                {t("Technical details")}
+                              </Button>
+                            </PopoverTrigger>
+                            <PopoverContent
+                              align="start"
+                              className="max-h-48 overflow-auto text-xs break-words select-text"
+                            >
+                              {selected.serverCopy.error}
+                            </PopoverContent>
+                          </Popover>
                         )}
-                      </p>
-                    )}
-                  </div>
-                )}
-                {selected.status === "sent" && selected.error && (
-                  <div className="outbox-detail-result is-error">
-                    <AlertCircle aria-hidden="true" />
-                    <p>{selected.error}</p>
-                  </div>
-                )}
-                {selected.status === "scheduled" &&
-                  selected.sendKind === "undo" && (
-                    <div className="outbox-detail-pending">
-                      <Progress
-                        value={Math.min(
-                          100,
-                          Math.max(
-                            0,
-                            100 -
-                              (Date.parse(selected.scheduledAt || "") - now) /
-                                80,
-                          ),
+                        {selected.serverCopy.origin === "existing" && (
+                          <p className="outbox-detail-copy-note">
+                            {t(
+                              "An identical copy exists on the server. No duplicate upload.",
+                            )}
+                          </p>
                         )}
-                        aria-label={t("Send delay progress")}
-                      />
-                      <p>{statusText(selected)}</p>
-                    </div>
+                        {selected.serverCopy.origin === "smtpReported" && (
+                          <p className="outbox-detail-copy-note">
+                            {selected.serverCopy.status === "completed"
+                              ? t(
+                                  "The server reported an SMTP-saved copy. The unique copy was verified; no duplicate upload.",
+                                )
+                              : ["checking", "verifying"].includes(
+                                    selected.serverCopy.status,
+                                  )
+                                ? t(
+                                    "The server reported an SMTP-saved copy. Checking the unique copy; no repeat upload.",
+                                  )
+                                : t(
+                                    "The server reported an SMTP-saved copy, but the result is unconfirmed. Read-only verification only; no repeat upload.",
+                                  )}
+                          </p>
+                        )}
+                        {selected.serverCopy.status === "uncertain" && (
+                          <p className="outbox-detail-copy-note">
+                            {t(
+                              "SMTP sending succeeded and the copy may already be saved. Verification only; no automatic repeat upload.",
+                            )}
+                          </p>
+                        )}
+                      </div>
+                    )}
+                    {selected.status === "sent" && selected.error && (
+                      <div className="outbox-detail-result is-error">
+                        <AlertCircle aria-hidden="true" />
+                        <p>{selected.error}</p>
+                      </div>
+                    )}
+                    {selected.status === "scheduled" &&
+                      selected.sendKind === "undo" && (
+                        <div className="outbox-detail-pending">
+                          <Progress
+                            value={Math.min(
+                              100,
+                              Math.max(
+                                0,
+                                100 -
+                                  (Date.parse(selected.scheduledAt || "") -
+                                    now) /
+                                    80,
+                              ),
+                            )}
+                            aria-label={t("Send delay progress")}
+                          />
+                          <p className="tabular-nums">{statusText(selected)}</p>
+                        </div>
+                      )}
+                  </div>
+                  {editing === selected.id && (
+                    <SchedulePicker
+                      value={time}
+                      onChange={setTime}
+                      onConfirm={(next) => void reschedule(selected.id, next)}
+                      onCancel={() => setEditing("")}
+                      busy={!!busy}
+                    />
                   )}
-              </div>
-              {editing === selected.id && (
-                <SchedulePicker
-                  value={time}
-                  onChange={setTime}
-                  onConfirm={(next) => void reschedule(selected.id, next)}
-                  onCancel={() => setEditing("")}
-                  busy={!!busy}
-                />
-              )}
-              <DialogFooter className="outbox-detail-footer">
+                </div>
+              </ScrollArea>
+              <DialogFooter className="outbox-detail-footer shrink-0 border-t px-6 py-4">
                 <div className="outbox-actions">
                   {selected.status === "scheduled" &&
                     selected.sendKind === "undo" && (

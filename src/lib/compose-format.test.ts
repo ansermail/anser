@@ -400,3 +400,26 @@ describe("Markdown visual editing round trips", () => {
     expect(html).not.toMatch(/href="(?:tel|ftp):/);
   });
 });
+
+describe("rich delivery whitespace", () => {
+  it("preserves authored leading and consecutive spaces in rich delivery HTML", () => {
+    const result = prepareCompose({
+      ...newDraft("account"),
+      format: "rich",
+      html: "<p>    希望您一切顺利。  请回复。</p><p>第一行<br>  第二行</p><pre>  keep pre</pre>",
+      body: "    希望您一切顺利。  请回复。\n第一行\n  第二行\n  keep pre",
+    });
+    const doc = new DOMParser().parseFromString(
+      result.deliveryHtml!,
+      "text/html",
+    );
+    const paragraphs = [...doc.querySelectorAll("[data-anser-authored] p")];
+    expect(paragraphs[0].textContent).toBe(
+      "\u00a0\u00a0\u00a0\u00a0希望您一切顺利。\u00a0 请回复。",
+    );
+    expect(paragraphs[1].textContent).toBe("第一行\u00a0\u00a0第二行");
+    expect(doc.querySelector("[data-anser-authored] pre")?.textContent).toBe(
+      "  keep pre",
+    );
+  });
+});

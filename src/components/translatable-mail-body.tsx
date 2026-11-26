@@ -21,7 +21,7 @@ import {
   type TranslationPart,
 } from "@/lib/mail-translation";
 import type { WorkItem } from "@/lib/workbench";
-import { useMailSummary } from "./mail-summary";
+import { useMailOverlayHost, useMailSummary } from "./mail-summary";
 import { MailContent } from "./mail-content";
 import { Button } from "./ui/button";
 import {
@@ -55,6 +55,7 @@ export function TranslatableMailBody({
   subjectContainer?: HTMLElement | null;
   onOpenLink: (href: string) => void;
 }) {
+  const overlayHost = useMailOverlayHost();
   const summary = useMailSummary(
     mailId ?? title,
     body,
@@ -350,6 +351,9 @@ export function TranslatableMailBody({
           actionsContainer,
         )}
       {summary.overlay}
+      {overlayHost &&
+        translationOverlay &&
+        createPortal(translationOverlay, overlayHost)}
       <span
         className="sr-only"
         role={error && !busy ? "alert" : "status"}
@@ -365,11 +369,11 @@ export function TranslatableMailBody({
           title={title}
           onOpenLink={onOpenLink}
           onDocumentReady={documentReady}
-          statusOverlay={translationOverlay}
+          statusOverlay={overlayHost ? null : translationOverlay}
         />
       ) : (
         <div className="relative min-w-0">
-          {translationOverlay && (
+          {!overlayHost && translationOverlay && (
             <div className="mail-body-status-stack">{translationOverlay}</div>
           )}
           <div className="message-body" data-mail-debug-region="" ref={plain}>

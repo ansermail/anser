@@ -120,7 +120,7 @@ export function RuleExecutions({
         <TaskPanelHeader
           title={t("Server rule history")}
           description={t(
-            "The latest 50 matches. Success is shown only after task completion. Unconfirmed results are not resent automatically.",
+            "Latest 50 matches; unconfirmed actions are never resent automatically.",
           )}
           onRefresh={reload}
         />

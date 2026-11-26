@@ -237,6 +237,8 @@ describe("bilingual mail display", () => {
     const label = doc.getElementById("button-label")!;
     const view = label.querySelector<HTMLElement>("[data-anser-translation]")!;
     expect(bodyView.style.whiteSpace).toBe("normal");
+    expect(bodyView.style.borderInlineStart).toBe("");
+    expect(bodyView.style.borderRadius).toBe("6px");
     expect(view.style.whiteSpace).toBe("normal");
     expect(view.style.lineHeight).toBe("1.35");
     expect(view.style.textIndent).toBe("0px");

@@ -31,7 +31,7 @@ export function RetentionBudgetView({
       <p className="text-sm font-medium">
         {t("Server review for the selected retention scope")}
       </p>
-      <dl className="grid grid-cols-2 gap-3 text-sm">
+      <dl className="grid grid-cols-2 gap-3 text-sm tabular-nums">
         <div>
           <dt className="text-muted-foreground">
             {t("Server message locations")}
@@ -71,7 +71,7 @@ export function RetentionBudgetView({
           </dd>
         </div>
       </dl>
-      <p className="text-sm text-muted-foreground">
+      <p className="text-sm text-muted-foreground tabular-nums">
         {t("Estimated space needed: ")}
         {budget.requiredBytes === null
           ? t("Cannot estimate completely")
@@ -87,7 +87,7 @@ export function RetentionBudgetView({
           <span>{t(". The save location changed. Refresh local status.")}</span>
         </p>
       )}
-      <p className="text-sm text-muted-foreground">
+      <p className="text-sm text-muted-foreground tabular-nums">
         {t("Checked: ")}
         {new Date(budget.checkedAt).toLocaleString(dateLocale())}
         {t(
@@ -95,15 +95,17 @@ export function RetentionBudgetView({
         )}
       </p>
       {budget.folders.map((f) => (
-        <p key={f.folder} className="text-sm break-words">
-          {f.displayName}：
-          {f.error
-            ? t("Incomplete · {value0}", { value0: f.error })
-            : t("{value0} items; estimated {value1} remaining · {value2}", {
-                value0: f.total,
-                value1: f.pending,
-                value2: budgetSize(f.pendingBytes ?? 0),
-              })}
+        <p key={f.folder} className="text-sm break-words tabular-nums">
+          {t("{value0}: {value1}", {
+            value0: f.displayName,
+            value1: f.error
+              ? t("Incomplete · {value0}", { value0: f.error })
+              : t("{value0} items; estimated {value1} remaining · {value2}", {
+                  value0: f.total,
+                  value1: f.pending,
+                  value2: budgetSize(f.pendingBytes ?? 0),
+                }),
+          })}
           {f.conservative &&
             t("(No stable server IDs; estimate includes all originals)")}
         </p>

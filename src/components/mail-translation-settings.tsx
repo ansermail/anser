@@ -1,3 +1,4 @@
+import { PasswordInput } from "./password-input";
 import { t } from "@/lib/i18n";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
@@ -258,9 +259,8 @@ export function MailTranslationSettings() {
                 </FieldDescription>
               </FieldContent>
               <div className={`${controlColumn} flex flex-col gap-2`}>
-                <Input
+                <PasswordInput
                   id="translation-key"
-                  type="password"
                   autoComplete="new-password"
                   value={key}
                   disabled={!ready || busy}
@@ -514,7 +514,6 @@ export function MailTranslationSettings() {
               </Field>
             </FieldGroup>
           </section>
-          <Separator />
           <div className="settings-form-actions">
             {ready && (
               <span
@@ -530,6 +529,7 @@ export function MailTranslationSettings() {
             )}
             <Button
               type="submit"
+              variant={dirty ? "default" : "outline"}
               aria-busy={saving}
               disabled={
                 !ready || busy || !config.baseUrl.trim() || !config.model.trim()

@@ -102,7 +102,10 @@ export function RichSearch({
             />
           </Field>
           <div className="flex items-center gap-2">
-            <span className="text-sm text-muted-foreground" aria-live="polite">
+            <span
+              className="min-w-[3.5rem] text-sm text-muted-foreground tabular-nums"
+              aria-live="polite"
+            >
               {state.current} / {state.count}
             </span>
             <Button

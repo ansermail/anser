@@ -46,6 +46,8 @@ pub struct Summary {
 pub struct Repair {
     message: String,
     edits: Vec<Edit>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    reasoning: Option<String>,
 }
 
 #[derive(Deserialize, Serialize)]
@@ -155,6 +157,61 @@ fn report_json_text(content: &str) -> Option<String> {
     None
 }
 
+fn extract_thinking_blocks(raw: &str) -> (String, Option<String>) {
+    let mut out = String::with_capacity(raw.len());
+    let mut thoughts = Vec::new();
+    let mut rest = raw;
+    loop {
+        let lower = rest.to_ascii_lowercase();
+        let Some(start) = lower.find("<think>") else {
+            out.push_str(rest);
+            break;
+        };
+        out.push_str(&rest[..start]);
+        let after_open = &rest[start + "<think>".len()..];
+        let after_open_lower = after_open.to_ascii_lowercase();
+        if let Some(end) = after_open_lower.find("</think>") {
+            let chunk = after_open[..end].trim();
+            if !chunk.is_empty() {
+                thoughts.push(chunk.to_string());
+            }
+            rest = &after_open[end + "</think>".len()..];
+        } else {
+            // Unclosed thinking tag: discard trailing reasoning text from JSON output.
+            let chunk = after_open.trim();
+            if !chunk.is_empty() {
+                thoughts.push(chunk.to_string());
+            }
+            break;
+        }
+    }
+    let reasoning = if thoughts.is_empty() {
+        None
+    } else {
+        Some(thoughts.join("\n\n"))
+    };
+    (out, reasoning)
+}
+
+fn sanitize_reasoning(text: Option<String>) -> Option<String> {
+    let raw = text?;
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+    let cleaned: String = trimmed
+        .chars()
+        .filter(|ch| !ch.is_control() || matches!(ch, '\n' | '\r' | '\t'))
+        .take(4000)
+        .collect();
+    let cleaned = cleaned.trim();
+    if cleaned.is_empty() {
+        None
+    } else {
+        Some(cleaned.to_string())
+    }
+}
+
 fn strip_outer_code_fence(content: &str) -> &str {
     let content = content.trim();
     let Some(fenced) = content.strip_prefix("```") else {
@@ -234,11 +291,18 @@ impl Input {
         {
             return Err("模型输出提前结束，请缩短内容后重试".into());
         }
-        let content = envelope
+        let raw_content = envelope
             .pointer("/choices/0/message/content")
             .and_then(Value::as_str)
-            .ok_or_else(|| invalid_response("缺少 message.content 文本"))?
-            .trim();
+            .ok_or_else(|| invalid_response("缺少 message.content 文本"))?;
+        let envelope_reasoning = envelope
+            .pointer("/choices/0/message/reasoning_content")
+            .or_else(|| envelope.pointer("/choices/0/message/reasoning"))
+            .and_then(Value::as_str)
+            .map(ToOwned::to_owned);
+        let (cleaned, inline_reasoning) = extract_thinking_blocks(raw_content);
+        let extracted_reasoning = sanitize_reasoning(envelope_reasoning.or(inline_reasoning));
+        let content = cleaned.trim();
         let content = if let Some(fenced) = content.strip_prefix("```") {
             fenced
                 .strip_prefix("json")
@@ -314,7 +378,7 @@ impl Input {
             Self::Repair {
                 paragraphs, blank, ..
             } => {
-                let plan: Repair = parse_structured(content).map_err(|error| {
+                let mut plan: Repair = parse_structured(content).map_err(|error| {
                     invalid_response(format_args!("修复 JSON 解析失败：{error}"))
                 })?;
                 let mut seen = HashSet::new();
@@ -332,6 +396,7 @@ impl Input {
                 {
                     return Err(invalid_response("修复字段或段落映射无效"));
                 }
+                plan.reasoning = extracted_reasoning.or_else(|| sanitize_reasoning(plan.reasoning));
                 Ok(Output::Repair(plan))
             }
         }
@@ -601,5 +666,58 @@ mod tests {
             instructions: Some("x".repeat(12_001)),
         };
         assert!(oversized.prompt().is_err());
+    }
+
+    #[test]
+    fn report_and_repair_strip_thinking_blocks() {
+        let report_input = Input::Report {
+            body: r#"{"period":["2026-11-16","2026-11-22"]}"#.into(),
+            language: "zh-CN".into(),
+            instructions: None,
+        };
+        let expected = "本周完成客户评审并整理后续事项，客户协作项目已进入交付确认阶段。产品设计评审仍在进行，下一步应完成方案提交并跟进供应商资料。";
+        let with_think = format!("<think>先分析输入结构再整理报告。</think>\n{expected}");
+        let Output::Report(report) = report_input
+            .parse(&raw_envelope(&with_think, "stop"))
+            .unwrap()
+        else {
+            panic!("expected report")
+        };
+        assert_eq!(report.text, expected);
+        assert!(!report.text.contains("先分析"));
+
+        let repair_input = Input::Repair {
+            paragraphs: vec!["Hello".into()],
+            instructions: vec!["Polish".into()],
+            blank: false,
+        };
+        let repair_with_think =
+            "<THINK>reasoning step</THINK>\n{\"message\":\"Polished\",\"edits\":[{\"index\":0,\"text\":\"Hello there\"}]}";
+        let Output::Repair(repaired) = repair_input
+            .parse(&raw_envelope(repair_with_think, "stop"))
+            .unwrap()
+        else {
+            panic!("expected repair")
+        };
+        assert_eq!(repaired.reasoning.as_deref(), Some("reasoning step"));
+
+        let envelope_with_reasoning = serde_json::to_vec(&json!({
+            "choices": [{
+                "finish_reason": "stop",
+                "message": {
+                    "reasoning_content": "Check tone and keep original dates intact.",
+                    "content": "{\"message\":\"Polished\",\"edits\":[{\"index\":0,\"text\":\"Hello there\"}]}"
+                }
+            }]
+        }))
+        .unwrap();
+        let Output::Repair(repaired_rc) = repair_input.parse(&envelope_with_reasoning).unwrap()
+        else {
+            panic!("expected repair")
+        };
+        assert_eq!(
+            repaired_rc.reasoning.as_deref(),
+            Some("Check tone and keep original dates intact.")
+        );
     }
 }

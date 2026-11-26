@@ -11,6 +11,7 @@ export type MailSummary = {
 export type MailRepair = {
   message: string;
   edits: { index: number; text: string }[];
+  reasoning?: string;
 };
 
 export const mailAiSettingsEvent = "anser-open-ai-settings";

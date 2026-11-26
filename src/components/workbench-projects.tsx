@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Plus, Trash2 } from "lucide-react";
+import { Folder, Plus, Trash2 } from "lucide-react";
 import { t } from "@/lib/i18n";
 import type { WorkItem, WorkProject } from "@/lib/workbench";
 import { Button } from "./ui/button";
@@ -10,6 +10,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "./ui/dialog";
+import { Empty, EmptyDescription, EmptyHeader, EmptyMedia } from "./ui/empty";
 import { Field, FieldLabel } from "./ui/field";
 import { Input } from "./ui/input";
 import { ScrollArea } from "./ui/scroll-area";
@@ -73,7 +74,7 @@ export function WorkbenchProjects({
             </div>
           </Field>
         </form>
-        <ScrollArea className="wb-project-list">
+        <ScrollArea fade="vertical" className="wb-project-list">
           {projects.map((project) => (
             <div className="wb-project-row" key={project.id}>
               <div className="min-w-0 flex-1">
@@ -91,7 +92,7 @@ export function WorkbenchProjects({
                     }))
                   }
                 />
-                <span className="text-xs text-muted-foreground">
+                <span className="text-xs text-muted-foreground tabular-nums">
                   {t("{value0} work records", {
                     value0: items.filter(
                       (item) => item.project === project.name,
@@ -121,6 +122,7 @@ export function WorkbenchProjects({
               <Button
                 variant="ghost"
                 size="icon-sm"
+                className="hover:bg-destructive/10 hover:text-destructive focus-visible:text-destructive"
                 disabled={busy}
                 aria-label={t("Delete project {value0}", {
                   value0: project.name,
@@ -132,9 +134,16 @@ export function WorkbenchProjects({
             </div>
           ))}
           {!projects.length && (
-            <p className="py-4 text-sm text-muted-foreground">
-              {t("No work projects yet.")}
-            </p>
+            <Empty className="py-6">
+              <EmptyHeader>
+                <EmptyMedia variant="icon">
+                  <Folder />
+                </EmptyMedia>
+                <EmptyDescription>
+                  {t("No work projects yet.")}
+                </EmptyDescription>
+              </EmptyHeader>
+            </Empty>
           )}
         </ScrollArea>
       </DialogContent>

@@ -14,8 +14,8 @@
 
 ### 2. 写信「AI 助手」与写信修复
 
-- **UI 与交互边界**：对话、消息与指令输入使用 `assistant-ui` 官方 React primitives，外壳与通用控件沿用 shadcn/ui。助手与写信框并排、窄窗可从右侧覆盖，不得嵌入正文编辑器；写信工具栏不提供插入本周事项。
-- **去默认尾注**：`assistant-ui` 默认消息文字会在未完成状态追加圆点，写信助手必须组合官方 `MessagePartPrimitive.Text` 去掉该默认尾注，整个面板仅保留一套运行中反馈。
+- **UI 与交互边界**：写信「AI 助手」完全基于 shadcn/ui 与 `src/components/ai-elements/`（参考 shadcn AI Elements 组合 `Conversation`、`Message`、`ChainOfThought`、`Reasoning`、`Plan`、`Suggestions`、`PromptInput`、`Shimmer`），不再依赖第三方 `assistant-ui`。助手与写信框并排、窄窗可从右侧覆盖，不得嵌入正文编辑器；写信工具栏不提供插入本周事项。
+- **思考链、思考过程与修改计划**：每轮生成以可折叠思考链展示真实执行步骤（读取可编辑段落范围 → 调用模型并计时 → 校验段落 Diff）；仅当模型返回真实推理文本（`reasoning_content` / `reasoning` / `<think>`）时渲染默认折叠的「模型思考过程」，绝不虚构推理；应用前以可折叠「修改计划」卡片列出逐段改动并由用户显式点击应用或舍弃，整个面板仅保留一套运行中反馈。
 - **结构化修复协议**：复用 OpenAI 兼容与官方 DeepSeek 的 JSON 输出路径；修复结果按有界协议校验，可兼容 `text` / `replacement` 字段别名，但未知段落、重复索引、非法换行或非法字符仍须拒绝；后端已知失败须分类映射为双语提示，不得压成通用配置错误。
 - **安全应用与撤销**：写信修复仅在用户确认应用后写入当前草稿；Diff 装饰不进入草稿或发件，应用须核对草稿版本并支持独立撤销。
 

@@ -4,11 +4,10 @@ import { LoaderCircle, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { call, isDemo } from "@/lib/api";
 import { formatSize } from "@/lib/providers";
-import { Button } from "./ui/button";
+import { Button, ButtonLabel } from "./ui/button";
 import { Checkbox } from "./ui/checkbox";
 import { Label } from "./ui/label";
 import { Skeleton } from "./ui/skeleton";
-import { Switch } from "./ui/switch";
 import { Alert, AlertDescription } from "./ui/alert";
 import { SelectField, SelectOption } from "./ui/select-field";
 import {
@@ -76,13 +75,17 @@ export function DeleteArchiveDialog({ onDeleted }: { onDeleted: () => void }) {
       setOpen(false);
       onDeleted();
       toast.success(
-        t("{value0}Deleted {value1} archived messages{value2}", {
-          value0: isDemo() ? t("Demo") : t("Local"),
-          value1: result.deleted,
-          value2: result.freedBytes
-            ? `，释放 ${formatSize(result.freedBytes)}`
-            : "",
-        }),
+        result.freedBytes
+          ? t("{value0}Deleted {value1} archived messages, freed {value2}", {
+              value0: isDemo() ? t("Demo") : t("Local"),
+              value1: result.deleted,
+              value2: formatSize(result.freedBytes),
+            })
+          : t("{value0}Deleted {value1} archived messages{value2}", {
+              value0: isDemo() ? t("Demo") : t("Local"),
+              value1: result.deleted,
+              value2: "",
+            }),
       );
       if (result.cleanupPending)
         toast.warning(
@@ -144,23 +147,26 @@ export function DeleteArchiveDialog({ onDeleted }: { onDeleted: () => void }) {
               <SelectOption value="">{t("All accounts")}</SelectOption>
               {accounts.map((a) => (
                 <SelectOption key={a.accountId} value={a.accountId}>
-                  {a.name} · {a.email}（{a.count}
-                  {t(" messages)")}
+                  {t("{value0} · {value1} ({value2} messages)", {
+                    value0: a.name,
+                    value1: a.email,
+                    value2: a.count,
+                  })}
                 </SelectOption>
               ))}
             </SelectField>
           </div>
           {!preview && !error && <Skeleton className="h-16 w-full" />}
           {preview && (
-            <div className="text-sm space-y-2">
-              <p>
-                {t("Delete ")}
-                <strong>
-                  {preview.count}
-                  {t("messages (storage)")}
-                </strong>
-                {t("local archives, original size: ")}{" "}
-                {formatSize(preview.bytes)}。
+            <div className="flex flex-col gap-2 text-sm">
+              <p className="tabular-nums">
+                {t(
+                  "Delete {value0} local archives (original size: {value1}).",
+                  {
+                    value0: preview.count,
+                    value1: formatSize(preview.bytes),
+                  },
+                )}
               </p>
               <p className="text-muted-foreground">
                 {t(
@@ -169,7 +175,7 @@ export function DeleteArchiveDialog({ onDeleted }: { onDeleted: () => void }) {
               </p>
               {preview.offlineOnly > 0 && (
                 <Alert variant="destructive">
-                  <AlertDescription>
+                  <AlertDescription className="tabular-nums">
                     {preview.offlineOnly}{" "}
                     {t(
                       " messages have no available server source and will be removed from the list. Restore only from an existing backup after deletion.",
@@ -184,18 +190,18 @@ export function DeleteArchiveDialog({ onDeleted }: { onDeleted: () => void }) {
               </p>
             </div>
           )}
-          <div className="flex items-center justify-between gap-4">
+          <div className="flex items-start gap-2">
+            <Checkbox
+              id="archive-stop-saving"
+              checked={stopSaving}
+              onCheckedChange={(value) => setStopSaving(value === true)}
+              disabled={busy}
+            />
             <Label htmlFor="archive-stop-saving">
               {t(
                 "Also disable future automatic local saving for selected accounts",
               )}
             </Label>
-            <Switch
-              id="archive-stop-saving"
-              checked={stopSaving}
-              onCheckedChange={setStopSaving}
-              disabled={busy}
-            />
           </div>
           {!stopSaving && (
             <p className="text-sm text-muted-foreground">
@@ -246,11 +252,21 @@ export function DeleteArchiveDialog({ onDeleted }: { onDeleted: () => void }) {
             </Button>
             <Button
               variant="destructive"
+              aria-busy={busy || undefined}
               disabled={busy || !preview?.count || !confirmed}
               onClick={() => void remove()}
             >
-              {busy && <LoaderCircle size={15} className="animate-spin" />}
-              {busy ? t("Deleting…") : t("Confirm deletion")}
+              <ButtonLabel
+                reserve={[t("Deleting…"), t("Confirm deletion")]}
+                reserveIcon
+                icon={
+                  busy ? (
+                    <LoaderCircle size={15} className="animate-spin" />
+                  ) : undefined
+                }
+              >
+                {busy ? t("Deleting…") : t("Confirm deletion")}
+              </ButtonLabel>
             </Button>
           </DialogFooter>
         </DialogContent>

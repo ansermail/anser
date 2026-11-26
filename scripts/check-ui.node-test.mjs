@@ -29,6 +29,13 @@ for (const expression of [
     assert.equal(result.status, 1);
     assert.match(result.stderr, /shadcn Dialog\/AlertDialog/);
   });
+test("rejects native month and week inputs", () => {
+  for (const type of ["month", "week"]) {
+    const result = check(`export const Page = () => <Input type="${type}" />;`);
+    assert.equal(result.status, 1);
+    assert.match(result.stderr, /shadcn\/ui/);
+  }
+});
 test("allows business composition with shadcn controls", () => {
   assert.equal(
     check(

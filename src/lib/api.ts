@@ -1193,6 +1193,9 @@ export async function call<T = void>(
               }
             : {
                 message: t("This is a simulated revision."),
+                reasoning: t(
+                  "Demo reasoning: reviewed editable body paragraphs, preserved factual details, and prepared a concise phrasing update for review.",
+                ),
                 edits: [
                   {
                     index: 0,

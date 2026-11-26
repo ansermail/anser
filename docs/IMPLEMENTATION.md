@@ -848,7 +848,7 @@ macOS 系统默认应用与格式关联通过 NSWorkspace/UTType 在主队列读
 
 模型配置保存先按候选地址、模型和密钥调用固定 `Hello, world.` 请求验证，网络请求不持锁。验证成功后在短互斥区重新核对配置 revision，再原子写入凭据与偏好并取消旧请求；验证或并发核对失败时不修改已保存配置。设置页所有卡片统一使用轻边框与无阴影样式。
 
-写信助手在同一个模态 Dialog 内使用独立右侧容器，assistant-ui ExternalStoreRuntime 连接当前草稿的会话状态，模型调用沿用原生命令。写信修复仅针对正文中可完整替换的顶层段落和标题。正文版本变化会清除临时 Diff 与待应用建议。通过 ProseMirror 装饰预览删除和新增，应用时使用独立事务保留可用内联格式和未涉及节点，自动保存沿用写信窗口的既有路径。
+写信助手在同一个模态 Dialog 内使用独立右侧容器，基于 shadcn/ui 与 `src/components/ai-elements/`（`Conversation`、`Message`、`ChainOfThought`、`Reasoning`、`Plan`、`Suggestions`、`PromptInput`、`Shimmer`）连接当前草稿的会话状态，模型调用沿用原生命令，并从模型响应的 `reasoning_content` / `<think>` 提取可选思考过程。写信修复仅针对正文中可完整替换的顶层段落和标题。正文版本变化会清除临时 Diff 与待应用建议。通过 ProseMirror 装饰预览删除和新增，应用时使用独立事务保留可用内联格式和未涉及节点，自动保存沿用写信窗口的既有路径。
 
 ### 日历与工作台（2026-11-14，开发中）
 

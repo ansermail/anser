@@ -73,6 +73,8 @@ function check(directory) {
                   "date",
                   "time",
                   "datetime-local",
+                  "month",
+                  "week",
                   "checkbox",
                   "radio",
                   "range",

@@ -38,6 +38,7 @@ import {
   FolderOpen,
   Grid2X2,
   LayoutList,
+  LoaderCircle,
   Mail,
   Minus,
   Pencil,
@@ -99,7 +100,8 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "./ui/dropdown-menu";
-import { Button } from "./ui/button";
+import { Button, ButtonLabel } from "./ui/button";
+import { Skeleton } from "./ui/skeleton";
 import { Calendar, CalendarDayButton } from "./ui/calendar";
 import {
   Card,
@@ -937,6 +939,7 @@ function WorkEditor({
                       type="button"
                       variant="ghost"
                       size="icon-sm"
+                      className="hover:bg-destructive/10 hover:text-destructive focus-visible:text-destructive"
                       aria-label={t("Delete work item")}
                       disabled={busy}
                       onClick={remove}
@@ -1304,14 +1307,9 @@ function WorkReport({
                     <Badge variant="secondary">{t("Customized")}</Badge>
                   )}
                 </Button>
-                <FieldDescription>
-                  {t(
-                    "Set the report structure and wording. Leave blank to use the default.",
-                  )}
-                </FieldDescription>
               </Field>
             </FieldGroup>
-            <div className="wb-report-numbers">
+            <div className="wb-report-numbers tabular-nums">
               <span>
                 {t("Work records")}
                 <strong>{filtered.length}</strong>
@@ -1323,11 +1321,23 @@ function WorkReport({
             </div>
             <Button
               variant="outline"
+              aria-busy={processing || undefined}
               disabled={processing || !filtered.length || from > to}
               onClick={() => void generate()}
             >
-              <Sparkles />
-              {processing ? t("Generating report…") : t("Generate AI report")}
+              <ButtonLabel
+                reserve={[t("Generating report…"), t("Generate AI report")]}
+                reserveIcon
+                icon={
+                  processing ? (
+                    <LoaderCircle className="animate-spin" />
+                  ) : (
+                    <Sparkles />
+                  )
+                }
+              >
+                {processing ? t("Generating report…") : t("Generate AI report")}
+              </ButtonLabel>
             </Button>
             {processing && (
               <Button
@@ -2197,6 +2207,7 @@ export function Workbench({
       <TaskDataTable
         label={t("Work table")}
         rows={tableRows(entries)}
+        loadingLabel={loading ? t("Loading…") : undefined}
         fields={[
           ...(entries.length ? ["complete" as const] : []),
           "work",
@@ -2476,7 +2487,11 @@ export function Workbench({
                 <h3>
                   <StatusLabel status={status} />
                 </h3>
-                <Badge variant="secondary" className="wb-count">
+                <Badge
+                  variant="secondary"
+                  className="wb-count"
+                  data-empty={!statusEntries.length || undefined}
+                >
                   {statusEntries.length}
                 </Badge>
                 <Button
@@ -2510,11 +2525,21 @@ export function Workbench({
                   <Plus />
                 </Button>
               </header>
-              {!statusEntries.length && !loading && (
-                <p className="wb-board-empty">
-                  {t("No work items in this status.")}
-                </p>
-              )}
+              {!statusEntries.length &&
+                (loading ? (
+                  <div
+                    className="flex flex-col gap-2 py-1"
+                    role="status"
+                    aria-label={t("Loading…")}
+                  >
+                    <Skeleton className="h-14 w-full rounded-lg" />
+                    <Skeleton className="h-14 w-full rounded-lg" />
+                  </div>
+                ) : (
+                  <p className="wb-board-empty">
+                    {t("No work items in this status.")}
+                  </p>
+                ))}
               {statusEntries.map((item) => (
                 <WorkItemContextMenu
                   key={item.id}
@@ -3056,7 +3081,15 @@ export function Workbench({
                       )}
                       {!daily.length &&
                         (loading ? (
-                          <p className="wb-empty">{t("Loading…")}</p>
+                          <div
+                            className="flex flex-col gap-2 py-2"
+                            role="status"
+                            aria-label={t("Loading…")}
+                          >
+                            <Skeleton className="h-9 w-full rounded-md" />
+                            <Skeleton className="h-9 w-full rounded-md" />
+                            <Skeleton className="h-9 w-4/5 rounded-md" />
+                          </div>
                         ) : (
                           <Empty className="wb-agenda-empty">
                             <EmptyHeader>
@@ -3182,7 +3215,11 @@ export function Workbench({
                                   Q{index + 1}
                                 </span>
                                 <span>{label()}</span>
-                                <Badge variant="secondary" className="wb-count">
+                                <Badge
+                                  variant="secondary"
+                                  className="wb-count"
+                                  data-empty={!entries.length || undefined}
+                                >
                                   {entries.length}
                                 </Badge>
                               </div>
@@ -3205,16 +3242,29 @@ export function Workbench({
                                 <Plus />
                               </Button>
                             </header>
-                            <ScrollArea className="wb-matrix-quadrant-scroll">
+                            <ScrollArea
+                              fade="vertical"
+                              className="wb-matrix-quadrant-scroll"
+                            >
                               <div className="wb-matrix-quadrant-items">
                                 {entries.map((item) => taskRow(item, true))}
-                                {!entries.length && (
-                                  <p className="wb-matrix-empty">
-                                    {t(
-                                      "Drag work anywhere in this area or add a new item.",
-                                    )}
-                                  </p>
-                                )}
+                                {!entries.length &&
+                                  (loading ? (
+                                    <div
+                                      className="flex flex-wrap gap-2 py-1"
+                                      role="status"
+                                      aria-label={t("Loading…")}
+                                    >
+                                      <Skeleton className="h-7 w-28 rounded-full" />
+                                      <Skeleton className="h-7 w-24 rounded-full" />
+                                    </div>
+                                  ) : (
+                                    <p className="wb-matrix-empty">
+                                      {t(
+                                        "Drag work anywhere in this area or add a new item.",
+                                      )}
+                                    </p>
+                                  ))}
                               </div>
                             </ScrollArea>
                           </section>
@@ -3227,7 +3277,12 @@ export function Workbench({
               </div>
             </ScrollArea>
           </TabsContent>
-          <TabsContent value="report" className="wb-content wb-report-content">
+          <TabsContent
+            value="report"
+            forceMount
+            hidden={view !== "report"}
+            className="wb-content wb-report-content"
+          >
             <WorkReport
               items={visible}
               writeMail={writeMail}

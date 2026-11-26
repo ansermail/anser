@@ -20,7 +20,7 @@
    - 阶段完成、方向调整、阻塞或中断前更新 `docs/DEVELOPMENT_STATUS.md`（及对应工作点、`USAGE.md` / `IMPLEMENTATION.md` / `UPDATES.md`）。
    - **代码完成、自动测试通过、真实场景验收、云端构建、正式发布**五阶段必须分别记录，未执行项明确写“未验证”，禁止沿用旧结果。阶段提交对应实际范围，未验收分支不混入正式发布。
 2. **UI 铁律（用户明确要求）**：
-   - **所有界面组件统一使用 shadcn/ui（`new-york` / Radix），禁止自行实现基础 UI 组件或混入其他组件体系**（写信「AI 助手」对话区使用 `assistant-ui` 官方 React primitives + shadcn 外壳）。
+   - **所有界面组件统一使用 shadcn/ui（`new-york` / Radix），禁止自行实现基础 UI 组件或混入其他组件体系**（写信「AI 助手」基于 shadcn AI Elements 模式组合自有 shadcn/ui primitives，位于 `src/components/ai-elements/`）。
    - 新增、调整或走查 UI 时，先读 [docs/UI_DESIGN_GUIDELINES.md](docs/UI_DESIGN_GUIDELINES.md)（基于 Topinspo Design Vocabulary 的排版/留白/层级/对比度/组件/验收通用基线），再遵循 [docs/guidelines/ui-design.md](docs/guidelines/ui-design.md) 的页面与组件专项约定。
    - 禁用业务界面的原生 `date`/`time`/`datetime-local`、`datalist`、`confirm`/`prompt`/`alert`，以及 24/60 项小时/分钟长下拉菜单。
 3. **国际化（i18n）**：

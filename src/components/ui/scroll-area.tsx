@@ -1,6 +1,7 @@
 import * as React from "react";
 import { cn } from "cn";
 import { ScrollArea as ScrollAreaPrimitive } from "radix-ui";
+import { observeScrollFade } from "@/lib/scroll-fade";
 
 function ScrollArea({
   className,
@@ -8,12 +9,24 @@ function ScrollArea({
   viewportRef,
   viewportProps,
   orientation = "vertical",
+  fade,
   ...props
 }: React.ComponentProps<typeof ScrollAreaPrimitive.Root> & {
   viewportRef?: React.Ref<HTMLDivElement>;
   viewportProps?: React.ComponentProps<typeof ScrollAreaPrimitive.Viewport>;
   orientation?: "vertical" | "horizontal" | "both";
+  fade?: "vertical" | "horizontal";
 }) {
+  const mergedViewportRef = React.useCallback(
+    (node: HTMLDivElement | null) => {
+      if (typeof viewportRef === "function") viewportRef(node);
+      else if (viewportRef && "current" in viewportRef)
+        (viewportRef as React.MutableRefObject<HTMLDivElement | null>).current =
+          node;
+      if (node && fade) return observeScrollFade(node, fade);
+    },
+    [viewportRef, fade],
+  );
   return (
     <ScrollAreaPrimitive.Root
       data-slot="scroll-area"
@@ -22,9 +35,12 @@ function ScrollArea({
     >
       <ScrollAreaPrimitive.Viewport
         {...viewportProps}
-        ref={viewportRef}
+        ref={mergedViewportRef}
         data-slot="scroll-area-viewport"
-        className="size-full rounded-[inherit] transition-[color,box-shadow] outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-1"
+        className={cn(
+          "size-full rounded-[inherit] transition-[color,box-shadow] outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-1",
+          viewportProps?.className,
+        )}
       >
         {children}
       </ScrollAreaPrimitive.Viewport>
