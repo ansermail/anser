@@ -2,12 +2,12 @@
 
 依据 PRD 第 5、8、9 节、实施记录和当前代码核查。当前仍为 Alpha；功能代码已存在与真实场景验收通过分别记录。早期回归使用临时存储/演示数据；2026-10-05 用户授权后增加当前腾讯企业邮箱与 QQ 邮箱互发测试，未向其他地址发送，未删除真实邮件。
 
-## 当前执行检查点 · 0.1.47 视觉规范优化、纯 shadcn AI Elements 与发版流水线触发（2026-11-26）
+## 最近正式发布：0.1.47（2026-11-26）
 
-- **代码完成**。完成基于 [UI 设计规范](UI_DESIGN_GUIDELINES.md) 的四波优化，移除 `@assistant-ui/react` 迁移至 `src/components/ai-elements/` 纯 shadcn AI Elements（`Conversation`、`Message`、`ChainOfThought`、`Reasoning`、`Plan`、`Suggestions`、`PromptInput`、`Shimmer`；Rust `mail_ai.rs` 支持从 `reasoning_content` / `<think>` 提取真实推理），恢复 AI 邮件摘要右上角悬浮并与翻译胶囊纵向右对齐错开，双语翻译去竖线改用 5.5% 外扩微底色圆角块保持与原文左对齐，保留写信段首与连续空格至发送预览与发出邮件，修复模态写信弹窗内 Toast 撤销点击及列表行按压切块背景。四处版本文件同步至 `0.1.47` 并新增 [docs/releases/v0.1.47.md](releases/v0.1.47.md)。
-- **自动测试通过**。全量前端 78 文件 / **632 项**通过（`vitest run --exclude src/App.test.tsx` 77 文件 / 535 项与 `src/App.test.tsx` 97 项分别独立通过），桌面脚本 **38 项**（`pnpm test:desktop`），Rust 后端 **483 项**（`pnpm test:rust`，5 项手工用例跳过），vendored `imap-proto` **39 项**，以及 `pnpm release:check`、`pnpm check:ui`、`pnpm check:i18n`（1,950 条双语键）、`node scripts/check-contrast.mjs`（20 套明暗配色全过）、`pnpm format:check`、`cargo fmt --check`、`git diff --check`、`pnpm build` 与 `pnpm build:preview` 全部通过。
-- **场景验收**。隔离 Chromium 生产演示（虚构数据）完成 12 组同数据修改前后对比验证；macOS Apple Silicon 本地 `pnpm desktop` 开发预览已由用户实机复核邮件列表、悬浮摘要/翻译错开、双语对齐、AI 助手思考链/修改计划/空格预览与撤销提示。正式安装版、Intel、Windows WebView2 **未验证**。
-- **云端构建**：即将推送 `main` 与 `v0.1.47` 标签触发 GitHub Actions 发布流水线。**正式发布**：待九资源草稿核验后公开，当前**未验证**。
+- **代码完成**。提交 [`f17db6f`](https://github.com/ansermail/anser/commit/f17db6f)（标签 `v0.1.47`）合入 10 套明暗外观配色预设、基于 [UI 设计规范](UI_DESIGN_GUIDELINES.md) 的四波优化、移除 `@assistant-ui/react` 迁移至 `src/components/ai-elements/` 纯 shadcn AI Elements（含思考链、Rust `mail_ai.rs` 提取 `reasoning_content` / `<think>` 真实模型思考过程、结构化修改计划卡片）、AI 邮件摘要右上角悬浮与翻译胶囊纵向右对齐错开、无左侧竖线左对齐微底色双语翻译、写信段首与连续空格保留至发送预览与发出邮件、以及模态弹窗 Toast 撤销与列表行按压修复。四处版本文件同步至 `0.1.47`，发布说明见 [docs/releases/v0.1.47.md](releases/v0.1.47.md)。
+- **自动测试通过**。本机与远端 CI 全量通过：前端 78 文件 / **632 项**、桌面脚本 **38 项**、Rust 后端 **483 项**（5 项手工用例跳过）、vendored `imap-proto` **39 项**，以及 `release:check`、UI 铁律、1,950 条双语键、20 套明暗配色 WCAG 2.2 AA 对比度门禁、格式检查与生产/演示构建。
+- **云端构建与正式发布**。[Release desktop](https://github.com/ansermail/anser/actions/runs/45781327729)（5/5 任务含 macOS Apple Silicon / Intel 固定签名校验与 Windows x64 WebView2 冒烟）、[Checks](https://github.com/ansermail/anser/actions/runs/45781318036)、[Windows validation](https://github.com/ansermail/anser/actions/runs/45781318030) 与 [Preview Pages](https://github.com/ansermail/anser/actions/runs/45781318123) 全绿通过。公开前核对草稿 `latest.json` 版本、原文逐字节匹配及三平台 `.sig` 签名后，已正式公开 [v0.1.47 Alpha](https://github.com/ansermail/anser/releases/tag/v0.1.47)（9 份完整产物）。公开后已核验匿名访问 `latest.json` 及三端安装包返回 HTTP 200，官网 `https://ansermail.github.io/anser/` 返回 HTTP 200，且 [Homebrew 同步流水线](https://github.com/ansermail/anser/actions/runs/45787835595) 运行成功。
+- **场景验收与剩余边界**。隔离 Chromium 演示（12 组同数据对照）及 macOS Apple Silicon 本地 `pnpm desktop` 实机已核对本次交互改动；**正式安装版原位升级（含升级后凭据读取）、Intel Mac 实机与 Windows 实机**仍标注**未验证**，已安装正式版由用户按需自行升级。
 
 ## 前一阶段 · 外观配色预设（2026-11-26）
 
