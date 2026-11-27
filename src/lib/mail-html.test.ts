@@ -2,6 +2,8 @@
 import { describe, it, expect, vi } from "vitest";
 import {
   applyMailColorScheme,
+  classifyDarkLogoPixels,
+  classifyMailImages,
   safeMailHtml,
   mailLink,
   isMailDocument,
@@ -234,6 +236,243 @@ describe("untrusted email rendering", () => {
     expect(
       doc.querySelector<HTMLElement>("#brand")!.style.backgroundColor,
     ).toBe("rgb(183, 32, 37)");
+  });
+  it("inverts neutral light-gray surfaces, borders, and black buttons along one lightness curve in dark mode", () => {
+    const iframe = document.createElement("iframe");
+    document.body.append(iframe);
+    const doc = iframe.contentDocument!;
+    try {
+      doc.open();
+      doc.write(
+        safeMailHtml(
+          '<div id="page" style="background-color:#ffffff"><a id="cta" href="https://example.com" style="display:inline-block;background-color:#000000;color:#ffffff;border-radius:999px;padding:10px 18px">Download Ollama</a><div id="code" style="background-color:#f5f5f5;border-radius:8px;padding:12px;color:#111111">ollama run inkling-2-mini</div><div id="divider" style="border-top:1px solid #e5e7eb">Section</div></div>',
+          "dark-details",
+          false,
+          false,
+          "dark",
+        ),
+      );
+      doc.close();
+      applyMailColorScheme(doc, "dark");
+      const page = doc.getElementById("page")!;
+      const code = doc.getElementById("code")!;
+      const cta = doc.getElementById("cta")!;
+      const divider = doc.getElementById("divider")!;
+      expect(page.style.backgroundColor).toBe("rgb(28, 28, 30)");
+      expect(code.style.backgroundColor).toBe("rgb(44, 44, 46)");
+      expect(code.style.color).toBe("rgb(237, 237, 237)");
+      expect(cta.style.backgroundColor).toBe("rgb(232, 232, 234)");
+      expect(cta.style.color).toBe("rgb(24, 24, 27)");
+      expect(divider.style.borderTopColor).toBe("rgb(60, 60, 62)");
+    } finally {
+      iframe.remove();
+    }
+  });
+  it("inverts nested black pill buttons seamlessly into crisp light buttons and avoids white header bars", () => {
+    const iframe = document.createElement("iframe");
+    document.body.append(iframe);
+    const doc = iframe.contentDocument!;
+    try {
+      doc.open();
+      doc.write(
+        safeMailHtml(
+          '<table><tr><td id="brand-header" style="background-color:#ffffff"><img alt="Grok Bot" width="24" height="24"><span id="brand-name" style="color:#111111">Grok Bot</span></td></tr><tr><td id="cta-wrap" style="background-color:#000000;border-radius:999px;padding:12px 24px"><a id="cta-link" href="https://example.com" style="display:block;background-color:#000000;border:2px solid #000000;color:#ffffff">Get 2 months for $30</a></td></tr></table>',
+          "dark-grok",
+          false,
+          false,
+          "dark",
+        ),
+      );
+      doc.close();
+      applyMailColorScheme(doc, "dark");
+      const header = doc.getElementById("brand-header")!;
+      const brandName = doc.getElementById("brand-name")!;
+      const ctaWrap = doc.getElementById("cta-wrap")!;
+      const ctaLink = doc.getElementById("cta-link")!;
+      expect(header.hasAttribute("data-anser-light-image-surface")).toBe(false);
+      expect(header.style.backgroundColor).toBe("rgb(28, 28, 30)");
+      expect(brandName.style.color).toBe("rgb(237, 237, 237)");
+      expect(ctaWrap.style.backgroundColor).toBe("rgb(232, 232, 234)");
+      expect(ctaLink.style.backgroundColor).toBe("rgb(232, 232, 234)");
+      expect(ctaLink.style.borderTopColor).toBe("rgb(232, 232, 234)");
+      expect(ctaLink.style.color).toBe("rgb(24, 24, 27)");
+    } finally {
+      iframe.remove();
+    }
+  });
+  it("respects an authored dark canvas", () => {
+    const iframe = document.createElement("iframe");
+    document.body.append(iframe);
+    const doc = iframe.contentDocument!;
+    try {
+      doc.open();
+      doc.write(
+        safeMailHtml(
+          '<body style="background:#0d1117;color:#e6edf3"><div id="native-card" style="background-color:#ffffff;color:#111111">Native dark aware</div>',
+          "dark-native",
+          false,
+          false,
+          "dark",
+        ),
+      );
+      doc.close();
+      applyMailColorScheme(doc, "dark");
+      expect(doc.getElementById("native-card")!.style.backgroundColor).toBe(
+        "rgb(255, 255, 255)",
+      );
+      expect(doc.querySelector("#anser-mail-theme")?.textContent).toBe(
+        ":root{color-scheme:dark}",
+      );
+    } finally {
+      iframe.remove();
+    }
+  });
+  it("adapts a light canvas with empty or localized author dark rules", () => {
+    const iframe = document.createElement("iframe");
+    document.body.append(iframe);
+    const doc = iframe.contentDocument!;
+    try {
+      doc.open();
+      doc.write(
+        safeMailHtml(
+          `<style>@media (prefers-color-scheme: dark) {} @media (prefers-color-scheme: dark) { a { color: #98bcff; } }</style><body style="background:#e4e4e4"><div id="card" style="background:white;color:#111">Welcome</div></body>`,
+        ),
+      );
+      doc.close();
+      applyMailColorScheme(doc, "dark", "#202020");
+      expect(doc.getElementById("card")!.style.backgroundColor).toBe(
+        "rgb(32, 32, 32)",
+      );
+      applyMailColorScheme(doc, "light");
+      expect(doc.getElementById("card")!.style.backgroundColor).toBe("white");
+    } finally {
+      iframe.remove();
+    }
+  });
+  it("classifies transparent and tight white-matted monochrome logos without touching colorful logos, white logos, or gray cards", () => {
+    const makePixels = (entries: [number, number, number, number][]) =>
+      new Uint8ClampedArray(entries.flat());
+    // Black transparent wordmark (e.g. Grok Bot)
+    const darkWordmark = makePixels([
+      [0, 0, 0, 0],
+      [0, 0, 0, 0],
+      [0, 0, 0, 0],
+      [0, 0, 0, 0],
+      [10, 10, 10, 255],
+      [15, 15, 15, 255],
+      [20, 20, 20, 255],
+      [12, 12, 12, 255],
+      [8, 8, 8, 255],
+      [18, 18, 18, 255],
+      [14, 14, 14, 255],
+      [255, 255, 255, 255],
+    ]);
+    expect(classifyDarkLogoPixels(darkWordmark, 4, 3)).toBe("transparent-dark");
+
+    // Tight-cropped white-matted black line-art touching bottom & right edges (e.g. Ollama)
+    const whiteMatted = new Uint8ClampedArray(8 * 4 * 4);
+    for (let y = 0; y < 4; y++) {
+      for (let x = 0; x < 8; x++) {
+        const idx = (y * 8 + x) * 4;
+        const isInk = y === 3 || x === 7;
+        const c = isInk ? 10 : 255;
+        whiteMatted[idx] = c;
+        whiteMatted[idx + 1] = c;
+        whiteMatted[idx + 2] = c;
+        whiteMatted[idx + 3] = 255;
+      }
+    }
+    expect(classifyDarkLogoPixels(whiteMatted, 8, 4)).toBe("white-matted-dark");
+
+    // Shaded light-gray banner (#f2f3f5 like Black Friday): must not invert
+    const grayBanner = new Uint8ClampedArray(4 * 4 * 4);
+    for (let i = 0; i < 16; i++) {
+      const idx = i * 4;
+      grayBanner[idx] = i < 14 ? 242 : 10;
+      grayBanner[idx + 1] = i < 14 ? 243 : 10;
+      grayBanner[idx + 2] = i < 14 ? 245 : 10;
+      grayBanner[idx + 3] = 255;
+    }
+    expect(classifyDarkLogoPixels(grayBanner, 4, 4)).toBe("none");
+
+    // Colorful transparent logo: must not invert
+    const colorfulLogo = makePixels([
+      [0, 0, 0, 0],
+      [0, 0, 0, 0],
+      [220, 40, 40, 255],
+      [40, 120, 230, 255],
+      [20, 20, 20, 255],
+      [20, 20, 20, 255],
+    ]);
+    expect(classifyDarkLogoPixels(colorfulLogo, 3, 2)).toBe("none");
+
+    // Already-white transparent logo: must not invert
+    const whiteLogo = makePixels([
+      [0, 0, 0, 0],
+      [0, 0, 0, 0],
+      [245, 245, 245, 255],
+      [250, 250, 250, 255],
+      [255, 255, 255, 255],
+      [240, 240, 240, 255],
+    ]);
+    expect(classifyDarkLogoPixels(whiteLogo, 3, 2)).toBe("none");
+  });
+  it("transitions dark -> light -> dark palettes in place and tags native logos via cache lookup", async () => {
+    const html = safeMailHtml(
+      '<div id="page" style="background-color:#ffffff;color:#111111"><img id="logo" src="https://images.example/ollama.png"><div id="code" style="background-color:#f5f5f5;color:#222222">ollama run</div></div>',
+      "smooth-switch",
+      true,
+      true,
+      "light",
+    );
+    const iframe = document.createElement("iframe");
+    document.body.append(iframe);
+    const doc = iframe.contentDocument!;
+    try {
+      doc.open();
+      doc.write(html);
+      doc.close();
+      const logo = doc.getElementById("logo") as HTMLImageElement;
+      Object.defineProperties(logo, {
+        complete: { value: true },
+        naturalWidth: { value: 120 },
+        naturalHeight: { value: 40 },
+      });
+      await classifyMailImages(doc, async (urls) => {
+        expect(urls).toEqual(["https://images.example/ollama.png"]);
+        return { "https://images.example/ollama.png": "white-matted-dark" };
+      });
+      expect(logo.getAttribute("data-anser-logo")).toBe("white-matted-dark");
+
+      // Light -> Dark palette 1 (animated in-place)
+      applyMailColorScheme(doc, "dark", "#121714", true);
+      expect(doc.getElementById("page")!.style.backgroundColor).toBe(
+        "rgb(18, 23, 20)",
+      );
+      expect(doc.getElementById("code")!.style.backgroundColor).not.toBe(
+        "rgb(18, 23, 20)",
+      );
+      expect(doc.querySelector("#anser-mail-theme")?.textContent).toContain(
+        "transition:",
+      );
+
+      // Dark palette 1 -> Dark palette 2 (in-place recalculation from original source colors)
+      applyMailColorScheme(doc, "dark", "#282a36", true);
+      expect(doc.getElementById("page")!.style.backgroundColor).toBe(
+        "rgb(40, 42, 54)",
+      );
+
+      // Dark -> Light (restores authentic author styles cleanly)
+      applyMailColorScheme(doc, "light", "#fff", true);
+      expect(doc.getElementById("page")!.style.backgroundColor).toBe(
+        "rgb(255, 255, 255)",
+      );
+      expect(doc.getElementById("code")!.style.backgroundColor).toBe(
+        "rgb(245, 245, 245)",
+      );
+    } finally {
+      iframe.remove();
+    }
   });
   it("preserves authored table sizing without making every letter a min-content break", () => {
     const doc = new DOMParser().parseFromString(

@@ -86,6 +86,7 @@ fn prepare_starttls(tcp: TcpStream) -> Result<TcpStream> {
         .write_all(b"yxTLS STARTTLS\r\n")
         .map_err(err)?;
     reader.get_mut().flush().map_err(err)?;
+    let mut rejected = String::new();
     for _ in 0..100 {
         let line = line(&mut reader)?;
         let fields = line.split_whitespace().collect::<Vec<_>>();
@@ -96,13 +97,28 @@ fn prepare_starttls(tcp: TcpStream) -> Result<TcpStream> {
             {
                 return Ok(reader.into_inner());
             }
-            return Err("服务器拒绝 IMAP STARTTLS 加密升级".into());
+            let detail = crate::diagnostics::sanitize_message(&line);
+            return Err(format!("服务器拒绝 IMAP STARTTLS 加密升级（{detail}）"));
+        }
+        if rejected.is_empty()
+            && fields.first() == Some(&"*")
+            && fields
+                .get(1)
+                .is_some_and(|s| s.eq_ignore_ascii_case("BAD") || s.eq_ignore_ascii_case("NO"))
+        {
+            rejected = crate::diagnostics::sanitize_message(&line);
+            break;
         }
         if line.to_ascii_uppercase().starts_with("* BYE") {
+            rejected = crate::diagnostics::sanitize_message(&line);
             break;
         }
     }
-    Err("IMAP STARTTLS 响应无效".into())
+    if rejected.is_empty() {
+        Err("IMAP STARTTLS 响应无效".into())
+    } else {
+        Err(format!("服务器拒绝 IMAP STARTTLS 加密升级（{rejected}）"))
+    }
 }
 fn imap_session_using<T: std::io::Read + Write>(
     a: &Account,
@@ -137,9 +153,18 @@ fn imap_session_using<T: std::io::Read + Write>(
             )
             .map_err(|(e, _)| format!("IMAP 授权失败：{e}"))
     } else {
-        client
-            .login(&a.username, &s.password)
-            .map_err(|(e, _)| format!("IMAP 登录失败：{e}"))
+        client.login(&a.username, &s.password).map_err(|(e, _)| {
+            let exmail = a.provider == "exmail"
+                || a.incoming_host.eq_ignore_ascii_case("imap.exmail.qq.com")
+                || a.incoming_host.eq_ignore_ascii_case("hwimap.exmail.qq.com");
+            if exmail && matches!(e, imap::error::Error::No(_)) {
+                format!(
+                    "IMAP 登录失败：{e}（请确认已开启 IMAP/SMTP 服务并使用客户端专用密码/授权码；海外企业邮可尝试 hwimap.exmail.qq.com / hwsmtp.exmail.qq.com）"
+                )
+            } else {
+                format!("IMAP 登录失败：{e}")
+            }
+        })
     }?;
     if a.provider == "netease" || a.provider == "neteaseWork" {
         let _ = session.run_command_and_check_ok(concat!(
@@ -376,6 +401,10 @@ pub fn sync_inbox_session<T: std::io::Read + Write>(
     }))
     .unwrap_or_else(|_| Err("邮件协议库处理响应异常；已下载的本地存档已保留".into()))
 }
+fn smtp_hello_name() -> lettre::transport::smtp::extension::ClientId {
+    use lettre::transport::smtp::extension::ClientId;
+    ClientId::Domain("localhost".into())
+}
 fn smtp(a: &Account, s: &Secret) -> Result<SmtpTransport> {
     let route = crate::proxy::route(&a.smtp_host, a.smtp_port)?;
     let builder = if let Some(local_port) = route {
@@ -406,6 +435,7 @@ fn smtp(a: &Account, s: &Secret) -> Result<SmtpTransport> {
         s.smtp_password.clone()
     };
     let mut builder = builder
+        .hello_name(smtp_hello_name())
         .port(route.unwrap_or(a.smtp_port))
         .timeout(Some(Duration::from_secs(45)))
         .credentials(Credentials::new(user, pass));
@@ -434,7 +464,16 @@ fn pop_command<T: std::io::Read + Write>(r: &mut BufReader<T>, command: &str) ->
     r.get_mut().flush().map_err(err)?;
     let response = pop_line(r)?;
     if !response.starts_with(b"+OK") {
-        return Err("POP3 服务器拒绝操作，请检查认证信息与协议开通状态".into());
+        let detail: String =
+            crate::diagnostics::sanitize_message(&String::from_utf8_lossy(&response))
+                .chars()
+                .take(240)
+                .collect();
+        return Err(if detail.is_empty() {
+            "POP3 服务器拒绝操作，请检查认证信息与协议开通状态".into()
+        } else {
+            format!("POP3 服务器拒绝操作（{detail}），请检查认证信息与协议开通状态")
+        });
     }
     Ok(())
 }
@@ -943,6 +982,7 @@ fn sync_imap_scope_controlled<T: std::io::Read + Write>(
         }
         let mut stage = "打开文件夹".to_string();
         let mut evidence = crate::folder_health::SelectionEvidence::default();
+        let mut active_uid: Option<(u32, String)> = None;
         let mut sync_folder = || -> Result<()> {
             let mailbox = examine_verified(session, &folder)?;
             stage = "查询邮件 UID".into();
@@ -996,6 +1036,7 @@ fn sync_imap_scope_controlled<T: std::io::Read + Write>(
             ids.reverse();
             let mut remote_ids = Vec::with_capacity(ids.len());
             let lookup = crate::remote::ReceiveLookup::new(store)?;
+            let bypassed = store.bypassed_sync_failures(&a.id, &folder)?;
             for &uid in &ids {
                 if should_yield() {
                     // This checkpoint follows a fully consumed FETCH and its
@@ -1013,12 +1054,23 @@ fn sync_imap_scope_controlled<T: std::io::Read + Write>(
                     return Err("账号已暂停或连接配置已修改，停止旧收取任务".into());
                 }
                 let stable_remote = validity.map(|v| format!("{v}:{uid}"));
+                let failure_key = stable_remote
+                    .clone()
+                    .unwrap_or_else(|| format!("uid:{uid}"));
+                if bypassed.contains(&failure_key) {
+                    if let Some(ref remote) = stable_remote {
+                        remote_ids.push(remote.clone());
+                    }
+                    continue;
+                }
                 if let Some(ref remote) = stable_remote {
                     if lookup.source_available(&current, &folder, remote)? {
+                        let _ = store.clear_sync_failure(&a.id, &folder, &failure_key);
                         remote_ids.push(remote.clone());
                         continue;
                     }
                 }
+                active_uid = Some((uid, failure_key.clone()));
                 stage = format!("下载 UID {uid} 的完整邮件");
                 let (fetched, full, latest) = loop {
                     let current = store.account(&a.id)?;
@@ -1133,6 +1185,8 @@ fn sync_imap_scope_controlled<T: std::io::Read + Write>(
                 for (_, date) in internal_dates(&fetched)? {
                     store.set_server_date(&a.id, &folder, &remote, &date)?;
                 }
+                let _ = store.clear_sync_failure(&a.id, &folder, &failure_key);
+                active_uid = None;
                 remote_ids.push(remote);
             }
             if only.is_some_and(|name| name.eq_ignore_ascii_case("INBOX")) {
@@ -1212,6 +1266,7 @@ fn sync_imap_scope_controlled<T: std::io::Read + Write>(
                 return Err("账号已暂停或连接配置已修改，停止旧收取任务".into());
             }
             store.reconcile_folder(&a.id, &folder, &remote_ids)?;
+            let _ = store.prune_sync_failures(&a.id, &folder, &ids);
             store.restore_folder_trust(a, &folder)?;
             for chunk in cached_flags.chunks(100) {
                 if should_yield() {
@@ -1244,6 +1299,29 @@ fn sync_imap_scope_controlled<T: std::io::Read + Write>(
             if unreliable_selection(reason) {
                 store.isolate_folder(a, &folder, reason, &evidence)?;
                 updated();
+            } else if let Some((uid, failure_key)) = active_uid.take() {
+                if reason != "账号已暂停或连接配置已修改，停止旧收取任务"
+                    && reason != "只读下载已取消"
+                {
+                    let envelope = fetch_uid_envelope(a, &folder, uid);
+                    let _ = store.record_sync_failure(
+                        &a.id,
+                        &folder,
+                        &failure_key,
+                        uid,
+                        &stage,
+                        reason,
+                        envelope.as_ref(),
+                    );
+                    let message = crate::sync_failures::format_uid_failure_message(
+                        &folder,
+                        uid,
+                        &stage,
+                        reason,
+                        envelope.as_ref(),
+                    );
+                    return Err(message);
+                }
             }
         }
         if only.is_none() && result.as_ref().is_err_and(|e| unreliable_selection(e)) {
@@ -1769,6 +1847,70 @@ mod tests {
         assert_eq!(commands.iter().filter(|c| c.ends_with("IDLE")).count(), 3);
         assert_eq!(commands.iter().filter(|c| *c == "DONE").count(), 3);
     }
+    #[test]
+    fn parse_envelope_fetch_extracts_subject_sender_date_and_size() {
+        let header = b"Subject: =?UTF-8?B?6ZmE5Lu25rWL6K+V?=\r\nFrom: Alice <alice@example.com>\r\nDate: Fri, 27 Nov 2026 09:00:00 +0800\r\n\r\n";
+        let mut response = format!(
+            "* 1 FETCH (UID 42 RFC822.SIZE 12582912 INTERNALDATE \"27-Nov-2026 09:00:00 +0800\" BODY[HEADER.FIELDS (Subject From Date)] {{{}}}\r\n",
+            header.len()
+        )
+        .into_bytes();
+        response.extend_from_slice(header);
+        response.extend_from_slice(b")\r\n");
+        let env = parse_envelope_fetch(&response, 42).unwrap();
+        assert_eq!(env.subject, "附件测试");
+        assert_eq!(env.sender, "Alice <alice@example.com>");
+        assert_eq!(env.size, Some(12_582_912));
+        assert!(env.date.starts_with("2026-11-27"));
+    }
+
+    #[test]
+    fn sync_records_failed_uid_and_skips_it_once_bypassed() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = Store::new(dir.path().to_path_buf()).unwrap();
+        let a = crate::tests::account();
+        store.save_account(&a).unwrap();
+
+        // First round: UID 20 returns no body -> records sync_failure.
+        let bad_script = b"a1 OK Login\r\n* CAPABILITY IMAP4rev1\r\na2 OK Caps\r\n* LIST () \"/\" \"INBOX\"\r\na3 OK Listed\r\n* 2 EXISTS\r\n* OK [UIDVALIDITY 7] Valid\r\na4 OK Opened\r\n* SEARCH 10 20\r\na5 OK Searched\r\n* 2 FETCH (UID 20 FLAGS ())\r\na6 OK Empty body\r\n".to_vec();
+        let bad_stream = ImapTranscript {
+            responses: Cursor::new(bad_script),
+            commands: Arc::new(Mutex::new(Vec::new())),
+        };
+        let mut session = imap::Client::new(bad_stream).login("a", "b").unwrap();
+        let err = sync_imap(&store, &a, &mut session).unwrap_err();
+        assert!(err.contains("UID 20"));
+        assert!(err.contains("邮件收取异常"));
+        let failures = store.sync_failures().unwrap();
+        assert_eq!(failures.len(), 1);
+        assert_eq!(failures[0].uid, 20);
+        assert_eq!(failures[0].status, "failed");
+
+        // User skips UID 20 -> next round downloads UID 10 cleanly without retrying UID 20.
+        store
+            .set_sync_failure_status(&a.id, "INBOX", "7:20", "skipped")
+            .unwrap();
+        let raw = crate::tests::raw();
+        let mut ok_script = format!(
+            "a1 OK Login\r\n* CAPABILITY IMAP4rev1\r\na2 OK Caps\r\n* LIST () \"/\" \"INBOX\"\r\na3 OK Listed\r\n* 2 EXISTS\r\n* OK [UIDVALIDITY 7] Valid\r\na4 OK Opened\r\n* SEARCH 10 20\r\na5 OK Searched\r\n* 1 FETCH (UID 10 FLAGS () RFC822.SIZE {} BODY[] {{{}}}\r\n",
+            raw.len(),
+            raw.len()
+        )
+        .into_bytes();
+        ok_script.extend_from_slice(&raw);
+        ok_script.extend_from_slice(b")\r\na6 OK Fetched\r\n");
+        let written = Arc::new(Mutex::new(Vec::new()));
+        let stream = ImapTranscript {
+            responses: Cursor::new(ok_script),
+            commands: written.clone(),
+        };
+        let mut session = imap::Client::new(stream).login("a", "b").unwrap();
+        assert_eq!(sync_imap(&store, &a, &mut session).unwrap(), 1);
+        let commands = String::from_utf8_lossy(&written.lock().unwrap()).into_owned();
+        assert!(commands.contains("UID FETCH 10"));
+        assert!(!commands.contains("UID FETCH 20"));
+    }
+
     #[test]
     fn tencent_post_login_capability_trailing_space_keeps_connection_usable_for_idle() {
         let (result, changes, commands) = idle_round("trailing-space");
@@ -4109,6 +4251,314 @@ pub(crate) fn read_remote_source(
         }
     }
     Ok(raw)
+}
+
+fn parse_envelope_fetch(
+    response: &[u8],
+    uid: u32,
+) -> Option<crate::sync_failures::SyncFailureEnvelope> {
+    use imap_proto::{AttributeValue, Response};
+    use mailparse::MailHeaderMap;
+    let mut remaining = response;
+    let mut header_bytes: Option<&[u8]> = None;
+    let mut size: Option<u64> = None;
+    let mut internal_date = String::new();
+    while !remaining.is_empty() {
+        let Ok((rest, parsed)) = imap_proto::parse_response(remaining) else {
+            break;
+        };
+        remaining = rest;
+        if let Response::Fetch(_, attributes) = parsed {
+            if !attributes
+                .iter()
+                .any(|a| matches!(a, AttributeValue::Uid(v) if *v == uid))
+            {
+                continue;
+            }
+            for attr in attributes {
+                match attr {
+                    AttributeValue::Rfc822Size(v) => size = Some(u64::from(v)),
+                    AttributeValue::InternalDate(raw) => {
+                        if let Ok(dt) =
+                            chrono::DateTime::parse_from_str(raw, "%d-%b-%Y %H:%M:%S %z")
+                        {
+                            internal_date = dt.to_rfc3339();
+                        }
+                    }
+                    AttributeValue::BodySection {
+                        data: Some(raw),
+                        index: None,
+                        ..
+                    } => header_bytes = Some(raw),
+                    _ => {}
+                }
+            }
+        }
+    }
+    let mut envelope = crate::sync_failures::SyncFailureEnvelope {
+        size,
+        date: internal_date,
+        ..Default::default()
+    };
+    if let Some(raw) = header_bytes {
+        if let Ok((headers, _)) = mailparse::parse_headers(raw) {
+            if let Some(subject) = headers.get_first_value("Subject") {
+                envelope.subject = subject.trim().to_string();
+            }
+            if let Some(from) = headers.get_first_value("From") {
+                envelope.sender = from.trim().to_string();
+            }
+            if let Some(date) = headers.get_first_value("Date") {
+                if let Ok(dt) = chrono::DateTime::parse_from_rfc2822(date.trim()) {
+                    envelope.date = dt.to_rfc3339();
+                } else if envelope.date.is_empty() {
+                    envelope.date = date.trim().to_string();
+                }
+            }
+        }
+    }
+    if envelope.subject.is_empty()
+        && envelope.sender.is_empty()
+        && envelope.date.is_empty()
+        && envelope.size.is_none()
+    {
+        None
+    } else {
+        Some(envelope)
+    }
+}
+
+fn fetch_uid_envelope(
+    a: &Account,
+    folder: &str,
+    uid: u32,
+) -> Option<crate::sync_failures::SyncFailureEnvelope> {
+    if cfg!(test) || a.protocol != "imap" {
+        return None;
+    }
+    let secret = auth::credentials(a).ok()?;
+    guard_imap(|| {
+        let mut session = imap_session(a, &secret)?;
+        let _ = examine_verified(&mut session, folder)?;
+        let response = session
+            .run_command_and_read_response(format!(
+                "UID FETCH {uid} (UID RFC822.SIZE INTERNALDATE BODY.PEEK[HEADER.FIELDS (Subject From Date)])"
+            ))
+            .map_err(err)?;
+        drop(session);
+        Ok(parse_envelope_fetch(&response, uid))
+    })
+    .ok()
+    .flatten()
+}
+
+pub fn resolve_sync_failure_header_only(
+    store: &Store,
+    a: &Account,
+    folder: &str,
+    remote_id: &str,
+    uid: u32,
+) -> Result<()> {
+    if a.protocol != "imap" {
+        return Err("仅 IMAP 账号支持改为仅在线加载".into());
+    }
+    let gate = crate::sync_control::folder_gate(&store.root, &a.id, folder)?;
+    let _guard = gate
+        .try_lock()
+        .map_err(|_| "该文件夹正在收取邮件，请稍后重试")?;
+    let secret = auth::credentials(a)?;
+    let fetched = guard_imap(|| {
+        let mut session = imap_session(a, &secret)?;
+        let mailbox = examine_verified(&mut session, folder)?;
+        if let Some((expected_validity, _)) = remote_id.split_once(':') {
+            if expected_validity != "uid" && expected_validity != "content" {
+                let current_validity =
+                    mailbox_uid_validity(&mut session, folder, &mailbox)?.map(|v| v.to_string());
+                if current_validity.as_deref() != Some(expected_validity) {
+                    return Err("服务器文件夹已重建，请刷新文件夹后再试".into());
+                }
+            }
+        }
+        let response = session
+            .run_command_and_read_response(format!(
+                "UID FETCH {uid} (UID FLAGS INTERNALDATE RFC822.SIZE BODY.PEEK[HEADER])"
+            ))
+            .map_err(err)?;
+        let _ = session.logout();
+        Ok(response)
+    })?;
+    let (raw, size, read) = parse_header_fetch(&fetched, uid)?;
+    let flags = remote_flags(&fetched)?
+        .into_iter()
+        .find(|(v, _, _)| *v == uid);
+    let star = flags.is_some_and(|(_, _, star)| star);
+    let read = flags.map_or(read, |(_, read, _)| read);
+    let mut online = store.account(&a.id)?;
+    if !online.enabled || !online.same_connection(a) {
+        return Err("账号已暂停或连接配置已修改，操作已取消".into());
+    }
+    online.save_locally = false;
+    let source_remote = if remote_id.starts_with("uid:") {
+        format!("content:{uid}:{}", archive::digest(raw))
+    } else {
+        remote_id.to_string()
+    };
+    store.ingest_with_flags(&online, folder, &source_remote, raw, read, star)?;
+    let (cc, priority, sender_on_behalf_of) = archive::header_metadata(raw).map_err(err)?;
+    store.set_remote_metadata(
+        &a.id,
+        folder,
+        &source_remote,
+        size,
+        None,
+        &cc,
+        &priority,
+        &sender_on_behalf_of,
+    )?;
+    for (_, date) in internal_dates(&fetched)? {
+        store.set_server_date(&a.id, folder, &source_remote, &date)?;
+    }
+    store.set_sync_failure_status(&a.id, folder, remote_id, "header_only")?;
+    store.log(&format!(
+        "文件夹「{}」UID {uid} 已改为仅在线加载邮件头，跳过重复完整下载",
+        crate::remote::display_name(folder)
+    ))?;
+    Ok(())
+}
+
+pub fn retry_sync_failure(
+    store: &Store,
+    a: &Account,
+    folder: &str,
+    remote_id: &str,
+    uid: u32,
+) -> Result<()> {
+    if a.protocol != "imap" {
+        return Err("仅 IMAP 账号支持单封重试".into());
+    }
+    let gate = crate::sync_control::folder_gate(&store.root, &a.id, folder)?;
+    let _guard = gate
+        .try_lock()
+        .map_err(|_| "该文件夹正在收取邮件，请稍后重试")?;
+    let secret = auth::credentials(a)?;
+    let full = store.should_save_folder(a, folder)?;
+    let stage = if full {
+        format!("下载 UID {uid} 的完整邮件")
+    } else {
+        format!("下载 UID {uid} 的邮件头与结构")
+    };
+    let fetched = guard_imap(|| {
+        let mut session = imap_session(a, &secret)?;
+        let mailbox = examine_verified(&mut session, folder)?;
+        if let Some((expected_validity, _)) = remote_id.split_once(':') {
+            if expected_validity != "uid" && expected_validity != "content" {
+                let current_validity =
+                    mailbox_uid_validity(&mut session, folder, &mailbox)?.map(|v| v.to_string());
+                if current_validity.as_deref() != Some(expected_validity) {
+                    return Err("服务器文件夹已重建，请刷新文件夹后再试".into());
+                }
+            }
+        }
+        let command = if full {
+            format!("UID FETCH {uid} (UID FLAGS INTERNALDATE RFC822.SIZE BODY.PEEK[])")
+        } else {
+            format!("UID FETCH {uid} (UID FLAGS INTERNALDATE RFC822.SIZE BODYSTRUCTURE BODY.PEEK[HEADER])")
+        };
+        let response = session
+            .run_command_and_read_response(command)
+            .map_err(err)?;
+        let _ = session.logout();
+        Ok(response)
+    });
+    let fetched = match fetched {
+        Ok(data) => data,
+        Err(reason) => {
+            let envelope = fetch_uid_envelope(a, folder, uid);
+            let _ = store.record_sync_failure(
+                &a.id,
+                folder,
+                remote_id,
+                uid,
+                &stage,
+                &reason,
+                envelope.as_ref(),
+            );
+            return Err(crate::sync_failures::format_uid_failure_message(
+                folder,
+                uid,
+                &stage,
+                &reason,
+                envelope.as_ref(),
+            ));
+        }
+    };
+    let parsed = if full {
+        parse_full_fetch(&fetched, uid)
+    } else {
+        parse_header_fetch(&fetched, uid)
+    };
+    let (raw, size, read) = match parsed {
+        Ok(parts) => parts,
+        Err(reason) => {
+            let envelope = fetch_uid_envelope(a, folder, uid);
+            let _ = store.record_sync_failure(
+                &a.id,
+                folder,
+                remote_id,
+                uid,
+                &stage,
+                &reason,
+                envelope.as_ref(),
+            );
+            return Err(crate::sync_failures::format_uid_failure_message(
+                folder,
+                uid,
+                &stage,
+                &reason,
+                envelope.as_ref(),
+            ));
+        }
+    };
+    let flags = remote_flags(&fetched)?
+        .into_iter()
+        .find(|(v, _, _)| *v == uid);
+    let star = flags.is_some_and(|(_, _, star)| star);
+    let read = flags.map_or(read, |(_, read, _)| read);
+    let mut latest = store.account(&a.id)?;
+    if !latest.enabled || !latest.same_connection(a) {
+        return Err("账号已暂停或连接配置已修改，操作已取消".into());
+    }
+    latest.save_locally = full;
+    let source_remote = if remote_id.starts_with("uid:") {
+        format!("content:{uid}:{}", archive::digest(raw))
+    } else {
+        remote_id.to_string()
+    };
+    store.ingest_with_flags(&latest, folder, &source_remote, raw, read, star)?;
+    if !full {
+        let attachments = header_attachments(&fetched, uid)?;
+        let (cc, priority, sender_on_behalf_of) = archive::header_metadata(raw).map_err(err)?;
+        store.set_remote_metadata(
+            &a.id,
+            folder,
+            &source_remote,
+            size,
+            attachments,
+            &cc,
+            &priority,
+            &sender_on_behalf_of,
+        )?;
+    }
+    for (_, date) in internal_dates(&fetched)? {
+        store.set_server_date(&a.id, folder, &source_remote, &date)?;
+    }
+    store.clear_sync_failure(&a.id, folder, remote_id)?;
+    store.clear_account_error_if_no_failures(&a.id)?;
+    store.log(&format!(
+        "文件夹「{}」UID {uid} 重试收取成功",
+        crate::remote::display_name(folder)
+    ))?;
+    Ok(())
 }
 
 fn header_attachments(response: &[u8], uid: u32) -> Result<Option<bool>> {

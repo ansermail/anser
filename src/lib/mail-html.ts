@@ -4,19 +4,52 @@ import { normalizeMailSpacers } from "./mail-image-decorations";
 import { nativeResourceSource } from "./platform";
 
 export type MailColorScheme = "light" | "dark";
+export type MailLogoKind = "none" | "transparent-dark" | "white-matted-dark";
 
 const darkMailColors = {
   background: "rgb(28, 28, 30)",
   foreground: "rgb(237, 237, 237)",
   muted: "rgb(174, 174, 178)",
   link: "rgb(137, 180, 250)",
+  darkInkOnLight: "rgb(24, 24, 27)",
+  invertedPeak: { red: 232, green: 232, blue: 234, alpha: 1 },
 };
 
-function mailThemeCss(colorScheme: MailColorScheme, background?: string) {
+// Lucide Image, presented with the muted surface of shadcn EmptyMedia.
+// CSS replaces only the rendering of the img. Its source and load state stay intact.
+const unavailableImageIcon = (stroke: string) =>
+  `url("data:image/svg+xml,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="${stroke}" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m21 15-5-5L5 21"/></svg>`)}")`;
+const unavailableImageCss = `
+  img[data-anser-image-unavailable] {
+    content: ${unavailableImageIcon("#626269")} !important;
+    object-fit: scale-down !important;
+    object-position: center !important;
+    min-width: 24px;
+    min-height: 24px;
+    background: linear-gradient(#f4f4f5, #f4f4f5) !important;
+    border-radius: 8px;
+    box-shadow: inset 0 0 0 1px #d4d4d8;
+  }
+  :root[data-mail-color-scheme="dark"] img[data-anser-image-unavailable] {
+    content: ${unavailableImageIcon("#b1b1ba")} !important;
+    background: linear-gradient(#303034, #303034) !important;
+    box-shadow: inset 0 0 0 1px #4c4c53;
+  }
+`;
+
+const themeTransitionCss =
+  "@media (prefers-reduced-motion:no-preference){html,body,body *,body img{transition:background-color 200ms cubic-bezier(0.22,1,0.36,1),color 200ms cubic-bezier(0.22,1,0.36,1),border-color 200ms cubic-bezier(0.22,1,0.36,1),filter 200ms cubic-bezier(0.22,1,0.36,1)!important}}";
+
+function mailThemeCss(
+  colorScheme: MailColorScheme,
+  background?: string,
+  animate = false,
+) {
   const mailBackground = background?.trim() || darkMailColors.background;
+  const transition = animate ? themeTransitionCss : "";
   return colorScheme === "dark"
-    ? `:root{color-scheme:dark}html,body{background-color:${mailBackground}!important;color:${darkMailColors.foreground}!important}a:where(:not([data-anser-light-image-surface] *)){color:${darkMailColors.link}}:where([data-anser-light-image-surface]){color:#242424}a:where([data-anser-light-image-surface] *){color:#0645ad}::selection{background:${darkMailColors.link};color:#111}`
-    : "html,body{background-color:#fff}";
+    ? `${transition}:root{color-scheme:dark}html,body{background-color:${mailBackground}!important;color:${darkMailColors.foreground}!important}a:where(:not([data-anser-light-image-surface] *)){color:${darkMailColors.link}}:where([data-anser-light-image-surface]){color:#242424}a:where([data-anser-light-image-surface] *){color:#0645ad}img[data-anser-logo="transparent-dark"]:not([data-anser-image-unavailable]):where(:not([data-anser-light-image-surface] *)){filter:invert(1) brightness(0.92)!important}img[data-anser-logo="white-matted-dark"]:not([data-anser-image-unavailable]):where(:not([data-anser-light-image-surface] *)){filter:invert(1) brightness(0.92)!important;mix-blend-mode:screen!important}::selection{background:${darkMailColors.link};color:#111}`
+    : `${transition}:root{color-scheme:light}html,body{background-color:#fff}`;
 }
 
 function fontDisplaySwap(value: string) {
@@ -58,6 +91,8 @@ export function safeMailHtml(
       "formaction",
       "data-mail-href",
       "data-anser-light-image-surface",
+      "data-anser-logo",
+      "data-anser-image-unavailable",
     ],
   });
   const doc = new DOMParser().parseFromString(content, "text/html");
@@ -157,48 +192,155 @@ export function safeMailHtml(
   // A body-only sanitizer otherwise drops leading styles in HTML email fragments.
   doc.head.insertAdjacentHTML(
     "afterbegin",
-    `<meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data: https:${nativeImages ? ` ${nativeResourceSource("anser-image")}` : ""}; style-src 'unsafe-inline' ${nativeImages ? nativeResourceSource("anser-style") : "https:"}; font-src data: ${nativeImages ? nativeResourceSource("anser-font") : "https:"}; upgrade-insecure-requests; base-uri 'none'; form-action 'none'"><style>body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','Microsoft YaHei',sans-serif;font-size:14px;line-height:1.6;color:#242424;margin:0;padding:0;overflow-wrap:break-word}img{max-width:100%;height:auto}table{max-width:100%}pre{white-space:pre-wrap}[data-anser-image-run],[data-anser-image-run] :is(a,span,font,b,strong,i,em){line-height:0}[data-anser-image-run] img{vertical-align:bottom}</style><style id="anser-mail-theme">${mailThemeCss(colorScheme, background)}</style>`,
+    `<meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data: https:${nativeImages ? ` ${nativeResourceSource("anser-image")}` : ""}; style-src 'unsafe-inline' ${nativeImages ? nativeResourceSource("anser-style") : "https:"}; font-src data: ${nativeImages ? nativeResourceSource("anser-font") : "https:"}; upgrade-insecure-requests; base-uri 'none'; form-action 'none'"><style>body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','Microsoft YaHei',sans-serif;font-size:14px;line-height:1.6;color:#242424;margin:0;padding:0;overflow-wrap:break-word}img{max-width:100%;height:auto}table{max-width:100%}pre{white-space:pre-wrap}[data-anser-image-run],[data-anser-image-run] :is(a,span,font,b,strong,i,em){line-height:0}[data-anser-image-run] img{vertical-align:bottom}${unavailableImageCss}</style><style id="anser-mail-theme">${mailThemeCss(colorScheme, background)}</style>`,
   );
   return `<!doctype html>${doc.documentElement.outerHTML}`;
 }
 
-function rgb(value: string) {
+type RgbColor = {
+  red: number;
+  green: number;
+  blue: number;
+  alpha: number;
+};
+
+function rgb(value: string): RgbColor | null {
+  const trimmed = value.trim();
   const match =
     /^rgba?\(\s*([\d.]+)[,\s]+([\d.]+)[,\s]+([\d.]+)(?:\s*[,/]\s*([\d.]+))?\s*\)$/i.exec(
-      value.trim(),
+      trimmed,
     );
-  if (!match) return null;
+  if (match) {
+    return {
+      red: Number(match[1]),
+      green: Number(match[2]),
+      blue: Number(match[3]),
+      alpha: match[4] === undefined ? 1 : Number(match[4]),
+    };
+  }
+  const hex = /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(trimmed);
+  if (hex) {
+    const raw = hex[1];
+    const full =
+      raw.length === 3
+        ? raw
+            .split("")
+            .map((ch) => ch + ch)
+            .join("")
+        : raw;
+    return {
+      red: parseInt(full.slice(0, 2), 16),
+      green: parseInt(full.slice(2, 4), 16),
+      blue: parseInt(full.slice(4, 6), 16),
+      alpha: 1,
+    };
+  }
+  const oklch = /^oklch\(\s*([\d.]+)(%?)/i.exec(trimmed);
+  if (oklch) {
+    const l = oklch[2] === "%" ? Number(oklch[1]) / 100 : Number(oklch[1]);
+    const channel = Math.round(
+      Math.max(
+        0,
+        Math.min(255, Math.pow(Math.max(0, Math.min(1, l)), 1.6) * 255),
+      ),
+    );
+    return { red: channel, green: channel, blue: channel, alpha: 1 };
+  }
+  return null;
+}
+
+function formatRgb(color: RgbColor) {
+  return `rgb(${Math.round(color.red)}, ${Math.round(color.green)}, ${Math.round(color.blue)})`;
+}
+
+function blendOver(fg: RgbColor, bg: RgbColor): RgbColor {
+  const a = Math.max(0, Math.min(1, fg.alpha));
+  if (a >= 0.999) return { ...fg, alpha: 1 };
   return {
-    red: Number(match[1]),
-    green: Number(match[2]),
-    blue: Number(match[3]),
-    alpha: match[4] === undefined ? 1 : Number(match[4]),
+    red: fg.red * a + bg.red * (1 - a),
+    green: fg.green * a + bg.green * (1 - a),
+    blue: fg.blue * a + bg.blue * (1 - a),
+    alpha: 1,
   };
 }
 
-function neutral(color: NonNullable<ReturnType<typeof rgb>>) {
+function neutral(color: RgbColor) {
   return (
     Math.max(color.red, color.green, color.blue) -
       Math.min(color.red, color.green, color.blue) <=
-    18
+    20
   );
 }
 
-function luminance(color: NonNullable<ReturnType<typeof rgb>>) {
+function luminance(color: RgbColor) {
   return (
     (color.red * 0.2126 + color.green * 0.7152 + color.blue * 0.0722) / 255
   );
 }
 
+function srgbLinear(channel: number) {
+  const v = channel / 255;
+  return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4);
+}
+
+function relativeLuminance(color: RgbColor) {
+  return (
+    0.2126 * srgbLinear(color.red) +
+    0.7152 * srgbLinear(color.green) +
+    0.0722 * srgbLinear(color.blue)
+  );
+}
+
+function contrastRatio(a: RgbColor, b: RgbColor) {
+  const l1 = relativeLuminance(a);
+  const l2 = relativeLuminance(b);
+  return (Math.max(l1, l2) + 0.05) / (Math.min(l1, l2) + 0.05);
+}
+
 // Slightly tinted near-black ink is still neutral in a reading surface (for
 // example #1f1b2e). Preserve saturated author colors and colored/image surfaces.
-function darkInk(color: NonNullable<ReturnType<typeof rgb>>) {
+function darkInk(color: RgbColor) {
   const channels = [color.red, color.green, color.blue];
   return (
     neutral(color) ||
     (Math.max(...channels) <= 64 &&
       Math.max(...channels) - Math.min(...channels) <= 32)
   );
+}
+
+/**
+ * Single continuous perceptual lightness-inversion curve for neutral colors.
+ * Pure white (L = 1) maps to the dark theme canvas; light grays smoothly lift
+ * into elevated dark surfaces; pure black (L = 0) inverts to crisp off-white.
+ */
+function invertNeutralTone(
+  color: RgbColor,
+  canvasRgb: RgbColor,
+  peakRgb: RgbColor = darkMailColors.invertedPeak,
+): RgbColor {
+  const l = Math.max(0, Math.min(1, luminance(color)));
+  const t = Math.pow(1 - l, 0.78);
+  return {
+    red: canvasRgb.red + (peakRgb.red - canvasRgb.red) * t,
+    green: canvasRgb.green + (peakRgb.green - canvasRgb.green) * t,
+    blue: canvasRgb.blue + (peakRgb.blue - canvasRgb.blue) * t,
+    alpha: 1,
+  };
+}
+
+function hasDarkAuthoredCanvas(doc: Document, view: Window) {
+  // Prefer the document canvas over any individual card or header.
+  for (const element of [
+    doc.body,
+    doc.documentElement,
+    doc.body.firstElementChild,
+  ]) {
+    if (!element) continue;
+    const background = rgb(view.getComputedStyle(element).backgroundColor);
+    if (background && background.alpha > 0.5)
+      return luminance(background) < 0.25;
+  }
+  return false;
 }
 
 function hasAuthoredColorSurface(element: Element, view: Window) {
@@ -268,12 +410,14 @@ function preserveLightImageSurfaces(doc: Document, view: Window) {
       // neutralizer repaint the whole footer surface.
       const maxTextLength = brandRegion ? (compactImage ? 1200 : 320) : 0;
 
-      // Keep the nearest authored backing for an image tile or a compact
-      // brand footer. Footers are often a multi-row presentation table, while
-      // their text still belongs to the same authored light card.
+      // Keep the nearest authored backing only for a visibly shaded light card
+      // (such as #f4f4f4 footers), not an invisible pure-white page header row
+      // that would turn into a stark white strip on a dark canvas.
+      const cardLuminance = luminance(color);
       if (
         neutral(color) &&
-        luminance(color) > 0.78 &&
+        cardLuminance > 0.78 &&
+        cardLuminance < 0.978 &&
         !parent.matches("main,article") &&
         !nestedTable &&
         !parent.querySelector("h1, h2, h3, h4, h5, h6") &&
@@ -296,14 +440,279 @@ function hasBackgroundImage(element: Element, view: Window) {
   return false;
 }
 
-/** Adapt neutral author colors in the isolated reading document. */
+/**
+ * Pure pixel classifier for monochrome dark logos/wordmarks (both transparent-
+ * background and tight-cropped pure-white-matted line art). Leaves photos,
+ * colorful logos, and shaded gray cards untouched.
+ */
+export function classifyDarkLogoPixels(
+  pixels: Uint8ClampedArray | readonly number[],
+  width: number,
+  height: number,
+): MailLogoKind {
+  const totalPixels = Math.min(Math.floor(pixels.length / 4), width * height);
+  if (totalPixels < 4 || width <= 1 || height <= 1) return "none";
+  let transparent = 0;
+  let visible = 0;
+  let darkInk = 0;
+  let pureWhite = 0;
+  let colorfulTransparent = 0;
+  let colorfulOpaque = 0;
+  for (let i = 0; i + 3 < pixels.length; i += 4) {
+    const a = pixels[i + 3];
+    if (a < 24) {
+      transparent++;
+      continue;
+    }
+    visible++;
+    const r = pixels[i];
+    const g = pixels[i + 1];
+    const b = pixels[i + 2];
+    const chroma = Math.max(r, g, b) - Math.min(r, g, b);
+    const lum = (r * 2126 + g * 7152 + b * 722) / 10_000;
+    if (lum <= 128 && chroma <= 36) darkInk++;
+    if (lum >= 245 && chroma <= 14) pureWhite++;
+    if (chroma > 40) colorfulTransparent++;
+    if (chroma > 28) colorfulOpaque++;
+  }
+  if (visible < 4) return "none";
+  if (
+    transparent * 100 >= totalPixels * 10 &&
+    darkInk * 100 >= visible * 75 &&
+    colorfulTransparent * 100 <= visible * 5
+  )
+    return "transparent-dark";
+  if (
+    transparent * 100 < totalPixels * 10 &&
+    colorfulOpaque * 100 <= visible * 2 &&
+    pureWhite * 100 >= visible * 35 &&
+    darkInk * 100 >= visible * 3
+  ) {
+    const isWhiteAt = (x: number, y: number) => {
+      const idx = (y * width + x) * 4;
+      if (idx + 3 >= pixels.length) return false;
+      const a = pixels[idx + 3];
+      if (a < 24) return true;
+      const r = pixels[idx];
+      const g = pixels[idx + 1];
+      const b = pixels[idx + 2];
+      const chroma = Math.max(r, g, b) - Math.min(r, g, b);
+      const lum = (r * 2126 + g * 7152 + b * 722) / 10_000;
+      return lum >= 245 && chroma <= 14;
+    };
+    const edgeWhite = (count: number, at: (i: number) => boolean) => {
+      let hits = 0;
+      for (let i = 0; i < count; i++) if (at(i)) hits++;
+      return count > 0 && hits * 100 >= count * 25;
+    };
+    const whiteEdges = [
+      edgeWhite(width, (x) => isWhiteAt(x, 0)),
+      edgeWhite(width, (x) => isWhiteAt(x, height - 1)),
+      edgeWhite(height, (y) => isWhiteAt(0, y)),
+      edgeWhite(height, (y) => isWhiteAt(width - 1, y)),
+    ].filter(Boolean).length;
+    if (whiteEdges >= 2) return "white-matted-dark";
+  }
+  return "none";
+}
+
+function sampleInlineImageLogo(image: HTMLImageElement): MailLogoKind {
+  if (
+    !image.complete ||
+    image.naturalWidth <= 1 ||
+    image.naturalHeight <= 1 ||
+    typeof document === "undefined"
+  )
+    return "none";
+  try {
+    const scale = Math.min(
+      1,
+      64 / Math.max(image.naturalWidth, image.naturalHeight),
+    );
+    const width = Math.max(1, Math.round(image.naturalWidth * scale));
+    const height = Math.max(1, Math.round(image.naturalHeight * scale));
+    const canvas = document.createElement("canvas");
+    canvas.width = width;
+    canvas.height = height;
+    const context = canvas.getContext("2d", { willReadFrequently: true });
+    if (!context) return "none";
+    context.clearRect(0, 0, width, height);
+    context.drawImage(image, 0, 0, width, height);
+    const { data } = context.getImageData(0, 0, width, height);
+    return classifyDarkLogoPixels(data, width, height);
+  } catch {
+    return "none";
+  }
+}
+
+function unwrapNativeImageUrl(source: string): string | null {
+  try {
+    const url = new URL(source);
+    if (
+      (url.protocol === "anser-image:" ||
+        url.hostname === "anser-image.localhost") &&
+      url.pathname === "/fetch"
+    ) {
+      return url.searchParams.get("url");
+    }
+  } catch {
+    // Ignore malformed or relative URLs.
+  }
+  return null;
+}
+
+/**
+ * Classifies loaded mail images for dark-mode logo rendering via pure CSS
+ * (data-anser-logo), using local canvas sampling for inline data: URIs and
+ * the native Rust classification cache for proxied remote images.
+ */
+export async function classifyMailImages(
+  doc: Document,
+  nativeLookup?: (urls: string[]) => Promise<Record<string, string>>,
+) {
+  if (!doc.body) return;
+  const nativeTargets = new Map<string, HTMLImageElement[]>();
+  for (const image of doc.images) {
+    if (image.hasAttribute("data-anser-logo")) continue;
+    if (!image.complete || image.naturalWidth <= 1 || image.naturalHeight <= 1)
+      continue;
+    const src = image.currentSrc || image.getAttribute("src") || "";
+    if (!src) continue;
+    if (src.startsWith("data:")) {
+      const kind = sampleInlineImageLogo(image);
+      image.setAttribute("data-anser-logo", kind);
+      continue;
+    }
+    const unwrapped = unwrapNativeImageUrl(src);
+    if (unwrapped && nativeLookup) {
+      const list = nativeTargets.get(unwrapped) ?? [];
+      list.push(image);
+      nativeTargets.set(unwrapped, list);
+    }
+  }
+  if (!nativeTargets.size || !nativeLookup) return;
+  try {
+    const results = await nativeLookup([...nativeTargets.keys()]);
+    for (const [url, images] of nativeTargets) {
+      const kind = results[url];
+      if (
+        kind === "transparent-dark" ||
+        kind === "white-matted-dark" ||
+        kind === "none"
+      ) {
+        for (const image of images) {
+          image.setAttribute("data-anser-logo", kind);
+        }
+      }
+    }
+  } catch {
+    // Classification is purely visual enhancement; never disrupt reading.
+  }
+}
+
+type SavedInlineProp = { value: string; priority: string };
+type SavedInlineStyles = Record<string, SavedInlineProp>;
+
+const originalInlineStyles = new WeakMap<HTMLElement, SavedInlineStyles>();
+const adaptedElementsByDoc = new WeakMap<Document, Set<HTMLElement>>();
+
+const managedStyleProps = [
+  "background-color",
+  "color",
+  "border-top-color",
+  "border-right-color",
+  "border-bottom-color",
+  "border-left-color",
+] as const;
+
+function snapshotInlineStyles(doc: Document, element: HTMLElement) {
+  if (!originalInlineStyles.has(element)) {
+    const saved: SavedInlineStyles = {};
+    for (const prop of managedStyleProps) {
+      saved[prop] = {
+        value: element.style.getPropertyValue(prop),
+        priority: element.style.getPropertyPriority(prop),
+      };
+    }
+    originalInlineStyles.set(element, saved);
+  }
+  let tracked = adaptedElementsByDoc.get(doc);
+  if (!tracked) {
+    tracked = new Set();
+    adaptedElementsByDoc.set(doc, tracked);
+  }
+  tracked.add(element);
+}
+
+function setManagedStyle(
+  doc: Document,
+  element: HTMLElement,
+  prop: (typeof managedStyleProps)[number],
+  value: string,
+) {
+  snapshotInlineStyles(doc, element);
+  element.style.setProperty(prop, value, "important");
+}
+
+function restoreOriginalMailStyles(doc: Document) {
+  const tracked = adaptedElementsByDoc.get(doc);
+  if (!tracked) return;
+  for (const element of tracked) {
+    const saved = originalInlineStyles.get(element);
+    if (!saved) continue;
+    for (const prop of managedStyleProps) {
+      const entry = saved[prop];
+      if (entry.value) {
+        element.style.setProperty(prop, entry.value, entry.priority);
+      } else {
+        element.style.removeProperty(prop);
+      }
+    }
+  }
+  tracked.clear();
+  for (const marked of doc.querySelectorAll(
+    "[data-anser-light-image-surface]",
+  )) {
+    marked.removeAttribute("data-anser-light-image-surface");
+  }
+}
+
+const borderSides = [
+  {
+    style: "borderTopStyle",
+    width: "borderTopWidth",
+    color: "borderTopColor",
+    css: "border-top-color",
+  },
+  {
+    style: "borderRightStyle",
+    width: "borderRightWidth",
+    color: "borderRightColor",
+    css: "border-right-color",
+  },
+  {
+    style: "borderBottomStyle",
+    width: "borderBottomWidth",
+    color: "borderBottomColor",
+    css: "border-bottom-color",
+  },
+  {
+    style: "borderLeftStyle",
+    width: "borderLeftWidth",
+    color: "borderLeftColor",
+    css: "border-left-color",
+  },
+] as const;
+
+/** Adapt neutral author colors in the isolated reading document via unified lightness inversion. */
 export function applyMailColorScheme(
   doc: Document,
   colorScheme: MailColorScheme,
   background?: string,
+  animate = false,
 ) {
+  if (!doc.body) return;
   const view = doc.defaultView;
-  if (!view || !doc.body) return;
   const mailBackground = background?.trim() || darkMailColors.background;
   let style = doc.querySelector<HTMLStyleElement>("#anser-mail-theme");
   if (!style) {
@@ -311,17 +720,44 @@ export function applyMailColorScheme(
     style.id = "anser-mail-theme";
     doc.head.prepend(style);
   }
-  style.textContent = mailThemeCss(colorScheme, background);
+  const colorSchemeMeta = doc.querySelector<HTMLMetaElement>(
+    'meta[name="color-scheme"]',
+  );
+  if (colorSchemeMeta) colorSchemeMeta.content = colorScheme;
+
+  // Always restore original author inline styles first so repeated dark <-> light
+  // or dark-palette A <-> B transitions compute cleanly from authentic source styles.
+  restoreOriginalMailStyles(doc);
+  const requestedScheme = `:root{color-scheme:${colorScheme}}`;
+  style.textContent = `${animate ? themeTransitionCss : ""}${requestedScheme}`;
+
+  // A declaration or media query is only a hint. Some senders emit empty or
+  // narrowly scoped dark rules while the readable canvas stays light.
+  const nativeDark =
+    colorScheme === "dark" && view !== null && hasDarkAuthoredCanvas(doc, view);
+  style.textContent = nativeDark
+    ? `${animate ? themeTransitionCss : ""}:root{color-scheme:dark}`
+    : mailThemeCss(colorScheme, background, animate);
   doc.documentElement.dataset.mailColorScheme = colorScheme;
-  if (colorScheme === "light") return;
+  if (colorScheme === "light" || nativeDark || !view) return;
 
   preserveLightImageSurfaces(doc, view);
-  doc.body.style.setProperty("background-color", mailBackground, "important");
-  doc.body.style.setProperty("color", darkMailColors.foreground, "important");
+  const canvasRgb = rgb(mailBackground) ??
+    rgb(darkMailColors.background) ?? {
+      red: 28,
+      green: 28,
+      blue: 30,
+      alpha: 1,
+    };
+  const effectiveSurface = new Map<Element, RgbColor>();
+  effectiveSurface.set(doc.body, canvasRgb);
+
+  setManagedStyle(doc, doc.body, "background-color", mailBackground);
+  setManagedStyle(doc, doc.body, "color", darkMailColors.foreground);
+
   for (const element of doc.body.querySelectorAll<HTMLElement>("*")) {
     if (
       [
-        "IMG",
         "PICTURE",
         "SOURCE",
         "VIDEO",
@@ -337,37 +773,94 @@ export function applyMailColorScheme(
       continue;
     const computed = view.getComputedStyle(element);
     if (computed.display === "none") continue;
-    const background = rgb(computed.backgroundColor);
-    if (
-      background &&
-      !element.hasAttribute("data-anser-light-image-surface") &&
-      background.alpha > 0.05 &&
-      neutral(background) &&
-      luminance(background) > 0.78 &&
-      (!computed.backgroundImage || computed.backgroundImage === "none")
-    )
-      element.style.setProperty(
-        "background-color",
-        mailBackground,
-        "important",
-      );
+    const parentSurface =
+      (element.parentElement && effectiveSurface.get(element.parentElement)) ||
+      canvasRgb;
+    let currentSurface = parentSurface;
+
+    const isPreservedLightCard = element.hasAttribute(
+      "data-anser-light-image-surface",
+    );
+    const hasImageBg =
+      !!computed.backgroundImage && computed.backgroundImage !== "none";
+    const bg = rgb(computed.backgroundColor);
+
+    if (bg && bg.alpha > 0.05) {
+      if (isPreservedLightCard || hasImageBg || !neutral(bg)) {
+        currentSurface = blendOver(bg, parentSurface);
+      } else {
+        const bgLum = luminance(bg);
+        const preservesDarkImageBacking =
+          bgLum < 0.25 &&
+          element.querySelector("img") !== null &&
+          (element.textContent?.trim().length ?? 0) <= 240;
+        if (preservesDarkImageBacking) {
+          currentSurface = blendOver(bg, parentSurface);
+        } else if (bgLum >= 0.978) {
+          setManagedStyle(doc, element, "background-color", mailBackground);
+          currentSurface = canvasRgb;
+        } else {
+          const inverted = invertNeutralTone(bg, canvasRgb);
+          setManagedStyle(
+            doc,
+            element,
+            "background-color",
+            formatRgb(inverted),
+          );
+          currentSurface = inverted;
+        }
+      }
+    }
+    effectiveSurface.set(element, currentSurface);
+    if (element.tagName === "IMG") continue;
+
+    if (!isPreservedLightCard && !hasImageBg) {
+      for (const side of borderSides) {
+        const borderStyle = computed[side.style];
+        if (!borderStyle || borderStyle === "none" || borderStyle === "hidden")
+          continue;
+        const borderWidth = parseFloat(computed[side.width] || "0") || 0;
+        if (borderWidth <= 0) continue;
+        const borderColor = rgb(computed[side.color] || "");
+        if (!borderColor || borderColor.alpha <= 0.1 || !neutral(borderColor))
+          continue;
+        const invertedBorder = invertNeutralTone(borderColor, canvasRgb);
+        setManagedStyle(doc, element, side.css, formatRgb(invertedBorder));
+      }
+    }
+
     const foreground = rgb(computed.color);
     if (
       foreground &&
-      darkInk(foreground) &&
-      luminance(foreground) < 0.42 &&
       !hasBackgroundImage(element, view) &&
-      !hasAuthoredColorSurface(element, view)
-    )
-      element.style.setProperty(
-        "color",
-        element.tagName === "A"
-          ? darkMailColors.link
-          : luminance(foreground) < 0.24
-            ? darkMailColors.foreground
-            : darkMailColors.muted,
-        "important",
-      );
+      !element.closest("[data-anser-light-image-surface]")
+    ) {
+      const surfaceIsDark = relativeLuminance(currentSurface) < 0.3;
+      const ratio = contrastRatio(foreground, currentSurface);
+      if (surfaceIsDark) {
+        if (
+          darkInk(foreground) &&
+          (luminance(foreground) < 0.42 || ratio < 4.5) &&
+          !hasAuthoredColorSurface(element, view)
+        ) {
+          setManagedStyle(
+            doc,
+            element,
+            "color",
+            element.tagName === "A"
+              ? darkMailColors.link
+              : luminance(foreground) < 0.24
+                ? darkMailColors.foreground
+                : darkMailColors.muted,
+          );
+        }
+      } else if (
+        ratio < 4.5 &&
+        (neutral(foreground) || element.tagName === "A")
+      ) {
+        setManagedStyle(doc, element, "color", darkMailColors.darkInkOnLight);
+      }
+    }
   }
 }
 

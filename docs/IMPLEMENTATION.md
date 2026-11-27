@@ -751,7 +751,7 @@ WebKit原生scripts-disabled正文不绑定子文档load/error/click/auxclick事
 ## 原生正文图片网络入口（2026-10-15，本地修复）
 
 - `safeMailHtml` 在原生模式下将净化后的 img/srcset、HTML 背景及 CSS 图片 URL 映射到 `anser-image://localhost/fetch`；保持 data/CID 派生图片、字体与外链各自入口。网页/Pages 不生成此协议，继续使用隔离示例。原始 MIME 不变。
-- `MailContent` 把应用解析后的 `light` / `dark` 状态传入净化文档，并以独立的 `#anser-mail-theme` 样式隔离正文主题。深色只转换中性白底、深灰文字和链接；品牌色、图片背景及绝对视觉内容保持不变。切换主题重建同内容 iframe，脚本、CSP、安全链接路由和 MIME 均不改变；打印入口显式继续使用浅色。
+- `MailContent` 复用已加载的正文 `iframe`，通过 `#anser-mail-theme` 和可恢复的内联样式原地切换颜色。颜色过渡遵循减弱动态效果偏好。深色适配尊重作者深色样式，以当前主题底色计算中性背景、边框及文字对比度。原生图片通道返回原字节，并在内存中保存有限的分类结果。位图分类在解码前检查像素总量和内存预算，再按有界网格取样。透明和白底黑色线稿使用 CSS 反色，白底用滤色混合融入正文。打印入口继续使用浅色。
 - Tauri 异步协议在主 WebView 注册，接收 GET 图片请求。Rust `mail_images` 读取 `proxy::current` 的短时配置快照，reqwest 使用显式全局代理（含 SOCKS5 远端 DNS）或无代理直连，不依赖终端代理环境或系统代理。沿用代理握手失败可选直连，保持 TLS 校验。
 - 初始地址及最多 5 次跳转仅接受无 URL 用户凭据的 HTTPS，拒绝 localhost/本地域名及私有、回环、链路本地 IP 字面量。最多 6 个活动请求、20 MiB/图片、40 秒总期限（包括排队）；按 GET 实际字节识别常见位图，SVG 以图片类型及响应 CSP 隔离，HTML/WAF 验证页不能充当图片返回。
 - 不转发邮箱凭据、浏览器 Cookie、Origin 或 Referer；不写图片缓存到数据库/存档，不把源 URL、跟踪地址、代理凭据或响应正文写入失败日志。响应使用 `no-store`、`nosniff` 及 `default-src 'none'; sandbox`，仅在 img-src 追加图片协议，保留正文脚本禁用与 iframe sandbox。

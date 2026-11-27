@@ -2377,7 +2377,7 @@ describe("reading unread mail within its current category", () => {
       host.querySelectorAll(".remote-folder-list .folder-item").length,
     ).toBeGreaterThan(0);
   });
-  it("shows only retry feedback after a cached directory discovery fails", async () => {
+  it("re-expands already loaded folders immediately without redundant server calls", async () => {
     const toggle = host.querySelector(
       'button[aria-label="展开 工作邮箱 的服务器文件夹"]',
     );
@@ -2388,26 +2388,28 @@ describe("reading unread mail within its current category", () => {
     expect(count).toBeGreaterThan(0);
     await click(toggle);
     const original = api.call;
-    vi.spyOn(api, "call").mockImplementation(
-      async <T,>(command: string, args?: Record<string, unknown>) => {
-        if (command === "account_folders")
-          throw new Error("读取或刷新邮箱授权失败：授权服务暂时不可用");
-        return original<T>(command, args);
-      },
-    );
+    const folderSpy = vi
+      .spyOn(api, "call")
+      .mockImplementation(
+        async <T,>(command: string, args?: Record<string, unknown>) => {
+          if (command === "account_folders")
+            throw new Error("should not refetch already loaded folders");
+          return original<T>(command, args);
+        },
+      );
     await click(toggle);
-    expect(host.querySelector(".remote-folder-list")?.textContent).toContain(
-      "加载失败，重试",
-    );
     expect(
-      host.querySelector(".remote-folder-list")?.textContent,
-    ).not.toContain("授权服务暂时不可用");
-    expect(host.querySelector(".remote-folder-list [role='alert']")).toBeNull();
+      host.querySelector('[role="status"][aria-label="正在加载服务器文件夹"]'),
+    ).toBeNull();
     expect(
       host.querySelectorAll(".remote-folder-list .folder-item"),
-    ).toHaveLength(0);
+    ).toHaveLength(count);
+    expect(folderSpy).not.toHaveBeenCalledWith(
+      "account_folders",
+      expect.anything(),
+    );
   });
-  it("toggles folders from the account row and waits for the complete directory response", async () => {
+  it("shows cached folders immediately on expand and silently merges fresh directory changes", async () => {
     const seed = await snapshot(localQuery);
     const accountId = seed.accounts[0].id;
     const cached: RemoteFolder = {
@@ -2459,15 +2461,14 @@ describe("reading unread mail within its current category", () => {
     expect(commands).toHaveBeenCalledWith("account_folders", { id: accountId });
     expect(
       host.querySelector('[role="status"][aria-label="正在加载服务器文件夹"]'),
-    ).not.toBeNull();
+    ).toBeNull();
     expect(
-      host.querySelectorAll(".remote-folder-list .folder-item"),
-    ).toHaveLength(0);
+      [...host.querySelectorAll(".remote-folder-list .folder-item")].map(
+        (item) => item.textContent,
+      ),
+    ).toEqual(["收件箱", "星标邮件"]);
 
     await act(async () => finishLoading([cached, fresh]));
-    expect(
-      host.querySelector('[role="status"][aria-label="正在加载服务器文件夹"]'),
-    ).toBeNull();
     expect(
       [...host.querySelectorAll(".remote-folder-list .folder-item")].map(
         (item) => item.textContent,
@@ -2479,6 +2480,147 @@ describe("reading unread mail within its current category", () => {
     expect(
       host.querySelector(".remote-folder-list")?.hasAttribute("hidden"),
     ).toBe(true);
+  });
+  it("reorders accounts via sidebar pointer drag with live ghost slot and persists via reorder_accounts", async () => {
+    const groups = [
+      ...host.querySelectorAll<HTMLElement>(".account-nav-group"),
+    ];
+    expect(groups).toHaveLength(2);
+    const firstId = groups[0].dataset.accountDragId!;
+    const secondId = groups[1].dataset.accountDragId!;
+    vi.spyOn(groups[0], "getBoundingClientRect").mockReturnValue({
+      top: 0,
+      bottom: 40,
+      left: 0,
+      right: 200,
+      width: 200,
+      height: 40,
+      x: 0,
+      y: 0,
+      toJSON: () => {},
+    });
+    vi.spyOn(groups[1], "getBoundingClientRect").mockReturnValue({
+      top: 48,
+      bottom: 88,
+      left: 0,
+      right: 200,
+      width: 200,
+      height: 40,
+      x: 0,
+      y: 48,
+      toJSON: () => {},
+    });
+    const callSpy = vi.spyOn(api, "call");
+    const row = groups[0].querySelector<HTMLElement>(".account-navigation")!;
+    await act(async () => {
+      row.dispatchEvent(
+        new PointerEvent("pointerdown", {
+          bubbles: true,
+          pointerId: 1,
+          isPrimary: true,
+          button: 0,
+          clientX: 40,
+          clientY: 20,
+        }),
+      );
+      window.dispatchEvent(
+        new PointerEvent("pointermove", {
+          bubbles: true,
+          pointerId: 1,
+          isPrimary: true,
+          clientX: 40,
+          clientY: 80,
+        }),
+      );
+    });
+    // Live displacement happens immediately while dragging, with ghost slot and floating card (no drop-position bar)
+    const liveOrder = [
+      ...host.querySelectorAll<HTMLElement>(".account-nav-group"),
+    ].map((el) => el.dataset.accountDragId);
+    expect(liveOrder).toEqual([secondId, firstId]);
+    expect(
+      host
+        .querySelector(`[data-account-drag-id="${firstId}"]`)
+        ?.getAttribute("data-drag-ghost"),
+    ).toBe("true");
+    expect(host.querySelector("[data-drop-position]")).toBeNull();
+    expect(
+      document.body.querySelector(".account-drag-floating"),
+    ).not.toBeNull();
+
+    await act(async () => {
+      window.dispatchEvent(
+        new PointerEvent("pointerup", {
+          bubbles: true,
+          pointerId: 1,
+          isPrimary: true,
+          clientX: 40,
+          clientY: 80,
+        }),
+      );
+    });
+    expect(callSpy).toHaveBeenCalledWith("reorder_accounts", {
+      ids: [secondId, firstId],
+    });
+    expect(document.body.querySelector(".account-drag-floating")).toBeNull();
+    const reordered = [
+      ...host.querySelectorAll<HTMLElement>(".account-nav-group"),
+    ].map((el) => el.dataset.accountDragId);
+    expect(reordered).toEqual([secondId, firstId]);
+  });
+  it("places local diagnostic logs inside the About Anser settings tab", async () => {
+    const settingsButton =
+      host.querySelector<HTMLElement>('button[title="设置与账号"]') ??
+      [...host.querySelectorAll<HTMLElement>("button")].find((b) =>
+        b.textContent?.includes("设置与账号"),
+      ) ??
+      null;
+    await click(settingsButton);
+    const aboutTab =
+      [...host.querySelectorAll<HTMLElement>('[role="tab"]')].find((tab) =>
+        tab.textContent?.includes("关于雁信"),
+      ) ?? null;
+    expect(aboutTab).toBeTruthy();
+    await click(aboutTab);
+    expect(host.textContent).toContain("后台收取范围");
+    expect(host.textContent).toContain("本地诊断日志");
+    const aboutPanel = host.querySelector(
+      '[role="tabpanel"][data-state="active"]',
+    );
+    expect(aboutPanel?.querySelectorAll('[data-slot="card"]').length).toBe(2);
+  });
+  it("triggers welcome emblem ripple and updates parallax variables on the empty reader", async () => {
+    const welcome = host.querySelector<HTMLElement>(".reader-welcome");
+    expect(welcome).not.toBeNull();
+    vi.spyOn(welcome!, "getBoundingClientRect").mockReturnValue({
+      top: 0,
+      bottom: 400,
+      left: 0,
+      right: 400,
+      width: 400,
+      height: 400,
+      x: 0,
+      y: 0,
+      toJSON: () => {},
+    });
+    await act(async () => {
+      welcome!.dispatchEvent(
+        new PointerEvent("pointermove", {
+          bubbles: true,
+          clientX: 300,
+          clientY: 100,
+        }),
+      );
+    });
+    expect(welcome!.style.getPropertyValue("--wx")).toBe("0.500");
+    expect(welcome!.style.getPropertyValue("--wy")).toBe("-0.500");
+    const emblem = host.querySelector<HTMLElement>(".welcome-logo-trigger");
+    expect(emblem).not.toBeNull();
+    await click(emblem);
+    expect(host.querySelector(".welcome-ripples")).not.toBeNull();
+    expect(host.querySelector(".reader-welcome p")?.textContent).toMatch(
+      /未读邮件|全部已读/,
+    );
   });
   it("shows a parent folder union, per-folder unread counts, account stars and a direct read action", async () => {
     const seed = await snapshot(localQuery);

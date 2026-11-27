@@ -31,6 +31,21 @@ impl Store {
         };
         let db = s.db()?;
         db.execute_batch("PRAGMA journal_mode=WAL; CREATE TABLE IF NOT EXISTS accounts(id TEXT PRIMARY KEY,data TEXT NOT NULL); CREATE TABLE IF NOT EXISTS messages(id TEXT PRIMARY KEY,account_id TEXT NOT NULL,hash TEXT NOT NULL,data TEXT NOT NULL,UNIQUE(account_id,hash)); CREATE TABLE IF NOT EXISTS sources(account_id TEXT,folder TEXT,remote_id TEXT,mail_id TEXT,active INTEGER NOT NULL DEFAULT 1,PRIMARY KEY(account_id,folder,remote_id)); CREATE TABLE IF NOT EXISTS rules(id TEXT PRIMARY KEY,position INTEGER,data TEXT NOT NULL); CREATE TABLE IF NOT EXISTS logs(id INTEGER PRIMARY KEY,time TEXT,message TEXT); CREATE TABLE IF NOT EXISTS drafts(id TEXT PRIMARY KEY,data TEXT); CREATE TABLE IF NOT EXISTS outbox(id TEXT PRIMARY KEY,status TEXT,data TEXT,raw BLOB); CREATE INDEX IF NOT EXISTS messages_account ON messages(account_id);").map_err(err)?;
+        let has_position: bool = db
+            .prepare("PRAGMA table_info(accounts)")
+            .map_err(err)?
+            .query_map([], |r| r.get::<_, String>(1))
+            .map_err(err)?
+            .any(|r| r.as_deref() == Ok("position"));
+        if !has_position {
+            db.execute(
+                "ALTER TABLE accounts ADD COLUMN position INTEGER NOT NULL DEFAULT 0",
+                [],
+            )
+            .map_err(err)?;
+            db.execute("UPDATE accounts SET position = rowid", [])
+                .map_err(err)?;
+        }
         let has_active: bool = db
             .prepare("PRAGMA table_info(sources)")
             .map_err(err)?
@@ -163,6 +178,7 @@ impl Store {
         listing.commit().map_err(err)?;
         crate::operations::initialize(&db)?;
         crate::folder_health::initialize(&db)?;
+        crate::sync_failures::initialize(&db)?;
         crate::directory_operations::initialize(&db)?;
         crate::sent_uploads::initialize(&db)?;
         crate::rule_operations::initialize(&db)?;
@@ -207,7 +223,7 @@ impl Store {
     pub fn accounts(&self) -> Result<Vec<Account>> {
         let db = self.db()?;
         let mut q = db
-            .prepare("SELECT data FROM accounts ORDER BY rowid")
+            .prepare("SELECT data FROM accounts ORDER BY position, rowid")
             .map_err(err)?;
         let rows = q.query_map([], |r| r.get::<_, String>(0)).map_err(err)?;
         rows.map(|r| serde_json::from_str(&r.map_err(err)?).map_err(err))
@@ -218,8 +234,52 @@ impl Store {
     }
     pub fn save_account(&self, a: &Account) -> Result<()> {
         a.validate()?;
-        self.db()?.execute("INSERT INTO accounts(id,data) VALUES(?1,?2) ON CONFLICT(id) DO UPDATE SET data=excluded.data",params![a.id,serde_json::to_string(a).map_err(err)?]).map_err(err)?;
+        self.db()?
+            .execute(
+                "INSERT INTO accounts(id,data,position)
+             VALUES(?1,?2,COALESCE((SELECT MAX(position)+1 FROM accounts),0))
+             ON CONFLICT(id) DO UPDATE SET data=excluded.data",
+                params![a.id, serde_json::to_string(a).map_err(err)?],
+            )
+            .map_err(err)?;
         Ok(())
+    }
+    pub fn reorder_accounts(&self, ids: &[String]) -> Result<()> {
+        let mut seen = HashSet::new();
+        for id in ids {
+            if id.is_empty() || !seen.insert(id.as_str()) {
+                return Err("账号排序列表包含重复或无效项".into());
+            }
+        }
+        let mut db = self.db()?;
+        let tx = db
+            .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
+            .map_err(err)?;
+        let existing: Vec<String> = {
+            let mut stmt = tx
+                .prepare("SELECT id FROM accounts ORDER BY position, rowid")
+                .map_err(err)?;
+            let rows = stmt.query_map([], |r| r.get::<_, String>(0)).map_err(err)?;
+            rows.collect::<rusqlite::Result<Vec<_>>>().map_err(err)?
+        };
+        let existing_set: HashSet<&str> = existing.iter().map(String::as_str).collect();
+        if ids.iter().any(|id| !existing_set.contains(id.as_str())) {
+            return Err("账号列表已变化，请刷新后重试排序".into());
+        }
+        let mut ordered = ids.to_vec();
+        for id in existing {
+            if !seen.contains(id.as_str()) {
+                ordered.push(id);
+            }
+        }
+        for (index, id) in ordered.iter().enumerate() {
+            tx.execute(
+                "UPDATE accounts SET position=?2 WHERE id=?1",
+                params![id, index as i64],
+            )
+            .map_err(err)?;
+        }
+        tx.commit().map_err(err)
     }
     // Local preferences do not require credentials or a server connection test.
     pub fn edit_account_preferences(&self, account: &Account) -> Result<()> {
@@ -340,6 +400,8 @@ impl Store {
                 .map_err(err)?;
             tx.execute("DELETE FROM folder_retention WHERE account_id=?1", [&a.id])
                 .map_err(err)?;
+            tx.execute("DELETE FROM sync_failures WHERE account_id=?1", [&a.id])
+                .map_err(err)?;
         }
         tx.commit().map_err(err)
     }
@@ -365,6 +427,8 @@ impl Store {
         tx.execute("DELETE FROM remote_folders WHERE account_id=?1", [id])
             .map_err(err)?;
         tx.execute("DELETE FROM folder_retention WHERE account_id=?1", [id])
+            .map_err(err)?;
+        tx.execute("DELETE FROM sync_failures WHERE account_id=?1", [id])
             .map_err(err)?;
         tx.execute("UPDATE archive_jobs SET status='cancelled',revision=revision+1,error='账号已移除，本地存档保留' WHERE json_extract(data,'$.accountId')=?1 AND status!='completed'",[id]).map_err(err)?;
         crate::rule_runs::cancel_account_in(&tx, id)?;
@@ -859,6 +923,7 @@ impl Store {
         Ok(n)
     }
     pub fn log(&self, msg: &str) -> Result<()> {
+        crate::diagnostics::append(&self.root, "INFO", "app", msg);
         let db = self.db()?;
         db.execute(
             "INSERT INTO logs(time,message) VALUES(?1,?2)",
@@ -871,6 +936,9 @@ impl Store {
         )
         .map_err(err)?;
         Ok(())
+    }
+    pub fn log_diagnostic(&self, level: &str, scope: &str, msg: &str) {
+        crate::diagnostics::append(&self.root, level, scope, msg);
     }
     pub fn snapshot(&self, q: &Query) -> Result<Snapshot> {
         let db = self.db()?;
@@ -1032,16 +1100,19 @@ impl Store {
             .collect::<std::result::Result<Vec<String>, _>>()
             .map_err(err)?;
         Ok(Snapshot {
-            accounts: json_rows::<Account>(db, "SELECT data FROM accounts ORDER BY rowid")?
-                .into_iter()
-                .map(|mut account| {
-                    account.error = account
-                        .error
-                        .as_deref()
-                        .map(crate::remote::display_activity);
-                    account
-                })
-                .collect(),
+            accounts: json_rows::<Account>(
+                db,
+                "SELECT data FROM accounts ORDER BY position, rowid",
+            )?
+            .into_iter()
+            .map(|mut account| {
+                account.error = account
+                    .error
+                    .as_deref()
+                    .map(crate::remote::display_activity);
+                account
+            })
+            .collect(),
             rules: json_rows(db, "SELECT data FROM rules ORDER BY position")?,
             messages,
             folders,
@@ -1268,7 +1339,7 @@ impl Store {
             )?;
         }
         drop(stmt);
-        snap.execute_batch("DELETE FROM eml_import_items; DELETE FROM eml_import_jobs; DELETE FROM accounts; DELETE FROM folder_retention; DELETE FROM archive_jobs; DELETE FROM rule_runs; DELETE FROM drafts; DELETE FROM compose_files; DELETE FROM compose_sessions; DELETE FROM outbox; DELETE FROM sent_uploads; DELETE FROM logs; DELETE FROM server_operations; DELETE FROM folder_health; DELETE FROM directory_operations; DELETE FROM rule_executions; VACUUM;").map_err(err)?;
+        snap.execute_batch("DELETE FROM eml_import_items; DELETE FROM eml_import_jobs; DELETE FROM accounts; DELETE FROM folder_retention; DELETE FROM archive_jobs; DELETE FROM rule_runs; DELETE FROM drafts; DELETE FROM compose_files; DELETE FROM compose_sessions; DELETE FROM outbox; DELETE FROM sent_uploads; DELETE FROM logs; DELETE FROM server_operations; DELETE FROM folder_health; DELETE FROM sync_failures; DELETE FROM directory_operations; DELETE FROM rule_executions; VACUUM;").map_err(err)?;
         archive::atomic_write(
             &folder.join("manifest.json"),
             br#"{"format":"mail-desktop-archive","version":1}"#,

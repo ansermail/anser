@@ -1,8 +1,10 @@
 //! Image-only transport for scripts-disabled mail frames. WKWebView's network
 //! process does not use the application's mail/OAuth proxy configuration.
 use crate::models::{ProxyConfig, Result};
+use image::{GenericImageView, ImageDecoder};
 use reqwest::{Client, Response};
 use std::{
+    collections::HashMap,
     sync::{Mutex, OnceLock},
     time::Duration,
 };
@@ -164,6 +166,11 @@ pub(crate) async fn read_resource(
 ) -> Result<(String, Vec<u8>, Url)> {
     let final_url = response.url().clone();
     if !response.status().is_success() {
+        #[cfg(debug_assertions)]
+        eprintln!(
+            "[anser:mail-resource] upstream HTTP {}",
+            response.status().as_u16()
+        );
         return Err("图片服务器返回失败".into());
     }
     if response
@@ -220,25 +227,275 @@ pub(crate) async fn fetch_resource(url: Url, limit: usize) -> Result<(String, Ve
     read_resource(response, limit).await
 }
 
+const MAX_DARK_LOGO_BYTES: usize = 3 * 1024 * 1024;
+const MAX_DARK_LOGO_PIXELS: u64 = 16 * 1024 * 1024;
+const MAX_DARK_LOGO_DECODE_BYTES: u64 = 96 * 1024 * 1024;
+const MAX_LOGO_CACHE_ENTRIES: usize = 512;
+
+fn logo_cache() -> &'static Mutex<HashMap<String, &'static str>> {
+    static CACHE: OnceLock<Mutex<HashMap<String, &'static str>>> = OnceLock::new();
+    CACHE.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+fn cache_logo_kind(url: &str, kind: &'static str) {
+    if let Ok(mut cache) = logo_cache().lock() {
+        if cache.len() >= MAX_LOGO_CACHE_ENTRIES && !cache.contains_key(url) {
+            cache.clear();
+        }
+        cache.insert(url.to_string(), kind);
+    }
+}
+
+pub fn classify_cached(urls: &[String]) -> HashMap<String, String> {
+    let Ok(cache) = logo_cache().lock() else {
+        return HashMap::new();
+    };
+    let mut out = HashMap::new();
+    for url in urls {
+        if let Some(kind) = cache.get(url) {
+            out.insert(url.clone(), (*kind).to_string());
+        }
+    }
+    out
+}
+
+fn classify_raster_logo(raster: &image::DynamicImage) -> &'static str {
+    let (width, height) = raster.dimensions();
+    let step_x = width.div_ceil(64);
+    let step_y = height.div_ceil(64);
+    let mut total = 0u64;
+    let mut transparent = 0u64;
+    let mut visible = 0u64;
+    let mut dark_ink = 0u64;
+    let mut pure_white = 0u64;
+    let mut colorful_transparent = 0u64;
+    let mut colorful_opaque = 0u64;
+    let mut y = 0;
+    while y < height {
+        let mut x = 0;
+        while x < width {
+            let [r, g, b, a] = raster.get_pixel(x, y).0;
+            total += 1;
+            if a < 24 {
+                transparent += 1;
+            } else {
+                visible += 1;
+                let max_c = r.max(g).max(b);
+                let min_c = r.min(g).min(b);
+                let chroma = max_c - min_c;
+                let lum = (r as u32 * 2126 + g as u32 * 7152 + b as u32 * 722) / 10_000;
+                if lum <= 128 && chroma <= 36 {
+                    dark_ink += 1;
+                }
+                if lum >= 245 && chroma <= 14 {
+                    pure_white += 1;
+                }
+                if chroma > 40 {
+                    colorful_transparent += 1;
+                }
+                if chroma > 28 {
+                    colorful_opaque += 1;
+                }
+            }
+            x += step_x;
+        }
+        y += step_y;
+    }
+    if total < 4 || visible < 4 {
+        return "none";
+    }
+    if transparent * 100 >= total * 10
+        && dark_ink * 100 >= visible * 75
+        && colorful_transparent * 100 <= visible * 5
+    {
+        return "transparent-dark";
+    }
+    if transparent * 100 < total * 10
+        && colorful_opaque * 100 <= visible * 2
+        && pure_white * 100 >= visible * 35
+        && dark_ink * 100 >= visible * 3
+    {
+        let edge_white_ratio = |coords: Vec<(u32, u32)>| -> bool {
+            if coords.is_empty() {
+                return false;
+            }
+            let mut hits = 0u64;
+            for (ex, ey) in &coords {
+                let [r, g, b, a] = raster.get_pixel(*ex, *ey).0;
+                let chroma = r.max(g).max(b) - r.min(g).min(b);
+                let lum = (r as u32 * 2126 + g as u32 * 7152 + b as u32 * 722) / 10_000;
+                if a < 24 || (lum >= 245 && chroma <= 14) {
+                    hits += 1;
+                }
+            }
+            hits * 100 >= coords.len() as u64 * 25
+        };
+        let top: Vec<_> = (0..width)
+            .step_by(step_x as usize)
+            .map(|x| (x, 0))
+            .collect();
+        let bottom: Vec<_> = (0..width)
+            .step_by(step_x as usize)
+            .map(|x| (x, height - 1))
+            .collect();
+        let left: Vec<_> = (0..height)
+            .step_by(step_y as usize)
+            .map(|y| (0, y))
+            .collect();
+        let right: Vec<_> = (0..height)
+            .step_by(step_y as usize)
+            .map(|y| (width - 1, y))
+            .collect();
+        let white_edges = [top, bottom, left, right]
+            .into_iter()
+            .filter(|edge| edge_white_ratio(edge.clone()))
+            .count();
+        if white_edges >= 2 {
+            return "white-matted-dark";
+        }
+    }
+    "none"
+}
+
+fn classify_svg_logo(bytes: &[u8]) -> &'static str {
+    let Ok(text) = std::str::from_utf8(bytes) else {
+        return "none";
+    };
+    let lower = text.to_ascii_lowercase();
+    if lower.contains("<image")
+        || lower.contains("lineargradient")
+        || lower.contains("radialgradient")
+    {
+        return "none";
+    }
+    let mut has_color = false;
+    let mut has_light = false;
+    let bytes_ref = lower.as_bytes();
+    for i in 0..bytes_ref.len() {
+        if bytes_ref[i] != b'#' {
+            continue;
+        }
+        let hex: String = lower[i + 1..]
+            .chars()
+            .take_while(|c| c.is_ascii_hexdigit())
+            .collect();
+        let rgb = match hex.len() {
+            3 => {
+                let c: Vec<u8> = hex
+                    .chars()
+                    .filter_map(|ch| ch.to_digit(16).map(|v| (v * 17) as u8))
+                    .collect();
+                (c[0], c[1], c[2])
+            }
+            6 => (
+                u8::from_str_radix(&hex[0..2], 16).unwrap_or(0),
+                u8::from_str_radix(&hex[2..4], 16).unwrap_or(0),
+                u8::from_str_radix(&hex[4..6], 16).unwrap_or(0),
+            ),
+            _ => continue,
+        };
+        let chroma = rgb.0.max(rgb.1).max(rgb.2) - rgb.0.min(rgb.1).min(rgb.2);
+        let lum = (rgb.0 as u32 * 2126 + rgb.1 as u32 * 7152 + rgb.2 as u32 * 722) / 10_000;
+        if chroma > 32 {
+            has_color = true;
+            break;
+        }
+        if lum >= 200 {
+            has_light = true;
+        }
+    }
+    if has_color {
+        return "none";
+    }
+    if has_light && (lower.contains("<rect") || lower.contains("background")) {
+        "white-matted-dark"
+    } else if !has_light {
+        "transparent-dark"
+    } else {
+        "none"
+    }
+}
+
+fn classify_image_bytes(mime: &str, bytes: &[u8]) -> &'static str {
+    if bytes.len() > MAX_DARK_LOGO_BYTES {
+        return "none";
+    }
+    if mime == "image/svg+xml" {
+        return classify_svg_logo(bytes);
+    }
+    if !matches!(
+        mime,
+        "image/png" | "image/webp" | "image/gif" | "image/jpeg"
+    ) {
+        return "none";
+    }
+    let Ok(mut reader) = image::ImageReader::new(std::io::Cursor::new(bytes)).with_guessed_format()
+    else {
+        return "none";
+    };
+    let mut limits = image::Limits::default();
+    limits.max_alloc = Some(MAX_DARK_LOGO_DECODE_BYTES);
+    reader.limits(limits.clone());
+    let Ok(mut decoder) = reader.into_decoder() else {
+        return "none";
+    };
+    let (width, height) = decoder.dimensions();
+    // A high-resolution wordmark can be wide while remaining within the pixel budget.
+    if width <= 1
+        || height <= 1
+        || u64::from(width) * u64::from(height) > MAX_DARK_LOGO_PIXELS
+        || limits.reserve(decoder.total_bytes()).is_err()
+        || decoder.set_limits(limits).is_err()
+    {
+        return "none";
+    }
+    let Ok(decoded) = image::DynamicImage::from_decoder(decoder) else {
+        return "none";
+    };
+    classify_raster_logo(&decoded)
+}
+
 pub async fn respond(request: http::Request<Vec<u8>>, allowed: bool) -> http::Response<Vec<u8>> {
     let result = match target(&request, allowed) {
-        Ok(url) => tokio::time::timeout(TIMEOUT, async {
-            let (declared, bytes, _) = fetch_resource(url, MAX_BYTES).await?;
-            Ok((image_mime(&bytes, &declared)?, bytes))
-        })
-        .await
-        .unwrap_or_else(|_| Err("图片加载超时".into())),
+        Ok(url) => {
+            let key = url.as_str().to_string();
+            tokio::time::timeout(TIMEOUT, async {
+                let (declared, bytes, _) = fetch_resource(url, MAX_BYTES).await?;
+                let mime = image_mime(&bytes, &declared)?;
+                let kind = classify_image_bytes(mime, &bytes);
+                cache_logo_kind(&key, kind);
+                Ok((mime, bytes))
+            })
+            .await
+            .unwrap_or_else(|_| Err("图片加载超时".into()))
+        }
         Err(error) => Err(error),
     };
     let (status, mime, body) = match result {
         Ok((mime, bytes)) => (200, mime, bytes),
         // Do not expose source URLs, tracking IDs, proxy credentials or server
         // response bodies to logs or the document on failure.
-        Err(_) => (
-            502,
-            "text/plain; charset=utf-8",
-            b"Image unavailable".to_vec(),
-        ),
+        Err(error) => {
+            #[cfg(debug_assertions)]
+            {
+                let category = match error.as_str() {
+                    "图片服务器返回失败" => "upstream-http",
+                    "图片连接失败" => "connection",
+                    "图片读取失败" => "response-read",
+                    "图片加载超时" => "timeout",
+                    "图片超过容量限制" => "size-limit",
+                    "资源不是支持的图片" => "unsupported-content",
+                    _ => "request-or-configuration",
+                };
+                eprintln!("[anser:mail-image] {category}");
+            }
+            let _ = error;
+            (
+                502,
+                "text/plain; charset=utf-8",
+                b"Image unavailable".to_vec(),
+            )
+        }
     };
     http::Response::builder()
         .status(status)
@@ -347,5 +604,123 @@ mod tests {
             assert!(!String::from_utf8_lossy(result.body()).contains("private"));
             assert_eq!(result.headers()["X-Content-Type-Options"], "nosniff");
         });
+    }
+
+    fn png_bytes(rgba: image::RgbaImage) -> Vec<u8> {
+        let mut out = Vec::new();
+        image::DynamicImage::ImageRgba8(rgba)
+            .write_to(&mut std::io::Cursor::new(&mut out), image::ImageFormat::Png)
+            .unwrap();
+        out
+    }
+
+    #[test]
+    fn classifies_wide_wordmarks_within_the_decode_budget() {
+        let mut raster = image::GrayImage::from_pixel(6000, 720, image::Luma([255]));
+        for left in [550, 1750, 2950, 4150] {
+            for x in left..left + 450 {
+                for y in 180..540 {
+                    raster.put_pixel(x, y, image::Luma([0]));
+                }
+            }
+        }
+        let mut bytes = Vec::new();
+        image::DynamicImage::ImageLuma8(raster)
+            .write_to(
+                &mut std::io::Cursor::new(&mut bytes),
+                image::ImageFormat::Png,
+            )
+            .unwrap();
+        assert_eq!(
+            classify_image_bytes("image/png", &bytes),
+            "white-matted-dark"
+        );
+    }
+
+    #[test]
+    fn classifies_transparent_and_tight_white_matted_monochrome_logos_without_touching_cards_or_photos(
+    ) {
+        // Transparent black wordmark (e.g. Grok Bot)
+        let mut wordmark = image::RgbaImage::from_pixel(16, 8, image::Rgba([0, 0, 0, 0]));
+        for x in 2..12 {
+            for y in 2..6 {
+                wordmark.put_pixel(x, y, image::Rgba([10, 10, 10, 255]));
+            }
+        }
+        assert_eq!(
+            classify_image_bytes("image/png", &png_bytes(wordmark)),
+            "transparent-dark"
+        );
+
+        // Tight-cropped white-matted line-art touching bottom and right edges (e.g. Ollama)
+        let mut ollama_like =
+            image::RgbaImage::from_pixel(32, 16, image::Rgba([255, 255, 255, 255]));
+        for x in 4..32 {
+            ollama_like.put_pixel(x, 15, image::Rgba([12, 12, 12, 255]));
+            ollama_like.put_pixel(x, 14, image::Rgba([140, 140, 140, 255]));
+        }
+        for y in 2..16 {
+            ollama_like.put_pixel(31, y, image::Rgba([12, 12, 12, 255]));
+            ollama_like.put_pixel(30, y, image::Rgba([150, 150, 150, 255]));
+        }
+        assert_eq!(
+            classify_image_bytes("image/png", &png_bytes(ollama_like)),
+            "white-matted-dark"
+        );
+
+        // Shaded light-gray banner card (#f2f3f5 like Black Friday) -> none
+        let mut banner = image::RgbaImage::from_pixel(24, 16, image::Rgba([242, 243, 245, 255]));
+        for x in 6..18 {
+            for y in 4..10 {
+                banner.put_pixel(x, y, image::Rgba([120, 120, 120, 255]));
+            }
+        }
+        banner.put_pixel(12, 12, image::Rgba([0, 0, 0, 255]));
+        assert_eq!(
+            classify_image_bytes("image/png", &png_bytes(banner)),
+            "none"
+        );
+
+        // Continuous grayscale photo -> none
+        let mut photo = image::RgbaImage::new(24, 16);
+        for y in 0..16 {
+            for x in 0..24 {
+                let v = ((x * 10 + y * 5) % 200 + 30) as u8;
+                photo.put_pixel(x, y, image::Rgba([v, v, v, 255]));
+            }
+        }
+        assert_eq!(classify_image_bytes("image/png", &png_bytes(photo)), "none");
+
+        // Colorful transparent logo -> none
+        let mut colorful = image::RgbaImage::from_pixel(16, 8, image::Rgba([0, 0, 0, 0]));
+        for x in 2..12 {
+            for y in 2..6 {
+                colorful.put_pixel(x, y, image::Rgba([220, 40, 40, 255]));
+            }
+        }
+        assert_eq!(
+            classify_image_bytes("image/png", &png_bytes(colorful)),
+            "none"
+        );
+
+        // Dark SVG logo -> transparent-dark
+        let svg = br##"<svg xmlns="http://www.w3.org/2000/svg"><path fill="#111111" d="M0 0h10v10z"/></svg>"##;
+        assert_eq!(
+            classify_image_bytes("image/svg+xml", svg),
+            "transparent-dark"
+        );
+
+        // Cached lookup returns stored classifications without network
+        cache_logo_kind("https://images.example/ollama.png", "white-matted-dark");
+        let map = classify_cached(&[
+            "https://images.example/ollama.png".to_string(),
+            "https://images.example/missing.png".to_string(),
+        ]);
+        assert_eq!(
+            map.get("https://images.example/ollama.png")
+                .map(String::as_str),
+            Some("white-matted-dark")
+        );
+        assert!(!map.contains_key("https://images.example/missing.png"));
     }
 }

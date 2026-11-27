@@ -9,6 +9,7 @@ mod auth;
 mod compose_files;
 mod conversation;
 mod credentials;
+mod diagnostics;
 mod directory_operations;
 mod durable_file;
 mod eml_files;
@@ -47,6 +48,7 @@ mod sent_uploads;
 mod signatures;
 mod store;
 mod sync_control;
+mod sync_failures;
 mod translation;
 mod update_history;
 mod work_items;
@@ -433,6 +435,20 @@ async fn connect_account(
         let progress = |stage: &str| {
             let _ = on_progress.send(stage.to_string());
         };
+        account.email = account.email.trim().to_string();
+        account.username = account.username.trim().to_string();
+        if account.username.is_empty() {
+            account.username = account.email.clone();
+        }
+        account.smtp_username = account.smtp_username.trim().to_string();
+        account.incoming_host = account.incoming_host.trim().to_string();
+        account.smtp_host = account.smtp_host.trim().to_string();
+        account.name = account.name.trim().to_string();
+        if account.name.is_empty() {
+            account.name = account.email.clone();
+        }
+        let password = password.replace(['\r', '\n'], "");
+        let smtp_password = smtp_password.replace(['\r', '\n'], "");
         account.validate()?;
         let secret = if account.auth == "oauth" {
             auth::authorize(&account, &progress)?
@@ -446,12 +462,40 @@ async fn connect_account(
                 ..Default::default()
             }
         };
+        // Test the new mailbox before acquiring sync/send gates so an active
+        // background check on another account never blocks adding a new mailbox.
+        if let Err(error) = network::test_with_progress(&account, &secret, &progress) {
+            let proxy_note = match proxy::current() {
+                Ok((Some(p), _)) => format!("proxy={}:{}", p.kind, p.port),
+                Ok((None, _)) => "proxy=direct".into(),
+                Err(_) => "proxy=error".into(),
+            };
+            store.log_diagnostic(
+                "ERROR",
+                "account",
+                &format!(
+                    "connect_account failed: provider={} protocol={} incoming={}:{}/{} smtp={}:{}/{} auth={} {} error={}",
+                    account.provider,
+                    account.protocol,
+                    account.incoming_host,
+                    account.incoming_port,
+                    account.incoming_tls,
+                    account.smtp_host,
+                    account.smtp_port,
+                    account.smtp_tls,
+                    account.auth,
+                    proxy_note,
+                    error
+                ),
+            );
+            let _ = store.log(&format!("账号 {} 连接测试失败：{error}", account.email));
+            return Err(error);
+        }
+        progress("saving");
         let _guard = gate.try_lock().map_err(|_| "正在处理邮件，请稍后重试")?;
         let _sending = send_gate
             .try_lock()
             .map_err(|_| "正在发送邮件，请稍后修改账号")?;
-        network::test_with_progress(&account, &secret, &progress)?;
-        progress("saving");
         // Explicit account setup may ask the Keychain once.
         auth::save_interactive(&account.id, &secret)?;
         account.error = None;
@@ -465,7 +509,7 @@ async fn connect_account(
 #[tauri::command]
 async fn edit_account(
     state: tauri::State<'_, AppState>,
-    account: Account,
+    mut account: Account,
     password: String,
     smtp_password: String,
     reauthorize: bool,
@@ -480,6 +524,14 @@ async fn edit_account(
         let progress = |stage: &str| {
             let _ = on_progress.send(stage.to_string());
         };
+        account.email = account.email.trim().to_string();
+        account.username = account.username.trim().to_string();
+        account.smtp_username = account.smtp_username.trim().to_string();
+        account.incoming_host = account.incoming_host.trim().to_string();
+        account.smtp_host = account.smtp_host.trim().to_string();
+        account.name = account.name.trim().to_string();
+        let password = password.replace(['\r', '\n'], "");
+        let smtp_password = smtp_password.replace(['\r', '\n'], "");
         let old = store.account(&account.id)?;
         if password.is_empty()
             && smtp_password.is_empty()
@@ -543,7 +595,27 @@ async fn edit_account(
         if !store.account(&account.id)?.same_connection(&old) {
             return Err("等待授权期间账号连接配置已变化，请重新打开设置".into());
         }
-        network::test_with_progress(&account, &secret, &progress)?;
+        if let Err(error) = network::test_with_progress(&account, &secret, &progress) {
+            store.log_diagnostic(
+                "ERROR",
+                "account",
+                &format!(
+                    "edit_account failed: provider={} protocol={} incoming={}:{}/{} smtp={}:{}/{} auth={} error={}",
+                    account.provider,
+                    account.protocol,
+                    account.incoming_host,
+                    account.incoming_port,
+                    account.incoming_tls,
+                    account.smtp_host,
+                    account.smtp_port,
+                    account.smtp_tls,
+                    account.auth,
+                    error
+                ),
+            );
+            let _ = store.log(&format!("账号 {} 配置验证失败：{error}", account.email));
+            return Err(error);
+        }
         progress("saving");
         auth::save_interactive(&account.id, &secret)?;
         store.edit_account(&account)?;
@@ -880,6 +952,80 @@ async fn account_action(state: tauri::State<'_, AppState>, id: String, remove: b
             store.save_account(&a)?;
         }
         realtime.restart();
+        Ok(())
+    })
+    .await
+    .map_err(err)?
+}
+#[tauri::command]
+async fn reorder_accounts(
+    state: tauri::State<'_, AppState>,
+    app: tauri::AppHandle,
+    ids: Vec<String>,
+) -> Result<()> {
+    let store = state.store.clone();
+    tauri::async_runtime::spawn_blocking(move || store.reorder_accounts(&ids))
+        .await
+        .map_err(err)??;
+    let _ = app.emit("mail-updated", ());
+    Ok(())
+}
+#[tauri::command]
+async fn sync_failures(
+    state: tauri::State<'_, AppState>,
+) -> Result<Vec<sync_failures::SyncFailure>> {
+    let store = state.store.clone();
+    tauri::async_runtime::spawn_blocking(move || store.sync_failures())
+        .await
+        .map_err(err)?
+}
+#[tauri::command]
+async fn sync_failure_action(
+    state: tauri::State<'_, AppState>,
+    app: tauri::AppHandle,
+    account_id: String,
+    folder: String,
+    remote_id: String,
+    action: String,
+) -> Result<()> {
+    let store = state.store.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let failure = store.sync_failure(&account_id, &folder, &remote_id)?;
+        match action.as_str() {
+            "skip" => {
+                store.set_sync_failure_status(&account_id, &folder, &remote_id, "skipped")?;
+                let _ = store.log(&format!(
+                    "文件夹「{}」UID {} 已标记为跳过，后续收取不再重复报错",
+                    failure.display_name, failure.uid
+                ));
+            }
+            "dismiss" => {
+                store.set_sync_failure_status(&account_id, &folder, &remote_id, "dismiss")?;
+            }
+            "header_only" => {
+                let account = store.account(&account_id)?;
+                if !account.enabled {
+                    return Err("账号已暂停，请先启用".into());
+                }
+                network::resolve_sync_failure_header_only(
+                    &store,
+                    &account,
+                    &folder,
+                    &remote_id,
+                    failure.uid,
+                )?;
+            }
+            "retry" => {
+                let account = store.account(&account_id)?;
+                if !account.enabled {
+                    return Err("账号已暂停，请先启用".into());
+                }
+                network::retry_sync_failure(&store, &account, &folder, &remote_id, failure.uid)?;
+            }
+            _ => return Err("不支持的异常处理操作".into()),
+        }
+        let _ = app.emit("mail-updated", ());
+        let _ = app.emit("server-operations-updated", ());
         Ok(())
     })
     .await
@@ -1447,10 +1593,20 @@ async fn save_attachment(
 ) -> Result<()> {
     let store = state.store.clone();
     tauri::async_runtime::spawn_blocking(move || {
-        archive::atomic_write(
-            Path::new(&path),
-            &archive::attachment(&store.message_raw(&store.mail(&id)?)?, index)?,
-        )
+        let result = (|| -> Result<()> {
+            archive::atomic_write(
+                Path::new(&path),
+                &archive::attachment(&store.message_raw(&store.mail(&id)?)?, index)?,
+            )
+        })();
+        if let Err(error) = &result {
+            store.log_diagnostic(
+                "ERROR",
+                "attachment",
+                &format!("save_attachment failed: mailId={id} index={index} error={error}"),
+            );
+        }
+        result
     })
     .await
     .map_err(err)?
@@ -1469,10 +1625,20 @@ async fn preview_attachment(
         .map_err(err)?
         .join("attachment-previews");
     tauri::async_runtime::spawn_blocking(move || {
-        let mail = store.mail(&id)?;
-        let raw = store.message_raw(&mail)?;
-        let path = attachment_preview::prepare(&cache, &raw, index)?;
-        open::that(path).map_err(|e| format!("无法打开附件，请确认已安装对应应用：{e}"))
+        let result = (|| -> Result<()> {
+            let mail = store.mail(&id)?;
+            let raw = store.message_raw(&mail)?;
+            let path = attachment_preview::prepare(&cache, &raw, index)?;
+            open::that(path).map_err(|e| format!("无法打开附件，请确认已安装对应应用：{e}"))
+        })();
+        if let Err(error) = &result {
+            store.log_diagnostic(
+                "ERROR",
+                "attachment",
+                &format!("preview_attachment failed: mailId={id} index={index} error={error}"),
+            );
+        }
+        result
     })
     .await
     .map_err(err)?
@@ -1573,6 +1739,43 @@ async fn cleanup_archive_migration(
 #[tauri::command]
 fn open_data_folder(state: tauri::State<AppState>) -> Result<()> {
     open::that(archive_location::physical_root(&state.store.root)?).map_err(err)
+}
+#[tauri::command]
+async fn diagnostic_log_status(
+    state: tauri::State<'_, AppState>,
+) -> Result<diagnostics::DiagnosticLogStatus> {
+    let root = state.store.root.clone();
+    tauri::async_runtime::spawn_blocking(move || Ok(diagnostics::status(&root)))
+        .await
+        .map_err(err)?
+}
+#[tauri::command]
+async fn export_diagnostic_log(state: tauri::State<'_, AppState>, path: String) -> Result<u64> {
+    let store = state.store.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        diagnostics::export_report(&store, Path::new(&path))
+    })
+    .await
+    .map_err(err)?
+}
+#[tauri::command]
+fn open_log_dir(state: tauri::State<AppState>) -> Result<()> {
+    diagnostics::open_directory(&state.store.root)
+}
+#[tauri::command]
+fn record_frontend_error(
+    state: tauri::State<AppState>,
+    source: String,
+    message: String,
+) -> Result<()> {
+    state
+        .store
+        .log_diagnostic("ERROR", &format!("ui.{source}"), &message);
+    Ok(())
+}
+#[tauri::command]
+fn classify_mail_images(urls: Vec<String>) -> std::collections::HashMap<String, String> {
+    mail_images::classify_cached(&urls)
 }
 fn web_link(url: &str) -> Result<url::Url> {
     let parsed = url::Url::parse(url).map_err(err)?;
@@ -1919,6 +2122,38 @@ pub fn run() {
                 }
             }
             let store = Store::new(app.path().app_data_dir()?).map_err(std::io::Error::other)?;
+            diagnostics::append(
+                &store.root,
+                "INFO",
+                "startup",
+                &format!(
+                    "Anser {} starting on {}/{}",
+                    env!("CARGO_PKG_VERSION"),
+                    std::env::consts::OS,
+                    std::env::consts::ARCH
+                ),
+            );
+            let panic_root = store.root.clone();
+            let previous_hook = std::panic::take_hook();
+            std::panic::set_hook(Box::new(move |info| {
+                let location = info
+                    .location()
+                    .map(|loc| format!("{}:{}:{}", loc.file(), loc.line(), loc.column()))
+                    .unwrap_or_else(|| "unknown".into());
+                let payload = info
+                    .payload()
+                    .downcast_ref::<&str>()
+                    .copied()
+                    .or_else(|| info.payload().downcast_ref::<String>().map(String::as_str))
+                    .unwrap_or("non-string panic payload");
+                diagnostics::append(
+                    &panic_root,
+                    "ERROR",
+                    "panic",
+                    &format!("panic at {location}: {payload}"),
+                );
+                previous_hook(info);
+            }));
             credentials::initialize(&store.root);
             proxy::initialize(store.preferences().map_err(std::io::Error::other)?.proxy)
                 .map_err(std::io::Error::other)?;
@@ -2230,6 +2465,9 @@ pub fn run() {
             set_mail_tag,
             mark_folder_read,
             folder_health,
+            sync_failures,
+            sync_failure_action,
+            reorder_accounts,
             copy_sources,
             queue_server_copy,
             queue_server_move,
@@ -2324,6 +2562,11 @@ pub fn run() {
             delete_local_archives,
             restore_archive,
             open_data_folder,
+            diagnostic_log_status,
+            export_diagnostic_log,
+            open_log_dir,
+            record_frontend_error,
+            classify_mail_images,
             archive_location,
             move_archive_location,
             cleanup_archive_migration,

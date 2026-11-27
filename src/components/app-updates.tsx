@@ -6,6 +6,7 @@ import {
   useRef,
   useState,
   type MouseEvent,
+  type ReactNode,
 } from "react";
 import { version as buildVersion } from "../../package.json";
 import { getVersion } from "@tauri-apps/api/app";
@@ -32,6 +33,7 @@ import {
   DialogTitle,
 } from "./ui/dialog";
 import { Progress } from "./ui/progress";
+import { Separator } from "./ui/separator";
 import { Skeleton } from "./ui/skeleton";
 import { Alert, AlertDescription } from "./ui/alert";
 import { externalUrl, renderReleaseNotes } from "../lib/release-notes";
@@ -410,7 +412,13 @@ export function UpdateIndicator({ updates }: { updates: Updates }) {
     </Button>
   );
 }
-export function UpdateSettings({ updates }: { updates: Updates }) {
+export function UpdateSettings({
+  updates,
+  children,
+}: {
+  updates: Updates;
+  children?: ReactNode;
+}) {
   const checking = updates.phase === "checking";
   return (
     <Card>
@@ -427,63 +435,71 @@ export function UpdateSettings({ updates }: { updates: Updates }) {
           </CardAction>
         )}
       </CardHeader>
-      <CardContent className="flex flex-wrap items-center gap-3">
-        <Button
-          variant={updates.update ? "outline" : "default"}
-          aria-busy={checking}
-          disabled={
-            !updates.native ||
-            checking ||
-            [
-              "downloading",
-              "ready",
-              "installing",
-              "installed",
-              "restarting",
-            ].includes(updates.phase)
-          }
-          onClick={() => {
-            updates.setOpen(true);
-            void updates.checkNow();
-          }}
-        >
-          <RefreshCw
-            data-icon="inline-start"
-            className={checking ? "animate-spin" : undefined}
-          />
-          <ButtonLabel
-            reserve={[t("Check for updates"), t("Checking for updates…")]}
-          >
-            {checking ? t("Checking for updates…") : t("Check for updates")}
-          </ButtonLabel>
-        </Button>
-        <Button variant="ghost" asChild>
-          <a
-            href="https://github.com/ansermail/anser"
-            target="_blank"
-            rel="noopener noreferrer"
-            onClick={(event) => {
-              if (!updates.native) return;
-              event.preventDefault();
-              void invoke("open_mail_link", {
-                url: "https://github.com/ansermail/anser",
-              }).catch((error) =>
-                toast.error(
-                  t("Could not open project repository: {value0}", {
-                    value0: String(error),
-                  }),
-                ),
-              );
+      <CardContent className="flex flex-col gap-5">
+        <div className="flex flex-wrap items-center gap-3">
+          <Button
+            variant={updates.update ? "outline" : "default"}
+            aria-busy={checking}
+            disabled={
+              !updates.native ||
+              checking ||
+              [
+                "downloading",
+                "ready",
+                "installing",
+                "installed",
+                "restarting",
+              ].includes(updates.phase)
+            }
+            onClick={() => {
+              updates.setOpen(true);
+              void updates.checkNow();
             }}
           >
-            <Github data-icon="inline-start" />
-            {t("Project repository")}
-          </a>
-        </Button>
-        {updates.update && (
-          <Button onClick={() => updates.setOpen(true)}>
-            {t("View update")}
+            <RefreshCw
+              data-icon="inline-start"
+              className={checking ? "animate-spin" : undefined}
+            />
+            <ButtonLabel
+              reserve={[t("Check for updates"), t("Checking for updates…")]}
+            >
+              {checking ? t("Checking for updates…") : t("Check for updates")}
+            </ButtonLabel>
           </Button>
+          <Button variant="ghost" asChild>
+            <a
+              href="https://github.com/ansermail/anser"
+              target="_blank"
+              rel="noopener noreferrer"
+              onClick={(event) => {
+                if (!updates.native) return;
+                event.preventDefault();
+                void invoke("open_mail_link", {
+                  url: "https://github.com/ansermail/anser",
+                }).catch((error) =>
+                  toast.error(
+                    t("Could not open project repository: {value0}", {
+                      value0: String(error),
+                    }),
+                  ),
+                );
+              }}
+            >
+              <Github data-icon="inline-start" />
+              {t("Project repository")}
+            </a>
+          </Button>
+          {updates.update && (
+            <Button onClick={() => updates.setOpen(true)}>
+              {t("View update")}
+            </Button>
+          )}
+        </div>
+        {children && (
+          <>
+            <Separator />
+            {children}
+          </>
         )}
       </CardContent>
     </Card>

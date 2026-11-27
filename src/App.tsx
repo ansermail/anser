@@ -64,6 +64,9 @@ import {
 } from "./components/ui/context-menu";
 import { Separator } from "./components/ui/separator";
 import { FolderHealthPanel } from "./components/folder-health";
+import { SyncFailuresPanel } from "./components/sync-failures";
+import { DiagnosticLogsCard } from "./components/diagnostic-logs";
+import { applyAccountOrder, moveAccountId } from "./lib/account-order";
 import { Alert, AlertTitle, AlertDescription } from "./components/ui/alert";
 import { ServerOperations } from "./components/server-operations";
 import { DirectoryOperationsPanel } from "./components/server-copy";
@@ -93,7 +96,16 @@ import {
   MailReaderSkeleton,
 } from "./components/mail-skeleton";
 import { ScrollArea } from "./components/ui/scroll-area";
-import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type PointerEvent as ReactPointerEvent,
+} from "react";
+import { createPortal } from "react-dom";
 import {
   Archive,
   ArrowDownToLine,
@@ -106,6 +118,7 @@ import {
   Cloud,
   FileText,
   Folder,
+  GripVertical,
   HardDrive,
   Inbox,
   Info,
@@ -323,6 +336,17 @@ export default function App({
       Record<string, RemoteFolder[]>
     >({}),
     [serverFolders, setServerFolders] = useState<RemoteFolder[]>([]),
+    [accountDrag, setAccountDrag] = useState<{
+      scope: "sidebar" | "settings";
+      sourceId: string;
+      x: number;
+      y: number;
+      width: number;
+      height: number;
+    } | null>(null),
+    [accountDragOrder, setAccountDragOrder] = useState<string[] | null>(null),
+    [welcomeHour, setWelcomeHour] = useState(() => new Date().getHours()),
+    [welcomeRipple, setWelcomeRipple] = useState(0),
     [page, setPage] = useState<string>(initialPage),
     [settingsSection, setSettingsSection] = useState<string>(
       initialSettingsSection,
@@ -1983,24 +2007,455 @@ export default function App({
         toast.error(String(e));
       }
   }
-  async function loadFolders(id: string) {
-    if (folderLoading.includes(id)) return;
-    setFolderLoading((ids) => [...ids, id]);
-    setFolderErrors((errors) => ({ ...errors, [id]: "" }));
+  const foldersFetchedInSession = useRef(new Set<string>());
+  const folderRefreshInFlight = useRef(new Set<string>());
+  const accountDragSession = useRef<{
+    scope: "sidebar" | "settings";
+    pointerId: number;
+    sourceId: string;
+    startX: number;
+    startY: number;
+    offsetX: number;
+    offsetY: number;
+    width: number;
+    height: number;
+    initialOrder: string[];
+    currentOrder: string[];
+    active: boolean;
+    container: HTMLElement | null;
+    cleanup: (() => void) | null;
+  } | null>(null);
+  const floatingDragRef = useRef<HTMLDivElement | null>(null);
+  const flipBeforeRef = useRef<Map<string, number> | null>(null);
+  const flipRestingRef = useRef<Map<string, { top: number; height: number }>>(
+    new Map(),
+  );
+  const suppressedAccountClick = useRef<string | null>(null);
+  const displayedAccounts = useMemo(
+    () =>
+      accountDragOrder
+        ? applyAccountOrder(data.accounts, accountDragOrder)
+        : data.accounts,
+    [data.accounts, accountDragOrder],
+  );
+  const accountColorIndex = useMemo(
+    () =>
+      new Map(data.accounts.map((account, index) => [account.id, index % 4])),
+    [data.accounts],
+  );
+  useEffect(() => {
+    document.body.classList.toggle("account-dragging", !!accountDrag);
+    return () => {
+      document.body.classList.remove("account-dragging");
+    };
+  }, [accountDrag]);
+  useEffect(() => {
+    return () => {
+      accountDragSession.current?.cleanup?.();
+      accountDragSession.current = null;
+    };
+  }, []);
+  useEffect(() => {
+    const updateHour = () => {
+      const next = new Date().getHours();
+      setWelcomeHour((current) => (current === next ? current : next));
+    };
+    const timer = window.setInterval(updateHour, 60_000);
+    const onVisibility = () => {
+      if (document.visibilityState === "visible") updateHour();
+    };
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => {
+      window.clearInterval(timer);
+      document.removeEventListener("visibilitychange", onVisibility);
+    };
+  }, []);
+  function welcomeGreeting(hour: number) {
+    if (hour >= 5 && hour < 11) return t("Good morning");
+    if (hour >= 11 && hour < 14) return t("Good midday");
+    if (hour >= 14 && hour < 18) return t("Good afternoon");
+    if (hour >= 18 && hour < 23) return t("Good evening");
+    return t("Quiet night");
+  }
+  function handleWelcomePointerMove(event: ReactPointerEvent<HTMLDivElement>) {
+    if (event.pointerType === "touch") return;
+    const rect = event.currentTarget.getBoundingClientRect();
+    if (!rect.width || !rect.height) return;
+    const nx = Math.max(
+      -1,
+      Math.min(1, ((event.clientX - rect.left) / rect.width - 0.5) * 2),
+    );
+    const ny = Math.max(
+      -1,
+      Math.min(1, ((event.clientY - rect.top) / rect.height - 0.5) * 2),
+    );
+    event.currentTarget.style.setProperty("--wx", nx.toFixed(3));
+    event.currentTarget.style.setProperty("--wy", ny.toFixed(3));
+  }
+  function resetWelcomePointer(event: ReactPointerEvent<HTMLDivElement>) {
+    event.currentTarget.style.setProperty("--wx", "0");
+    event.currentTarget.style.setProperty("--wy", "0");
+  }
+  function handleWelcomeEmblemClick() {
+    setWelcomeRipple((count) => count + 1);
+    if (data.accounts.length && !demo && !syncing) {
+      void sync();
+    }
+  }
+  useLayoutEffect(() => {
+    const before = flipBeforeRef.current;
+    const container = accountDragSession.current?.container;
+    const sourceId = accountDragSession.current?.sourceId;
+    if (!before || !container) return;
+    flipBeforeRef.current = null;
+    const items = [
+      ...container.querySelectorAll<HTMLElement>("[data-account-drag-id]"),
+    ];
+    const reduced =
+      typeof window !== "undefined" &&
+      window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+    const resting = new Map<string, { top: number; height: number }>();
+    const moves: { el: HTMLElement; id: string; deltaY: number }[] = [];
+    for (const el of items) {
+      el.style.transition = "";
+      el.style.transform = "";
+      delete el.dataset.flipping;
+      const id = el.dataset.accountDragId || "";
+      if (!id) continue;
+      const rect = el.getBoundingClientRect();
+      resting.set(id, { top: rect.top, height: rect.height });
+      if (id === sourceId || reduced) continue;
+      const prevTop = before.get(id);
+      if (prevTop === undefined) continue;
+      const deltaY = prevTop - rect.top;
+      if (Math.abs(deltaY) > 0.5) {
+        moves.push({ el, id, deltaY });
+      }
+    }
+    flipRestingRef.current = resting;
+    if (!moves.length) return;
+    for (const { el, deltaY } of moves) {
+      el.dataset.flipping = "true";
+      el.style.transform = `translate3d(0, ${deltaY}px, 0)`;
+    }
+    // Force layout flush so the transition starts from the inverted position.
+    void container.offsetHeight;
+    for (const { el } of moves) {
+      el.style.transition = "transform 150ms cubic-bezier(0.22, 1, 0.36, 1)";
+      el.style.transform = "";
+      const clear = () => {
+        el.style.transition = "";
+        delete el.dataset.flipping;
+        el.removeEventListener("transitionend", clear);
+      };
+      el.addEventListener("transitionend", clear);
+      window.setTimeout(clear, 190);
+    }
+  }, [accountDragOrder]);
+  const cachedFoldersByAccount = useMemo(() => {
+    const grouped: Record<string, RemoteFolder[]> = {};
+    for (const folder of serverFolders) {
+      (grouped[folder.accountId] ??= []).push(folder);
+    }
+    return grouped;
+  }, [serverFolders]);
+  const remoteFolderUnreadByAccount = useMemo(() => {
+    const grouped: Record<
+      string,
+      Record<string, { direct: number; tree: number }>
+    > = {};
+    for (const count of data.remoteFolderUnread || []) {
+      (grouped[count.accountId] ??= {})[count.name] = {
+        direct: count.direct,
+        tree: count.tree,
+      };
+    }
+    return grouped;
+  }, [data.remoteFolderUnread]);
+  const accountStarredUnreadByAccount = useMemo(() => {
+    const grouped: Record<string, number> = {};
+    for (const count of data.accountStarredUnread || []) {
+      grouped[count.accountId] = count.unread;
+    }
+    return grouped;
+  }, [data.accountStarredUnread]);
+  function sameRemoteFolders(a: RemoteFolder[], b: RemoteFolder[]) {
+    if (a.length !== b.length) return false;
+    return a.every((item, index) => {
+      const other = b[index];
+      return (
+        item.name === other.name &&
+        item.displayName === other.displayName &&
+        item.delimiter === other.delimiter &&
+        item.selectable === other.selectable &&
+        item.syncError === other.syncError &&
+        (item.roles || []).join(",") === (other.roles || []).join(",")
+      );
+    });
+  }
+  async function loadFolders(id: string, options?: { force?: boolean }) {
+    const cached = loadedFolders[id] ?? cachedFoldersByAccount[id] ?? [];
+    if (
+      !options?.force &&
+      foldersFetchedInSession.current.has(id) &&
+      !folderErrors[id] &&
+      cached.length > 0
+    )
+      return;
+    if (folderRefreshInFlight.current.has(id)) return;
+    folderRefreshInFlight.current.add(id);
+    const silent = !options?.force && cached.length > 0;
+    if (!silent) {
+      setFolderLoading((ids) => (ids.includes(id) ? ids : [...ids, id]));
+      setFolderErrors((errors) =>
+        errors[id] ? { ...errors, [id]: "" } : errors,
+      );
+    }
     try {
       const folders = await call<RemoteFolder[]>("account_folders", { id });
-      setLoadedFolders((all) => ({ ...all, [id]: folders }));
-      setServerFolders((all) => [
-        ...all.filter((f) => f.accountId !== id),
-        ...folders,
-      ]);
-      await refresh();
+      foldersFetchedInSession.current.add(id);
+      const changed = !sameRemoteFolders(cached, folders);
+      setLoadedFolders((all) =>
+        all[id] && sameRemoteFolders(all[id], folders)
+          ? all
+          : { ...all, [id]: folders },
+      );
+      if (changed) {
+        setServerFolders((all) => [
+          ...all.filter((f) => f.accountId !== id),
+          ...folders,
+        ]);
+        await refresh();
+      }
     } catch (e) {
-      setFolderErrors((errors) => ({ ...errors, [id]: String(e) }));
-      await refresh();
+      if (!silent) {
+        setFolderErrors((errors) => ({ ...errors, [id]: String(e) }));
+        await refresh();
+      }
     } finally {
-      setFolderLoading((ids) => ids.filter((value) => value !== id));
+      folderRefreshInFlight.current.delete(id);
+      if (!silent) {
+        setFolderLoading((ids) => ids.filter((value) => value !== id));
+      }
     }
+  }
+  async function reorderAccounts(ids: string[]) {
+    const previous = dataRef.current.accounts;
+    const ordered = applyAccountOrder(previous, ids);
+    if (ordered.every((account, index) => account.id === previous[index]?.id))
+      return;
+    const optimistic = { ...dataRef.current, accounts: ordered };
+    dataRef.current = optimistic;
+    setData(optimistic);
+    try {
+      await call("reorder_accounts", { ids });
+    } catch (e) {
+      const reverted = { ...dataRef.current, accounts: previous };
+      dataRef.current = reverted;
+      setData(reverted);
+      toast.error(
+        t("Could not save account order: {value0}", { value0: String(e) }),
+      );
+    }
+  }
+  function snapshotAccountItemTops(container: HTMLElement | null) {
+    const tops = new Map<string, number>();
+    if (!container) return tops;
+    for (const item of container.querySelectorAll<HTMLElement>(
+      "[data-account-drag-id]",
+    )) {
+      const id = item.dataset.accountDragId || "";
+      if (id) tops.set(id, item.getBoundingClientRect().top);
+    }
+    return tops;
+  }
+  function computeLiveAccountOrder(
+    container: HTMLElement | null,
+    currentOrder: string[],
+    sourceId: string,
+    dragCenterY: number,
+  ): string[] | null {
+    if (!container || currentOrder.length < 2) return null;
+    const sourceIndex = currentOrder.indexOf(sourceId);
+    if (sourceIndex < 0) return null;
+    const itemsById = new Map<string, HTMLElement>();
+    for (const item of container.querySelectorAll<HTMLElement>(
+      "[data-account-drag-id]",
+    )) {
+      const id = item.dataset.accountDragId || "";
+      if (id) itemsById.set(id, item);
+    }
+    let targetIndex = sourceIndex;
+    for (let index = 0; index < currentOrder.length; index++) {
+      if (index === sourceIndex) continue;
+      const id = currentOrder[index];
+      const item = itemsById.get(id);
+      if (!item) continue;
+      const resting =
+        item.dataset.flipping === "true"
+          ? flipRestingRef.current.get(id)
+          : undefined;
+      const rect = resting ?? item.getBoundingClientRect();
+      const mid = rect.top + rect.height / 2;
+      if (index < sourceIndex && dragCenterY < mid) {
+        targetIndex = Math.min(targetIndex, index);
+      } else if (index > sourceIndex && dragCenterY > mid) {
+        targetIndex = Math.max(targetIndex, index);
+      }
+    }
+    if (targetIndex === sourceIndex) return null;
+    const next = [...currentOrder];
+    const [moved] = next.splice(sourceIndex, 1);
+    next.splice(targetIndex, 0, moved);
+    return next;
+  }
+  function finishAccountDrag(pointerId: number | null, cancelled = false) {
+    const session = accountDragSession.current;
+    if (!session || (pointerId !== null && session.pointerId !== pointerId))
+      return;
+    session.cleanup?.();
+    const shouldCommit =
+      session.active &&
+      !cancelled &&
+      session.currentOrder.some(
+        (id, index) => id !== session.initialOrder[index],
+      );
+    const nextIds = shouldCommit ? [...session.currentOrder] : null;
+    if (session.active && !cancelled) {
+      suppressedAccountClick.current = session.sourceId;
+      window.setTimeout(() => {
+        if (suppressedAccountClick.current === session.sourceId)
+          suppressedAccountClick.current = null;
+      }, 0);
+    }
+    accountDragSession.current = null;
+    flipBeforeRef.current = null;
+    flipRestingRef.current.clear();
+    setAccountDrag(null);
+    setAccountDragOrder(null);
+    if (nextIds) void reorderAccounts(nextIds);
+  }
+  function beginAccountDrag(
+    event: ReactPointerEvent<HTMLElement>,
+    scope: "sidebar" | "settings",
+    sourceId: string,
+  ) {
+    if (
+      data.accounts.length < 2 ||
+      !event.isPrimary ||
+      event.pointerType === "touch" ||
+      event.button !== 0
+    )
+      return;
+    if (
+      scope === "sidebar" &&
+      (event.target as Element).closest("[data-no-account-drag]")
+    )
+      return;
+    accountDragSession.current?.cleanup?.();
+    suppressedAccountClick.current = null;
+    const container = event.currentTarget.closest<HTMLElement>(
+      scope === "sidebar" ? ".account-nav" : ".settings-accounts",
+    );
+    const itemEl = event.currentTarget.closest<HTMLElement>(
+      "[data-account-drag-id]",
+    );
+    const triggerRect = event.currentTarget.getBoundingClientRect();
+    const itemRect = itemEl?.getBoundingClientRect() ?? triggerRect;
+    const baseRect =
+      scope === "sidebar"
+        ? triggerRect.height > 0
+          ? triggerRect
+          : itemRect
+        : itemRect.height > 0
+          ? itemRect
+          : triggerRect;
+    const initialOrder = dataRef.current.accounts.map((account) => account.id);
+    const session = {
+      scope,
+      pointerId: event.pointerId,
+      sourceId,
+      startX: event.clientX,
+      startY: event.clientY,
+      offsetX: event.clientX - baseRect.left,
+      offsetY: event.clientY - baseRect.top,
+      width: baseRect.width || 210,
+      height: baseRect.height,
+      initialOrder,
+      currentOrder: [...initialOrder],
+      active: false,
+      container,
+      cleanup: null as (() => void) | null,
+    };
+    const onMove = (moveEvent: PointerEvent) => {
+      if (
+        accountDragSession.current !== session ||
+        moveEvent.pointerId !== session.pointerId
+      )
+        return;
+      if (
+        !session.active &&
+        Math.hypot(
+          moveEvent.clientX - session.startX,
+          moveEvent.clientY - session.startY,
+        ) < 5
+      )
+        return;
+      moveEvent.preventDefault();
+      const x = moveEvent.clientX - session.offsetX;
+      const y = moveEvent.clientY - session.offsetY;
+      if (!session.active) {
+        session.active = true;
+        setAccountDrag({
+          scope: session.scope,
+          sourceId: session.sourceId,
+          x,
+          y,
+          width: session.width,
+          height: session.height,
+        });
+      } else if (floatingDragRef.current) {
+        floatingDragRef.current.style.transform = `translate3d(${x}px, ${y}px, 0)`;
+      }
+      const dragCenterY =
+        session.height > 0 ? y + session.height / 2 : moveEvent.clientY;
+      const nextOrder = computeLiveAccountOrder(
+        session.container,
+        session.currentOrder,
+        session.sourceId,
+        dragCenterY,
+      );
+      if (nextOrder) {
+        flipBeforeRef.current = snapshotAccountItemTops(session.container);
+        session.currentOrder = nextOrder;
+        setAccountDragOrder(nextOrder);
+      }
+    };
+    const onUp = (upEvent: PointerEvent) => {
+      if (upEvent.pointerId !== session.pointerId) return;
+      if (session.active) upEvent.preventDefault();
+      finishAccountDrag(upEvent.pointerId, false);
+    };
+    const onCancel = (cancelEvent: PointerEvent) => {
+      if (cancelEvent.pointerId !== session.pointerId) return;
+      finishAccountDrag(cancelEvent.pointerId, true);
+    };
+    const onKeyDown = (keyEvent: KeyboardEvent) => {
+      if (keyEvent.key !== "Escape") return;
+      keyEvent.preventDefault();
+      finishAccountDrag(null, true);
+    };
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+    window.addEventListener("pointercancel", onCancel);
+    window.addEventListener("keydown", onKeyDown);
+    session.cleanup = () => {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+      window.removeEventListener("pointercancel", onCancel);
+      window.removeEventListener("keydown", onKeyDown);
+    };
+    accountDragSession.current = session;
   }
   function remoteFolder(accountId: string, name: string) {
     return (loadedFolders[accountId] || serverFolders).find(
@@ -2317,180 +2772,214 @@ export default function App({
                   </Button>
                 </div>
                 <CollapsibleContent className="account-nav">
-                  {data.accounts.map((a, i) => (
-                    <Collapsible
-                      key={a.id}
-                      open={expandedAccounts.includes(a.id)}
-                      onOpenChange={(open) => {
-                        setExpandedAccounts((ids) =>
-                          open
-                            ? [...ids, a.id]
-                            : ids.filter((id) => id !== a.id),
-                        );
-                        if (open) void loadFolders(a.id);
-                      }}
-                    >
+                  {displayedAccounts.map((a, i) => {
+                    const foldersForAccount =
+                      loadedFolders[a.id] ?? cachedFoldersByAccount[a.id] ?? [];
+                    const dragging =
+                      accountDrag?.scope === "sidebar" &&
+                      accountDrag.sourceId === a.id;
+                    const colorIndex = accountColorIndex.get(a.id) ?? i % 4;
+                    return (
                       <div
-                        className={`account-navigation ${page === "mail" && query.accountId === a.id && !query.folder && !query.remoteFolder && query.view !== "starred" ? "active" : ""}`}
+                        key={a.id}
+                        className="account-nav-group"
+                        data-account-drag-id={a.id}
+                        data-drag-ghost={dragging ? "true" : undefined}
                       >
-                        <CollapsibleTrigger asChild>
-                          <Button
-                            variant="ghost"
-                            className="nav-item account-item"
-                            onClick={() => navigate("all", a.id)}
+                        <Collapsible
+                          open={expandedAccounts.includes(a.id)}
+                          onOpenChange={(open) => {
+                            setExpandedAccounts((ids) =>
+                              open
+                                ? ids.includes(a.id)
+                                  ? ids
+                                  : [...ids, a.id]
+                                : ids.filter((id) => id !== a.id),
+                            );
+                            if (open) void loadFolders(a.id);
+                          }}
+                        >
+                          <div
+                            className={`account-navigation ${page === "mail" && query.accountId === a.id && !query.folder && !query.remoteFolder && query.view !== "starred" ? "active" : ""}`}
+                            onPointerDown={(event) =>
+                              beginAccountDrag(event, "sidebar", a.id)
+                            }
+                            onClickCapture={(event) => {
+                              if (
+                                suppressedAccountClick.current !== a.id ||
+                                event.detail === 0
+                              )
+                                return;
+                              suppressedAccountClick.current = null;
+                              event.preventDefault();
+                              event.stopPropagation();
+                            }}
                           >
-                            <span className={`account-dot color-${i % 4}`} />
-                            <span>
-                              <span
-                                className="account-text"
-                                ref={accountTextFade}
-                                title={a.name}
-                              >
-                                <span>{a.name}</span>
-                              </span>
-                              <small
-                                className="account-text"
-                                ref={accountTextFade}
-                                title={a.email}
-                              >
-                                <span>{a.email}</span>
-                              </small>
-                            </span>
-                            {!a.enabled && (
-                              <PauseCircle
-                                size={13}
-                                className="paused-account-icon shrink-0 text-muted-foreground"
-                                aria-label={t("Account paused")}
-                              />
-                            )}
-                          </Button>
-                        </CollapsibleTrigger>
-                        {sidebarAccountError(a, serverFolders) && (
-                          <Tooltip>
-                            <TooltipTrigger asChild>
+                            <CollapsibleTrigger asChild>
                               <Button
                                 variant="ghost"
-                                size="icon-xs"
+                                className="nav-item account-item"
+                                onClick={() => navigate("all", a.id)}
+                              >
+                                <span
+                                  className={`account-dot color-${colorIndex}`}
+                                />
+                                <span>
+                                  <span
+                                    className="account-text"
+                                    ref={accountTextFade}
+                                    title={a.name}
+                                  >
+                                    <span>{a.name}</span>
+                                  </span>
+                                  <small
+                                    className="account-text"
+                                    ref={accountTextFade}
+                                    title={a.email}
+                                  >
+                                    <span>{a.email}</span>
+                                  </small>
+                                </span>
+                                {!a.enabled && (
+                                  <PauseCircle
+                                    size={13}
+                                    className="paused-account-icon shrink-0 text-muted-foreground"
+                                    aria-label={t("Account paused")}
+                                  />
+                                )}
+                              </Button>
+                            </CollapsibleTrigger>
+                            {sidebarAccountError(a, serverFolders) && (
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <Button
+                                    variant="ghost"
+                                    size="icon-xs"
+                                    data-no-account-drag=""
+                                    onClick={() => {
+                                      setSettingsSection("tasks");
+                                      setPage("settings");
+                                    }}
+                                    aria-label={t(
+                                      "Mail check failed for {value0}",
+                                      {
+                                        value0: a.name,
+                                      },
+                                    )}
+                                  >
+                                    <AlertCircle
+                                      size={14}
+                                      className="text-destructive"
+                                    />
+                                  </Button>
+                                </TooltipTrigger>
+                                <TooltipContent
+                                  side="right"
+                                  className="max-w-80 break-words"
+                                >
+                                  <p>{a.email}</p>
+                                  <p>{sidebarAccountError(a, serverFolders)}</p>
+                                </TooltipContent>
+                              </Tooltip>
+                            )}
+                            <CollapsibleTrigger asChild>
+                              <Button
+                                variant="ghost"
+                                size="icon-sm"
+                                data-no-account-drag=""
                                 aria-label={t(
-                                  "Mail check failed for {value0}",
+                                  "Expand server folders for {value0}",
                                   {
                                     value0: a.name,
                                   },
                                 )}
+                                title={t("Server folders")}
                               >
-                                <AlertCircle
-                                  size={14}
-                                  className="text-destructive"
+                                <ChevronRight
+                                  size={13}
+                                  className={
+                                    expandedAccounts.includes(a.id)
+                                      ? "rotate-90"
+                                      : ""
+                                  }
                                 />
                               </Button>
-                            </TooltipTrigger>
-                            <TooltipContent
-                              side="right"
-                              className="max-w-80 break-words"
-                            >
-                              <p>{a.email}</p>
-                              <p>{sidebarAccountError(a, serverFolders)}</p>
-                            </TooltipContent>
-                          </Tooltip>
-                        )}
-                        <CollapsibleTrigger asChild>
-                          <Button
-                            variant="ghost"
-                            size="icon-sm"
-                            aria-label={t(
-                              "Expand server folders for {value0}",
-                              {
-                                value0: a.name,
-                              },
-                            )}
-                            title={t("Server folders")}
-                          >
-                            <ChevronRight
-                              size={13}
-                              className={
-                                expandedAccounts.includes(a.id)
-                                  ? "rotate-90"
-                                  : ""
-                              }
-                            />
-                          </Button>
-                        </CollapsibleTrigger>
-                      </div>
-                      <CollapsibleContent className="remote-folder-list">
-                        {folderLoading.includes(a.id) ? (
-                          <div
-                            role="status"
-                            aria-label={t("Loading server folders")}
-                          >
-                            <Skeleton className="h-6 mb-2" />
-                            <Skeleton className="h-6" />
+                            </CollapsibleTrigger>
                           </div>
-                        ) : (
-                          <>
-                            {folderErrors[a.id] ? (
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => void loadFolders(a.id)}
+                          <CollapsibleContent className="remote-folder-list">
+                            {folderLoading.includes(a.id) ? (
+                              <div
+                                role="status"
+                                aria-label={t("Loading server folders")}
                               >
-                                {t("Could not load. Retry")}
-                              </Button>
+                                <Skeleton className="h-6 mb-2" />
+                                <Skeleton className="h-6" />
+                              </div>
                             ) : (
-                              <RemoteFolderList
-                                folders={loadedFolders[a.id] || []}
-                                selected={
-                                  query.accountId === a.id
-                                    ? query.remoteFolder || ""
-                                    : ""
-                                }
-                                selectedTree={!!query.remoteFolderTree}
-                                starredSelected={
-                                  query.accountId === a.id &&
-                                  query.view === "starred"
-                                }
-                                unread={Object.fromEntries(
-                                  (data.remoteFolderUnread || [])
-                                    .filter((count) => count.accountId === a.id)
-                                    .map((count) => [
-                                      count.name,
-                                      {
-                                        direct: count.direct,
-                                        tree: count.tree,
-                                      },
-                                    ]),
+                              <>
+                                {folderErrors[a.id] ? (
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={() =>
+                                      void loadFolders(a.id, { force: true })
+                                    }
+                                  >
+                                    {t("Could not load. Retry")}
+                                  </Button>
+                                ) : (
+                                  <RemoteFolderList
+                                    folders={foldersForAccount}
+                                    selected={
+                                      query.accountId === a.id
+                                        ? query.remoteFolder || ""
+                                        : ""
+                                    }
+                                    selectedTree={!!query.remoteFolderTree}
+                                    starredSelected={
+                                      query.accountId === a.id &&
+                                      query.view === "starred"
+                                    }
+                                    unread={
+                                      remoteFolderUnreadByAccount[a.id] || {}
+                                    }
+                                    starredUnread={
+                                      accountStarredUnreadByAccount[a.id] || 0
+                                    }
+                                    onSelect={(name, tree, delimiter) =>
+                                      void openRemoteFolder(
+                                        a.id,
+                                        name,
+                                        tree,
+                                        delimiter,
+                                      )
+                                    }
+                                    onSelectStarred={() =>
+                                      navigate("starred", a.id)
+                                    }
+                                    onMarkRead={(
+                                      name,
+                                      tree,
+                                      delimiter,
+                                      starred,
+                                    ) =>
+                                      void markRemoteFolderRead(
+                                        a.id,
+                                        name,
+                                        tree,
+                                        delimiter,
+                                        starred,
+                                      )
+                                    }
+                                  />
                                 )}
-                                starredUnread={
-                                  data.accountStarredUnread?.find(
-                                    (count) => count.accountId === a.id,
-                                  )?.unread || 0
-                                }
-                                onSelect={(name, tree, delimiter) =>
-                                  void openRemoteFolder(
-                                    a.id,
-                                    name,
-                                    tree,
-                                    delimiter,
-                                  )
-                                }
-                                onSelectStarred={() =>
-                                  navigate("starred", a.id)
-                                }
-                                onMarkRead={(name, tree, delimiter, starred) =>
-                                  void markRemoteFolderRead(
-                                    a.id,
-                                    name,
-                                    tree,
-                                    delimiter,
-                                    starred,
-                                  )
-                                }
-                              />
+                              </>
                             )}
-                          </>
-                        )}
-                      </CollapsibleContent>
-                    </Collapsible>
-                  ))}
+                          </CollapsibleContent>
+                        </Collapsible>
+                      </div>
+                    );
+                  })}
                   {!data.accounts.length && (
                     <Button
                       variant="ghost"
@@ -2804,139 +3293,214 @@ export default function App({
                       )}
                     </div>
                     <div className="settings-accounts">
-                      {data.accounts.map((a) => (
-                        <Card className="settings-account-card" key={a.id}>
-                          <MailProviderIcon provider={a.provider} />
-                          <div className="settings-account-details">
-                            <h3>
-                              {a.name}
-                              <Badge variant="secondary">
-                                {a.protocol.toUpperCase()}
-                              </Badge>
-                            </h3>
-                            <p title={a.email}>{a.email}</p>
-                            <small
-                              className={`tabular-nums ${a.error ? "account-check-error" : ""}`}
-                            >
-                              {a.error && (
-                                <AlertCircle aria-hidden="true" size={14} />
-                              )}
-                              {a.error ||
-                                (!a.enabled
-                                  ? t("Account paused")
-                                  : a.lastSync
-                                    ? t("Last checked: {value0}", {
-                                        value0: new Date(
-                                          a.lastSync,
-                                        ).toLocaleString(dateLocale()),
-                                      })
-                                    : t(
-                                        "Connected. Waiting for the first mail check.",
-                                      ))}
-                            </small>
-                          </div>
-                          <div className="settings-account-policy">
-                            <span>{t("Default storage")}</span>
-                            <strong>
-                              {a.saveLocally === false
-                                ? t("Read online")
-                                : t("Save locally")}
-                            </strong>
-                          </div>
-                          <div className="settings-account-actions">
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              title={t("Edit account settings")}
-                              aria-label={t("Edit settings for {value0}", {
-                                value0: a.name,
-                              })}
-                              onClick={() => {
-                                setEditingAccount(a);
-                                setAccountDialog(true);
-                              }}
-                            >
-                              <PenLine data-icon="inline-start" />
-                              <span>{t("Edit settings")}</span>
-                            </Button>
-                            <DropdownMenu>
-                              <DropdownMenuTrigger asChild>
-                                <Button
-                                  variant="ghost"
-                                  size="icon-sm"
-                                  title={t("Account actions")}
-                                  data-reveal-row-action=""
-                                  aria-label={t("Actions for {value0}", {
-                                    value0: a.name,
-                                  })}
-                                >
-                                  <MoreHorizontal size={18} />
-                                </Button>
-                              </DropdownMenuTrigger>
-                              <DropdownMenuContent align="end">
-                                <DropdownMenuGroup>
-                                  <DropdownMenuItem
-                                    onClick={() => {
-                                      setRetentionIntro(false);
-                                      setRetentionAccount(a);
-                                    }}
-                                  >
-                                    {a.protocol === "imap"
-                                      ? t("Folder retention scope")
-                                      : t("Local storage settings")}
-                                  </DropdownMenuItem>
-                                  {a.protocol === "imap" && (
-                                    <DropdownMenuItem
-                                      onClick={() => setMappingAccount(a)}
-                                    >
-                                      {t("Special folders")}
-                                    </DropdownMenuItem>
-                                  )}
-                                  <DropdownMenuItem
-                                    onClick={() =>
-                                      void call("account_action", {
-                                        id: a.id,
-                                        remove: false,
-                                      })
-                                        .then(refresh)
-                                        .catch((e) => toast.error(String(e)))
-                                    }
-                                  >
-                                    {a.enabled
-                                      ? t("Pause mail checks")
-                                      : t("Enable mail checks")}
-                                  </DropdownMenuItem>
-                                  <DropdownMenuSeparator />
-                                  <DropdownMenuItem
-                                    variant="destructive"
-                                    onClick={async () => {
-                                      if (
-                                        await askConfirmation({
-                                          title: t("Remove account?"),
-                                          description: t(
-                                            "Removing {value0} stops mail checks. Full local archives remain; unarchived list entries are removed.",
-                                            { value0: a.email },
-                                          ),
-                                          action: t("Remove account"),
-                                          destructive: true,
+                      {displayedAccounts.map((a, index) => {
+                        const canReorder = displayedAccounts.length > 1;
+                        const dragging =
+                          accountDrag?.scope === "settings" &&
+                          accountDrag.sourceId === a.id;
+                        return (
+                          <Card
+                            className={`settings-account-card ${canReorder ? "has-drag-handle" : ""}`}
+                            key={a.id}
+                            data-account-drag-id={a.id}
+                            data-drag-ghost={dragging ? "true" : undefined}
+                          >
+                            {canReorder && (
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="icon-xs"
+                                className="account-drag-handle"
+                                title={t("Drag to reorder {value0}", {
+                                  value0: a.name,
+                                })}
+                                aria-label={t("Drag to reorder {value0}", {
+                                  value0: a.name,
+                                })}
+                                onPointerDown={(event) =>
+                                  beginAccountDrag(event, "settings", a.id)
+                                }
+                              >
+                                <GripVertical size={15} />
+                              </Button>
+                            )}
+                            <MailProviderIcon provider={a.provider} />
+                            <div className="settings-account-details">
+                              <h3>
+                                {a.name}
+                                <Badge variant="secondary">
+                                  {a.protocol.toUpperCase()}
+                                </Badge>
+                              </h3>
+                              <p title={a.email}>{a.email}</p>
+                              <small
+                                className={`tabular-nums ${a.error ? "account-check-error" : ""}`}
+                              >
+                                {a.error && (
+                                  <AlertCircle aria-hidden="true" size={14} />
+                                )}
+                                {a.error ||
+                                  (!a.enabled
+                                    ? t("Account paused")
+                                    : a.lastSync
+                                      ? t("Last checked: {value0}", {
+                                          value0: new Date(
+                                            a.lastSync,
+                                          ).toLocaleString(dateLocale()),
                                         })
-                                      )
+                                      : t(
+                                          "Connected. Waiting for the first mail check.",
+                                        ))}
+                                {a.error && (
+                                  <Button
+                                    type="button"
+                                    variant="link"
+                                    size="xs"
+                                    className="h-auto px-1 py-0 text-xs"
+                                    onClick={() => setSettingsSection("tasks")}
+                                  >
+                                    {t("Resolve")}
+                                  </Button>
+                                )}
+                              </small>
+                            </div>
+                            <div className="settings-account-policy">
+                              <span>{t("Default storage")}</span>
+                              <strong>
+                                {a.saveLocally === false
+                                  ? t("Read online")
+                                  : t("Save locally")}
+                              </strong>
+                            </div>
+                            <div className="settings-account-actions">
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                title={t("Edit account settings")}
+                                aria-label={t("Edit settings for {value0}", {
+                                  value0: a.name,
+                                })}
+                                onClick={() => {
+                                  setEditingAccount(a);
+                                  setAccountDialog(true);
+                                }}
+                              >
+                                <PenLine data-icon="inline-start" />
+                                <span>{t("Edit settings")}</span>
+                              </Button>
+                              <DropdownMenu>
+                                <DropdownMenuTrigger asChild>
+                                  <Button
+                                    variant="ghost"
+                                    size="icon-sm"
+                                    title={t("Account actions")}
+                                    data-reveal-row-action=""
+                                    aria-label={t("Actions for {value0}", {
+                                      value0: a.name,
+                                    })}
+                                  >
+                                    <MoreHorizontal size={18} />
+                                  </Button>
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent align="end">
+                                  <DropdownMenuGroup>
+                                    {canReorder && index > 0 && (
+                                      <DropdownMenuItem
+                                        onClick={() => {
+                                          const nextIds = moveAccountId(
+                                            data.accounts,
+                                            a.id,
+                                            -1,
+                                          );
+                                          if (nextIds)
+                                            void reorderAccounts(nextIds);
+                                        }}
+                                      >
+                                        {t("Move up")}
+                                      </DropdownMenuItem>
+                                    )}
+                                    {canReorder &&
+                                      index < data.accounts.length - 1 && (
+                                        <DropdownMenuItem
+                                          onClick={() => {
+                                            const nextIds = moveAccountId(
+                                              data.accounts,
+                                              a.id,
+                                              1,
+                                            );
+                                            if (nextIds)
+                                              void reorderAccounts(nextIds);
+                                          }}
+                                        >
+                                          {t("Move down")}
+                                        </DropdownMenuItem>
+                                      )}
+                                    {canReorder && <DropdownMenuSeparator />}
+                                    <DropdownMenuItem
+                                      onClick={() => {
+                                        setRetentionIntro(false);
+                                        setRetentionAccount(a);
+                                      }}
+                                    >
+                                      {a.protocol === "imap"
+                                        ? t("Folder retention scope")
+                                        : t("Local storage settings")}
+                                    </DropdownMenuItem>
+                                    {a.protocol === "imap" && (
+                                      <DropdownMenuItem
+                                        onClick={() => setMappingAccount(a)}
+                                      >
+                                        {t("Special folders")}
+                                      </DropdownMenuItem>
+                                    )}
+                                    <DropdownMenuItem
+                                      onClick={() =>
                                         void call("account_action", {
                                           id: a.id,
-                                          remove: true,
+                                          remove: false,
                                         })
                                           .then(refresh)
-                                          .catch((e) => toast.error(String(e)));
-                                    }}
-                                  >
-                                    {t("Remove account, keep archives")}
-                                  </DropdownMenuItem>
-                                </DropdownMenuGroup>
-                              </DropdownMenuContent>
-                            </DropdownMenu>
-                          </div>
-                        </Card>
-                      ))}
+                                          .catch((e) => toast.error(String(e)))
+                                      }
+                                    >
+                                      {a.enabled
+                                        ? t("Pause mail checks")
+                                        : t("Enable mail checks")}
+                                    </DropdownMenuItem>
+                                    <DropdownMenuSeparator />
+                                    <DropdownMenuItem
+                                      variant="destructive"
+                                      onClick={async () => {
+                                        if (
+                                          await askConfirmation({
+                                            title: t("Remove account?"),
+                                            description: t(
+                                              "Removing {value0} stops mail checks. Full local archives remain; unarchived list entries are removed.",
+                                              { value0: a.email },
+                                            ),
+                                            action: t("Remove account"),
+                                            destructive: true,
+                                          })
+                                        )
+                                          void call("account_action", {
+                                            id: a.id,
+                                            remove: true,
+                                          })
+                                            .then(refresh)
+                                            .catch((e) =>
+                                              toast.error(String(e)),
+                                            );
+                                      }}
+                                    >
+                                      {t("Remove account, keep archives")}
+                                    </DropdownMenuItem>
+                                  </DropdownMenuGroup>
+                                </DropdownMenuContent>
+                              </DropdownMenu>
+                            </div>
+                          </Card>
+                        );
+                      })}
                     </div>
                     {!data.accounts.length && (
                       <Empty>
@@ -3090,6 +3654,10 @@ export default function App({
                     <div className="settings-section-heading">
                       <h2>{t("Background tasks")}</h2>
                     </div>
+                    <SyncFailuresPanel
+                      defaultCollapsed
+                      onResolved={() => void refresh()}
+                    />
                     <ArchiveJobsPanel defaultCollapsed />
                     <EmlImports
                       taskPanel
@@ -3168,17 +3736,19 @@ export default function App({
                     <div className="settings-section-heading">
                       <h2>{t("About Anser")}</h2>
                     </div>
-                    <UpdateSettings updates={updates} />
-                    <Card>
-                      <CardHeader>
-                        <CardTitle>{t("Background sync scope")}</CardTitle>
-                        <CardDescription>
+                    <UpdateSettings updates={updates}>
+                      <div className="flex flex-col gap-1">
+                        <div className="text-sm font-medium text-foreground">
+                          {t("Background sync scope")}
+                        </div>
+                        <p className="text-sm text-muted-foreground">
                           {t(
                             "Checks continue after closing the window, pause on quit or sleep, and require full saving before server deletion.",
                           )}
-                        </CardDescription>
-                      </CardHeader>
-                    </Card>
+                        </p>
+                      </div>
+                    </UpdateSettings>
+                    <DiagnosticLogsCard />
                     {import.meta.env.DEV && (
                       <Button
                         variant="ghost"
@@ -4523,30 +5093,122 @@ export default function App({
                     )}
                   </div>
                 ) : (
-                  <div className="reader-welcome">
-                    <div className="welcome-art">
-                      <img
-                        src={`${import.meta.env.BASE_URL}app-icon.png`}
-                        alt={t("Anser")}
-                      />
-                      <span className="orbit one" />
-                      <span className="orbit two" />
-                      <span className="art-dot dot-one" />
-                      <span className="art-dot dot-two" />
+                  <div
+                    className="reader-welcome"
+                    onPointerMove={handleWelcomePointerMove}
+                    onPointerLeave={resetWelcomePointer}
+                  >
+                    <div
+                      className="welcome-art"
+                      data-syncing={syncing || syncEmail ? "true" : undefined}
+                    >
+                      <span className="welcome-aura" aria-hidden="true" />
+                      {welcomeRipple > 0 && (
+                        <span
+                          key={welcomeRipple}
+                          className="welcome-ripples"
+                          aria-hidden="true"
+                        >
+                          <span className="welcome-ripple one" />
+                          <span className="welcome-ripple two" />
+                        </span>
+                      )}
+                      <span className="welcome-parallax-core">
+                        <span className="welcome-logo-float">
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                className="welcome-logo-trigger"
+                                aria-label={
+                                  syncing || syncEmail
+                                    ? t("Checking mail")
+                                    : data.accounts.length && !demo
+                                      ? t("Click to check for new mail")
+                                      : t("Anser")
+                                }
+                                onClick={handleWelcomeEmblemClick}
+                              >
+                                <img
+                                  src={`${import.meta.env.BASE_URL}app-icon.png`}
+                                  alt={t("Anser")}
+                                  draggable={false}
+                                />
+                              </Button>
+                            </TooltipTrigger>
+                            <TooltipContent side="bottom" sideOffset={8}>
+                              {syncing || syncEmail
+                                ? syncEmail
+                                  ? t("Checking mail for {value0}", {
+                                      value0: syncEmail,
+                                    })
+                                  : t("Checking mail")
+                                : data.accounts.length && !demo
+                                  ? t("Click to check for new mail")
+                                  : t("Anser")}
+                            </TooltipContent>
+                          </Tooltip>
+                        </span>
+                      </span>
+                      <span
+                        className="welcome-parallax-inner"
+                        aria-hidden="true"
+                      >
+                        <span className="orbit-wrap one">
+                          <span className="orbit one">
+                            <span className="art-dot dot-one" />
+                          </span>
+                        </span>
+                      </span>
+                      <span
+                        className="welcome-parallax-outer"
+                        aria-hidden="true"
+                      >
+                        <span className="orbit-wrap two">
+                          <span className="orbit two">
+                            <span className="art-dot dot-two" />
+                          </span>
+                        </span>
+                      </span>
                     </div>
-                    <span className="eyebrow">
-                      A CALMER PLACE FOR YOUR MAIL
-                    </span>
+                    {syncing || syncEmail ? (
+                      <span className="eyebrow eyebrow-syncing">
+                        <span className="welcome-sync-dot" aria-hidden="true" />
+                        {syncEmail
+                          ? t("Checking mail for {value0}", {
+                              value0: syncEmail,
+                            })
+                          : t("Checking mail")}
+                      </span>
+                    ) : (
+                      <span className="eyebrow">
+                        A CALMER PLACE FOR YOUR MAIL
+                      </span>
+                    )}
                     <h1>
                       {data.accounts.length
-                        ? t("Make room for what matters")
+                        ? welcomeGreeting(welcomeHour)
                         : t("Mail, thoughtfully organized.")}
                     </h1>
-                    <p>
+                    <p className="tabular-nums">
                       {data.accounts.length
-                        ? t(
-                            "Select a message to start reading.\nSave complete messages locally for long-term access.",
-                          )
+                        ? syncing || syncEmail
+                          ? t(
+                              "Checking your mailboxes for new messages.\nSelect any message on the left to read.",
+                            )
+                          : data.stats.unread === 1
+                            ? t(
+                                "1 unread message waiting.\nSelect it to read, or click the emblem to check again.",
+                              )
+                            : data.stats.unread > 1
+                              ? t(
+                                  "{value0} unread messages waiting.\nSelect one to read, or click the emblem to check again.",
+                                  { value0: data.stats.unread },
+                                )
+                              : t(
+                                  "All caught up — make room for what matters.\nClick the emblem anytime to check for new mail.",
+                                )
                         : t(
                             "Bring your mailboxes together.\nGive every important message a lasting home.",
                           )}
@@ -4860,6 +5522,58 @@ export default function App({
       </Dialog>
       {confirmationDialog}
       <UpdateDialog updates={updates} blocked={!!draft} />
+      {accountDrag &&
+        typeof document !== "undefined" &&
+        (() => {
+          const dragged = data.accounts.find(
+            (account) => account.id === accountDrag.sourceId,
+          );
+          if (!dragged) return null;
+          const colorIndex = accountColorIndex.get(dragged.id) ?? 0;
+          return createPortal(
+            <div
+              ref={floatingDragRef}
+              className={`account-drag-floating account-drag-floating-${accountDrag.scope}`}
+              aria-hidden="true"
+              style={{
+                width: `${accountDrag.width}px`,
+                transform: `translate3d(${accountDrag.x}px, ${accountDrag.y}px, 0)`,
+              }}
+            >
+              {accountDrag.scope === "sidebar" ? (
+                <div className="account-drag-floating-sidebar-row">
+                  <span className={`account-dot color-${colorIndex}`} />
+                  <span className="account-drag-floating-copy">
+                    <span className="account-drag-floating-name">
+                      {dragged.name}
+                    </span>
+                    <small className="account-drag-floating-email">
+                      {dragged.email}
+                    </small>
+                  </span>
+                  <ChevronRight size={13} className="shrink-0 opacity-60" />
+                </div>
+              ) : (
+                <div className="account-drag-floating-settings-row">
+                  <GripVertical size={15} className="shrink-0 opacity-60" />
+                  <MailProviderIcon provider={dragged.provider} />
+                  <div className="account-drag-floating-copy">
+                    <div className="account-drag-floating-title">
+                      <span>{dragged.name}</span>
+                      <Badge variant="secondary">
+                        {dragged.protocol.toUpperCase()}
+                      </Badge>
+                    </div>
+                    <small className="account-drag-floating-email">
+                      {dragged.email}
+                    </small>
+                  </div>
+                </div>
+              )}
+            </div>,
+            document.body,
+          );
+        })()}
     </SidebarProvider>
   );
 }

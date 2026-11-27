@@ -96,27 +96,41 @@ it("native spacer strips do not produce a loading/error banner or remote resourc
   expect(host.querySelector('[role="alert"]')).toBeNull();
   expect(host.querySelector('[aria-label="正在加载图片"]')).toBeNull();
 });
-it("updates the isolated body when the application theme changes", async () => {
-  const { frame } = await load();
+it("updates the isolated body in place without reloading srcdoc when the application theme changes", async () => {
+  const { frame, doc } = await load();
+  const initialSrcDoc = frame.srcdoc;
   expect(frame.className).toContain("mail-html-light");
-  expect(frame.srcdoc).not.toContain("color-scheme:dark");
+  expect(doc.querySelector("#anser-mail-theme")?.textContent).not.toContain(
+    "color-scheme:dark",
+  );
   document.documentElement.style.setProperty("--background", "oklch(0.2 0 0)");
   await act(async () => setThemeMode("dark"));
   const themed = host.querySelector("iframe")!;
   expect(themed.className).toContain("mail-html-dark");
-  expect(themed.srcdoc).toContain("color-scheme:dark");
-  expect(themed.srcdoc).toContain("background-color:oklch(0.2 0 0)!important");
+  expect(themed.srcdoc).toBe(initialSrcDoc);
+  expect(doc.querySelector("#anser-mail-theme")?.textContent).toContain(
+    "color-scheme:dark",
+  );
+  expect(doc.querySelector("#anser-mail-theme")?.textContent).toContain(
+    "background-color:oklch(0.2 0 0)!important",
+  );
 });
-it("refreshes the isolated dark background when only the active palette changes", async () => {
+it("refreshes the isolated dark background in place without reloading srcdoc when only the active palette changes", async () => {
   await act(async () => setThemeMode("dark"));
   document.documentElement.style.setProperty("--background", "#121714");
-  const { frame } = await load();
+  const { frame, doc } = await load();
   const previous = frame.srcdoc;
   document.documentElement.style.setProperty("--background", "#282a36");
   await act(async () => setThemePalette("light", "github"));
   expect(frame.srcdoc).toBe(previous);
+  expect(doc.querySelector("#anser-mail-theme")?.textContent).toContain(
+    "background-color:#121714!important",
+  );
   await act(async () => setThemePalette("dark", "dracula"));
-  expect(frame.srcdoc).toContain("background-color:#282a36!important");
+  expect(frame.srcdoc).toBe(previous);
+  expect(doc.querySelector("#anser-mail-theme")?.textContent).toContain(
+    "background-color:#282a36!important",
+  );
 });
 it("can use original light colors for one body without changing the application theme or disabling sanitization", async () => {
   await act(async () => setThemeMode("dark"));
@@ -180,7 +194,9 @@ it("replaces stalled loading with retry after the deadline and clears the notice
   expect(host.querySelector('[role="alert"]')).toBeNull();
 });
 it("keeps image loading and failure notices out of the body layout", async () => {
-  const { finish } = await load();
+  const { doc, finish } = await load();
+  const [unavailable, loaded] = doc.images;
+  const source = unavailable.getAttribute("src");
   const container = host.querySelector(".mail-html-container")!;
   expect(
     container.querySelector('[data-mail-image-state="loading"]'),
@@ -193,6 +209,9 @@ it("keeps image loading and failure notices out of the body layout", async () =>
     container.querySelector('[data-mail-image-state="error"]'),
   ).not.toBeNull();
   expect(container.querySelector('[role="alert"]')).not.toBeNull();
+  expect(unavailable.hasAttribute("data-anser-image-unavailable")).toBe(true);
+  expect(loaded.hasAttribute("data-anser-image-unavailable")).toBe(false);
+  expect(unavailable.getAttribute("src")).toBe(source);
   expect(container.querySelector(".mail-status-action")?.textContent).toContain(
     "重新加载图片",
   );
@@ -200,6 +219,7 @@ it("keeps image loading and failure notices out of the body layout", async () =>
   await act(async () => vi.advanceTimersByTime(1000));
   expect(container.querySelector('[data-mail-image-state="error"]')).toBeNull();
   expect(container.querySelector("iframe")).not.toBeNull();
+  expect(unavailable.hasAttribute("data-anser-image-unavailable")).toBe(false);
 });
 it("reports failed and timed-out content counts together without including decorative resources", async () => {
   const { doc } = await load();

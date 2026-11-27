@@ -81,8 +81,9 @@ export function routeNativeMailResources(doc: Document) {
   }
   for (const element of doc.querySelectorAll(
     "img[srcset], picture source[srcset]",
-  ))
+  )) {
     element.setAttribute("srcset", srcset(element.getAttribute("srcset")!));
+  }
   for (const element of doc.querySelectorAll("[background]"))
     element.setAttribute(
       "background",

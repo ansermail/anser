@@ -99,32 +99,40 @@ export function AccountDialog({
         progress.onmessage = (value) => {
           if (active) setStage(value);
         };
+      const trimmedEmail = account.email.trim();
+      const trimmedUsername = (account.username || trimmedEmail).trim();
+      const cleanedAccount: Account = {
+        ...account,
+        email: trimmedEmail,
+        username: trimmedUsername,
+        smtpUsername: account.smtpUsername.trim(),
+        incomingHost: account.incomingHost.trim(),
+        smtpHost: account.smtpHost.trim(),
+        name: (account.name || trimmedEmail).trim(),
+      };
+      const cleanedPassword = password.replace(/[\r\n]/g, "");
+      const cleanedSmtpPassword = smtpPassword.replace(/[\r\n]/g, "");
       const result = await call<string>(
         editing ? "edit_account" : "connect_account",
-        {
-          account: {
-            ...account,
-            username: account.username || account.email,
-            name: account.name || account.email,
-          },
-          password,
-          smtpPassword,
-          reauthorize,
-          smtpUseIncoming,
-          onProgress: progress,
-        },
+        editing
+          ? {
+              account: cleanedAccount,
+              password: cleanedPassword,
+              smtpPassword: cleanedSmtpPassword,
+              reauthorize,
+              smtpUseIncoming,
+              onProgress: progress,
+            }
+          : {
+              account: cleanedAccount,
+              password: cleanedPassword,
+              smtpPassword: cleanedSmtpPassword,
+              onProgress: progress,
+            },
       );
       setPassword("");
       setSmtpPassword("");
-      onDone(
-        editing
-          ? undefined
-          : {
-              ...account,
-              username: account.username || account.email,
-              name: account.name || account.email,
-            },
-      );
+      onDone(editing ? undefined : cleanedAccount);
       onOpenChange(false);
       setAccount(null);
       toast.success(
@@ -232,7 +240,12 @@ export function AccountDialog({
                     variant="ghost"
                     type="button"
                     className="text-link self-start justify-start"
-                    onClick={() => setAccount(null)}
+                    onClick={() => {
+                      setAccount(null);
+                      setPassword("");
+                      setSmtpPassword("");
+                      setError("");
+                    }}
                     disabled={busy}
                   >
                     <ArrowLeft size={14} />

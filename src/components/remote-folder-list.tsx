@@ -1,5 +1,5 @@
 import { t, useLanguage } from "@/lib/i18n";
-import { Fragment, useEffect, useMemo, useState } from "react";
+import { Fragment, memo, useEffect, useMemo, useState } from "react";
 import {
   Archive,
   AlertCircle,
@@ -35,7 +35,7 @@ import {
 } from "../lib/remote-folders";
 import type { RemoteFolder } from "../lib/types";
 
-export function RemoteFolderList({
+export const RemoteFolderList = memo(function RemoteFolderList({
   folders,
   selected,
   selectedTree = false,
@@ -120,7 +120,7 @@ export function RemoteFolderList({
       ))}
     </div>
   );
-}
+});
 
 function FolderBranch({
   node,

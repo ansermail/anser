@@ -140,6 +140,7 @@ export function watchMailImages(
     for (const [image, entry] of images) {
       if (!current.has(image) || entry.source !== source(image)) {
         clearTimeout(entry.timer);
+        image.removeAttribute("data-anser-image-unavailable");
         images.delete(image);
       }
     }
@@ -150,6 +151,10 @@ export function watchMailImages(
         entry = { source: source(image), expired: false };
         images.set(image, entry);
       }
+      const unavailable = image.complete
+        ? image.naturalWidth === 0
+        : entry.expired;
+      image.toggleAttribute("data-anser-image-unavailable", unavailable);
       if (image.complete) {
         clearTimeout(entry.timer);
         entry.timer = undefined;
@@ -223,7 +228,10 @@ export function watchMailImages(
     dispose() {
       disposed = true;
       clearInterval(poll);
-      for (const entry of images.values()) clearTimeout(entry.timer);
+      for (const [image, entry] of images) {
+        clearTimeout(entry.timer);
+        image.removeAttribute("data-anser-image-unavailable");
+      }
       images.clear();
       if (domEvents) {
         doc.removeEventListener("load", refresh, true);

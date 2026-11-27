@@ -9,6 +9,7 @@ import {
 } from "react";
 import { isTauri } from "@tauri-apps/api/core";
 import { ImageOff, LoaderCircle } from "lucide-react";
+import { call } from "../lib/api";
 import { MailBodySkeleton } from "./mail-skeleton";
 import { disableNativeContextMenu } from "../lib/context-menu";
 import { Badge } from "./ui/badge";
@@ -16,6 +17,7 @@ import { Button } from "./ui/button";
 import { watchMailImages, type MailImageStatus } from "../lib/mail-images";
 import {
   applyMailColorScheme,
+  classifyMailImages,
   interceptMailLinks,
   isMailDocument,
   safeMailHtml,
@@ -67,6 +69,10 @@ export function MailContent({
     themeBackground?.colorScheme === colorScheme
       ? themeBackground.value
       : undefined;
+  const colorSchemeRef = useRef(colorScheme);
+  colorSchemeRef.current = colorScheme;
+  const backgroundRef = useRef(background);
+  backgroundRef.current = background;
   const notifyDocument = useRef(onDocumentReady);
   notifyDocument.current = onDocumentReady;
   const frame = useRef<HTMLIFrameElement>(null);
@@ -79,6 +85,9 @@ export function MailContent({
     failed: 0,
   });
   const retryImages = useRef(() => {});
+  // Build srcDoc only when the message HTML itself changes so switching between
+  // light/dark modes or palettes transitions colors in-place without reloading
+  // the iframe or re-downloading images.
   const content = useMemo(() => {
     const id = crypto.randomUUID();
     return {
@@ -88,14 +97,39 @@ export function MailContent({
         id,
         isTauri(),
         isTauri(),
-        colorScheme,
-        background,
+        colorSchemeRef.current,
+        backgroundRef.current,
       ),
     };
-  }, [background, colorScheme, html]);
+  }, [html]);
   const srcDoc = content.srcDoc;
   const open = useRef(onOpenLink);
   open.current = onOpenLink;
+  useEffect(() => {
+    const doc = initialized.current;
+    if (!doc) return;
+    const authorDark = doc.defaultView?.matchMedia?.(
+      "(prefers-color-scheme: dark)",
+    );
+    let pending = 0;
+    let frames = 0;
+    const apply = () => {
+      if (initialized.current !== doc) return;
+      // WebKit updates an embedded document's media queries on a later frame.
+      if (
+        colorScheme === "dark" &&
+        authorDark?.matches === false &&
+        frames < 2
+      ) {
+        frames++;
+        pending = requestAnimationFrame(apply);
+        return;
+      }
+      applyMailColorScheme(doc, colorScheme, background, true);
+    };
+    apply();
+    return () => cancelAnimationFrame(pending);
+  }, [background, colorScheme]);
   useEffect(() => {
     setReady(false);
     setImages({ waiting: 0, timedOut: 0, failed: 0 });
@@ -152,7 +186,7 @@ export function MailContent({
     // floats in the measured body. Preserve templates with custom flex/grid.
     if (doc.defaultView?.getComputedStyle(doc.body).display === "block")
       doc.body.style.setProperty("display", "flow-root", "important");
-    applyMailColorScheme(doc, colorScheme, background);
+    applyMailColorScheme(doc, colorSchemeRef.current, backgroundRef.current);
     const resize = () => {
       const height = `${mailDocumentHeight(doc)}px`;
       if (iframe.style.height !== height) iframe.style.height = height;
@@ -166,10 +200,19 @@ export function MailContent({
       });
     };
     const nativeFrame = isTauri();
+    const lookupNativeLogos = nativeFrame
+      ? (urls: string[]) =>
+          call<Record<string, string>>("classify_mail_images", { urls })
+      : undefined;
+    const classifyLogos = () => {
+      void classifyMailImages(doc, lookupNativeLogos);
+    };
+    classifyLogos();
     const imageTracker = watchMailImages(
       doc,
       (status) => {
         setImages(status);
+        classifyLogos();
         scheduleResize();
       },
       !nativeFrame,
@@ -177,6 +220,7 @@ export function MailContent({
     retryImages.current = imageTracker.retry;
     const refresh = () => {
       imageTracker.refresh();
+      classifyLogos();
       scheduleResize();
     };
     // Height changes are the result of this observer's work, not a reason to

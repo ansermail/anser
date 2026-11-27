@@ -230,6 +230,8 @@ export async function call<T = void>(
       "test_notification",
       "delete_local_archives",
       "export_mail",
+      "export_diagnostic_log",
+      "open_log_dir",
       "save_attachment",
       "preview_attachment",
       "attachment_thumbnail",
@@ -871,10 +873,51 @@ export async function call<T = void>(
           ),
         );
       case "folder_health":
+      case "sync_failures":
       case "directory_operations":
       case "rule_executions":
         result = [];
         break;
+      case "sync_failure_action":
+      case "record_frontend_error":
+        result = null;
+        break;
+      case "classify_mail_images":
+        result = {};
+        break;
+      case "diagnostic_log_status":
+        result = {
+          path: "演示模式不写入本机日志文件",
+          fileCount: 0,
+          totalBytes: 0,
+        };
+        break;
+      case "export_diagnostic_log":
+      case "open_log_dir":
+        throw new Error(
+          t("Diagnostic log export is available in the desktop application."),
+        );
+      case "reorder_accounts": {
+        const ids = Array.isArray(args.ids)
+          ? args.ids.map((id) => String(id))
+          : [];
+        const byId = new Map(demo.accounts.map((a) => [a.id, a]));
+        const next: Account[] = [];
+        const seen = new Set<string>();
+        for (const id of ids) {
+          const item = byId.get(id);
+          if (item && !seen.has(id)) {
+            next.push(item);
+            seen.add(id);
+          }
+        }
+        for (const account of demo.accounts) {
+          if (!seen.has(account.id)) next.push(account);
+        }
+        demo.accounts = next;
+        result = null;
+        break;
+      }
       case "copy_sources":
         result = [
           demo.messages.find((m) => m.id === args.id)?.sourceFolder,
@@ -1427,6 +1470,8 @@ export async function call<T = void>(
         "list_outbox",
         "server_operations",
         "folder_health",
+        "sync_failures",
+        "diagnostic_log_status",
         "directory_operations",
         "rule_executions",
         "folder_settings",
