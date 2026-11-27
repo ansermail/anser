@@ -2,44 +2,17 @@
 
 依据 PRD 第 5、8、9 节、实施记录和当前代码核查。当前仍为 Alpha；功能代码已存在与真实场景验收通过分别记录。早期回归使用临时存储/演示数据；2026-10-05 用户授权后增加当前腾讯企业邮箱与 QQ 邮箱互发测试，未向其他地址发送，未删除真实邮件。
 
-## 当前进行中 · 用户反馈四项核查与修复（2026-11-27，0.1.47 之后未发布）
+## 最近正式发布：0.1.48（2026-11-27）
 
-- **代码完成**（尚未提交与发布）：
-  1. **单封邮件/附件拉取失败可识别且可处理**：新增 `src-tauri/src/sync_failures.rs` 持久化表与前后端接口（`sync_failures` / `sync_failure_action`），IMAP 单封 `UID FETCH` 失败后在独立只读短连接上补采主题、发件人、日期与大小，错误文案同时展示可读邮件信息与处理入口；在「设置 → 后台任务」新增「邮件收取异常」面板（`SyncFailuresPanel`），提供**重试收取**、**仅在线加载邮件头**（不拉大附件且不重复报错）和**跳过此邮件**（后续同步跳过并放行其余邮件），侧栏红标与设置账号卡片报错支持一键直达处理。
-  2. **多邮箱拖拽排序（SortableJS 风格实时让位）**：`accounts` 表迁移新增 `position` 列并新增 `reorder_accounts` 命令，支持在侧栏「我的账号」与「设置 → 邮箱账号」通过窗口级 Pointer Events 拖拽排序（兼容 macOS WKWebView / Windows WebView2）；拖拽时实时重排列表并伴随 150ms FLIP 平滑让位动效、淡色占位槽与随鼠标移动的悬浮卡片（无插入黑线，支持 `Esc` 取消），并在设置账号菜单提供「上移 / 下移」键盘/触控入口，排序持久化保存。
-  3. **账号折叠后再展开防卡顿**：`loadFolders` 对本会话已加载目录直接复用不再显示骨架屏或重复发起远程 IMAP `LIST` 与全量 `refresh()`；首次展开优先立即呈现 SQLite 缓存目录并在后台静默对比刷新；`RemoteFolderList` 改为 `React.memo` 且按账号缓存未读计数映射。
-  4. **腾讯企业邮登录排查与防踩坑加固**：使用现有 `imap 2.4` / vendored `imap-proto` / `native-tls` / `lettre 0.11` 对 `imap.exmail.qq.com:993`（TLS）、`pop.exmail.qq.com:995`（TLS）、`smtp.exmail.qq.com:465`（TLS）及 `587`（STARTTLS）复测测试账号连接均直接成功（143 端口不支持 `STARTTLS`）。同步修复了三类易触发登录失败的边界问题：`connect_account` 改为先完成收发测连再短暂获取 `gate`/`send_gate`（避免后台收取期间报错「正在处理邮件」）；前后端提交前自动去除邮箱、用户名与服务器主机首尾空白及粘贴密码中的换行，切换服务商清空旧错误与旧密码；SMTP `EHLO` 固定使用 ASCII 安全域名 `localhost`；腾讯企业邮认证失败补充客户端专用密码/海外节点指引。
-  5. **本地轮转诊断日志与脱敏导出**：新增 `src-tauri/src/diagnostics.rs`（`<app_data>/logs/anser.log` 按 5 MB × 5 份轮转、Unix 0700/0600 权限，强制脱敏 Bearer/Token/PASS 等敏感字段；`Store::log` 自动双写，补记 `connect_account`/`edit_account` 连接失败详情、POP3 `-ERR` 与 IMAP `STARTTLS` 服务端原始回复行、附件读取/保存失败、Rust panic 与前端 `AppErrorBoundary` 异常）；在「设置 → 关于雁信」新增 `DiagnosticLogsCard`（「导出脱敏诊断日志」与「打开日志目录」），导出报告附带版本、平台、代理状态、账号连接参数、未解决收取异常、目录隔离与最近日志，并自动遮罩邮箱前缀且隐藏邮件主题与正文。
-  6. **空阅读页交互式轨道动效与时段轻问候语**：为右侧欢迎页 `.welcome-art` 增加 GPU 合成动效——内环顺时针慢旋与柔和呼吸、外环错相逆时针慢旋与反向呼吸、中心柔和光晕脉冲与微悬浮，并加入**三层鼠标 3D 轻视差**（直接写入 CSS 变量零重渲染）、**点击品牌图标扩散双圈松绿水波纹并立即检查新邮件**、**收取中轨道自动提速亮起**；已登录态按早/午/晚时段显示轻问候语与实时未读/全部已读状态（`prefers-reduced-motion: reduce` 自动静止）。
-  7. **深色模式统一亮度反演引擎与 T3 双圆圈主题选择器**：`src/lib/mail-html.ts` 去除零散特判补丁，改为三步统一引擎——先尊重自带 `@media (prefers-color-scheme: dark)` 与深底邮件，再对浅色邮件的中性背景与边框使用同一条连续亮度反演曲线（纯白→当前主题深底、浅灰代码块/卡片→自然抬升深灰、纯黑按钮含嵌套结构→无缝反演为柔和浅白按钮），最后按每个元素真实落定背景的 WCAG 对比度自动求解文字前景色；`AppearanceSettings` 移除上方「浅色配色 / 深色配色」二级切换，每张主题卡片直接并排展示同一主题的浅色圆圈与深色圆圈（点圆圈立即预览并保存，点主题名同时应用深浅一套且不打断跟随系统）。
-- **自动测试通过**：`pnpm check:ui`、`pnpm check:i18n`（1,992 条双语键）、`pnpm format:check`、`pnpm build`、`pnpm build:preview`、`cargo fmt --check`、`git diff --check`；Rust 后端全量回归 488 通过后补充诊断/POP3/STARTTLS 专项 **11 项通过**（含新增 3 项轮转/脱敏/导出测试）；前端专项回归通过（含 `mail-html.test.ts`、`theme.test.ts`、`appearance-settings.test.tsx`、`mail-content.test.tsx` 与 `App.test.tsx` 等）。
-- **真实场景验收 / 云端构建 / 正式发布**：**未验证**（尚未在原生桌面包内实机点验拖拽、异常面板、折叠展开流畅度与 Windows 端腾讯企业邮登录，尚未提交推送或发版）。
+- **代码完成**。提交 [`986f783`](https://github.com/ansermail/anser/commit/986f7839827f5b082a093bc4e9fa5e010383a4d9)（注释标签 `v0.1.48`）合入以下改动，四处版本文件同步至 `0.1.48`，发布说明见 [docs/releases/v0.1.48.md](releases/v0.1.48.md)：
+  1. **正文深色适配、原地过渡与失效图片占位**：统一亮度反演与对比度求解，按作者样式实际生效后的文档底色判断是否已适配深色（修复空深色媒体规则导致切换无效的问题），并在 WebKit 等待嵌入文档媒体查询同步；原生图片代理返回原字节并按解码前总像素与内存预算采样分类黑白线稿（含高分辨率标志），切换主题或单封原色时复用 `iframe` 与图片地址并原地过渡；失效或超时的正文图片显示适配明暗的 Lucide 图标占位并保留声明尺寸与重试入口。
+  2. **外观选择与欢迎页动效**：`AppearanceSettings` 移除二级明暗切换，每套主题卡片并排展示浅深色样圆圈；空阅读页增加轻轨道动效、鼠标轻视差、时段轻问候语与点击品牌图标检查新邮件（尊重减弱动态效果）。
+  3. **多账号排序、目录缓存与收取异常治理**：新增 `accounts.position` 与 `reorder_accounts` 支持侧栏与设置拖拽排序及菜单上移/下移；重新展开已加载目录复用会话缓存；新增 `sync_failures` 持久化与「邮件收取异常」面板（支持重试、仅在线加载邮件头、跳过）；加固腾讯企业邮连接流程，新增本地轮转诊断日志与脱敏导出，整理「关于雁信」更新与项目入口。
+- **自动测试通过**。本机发布前全量通过：前端 82 文件 / **647 项**（81 文件 547 项 + `src/App.test.tsx` 100 项）、桌面脚本 **38 项**、Rust 后端 **493 项**（5 项手工用例跳过）、vendored `imap-proto` **39 项**，以及 `release:check`、UI 铁律、1,993 条双语键、格式检查、生产构建与 Pages 预览构建。
+- **云端构建与正式发布**。[Release desktop](https://github.com/ansermail/anser/actions/runs/45947574985)（5/5 任务含 macOS Apple Silicon / Intel 固定签名校验与 Windows x64 WebView2 冒烟）、[Checks](https://github.com/ansermail/anser/actions/runs/45951261699)、[Windows validation](https://github.com/ansermail/anser/actions/runs/45951261689) 与 [Preview Pages](https://github.com/ansermail/anser/actions/runs/45951261426) 全部通过。草稿审计核对九份资源大小与 SHA-256、八份产物与 Actions 产物逐字节一致、三份更新签名（`minisign` 公钥校验）、Mac 双架构固定签名与 DMG/更新归档一致以及 `latest.json` 原文匹配后，于 14:20:43（Asia/Shanghai）正式公开 [v0.1.48 Alpha](https://github.com/ansermail/anser/releases/tag/v0.1.48)（Release ID `460232665`）。公开后核验全部九份资源与标准 `releases/latest/download/latest.json` 匿名下载返回 HTTP 200 且摘要逐字节一致，官网 `https://ansermail.github.io/anser/` 返回 HTTP 200 并提供 0.1.48 构建产物（`home-B9e5PfYg.js`），[Homebrew 同步流水线](https://github.com/ansermail/anser/actions/runs/45951250966) 通过并更新配方（提交 [`8167d4a`](https://github.com/ansermail/anser/commit/8167d4a)）。详见 [0.1.48 发布工作点](working/releases/RELEASE_0_1_48_WORKING.md)。
+- **真实场景验收与剩余边界**。Apple Silicon `pnpm desktop` 开发预览已实机复核 Ollama、Grok 与 Adobe 正文深色适配及切换过渡，以及 Dribbble 外链连接失败时的图片占位与重试（两张失败图均指向 `files.catbox.moe`，当前代理下常规与 HTTP/1.1 请求均未获响应，图床与中间代理责任归属未定），独立 WKWebView 校验颜色过渡中间态、占位尺寸与作者深色媒体规则。**正式安装版原位升级（含升级后凭据读取）、Intel Mac 实机、Windows 实机，以及多账号拖拽排序、收取异常面板、目录折叠展开流畅度与 Windows 端腾讯企业邮登录实机点验**仍标注**未验证**，已安装正式版由用户按需自行升级。
 
-## 正文主题判定与外链图片核查（2026-11-27）
-
-- **代码完成**。根据作者样式实际生效后的文档底色判断是否已适配深色，避免空白或局部深色媒体规则阻断正文适配。WebKit 中等待嵌入文档的媒体查询同步，继续复用原 iframe。
-- **自动测试通过**。正文、图片和加载专项 70 项通过，生产构建、UI 与双语检查通过。
-- **真实场景验收**。macOS 桌面复现 Adobe 原信在修正前按钮切换而正文完全不变。修正后原信正文可在主题深色与作者原白底间往返，红色品牌标志保留。独立 WKWebView 校验实际生效的作者深色规则与浅色样式均被保留。
-- **外链排查**。Dribbble 原信两张失败图均来自 `files.catbox.moe`。使用当前已配置代理，常规请求与 HTTP/1.1 对照均未取得 HTTP 响应，同封其他图片可呈现。现有证据可定位到该图床的访问路径，无法确定图床端还是中间代理终止了请求。保留原有图片重试及占位。
-- **本地构建**。Apple Silicon 开发预览已复验，Windows WebView2、云端构建和正式发布未验证。
-
-## 正文失效图片占位（2026-11-27）
-
-- **代码完成**。失败或超时的正文图片以适配明暗的 Lucide 图标占位，沿用原资源、图片声明尺寸和悬浮重试入口。开发预览的原生图片通道记录去标识化的错误分类。
-- **自动测试通过**。前端图片与正文加载专项 69 项、Rust 图片专项 5 项、格式检查和生产构建通过。
-- **真实场景验收**。macOS 桌面开发预览重现 Dribbble 邮件的外链连接失败，确认 502 来自雁信图片代理。原信显示新的图片占位，点击重新加载发起请求，连接失败的图片恢复为占位。独立 WKWebView 验证占位图标与声明尺寸。
-- **本地构建**。Apple Silicon 开发预览已重编译。Windows WebView2、云端构建与正式发布未验证。
-
-## 正文深色标志与配色切换（2026-11-27）
-
-- **代码完成**。同一封邮件在切换应用明暗、配色或原始浅色时复用正文 iframe 和图片地址，并在原文档上过渡颜色。原生代理返回图片原字节，按解码前像素总量和内存预算判定能否采样。高分辨率位图与其他图片共用黑白线稿分类规则。
-- **自动测试通过**。正文、加载和同步异常文案相关前端专项 43 项通过，Rust 图片专项 5 项通过。生产构建、Pages 预览构建、格式、UI 规范及 1,993 条双语文案检查通过。隔离 WKWebView 测得正文颜色中间态，切换前后复用文档和图片地址。
-- **真实场景验收**。Apple Silicon `pnpm desktop` 中复核用户指出的真实邮件。Ollama 页尾图原尺寸 5850 × 2016，旧分类器因单边限制跳过。新版中页首 THINKING MACHINES 与页尾 Ollama 均呈亮色线稿，白底融入深色正文。停在页尾通过顶栏切换浅色再回到深色，标志位置一致，回到深色后该区域像素一致。Grok 页首字标在深色下转亮，活动主图的取样区域深浅像素一致。原始浅色配色选项及应用深色设置已恢复。
-- **本地构建**。Apple Silicon 桌面开发预览已重编译。正式安装包、Intel Mac 与 Windows WebView2 未验证。**云端构建**未验证。**正式发布**未验证。
-
-详见 [外观配色工作点](working/features/APPEARANCE_PALETTES_WORKING.md#正文深色标志与配色切换2026-11-27)。
-
-## 最近正式发布：0.1.47（2026-11-26）
+## 前一正式发布：0.1.47（2026-11-26）
 
 - **代码完成**。提交 [`f17db6f`](https://github.com/ansermail/anser/commit/f17db6f)（标签 `v0.1.47`）合入 10 套明暗外观配色预设、基于 [UI 设计规范](UI_DESIGN_GUIDELINES.md) 的四波优化、移除 `@assistant-ui/react` 迁移至 `src/components/ai-elements/` 纯 shadcn AI Elements（含思考链、Rust `mail_ai.rs` 提取 `reasoning_content` / `<think>` 真实模型思考过程、结构化修改计划卡片）、AI 邮件摘要右上角悬浮与翻译胶囊纵向右对齐错开、无左侧竖线左对齐微底色双语翻译、写信段首与连续空格保留至发送预览与发出邮件、以及模态弹窗 Toast 撤销与列表行按压修复。四处版本文件同步至 `0.1.47`，发布说明见 [docs/releases/v0.1.47.md](releases/v0.1.47.md)。
 - **自动测试通过**。本机与远端 CI 全量通过：前端 78 文件 / **632 项**、桌面脚本 **38 项**、Rust 后端 **483 项**（5 项手工用例跳过）、vendored `imap-proto` **39 项**，以及 `release:check`、UI 铁律、1,950 条双语键、20 套明暗配色 WCAG 2.2 AA 对比度门禁、格式检查与生产/演示构建。

@@ -1,6 +1,12 @@
 # 发布与应用内更新
 
-## 当前版本：0.1.46（2026-11-25）
+## 当前版本：0.1.48（2026-11-27）
+
+0.1.48 Alpha 于 2026-11-27 14:20:43（Asia/Shanghai）公开为 [latest](https://github.com/ansermail/anser/releases/tag/v0.1.48)，固定源码 `986f7839827f5b082a093bc4e9fa5e010383a4d9`、注释标签 `v0.1.48`、Release ID `460232665`。本版统一正文深色亮度反演、原地配色过渡、高分辨率黑白字标适配与失效图片占位，并加入并排双圆圈主题色样、欢迎页交互动效、账号拖拽排序、目录会话缓存、单封收取异常治理及本地脱敏诊断日志，完整改动见 [0.1.48 发布说明](releases/v0.1.48.md)。
+
+[Release desktop](https://github.com/ansermail/anser/actions/runs/45947574985)、[Checks](https://github.com/ansermail/anser/actions/runs/45951261699)、[Windows validation](https://github.com/ansermail/anser/actions/runs/45951261689) 与 [Preview Pages](https://github.com/ansermail/anser/actions/runs/45951261426) 全部成功。九份资源的大小与 SHA-256、八份产物与 Actions 原始产物一致性、三份更新签名、Mac 双架构固定签名与 DMG/更新归档一致性及 Windows 安装程序均已核验；匿名访问全部九份公开资源与标准 `latest.json` 均返回 HTTP 200 且逐字节匹配。[Homebrew](https://github.com/ansermail/anser/actions/runs/45951250966) 已完成，配方提交 `8167d4a` 与双 DMG 摘要匹配。正式版原位升级由用户自行完成，详见 [0.1.48 发布工作点](working/releases/RELEASE_0_1_48_WORKING.md)。
+
+## 前一正式版本：0.1.46（2026-11-25）
 
 0.1.46 Alpha 于 2026-11-25 15:28:02（Asia/Shanghai）公开为 [latest](https://github.com/ansermail/anser/releases/tag/v0.1.46)，固定源码 `0a92cf230846377f378f74c0494bb732ce860e22`，Release ID `457755894`。本版启用「大雁传书」图标并纳入界面可读性调整，完整改动见 [0.1.46 发布说明](releases/v0.1.46.md)。
 
