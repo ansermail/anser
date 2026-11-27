@@ -53,6 +53,25 @@ fn activity_displays_decoded_folders_in_existing_and_new_logs_without_changing_w
 }
 
 #[test]
+fn pausing_an_account_does_not_wait_for_an_inbox_sync_that_holds_the_folder_gate() {
+    let temp = tempfile::tempdir().unwrap();
+    let store = Store::new(temp.path().to_path_buf()).unwrap();
+    let a = account();
+    store.save_account(&a).unwrap();
+    let inbox = crate::sync_control::folder_gate(&store.root, &a.id, "INBOX").unwrap();
+    // A running inbox reconcile owns the folder lock for its whole round.
+    let _running = inbox.lock().unwrap();
+    let control = crate::realtime::RealtimeControl::default();
+    crate::set_account_enabled(&store, &control, &a.id).unwrap();
+    assert!(!store.account(&a.id).unwrap().enabled);
+    assert_eq!(inbox.activity(), 1);
+    // Resuming while the same round is still running must work as well.
+    crate::set_account_enabled(&store, &control, &a.id).unwrap();
+    assert!(store.account(&a.id).unwrap().enabled);
+    assert_eq!(inbox.activity(), 2);
+}
+
+#[test]
 fn local_account_preferences_save_during_sync_and_are_not_overwritten_by_sync_status() {
     let temp = tempfile::tempdir().unwrap();
     let store = Store::new(temp.path().to_path_buf()).unwrap();

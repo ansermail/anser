@@ -924,6 +924,24 @@ async fn archive_tier_normalize(
 fn open_archive_tier(state: tauri::State<AppState>) -> Result<()> {
     archive_tier::open_index(&state.store)
 }
+/// Toggle mail checks without taking the sync or send gates. A running sweep
+/// stops at its next checkpoint after the flag changes, so pausing never has to
+/// wait for (or fail because of) an active fetch.
+pub(crate) fn set_account_enabled(
+    store: &Store,
+    realtime: &realtime::RealtimeControl,
+    id: &str,
+) -> Result<()> {
+    let mut account = store.account(id)?;
+    account.enabled = !account.enabled;
+    store.save_account(&account)?;
+    if let Ok(inbox_gate) = sync_control::folder_gate(&store.root, id, "INBOX") {
+        // Stop a registered read-only download without waiting for its lock.
+        inbox_gate.notify();
+    }
+    realtime.restart();
+    Ok(())
+}
 #[tauri::command]
 async fn account_action(state: tauri::State<'_, AppState>, id: String, remove: bool) -> Result<()> {
     let store = state.store.clone();
@@ -931,6 +949,11 @@ async fn account_action(state: tauri::State<'_, AppState>, id: String, remove: b
     let send_gate = state.send_gate.clone();
     let realtime = state.realtime.clone();
     tauri::async_runtime::spawn_blocking(move || {
+        if !remove {
+            // Pausing or resuming is the user's decision and must not wait for a
+            // long-running sweep.
+            return set_account_enabled(&store, &realtime, &id);
+        }
         let _guard = gate.try_lock().map_err(|_| "正在处理邮件，请稍后重试")?;
         let inbox_gate = sync_control::folder_gate(&store.root, &id, "INBOX")?;
         let _inbox = inbox_gate
@@ -939,17 +962,11 @@ async fn account_action(state: tauri::State<'_, AppState>, id: String, remove: b
         let _sending = send_gate
             .try_lock()
             .map_err(|_| "正在发送邮件，请稍后修改账号")?;
-        if remove {
-            let previous = auth::remove(&id)?;
-            if let Err(error) = store.remove_account(&id) {
-                auth::restore(&id, previous)
-                    .map_err(|_| "移除账号失败，凭据恢复也失败；原账号保留，请重新连接")?;
-                return Err(error);
-            }
-        } else {
-            let mut a = store.account(&id)?;
-            a.enabled = !a.enabled;
-            store.save_account(&a)?;
+        let previous = auth::remove(&id)?;
+        if let Err(error) = store.remove_account(&id) {
+            auth::restore(&id, previous)
+                .map_err(|_| "移除账号失败，凭据恢复也失败；原账号保留，请重新连接")?;
+            return Err(error);
         }
         realtime.restart();
         Ok(())
@@ -1132,6 +1149,12 @@ fn sync_scope(
         }
     };
     let result = run(&updated);
+    // A round stopped because the user paused is a normal cancellation, not a
+    // failure: keep it out of the account error and let callers finish quietly.
+    let paused = result.is_err()
+        && store
+            .account(&account.id)
+            .is_ok_and(|current| !current.enabled);
     match &result {
         Ok(count) => {
             account.last_sync = Some(chrono::Utc::now().to_rfc3339());
@@ -1150,6 +1173,10 @@ fn sync_scope(
                 ));
             }
         }
+        Err(_) if paused => {
+            account.error = None;
+            let _ = store.log(&format!("{} {}已按账号暂停要求停止", account.email, scope));
+        }
         Err(error) => {
             account.error = Some(error.clone());
             let _ = store.log(&format!("{} {}失败：{}", account.email, scope, error));
@@ -1158,7 +1185,11 @@ fn sync_scope(
     store.save_sync_status(&account)?;
     notifications::received(store, app, &prior, checkpoint.get());
     let _ = app.emit("mail-updated", ());
-    result
+    if paused {
+        Ok(0)
+    } else {
+        result
+    }
 }
 fn sync_all(store: &Store, app: &tauri::AppHandle) -> Result<u32> {
     let mut count = 0;

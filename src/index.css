@@ -9770,6 +9770,14 @@ body.site-body #root {
   gap: 0;
   padding: 0;
 }
+/* Windows places minimize/maximize/close inside the app titlebar at the top
+   right. Start the record drawer below that strip so its own close button can
+   never sit under (or be clicked instead of) the window close button. */
+:root[data-platform="windows"][data-desktop="true"]
+  .wb-editor[data-slot="sheet-content"] {
+  top: var(--window-titlebar-height);
+  height: calc(100dvh - var(--window-titlebar-height));
+}
 .wb-editor [data-slot="sheet-header"] {
   padding: 26px 25px 22px;
   border-bottom: 1px solid var(--border);
