@@ -5994,9 +5994,38 @@ body.account-dragging * {
   font: inherit;
 }
 .settings-cache-fields {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 15rem), 1fr));
-  gap: 14px 24px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px 0;
+}
+.settings-cache-field {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding-inline: 20px;
+}
+.settings-cache-field:first-child {
+  padding-inline-start: 0;
+}
+.settings-cache-field + .settings-cache-field {
+  border-inline-start: 1px solid var(--border);
+}
+@container settings (max-width: 720px) {
+  .settings-cache-fields {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 14px;
+  }
+  .settings-cache-field {
+    justify-content: space-between;
+    padding-inline: 0;
+  }
+  .settings-cache-field + .settings-cache-field {
+    padding-block-start: 14px;
+    border-inline-start: 0;
+    border-block-start: 1px solid var(--border);
+  }
 }
 .settings-form-actions {
   display: flex;

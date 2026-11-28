@@ -131,7 +131,7 @@ export function ReadingCacheSettings() {
       </CardHeader>
       <CardContent className="flex flex-col gap-4">
         <div className="settings-cache-fields">
-          <div className="settings-tool-row">
+          <div className="settings-cache-field">
             <Label htmlFor="reading-cache-days">{t("Keep for")}</Label>
             <SelectField
               id="reading-cache-days"
@@ -150,7 +150,7 @@ export function ReadingCacheSettings() {
               ))}
             </SelectField>
           </div>
-          <div className="settings-tool-row">
+          <div className="settings-cache-field">
             <Label htmlFor="reading-cache-limit">{t("Size limit")}</Label>
             <SelectField
               id="reading-cache-limit"

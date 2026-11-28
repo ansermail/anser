@@ -1,4 +1,6 @@
 // @vitest-environment jsdom
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
@@ -128,4 +130,19 @@ it("preserves unrelated preferences changed after the card loaded", async () => 
     readingCacheDays: 90,
     readingCacheLimitMb: 1024,
   });
+});
+
+it("groups retention and size limit in one row with a divider between them", async () => {
+  await act(async () => root.render(<ReadingCacheSettings />));
+  const group = host.querySelector(".settings-cache-fields")!;
+  const fields = group.querySelectorAll(".settings-cache-field");
+  expect(fields).toHaveLength(2);
+  expect(fields[0].querySelector("label")?.textContent).toBe("保留时间");
+  expect(fields[1].querySelector("label")?.textContent).toBe("容量上限");
+  expect(fields[0].querySelector("#reading-cache-days")).toBeTruthy();
+  expect(fields[1].querySelector("#reading-cache-limit")).toBeTruthy();
+  const css = readFileSync(resolve(process.cwd(), "src/index.css"), "utf8");
+  expect(css).toMatch(
+    /\.settings-cache-field \+ \.settings-cache-field \{[^}]*border-inline-start: 1px solid var\(--border\)/s,
+  );
 });
