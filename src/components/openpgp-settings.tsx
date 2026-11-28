@@ -10,7 +10,6 @@ import {
   KeyRound,
   Lock,
   Plus,
-  ShieldCheck,
   Trash2,
   Upload,
 } from "lucide-react";
@@ -274,10 +273,7 @@ export function OpenPgpSettings({ accounts }: { accounts: Account[] }) {
     <Card>
       <CardHeader className="flex flex-row flex-wrap items-start justify-between gap-3">
         <div className="space-y-1">
-          <CardTitle className="flex items-center gap-2">
-            <ShieldCheck className="h-4 w-4" aria-hidden="true" />
-            {t("OpenPGP encryption & keys")}
-          </CardTitle>
+          <CardTitle>{t("OpenPGP encryption & keys")}</CardTitle>
           <CardDescription>
             {t(
               "Sign and encrypt messages using standard PGP/MIME. Private keys stay in the local encrypted vault and decrypted mail is never indexed or sent to AI.",
