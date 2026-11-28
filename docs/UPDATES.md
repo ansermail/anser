@@ -6,7 +6,7 @@
 
 0.1.50 Alpha 于 2026-11-28 19:53:52（Asia/Shanghai）公开为 [latest](https://github.com/ansermail/anser/releases/tag/v0.1.50)，固定源码 `c7b96df1e2159a1acc1bc88b6592b2041b0df1d8`、注释标签 `v0.1.50`、Release ID `461519524`。本版完善 Windows 安装器图标与覆盖升级、增加 AI 总开关与过滤规则「添加标签」动作，并修正阅读与界面排版；用户反馈条目末尾保留 `@xbcmzaa`。详细改动见 [0.1.50 发布说明](releases/v0.1.50.md)。
 
-[Release desktop](https://github.com/ansermail/anser/actions/runs/46138791359) 五项任务全通过，九资源草稿审计、三份更新签名及双架构固定签名通过。标准更新端点返回 `0.1.50`，三份安装器可匿名访问。[Homebrew](https://github.com/ansermail/anser/actions/runs/46142023879) 已同步配方。发布与验收边界见 [0.1.50 发布工作点](working/releases/RELEASE_0_1_50_WORKING.md)。
+[Release desktop](https://github.com/ansermail/anser/actions/runs/46138791359) 五项任务全通过，九资源草稿审计、三份更新签名及双架构固定签名通过。标准更新端点返回 `0.1.50`，三份安装器可匿名访问。[Homebrew](https://github.com/ansermail/anser/actions/runs/46142023879) 已同步配方，[Preview Pages](https://github.com/ansermail/anser/actions/runs/46142318970) 已部署并核对官网三个安装链接、两种 Mac DMG 摘要和公开更新端点。发布与验收边界见 [0.1.50 发布工作点](working/releases/RELEASE_0_1_50_WORKING.md)。
 
 ## 前一正式版本：0.1.49（2026-11-28）
 

@@ -7,7 +7,7 @@
 - **代码完成**。四处版本号同步至 `0.1.50`，正式版本说明保留 `@xbcmzaa` 的逐条署名。详见 [0.1.50 发布说明](releases/v0.1.50.md) 与 [发布工作点](working/releases/RELEASE_0_1_50_WORKING.md)。
 - **自动测试通过**。前端 663 项、Rust 505 项通过和 5 项忽略、桌面脚本 42 项、vendored `imap-proto` 39 项；生产与 Pages 预览构建、发布预检和逐条署名渲染通过。
 - **云端构建通过**。[Release desktop](https://github.com/ansermail/anser/actions/runs/46138791359) 的 check、双架构 macOS 构建、Windows 原生回归与草稿五项任务全部成功；三份 Minisign 签名、八份产物与 Actions 原件逐字节、双架构签名与 DMG/归档一致性及九份资源通过独立审计。
-- **正式发布通过**。2026-11-28 19:53:52（Asia/Shanghai）公开 [v0.1.50 Alpha](https://github.com/ansermail/anser/releases/tag/v0.1.50) 为 latest。三份安装器 HTTP 200，标准更新端点返回 `0.1.50` 且 `latest.json` 的两条 `@xbcmzaa` 署名与正式说明一致。[Homebrew 流水线](https://github.com/ansermail/anser/actions/runs/46142023879) 成功并更新配方；官网、Homebrew 分发及正式包更新弹窗的部署后验证仍单独记录。Windows 内网离线覆盖升级、升级后凭据与存档读取未验证。
+- **正式发布通过**。2026-11-28 19:53:52（Asia/Shanghai）公开 [v0.1.50 Alpha](https://github.com/ansermail/anser/releases/tag/v0.1.50) 为 latest。三份安装器 HTTP 200，标准更新端点返回 `0.1.50` 且 `latest.json` 的两条 `@xbcmzaa` 署名与正式说明一致。[Homebrew 流水线](https://github.com/ansermail/anser/actions/runs/46142023879) 成功并更新配方；[Preview Pages](https://github.com/ansermail/anser/actions/runs/46142318970) 部署成功，官网三个安装链接、配方双架构摘要与公开资源匿名下载及更新端点均已独立验证。正式包更新弹窗、Windows 内网离线覆盖升级、升级后凭据与存档读取未验证。
 
 ## 已发布 · Issue #5 Windows 安装器与 AI 开关（2026-11-28）
 
