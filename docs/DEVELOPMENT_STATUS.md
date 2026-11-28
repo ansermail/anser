@@ -2,6 +2,30 @@
 
 依据 PRD 第 5、8、9 节、实施记录和当前代码核查。当前仍为 Alpha；功能代码已存在与真实场景验收通过分别记录。早期回归使用临时存储/演示数据；2026-10-05 用户授权后增加当前腾讯企业邮箱与 QQ 邮箱互发测试，未向其他地址发送，未删除真实邮件。
 
+## 进行中 · Issue #5 Windows 安装器与 AI 开关（2026-11-28，待发布）
+
+- **代码完成**。[Issue #5](https://github.com/ansermail/anser/issues/5) 的 Windows NSIS 安装包显式使用雁信图标。同一用户、同一已登记目录、同版或向前升级，手动运行 EXE 时直接覆盖安装。旧 NSIS 安装记录若进入维护页，向前升级默认选择「直接覆盖安装」。AI 开关位于「设置与账号 → 应用偏好」，现有用户默认开启。关闭隐藏模型功能，取消在途模型请求并保留配置、凭据和缓存。详见 [Windows 工作点](working/features/WINDOWS_SUPPORT_WORKING.md) 与 [AI 工作点](working/features/AI_FEATURES_WORKING.md)。
+- **自动测试通过**。前端 85 文件、663 项，Rust 505 项通过、5 项忽略，桌面脚本 42 项（含覆盖安装默认项复验）。生产、Pages 演示、UI、2,105 条双语、Prettier、Rust 格式与差异检查通过。macOS 通过官方 Tauri CLI 编译带合成 x64 PE 的 NSIS 测试安装器，验证资源含雁信 ICO 六个原始尺寸和 WebView2 引导程序。
+- **场景验收**。macOS 固定签名桌面开发版已通过 Orca 重拍三张浅色 README 截图，均为 3840 × 2100。已核对收件箱、回复草稿和过滤规则的可见内容，全部使用虚构数据。Windows 内网覆盖升级、升级后凭据与存档读取和 AI 开关原生使用场景未验证。**云端构建**未验证。**正式发布**未验证。
+
+## 进行中 · 过滤规则添加标签（2026-11-28，待发布）
+
+- **代码完成**。规则可选择已有本地标签，与归类、标星等动作按顺序组合。新收到的匹配邮件、对已有邮件执行，以及需要先核对正文的规则任务共用本地标签目录。执行保留其他标签并去重，缺失目标跳过。示例使用相同规则编辑器与标签选择。详见 [规则工作点](working/features/RULES_03_WORKING.md#过滤规则添加标签2026-11-28)。
+- **自动测试通过**。前端全量 85 个文件、662 项通过，最终版规则编辑器复验 15 项通过。Rust 全量 503 项通过、5 项忽略，最终版标签动作专项 2 项通过。两套本地构建、UI 规范、2,101 条双语文案、Prettier 和 Rust 格式检查均通过。
+- **场景验收**。本地生产演示构建使用虚构数据，验证「主题包含账单 → 添加标签『稍后阅读』 → 添加星标」。预览匹配 1 封且无标签变更，手动执行后标签视图显示 1 个对话、单个标签，阅读页显示已标星。再次执行标签未重复。1024px 下条件和动作同排，760px 下自然换行。macOS 原生和 Windows 实机未验证。**云端构建**未验证。**正式发布**未验证。
+
+## 进行中 · 列表示例对齐、正文段距修复与过滤规则卡片重设计（2026-11-28，待发布）
+
+- **代码完成**。
+  - 修复纯文本邮件阅读页（[translatable-mail-body.tsx](../src/components/translatable-mail-body.tsx) + [index.css](../src/index.css)）段落间距过大缺陷：外层 `.message-body` 改为 `white-space: normal` 折叠段落间裸 `"\n\n"` 文本节点、由 `.message-body > p` 保留 `white-space: pre-wrap` 并用 `margin-top: 0.75em`（约 `11px`）控制段距，同时保持 `textContent` 与逐段双语翻译兼容。
+  - 按 C 方案优化内置示例邮箱（[demo.ts](../src/lib/demo.ts)），混入 5 封无摘要紧凑行与 3 封带摘要归档行并精简多余胶囊，贴近真实日常收件箱观感。
+  - 重设计过滤规则卡片（[rules-panel.tsx](../src/components/rules-panel.tsx) + [index.css](../src/index.css)）：移除顶部冗余说明句，保持页面与卡片全宽对齐，每条规则放入统一细分隔列表卡片并按紧凑两行排布（第一行标题与徽章，第二行 `条件胶囊 → 动作胶囊` 同排流式展示、内容多时自然折行，右侧开关与排序编辑居中分组）。
+  - 统一全部一级页面标题栏（[index.css](../src/index.css)、[contacts-panel.tsx](../src/components/contacts-panel.tsx)、[ui-design.md](guidelines/ui-design.md)）：邮件列表、草稿箱、发送记录、工作台、通讯录、过滤规则与设置与账号统一 `18px / 20px` 顶左内边距、`min-height: 36px` 标题行、`8px` 图标字距、`20px / 600 / line-height 1.25 / margin 0` 标题样式，通讯录计数改为标题同行内联等宽数字，消除切换页面时图标与文字跳动错位。
+  - `README.md` 引用的三张示例图已更新为浅色真机截图，拍摄信息见 [截图说明](screenshots/README.md)。
+- **自动测试通过**。`pnpm check:ui`、`pnpm check:i18n`（2,097 条双语键）、`pnpm format:check`、`pnpm build`、`pnpm build:preview` 全部通过；关联 Vitest 6 文件 / 135 项全绿（`translatable-mail-body.test.tsx`、`rules-panel.test.tsx`、`demo-rules.test.ts`、`demo-outbox.test.ts`、`mail-pages.test.ts`、`App.test.tsx`）及 `outbox-panel.test.tsx`（8 项）通过。Rust / 桌面脚本测试未验证（本次无后端与脚本改动）。
+- **场景验证**。独立离屏 WKWebView（`1440 × 900`）已实测验证段距 `11px`、混合列表高度、全宽分组规则卡片（`1083px × 78px`，标题行与 `条件 → 动作` 行紧凑两行排布），以及全部 8 个一级页面标题栏坐标/字号/字重/中心线完全一致（`0px` 偏移）。macOS 固定签名桌面开发版已通过 Orca 重拍浅色收件箱、写信与过滤规则，深色与窄窗原生点验未验证。
+- **云端构建**未验证。**正式发布**未验证。本轮更新见 [待发布更新说明](releases/UNRELEASED.md)。
+
 ## 已发布 · 0.1.49（2026-11-28，源码 `3e38f84`）
 
 - **代码完成**。完整写信和对话简短回复使用 `queue_send` 返回的持久化发送时间显示撤销剩余秒数。到期时先隐藏撤销提示，再交给 Sonner 清理，避免悬停、失焦或 WebView 停止绘制时留下撤销入口。发送记录中的提前发送和取消也关闭对应提示。详见 [Issue #1 工作点](working/features/ISSUE_1_WORKING.md)。

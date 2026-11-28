@@ -590,3 +590,41 @@ it("localizes rule values and singular preview counts in English", async () => {
     setInterfaceLanguage("zh-CN");
   }
 });
+
+it("selects an existing tag when editing a rule whose tag was removed", async () => {
+  const existingRule: Rule = {
+    id: "tag-rule",
+    name: "项目打标",
+    accountId: "",
+    enabled: true,
+    mode: "all",
+    conditions: [{ field: "subject", operator: "contains", value: "项目" }],
+    action: "tag",
+    destination: "旧标签",
+    sourceFolder: "",
+    actions: [{ action: "tag", destination: "旧标签", sourceFolder: "" }],
+    stop: false,
+  };
+  await render([existingRule]);
+  expect(host.textContent).toContain("添加标签「旧标签」");
+  await openExistingRule();
+  const tag = document.querySelector<HTMLButtonElement>("#rule-tag-0")!;
+  const save = document.querySelector<HTMLButtonElement>(
+    'button[type="submit"]',
+  )!;
+  expect(tag.textContent).toBe("标签不存在");
+  expect(save.disabled).toBe(true);
+  await select("标签", "跟进");
+  expect(tag.textContent).toBe("跟进");
+  expect(save.disabled).toBe(false);
+  await act(async () => save.click());
+  expect(api.call).toHaveBeenCalledWith("save_rules", {
+    rules: [
+      expect.objectContaining({
+        action: "tag",
+        destination: "跟进",
+        actions: [{ action: "tag", destination: "跟进", sourceFolder: "" }],
+      }),
+    ],
+  });
+});

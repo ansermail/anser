@@ -421,6 +421,8 @@ pub struct Preferences {
     #[serde(default = "default_true")]
     pub show_workbench: bool,
     #[serde(default = "default_true")]
+    pub ai_enabled: bool,
+    #[serde(default = "default_true")]
     pub new_mail_notifications: bool,
     #[serde(default = "default_true")]
     pub send_result_notifications: bool,
@@ -441,6 +443,7 @@ impl Default for Preferences {
         Self {
             sync_interval_minutes: 5,
             show_workbench: true,
+            ai_enabled: true,
             new_mail_notifications: true,
             send_result_notifications: true,
             do_not_disturb: false,

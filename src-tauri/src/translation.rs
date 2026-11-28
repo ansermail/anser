@@ -11,10 +11,12 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::{
     collections::{HashMap, HashSet, VecDeque},
+    future::Future,
     sync::Mutex,
     time::{Duration, Instant},
 };
-use tokio::sync::oneshot;
+use tauri::{Emitter, Manager};
+use tokio::sync::watch;
 use url::Url;
 
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(180);
@@ -70,18 +72,49 @@ pub struct Part {
     pub text: String,
 }
 
+const AI_DISABLED: &str = "AI 功能已关闭";
+
 #[derive(Default)]
 struct Tasks {
-    active: HashMap<String, oneshot::Sender<()>>,
+    active: HashMap<String, watch::Sender<bool>>,
     cancelled: VecDeque<String>,
 }
+impl Tasks {
+    fn cancel(&mut self, id: &str) {
+        if let Some(tx) = self.active.get(id) {
+            tx.send_replace(true);
+        }
+        self.cancelled.push_back(id.into());
+        while self.cancelled.len() > 256 {
+            self.cancelled.pop_front();
+        }
+    }
+
+    fn cancel_all(&mut self) {
+        let ids: Vec<_> = self.active.keys().cloned().collect();
+        for id in ids {
+            self.cancel(&id);
+        }
+    }
+}
+
 #[derive(Default)]
 pub struct Service {
     config_gate: Mutex<()>,
     tasks: Mutex<Tasks>,
 }
 impl Service {
-    fn start(&self, id: &str) -> Result<oneshot::Receiver<()>> {
+    fn start<'a>(
+        &'a self,
+        store: &Store,
+        id: &'a str,
+        cancellation_error: &'static str,
+    ) -> Result<Request<'a>> {
+        // Serialize the preference check and task registration with disabling AI.
+        let _guard = self.config_gate.lock().map_err(err)?;
+        if !store.preferences()?.ai_enabled {
+            return Err(AI_DISABLED.into());
+        }
         uuid::Uuid::parse_str(id).map_err(|_| "翻译任务标识无效")?;
         let mut tasks = self.tasks.lock().map_err(err)?;
         if tasks.active.len() >= 4
@@ -90,34 +123,77 @@ impl Service {
         {
             return Err("翻译任务已取消或正在运行，请重试".into());
         }
-        let (tx, rx) = oneshot::channel();
+        let (tx, cancelled) = watch::channel(false);
         tasks.active.insert(id.into(), tx);
-        Ok(rx)
+        Ok(Request {
+            service: self,
+            id,
+            cancelled,
+            cancellation_error,
+        })
     }
+
     fn cancel(&self, id: &str) -> Result<()> {
+        self.tasks.lock().map_err(err)?.cancel(id);
+        Ok(())
+    }
+
+    fn cancel_all(&self) -> Result<()> {
+        self.tasks.lock().map_err(err)?.cancel_all();
+        Ok(())
+    }
+
+    fn set_enabled(&self, store: &Store, enabled: bool, notify: impl FnOnce()) -> Result<()> {
+        let _guard = self.config_gate.lock().map_err(err)?;
         let mut tasks = self.tasks.lock().map_err(err)?;
-        if let Some(tx) = tasks.active.remove(id) {
-            let _ = tx.send(());
+        let changed = store.set_ai_enabled(enabled)?;
+        if changed && !enabled {
+            tasks.cancel_all();
         }
-        tasks.cancelled.push_back(id.into());
-        while tasks.cancelled.len() > 256 {
-            tasks.cancelled.pop_front();
+        drop(tasks);
+        if changed {
+            notify();
         }
         Ok(())
     }
-    fn cancel_all(&self) -> Result<()> {
-        let ids: Vec<_> = self
-            .tasks
-            .lock()
-            .map_err(err)?
-            .active
-            .keys()
-            .cloned()
-            .collect();
-        for id in ids {
-            self.cancel(&id)?;
+}
+
+struct Request<'a> {
+    service: &'a Service,
+    id: &'a str,
+    cancelled: watch::Receiver<bool>,
+    cancellation_error: &'static str,
+}
+impl Request<'_> {
+    fn check_active(&self) -> Result<()> {
+        if *self.cancelled.borrow() {
+            return Err(self.cancellation_error.into());
         }
         Ok(())
+    }
+
+    async fn run<T>(
+        &self,
+        timeout: Duration,
+        timeout_error: &'static str,
+        work: impl Future<Output = Result<T>>,
+    ) -> Result<T> {
+        let mut cancelled = self.cancelled.clone();
+        tokio::select! {
+            biased;
+            _ = cancelled.wait_for(|value| *value) => Err(self.cancellation_error.into()),
+            result = tokio::time::timeout(timeout, work) => {
+                self.check_active()?;
+                result.unwrap_or_else(|_| Err(timeout_error.into()))
+            }
+        }
+    }
+}
+impl Drop for Request<'_> {
+    fn drop(&mut self) {
+        if let Ok(mut tasks) = self.service.tasks.lock() {
+            tasks.active.remove(self.id);
+        }
     }
 }
 fn key_entry() -> Result<crate::credentials::Entry> {
@@ -192,6 +268,22 @@ impl Store {
 }
 
 #[tauri::command]
+pub async fn set_ai_enabled(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, AppState>,
+    enabled: bool,
+) -> Result<()> {
+    let store = state.store.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        app.state::<Service>().set_enabled(&store, enabled, || {
+            let _ = app.emit("anser-ai-enabled-changed", enabled);
+        })
+    })
+    .await
+    .map_err(err)?
+}
+
+#[tauri::command]
 pub fn get_translation_settings(state: tauri::State<AppState>) -> Result<Option<Config>> {
     state.store.translation_config()
 }
@@ -204,34 +296,37 @@ pub async fn save_translation_settings(
     api_key: String,
     clear_key: bool,
 ) -> Result<Config> {
+    let store = &state.store;
+    let service = service.inner();
+    let request_id = uuid::Uuid::new_v4().to_string();
+    let request = service.start(store, &request_id, "模型连接验证已取消")?;
     config.normalize()?;
     if api_key.len() > 8192 || api_key.chars().any(char::is_control) {
         return Err("API Key 格式无效".into());
     }
-    let store = state.store.clone();
-    let service = service.inner();
-    let previous_config = {
+    let (previous_revision, entry, key) = {
         let _guard = service.config_gate.lock().map_err(err)?;
-        store.translation_config()?
+        request.check_active()?;
+        let previous_config = store.translation_config()?;
+        let old = previous_config.as_ref();
+        let changed_address = old.is_some_and(|x| x.base_url != config.base_url);
+        let entry = key_entry()?;
+        let key = if !api_key.trim().is_empty() {
+            Some(api_key.trim().to_owned())
+        } else if clear_key || changed_address {
+            None
+        } else if old.is_some_and(|c| c.has_api_key) {
+            Some(entry.get_password()?)
+        } else {
+            None
+        };
+        (previous_config.map(|config| config.revision), entry, key)
     };
-    let previous_revision = previous_config
-        .as_ref()
-        .map(|config| config.revision.clone());
-    let old = previous_config.as_ref();
-    let changed_address = old.as_ref().is_some_and(|x| x.base_url != config.base_url);
-    let entry = key_entry()?;
-    let key = if !api_key.trim().is_empty() {
-        Some(api_key.trim().to_owned())
-    } else if clear_key || changed_address {
-        None
-    } else if old.as_ref().is_some_and(|c| c.has_api_key) {
-        Some(entry.get_password()?)
-    } else {
-        None
-    };
-    validate_connection_config(&store, &config, key.as_deref().unwrap_or_default()).await?;
+    validate_connection_config(store, &config, key.as_deref().unwrap_or_default(), &request)
+        .await?;
     // Keychain and preference writes stay together after the network check.
     let _guard = service.config_gate.lock().map_err(err)?;
+    request.check_active()?;
     if store
         .translation_config()?
         .as_ref()
@@ -252,8 +347,9 @@ pub async fn save_translation_settings(
             .map_err(|_| "翻译配置保存失败，凭据回滚也失败；请重新填写密钥")?;
         return Err(error);
     }
+    drop(request);
     service.cancel_all()?;
-    let _ = tauri::Emitter::emit(&app, "anser-translation-config-changed", ());
+    let _ = app.emit("anser-translation-config-changed", ());
     Ok(config)
 }
 #[tauri::command]
@@ -865,6 +961,7 @@ pub async fn get_translation_models(
     api_key: String,
     clear_key: bool,
 ) -> Result<Vec<ModelOption>> {
+    let request = service.start(&state.store, &request_id, "获取模型列表已取消")?;
     // Discovery works before choosing a model. This placeholder is never sent
     // to the server, saved to preferences, or used for a completion request.
     if config.model.trim().is_empty() {
@@ -874,10 +971,10 @@ pub async fn get_translation_models(
     if api_key.len() > 8192 || api_key.chars().any(char::is_control) {
         return Err("API Key 格式无效".into());
     }
-    let mut cancelled = service.start(&request_id)?;
     let work = async {
         let key = {
             let _guard = service.config_gate.lock().map_err(err)?;
+            request.check_active()?;
             let previous = state.store.translation_config()?;
             if !api_key.trim().is_empty() {
                 api_key.trim().to_owned()
@@ -891,16 +988,12 @@ pub async fn get_translation_models(
                 String::new()
             }
         };
+        request.check_active()?;
         fetch_models(&config, &key).await
     };
-    let result = tokio::select! {biased;_=&mut cancelled=>Err("获取模型列表已取消".into()),result=tokio::time::timeout(Duration::from_secs(40),work)=>result.unwrap_or_else(|_|Err("获取模型列表超时，请重试".into()))};
-    service
-        .tasks
-        .lock()
-        .map_err(err)?
-        .active
-        .remove(&request_id);
-    result
+    request
+        .run(Duration::from_secs(40), "获取模型列表超时，请重试", work)
+        .await
 }
 
 #[tauri::command]
@@ -921,18 +1014,34 @@ fn connection_test_parts() -> Vec<Part> {
     }]
 }
 
-async fn validate_connection_config(store: &Store, config: &Config, key: &str) -> Result<()> {
+async fn validate_connection_config(
+    store: &Store,
+    config: &Config,
+    key: &str,
+    registration: &Request<'_>,
+) -> Result<()> {
     let started = Instant::now();
     let parts = connection_test_parts();
-    let result = request(config, key, &parts).await.map(|_| ());
-    let outcome = if result.is_ok() { "完成" } else { "失败" };
+    let mut source = "未请求模型";
+    let work = async {
+        source = "模型请求";
+        request(config, key, &parts).await.map(|_| ())
+    };
+    let result = registration
+        .run(TASK_TIMEOUT, "模型连接验证超时，请重试", work)
+        .await;
+    let outcome = match &result {
+        Ok(_) => "完成",
+        Err(error) if error == registration.cancellation_error => "已取消",
+        Err(_) => "失败",
+    };
     let reason = result
         .as_ref()
         .err()
         .map(|error| format!("；{}", activity_error(error)))
         .unwrap_or_default();
     let _ = store.log(&format!(
-        "大模型翻译连接测试{outcome}：1 个文字片段，13 字；模型请求；耗时 {:.1} 秒{reason}",
+        "大模型翻译连接测试{outcome}：1 个文字片段，13 字；{source}；耗时 {:.1} 秒{reason}",
         started.elapsed().as_secs_f64(),
     ));
     result.map_err(|error| format!("模型连接验证失败，配置未保存：{error}"))
@@ -1001,7 +1110,9 @@ async fn translate_parts(
     let outcome = match &result {
         Ok(_) => "完成",
         Err(e) if e == "翻译已取消" => "已取消",
-        Err(e) if e == "翻译任务已取消或正在运行，请重试" => "未执行",
+        Err(e) if e == "翻译任务已取消或正在运行，请重试" || e == AI_DISABLED => {
+            "未执行"
+        }
         Err(_) => "失败",
     };
     let reason = result
@@ -1027,7 +1138,9 @@ async fn translate_parts(
 }
 
 fn activity_error(error: &str) -> &'static str {
-    if error == "翻译任务已取消或正在运行，请重试" {
+    if error == AI_DISABLED {
+        AI_DISABLED
+    } else if error == "翻译任务已取消或正在运行，请重试" {
         "任务已取消、重复或并发数量已达上限"
     } else if error.contains("已取消") {
         "任务已取消"
@@ -1081,11 +1194,12 @@ async fn translate_parts_work(
     use_cache: bool,
     source: &mut TranslationSource,
 ) -> Result<Vec<Part>> {
+    let registration = service.start(store, request_id, "翻译已取消")?;
     validate_parts(&parts)?;
-    let mut cancelled = service.start(request_id)?;
     let work = async {
         let (config, cache, cached, key) = {
             let _guard = service.config_gate.lock().map_err(err)?;
+            registration.check_active()?;
             let config = store
                 .translation_config()?
                 .ok_or("请先在设置与账号中配置大模型翻译")?;
@@ -1112,9 +1226,11 @@ async fn translate_parts_work(
             *source = TranslationSource::Cache;
             return validate_translations(cached, &parts);
         }
+        registration.check_active()?;
         *source = TranslationSource::Model;
         let translated = request(&config, &key, &parts).await?;
         let _guard = service.config_gate.lock().map_err(err)?;
+        registration.check_active()?;
         if store
             .translation_config()?
             .as_ref()
@@ -1128,9 +1244,13 @@ async fn translate_parts_work(
         }
         Ok(translated)
     };
-    let result = tokio::select! { biased; _=&mut cancelled=>Err("翻译已取消".into()), result=tokio::time::timeout(TASK_TIMEOUT,work)=>result.unwrap_or_else(|_|Err("翻译任务超时，未自动重复请求；请稍后重试".into())) };
-    service.tasks.lock().map_err(err)?.active.remove(request_id);
-    result
+    registration
+        .run(
+            TASK_TIMEOUT,
+            "翻译任务超时，未自动重复请求；请稍后重试",
+            work,
+        )
+        .await
 }
 
 pub mod mail_ai;
@@ -1142,6 +1262,7 @@ mod tests {
         io::{Read, Write},
         net::TcpListener,
     };
+    use tokio::sync::oneshot;
     fn config(base: &str) -> Config {
         Config {
             base_url: base.into(),
@@ -1409,7 +1530,10 @@ mod tests {
             );
             let temp = tempfile::tempdir().unwrap();
             let store = Store::new(temp.path().into()).unwrap();
-            let error = validate_connection_config(&store, &config(&url), "")
+            let service = Service::default();
+            let id = uuid::Uuid::new_v4().to_string();
+            let request = service.start(&store, &id, "模型连接验证已取消").unwrap();
+            let error = validate_connection_config(&store, &config(&url), "", &request)
                 .await
                 .unwrap_err();
             received.recv_timeout(Duration::from_secs(2)).unwrap();
@@ -1802,18 +1926,137 @@ mod tests {
     }
     #[test]
     fn cancellation_remembers_early_cancel_and_signals_in_flight_requests() {
+        let temp = tempfile::tempdir().unwrap();
+        let store = Store::new(temp.path().into()).unwrap();
         let service = Service::default();
         let id = uuid::Uuid::new_v4().to_string();
         service.cancel(&id).unwrap();
-        assert!(service.start(&id).is_err());
+        assert!(service.start(&store, &id, "cancelled").is_err());
         let active = uuid::Uuid::new_v4().to_string();
-        let mut cancelled = service.start(&active).unwrap();
+        let request = service.start(&store, &active, "cancelled").unwrap();
         service.cancel_all().unwrap();
-        assert!(cancelled.try_recv().is_ok());
+        assert_eq!(request.check_active().unwrap_err(), "cancelled");
+        drop(request);
+        assert!(service.tasks.lock().unwrap().active.is_empty());
         for _ in 0..300 {
             service.cancel(&uuid::Uuid::new_v4().to_string()).unwrap();
         }
         assert_eq!(service.tasks.lock().unwrap().cancelled.len(), 256);
+    }
+
+    #[test]
+    fn ai_preference_persists_and_blocks_model_operations_without_clearing_data() {
+        let temp = tempfile::tempdir().unwrap();
+        let store = Store::new(temp.path().into()).unwrap();
+        assert!(store.preferences().unwrap().ai_enabled);
+        store
+            .db()
+            .unwrap()
+            .execute(
+                "INSERT INTO preferences(key,data) VALUES('sync',?1)",
+                [r#"{"syncIntervalMinutes":10,"showWorkbench":false}"#],
+            )
+            .unwrap();
+        assert!(store.preferences().unwrap().ai_enabled);
+        let mut cfg = config("https://models.example/v1");
+        cfg.has_api_key = true;
+        store.put_translation_config(&cfg).unwrap();
+        let cached_parts = parts();
+        let cache = cache_key(&cfg, &cached_parts).unwrap();
+        store
+            .cache_translation(&cfg, &cache, &cached_parts)
+            .unwrap();
+
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        runtime.block_on(async {
+            let service = Service::default();
+            let id = uuid::Uuid::new_v4().to_string();
+            let mut changes = Vec::new();
+            service
+                .set_enabled(&store, false, || changes.push(false))
+                .unwrap();
+            service
+                .set_enabled(&store, false, || changes.push(false))
+                .unwrap();
+            service.cancel(&uuid::Uuid::new_v4().to_string()).unwrap();
+
+            let reopened = Store::new(temp.path().into()).unwrap();
+            let preferences = reopened.preferences().unwrap();
+            assert!(!preferences.ai_enabled);
+            assert_eq!(preferences.sync_interval_minutes, 10);
+            assert!(!preferences.show_workbench);
+            assert_eq!(
+                serde_json::to_value(&preferences).unwrap()["aiEnabled"],
+                false
+            );
+            assert_eq!(reopened.translation_config().unwrap(), Some(cfg.clone()));
+            assert_eq!(
+                reopened.translation_cache(&cache).unwrap(),
+                Some(cached_parts.clone())
+            );
+            for use_cache in [true, false] {
+                let error = translate_parts(
+                    &reopened,
+                    &service,
+                    &id,
+                    &cfg.revision,
+                    cached_parts.clone(),
+                    use_cache,
+                )
+                .await
+                .unwrap_err();
+                assert_eq!(error, AI_DISABLED);
+            }
+            service
+                .set_enabled(&reopened, true, || changes.push(true))
+                .unwrap();
+            assert_eq!(changes, [false, true]);
+            let translated = translate_parts(
+                &reopened,
+                &service,
+                &id,
+                &cfg.revision,
+                cached_parts.clone(),
+                true,
+            )
+            .await
+            .unwrap();
+            assert_eq!(translated, cached_parts);
+        });
+    }
+
+    #[test]
+    fn disabling_ai_cancels_pending_requests_even_if_reenabled() {
+        let temp = tempfile::tempdir().unwrap();
+        let store = Store::new(temp.path().into()).unwrap();
+        let service = Service::default();
+        let id = uuid::Uuid::new_v4().to_string();
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        runtime.block_on(async {
+            let request = service.start(&store, &id, "cancelled").unwrap();
+            let run = request.run(
+                Duration::from_secs(1),
+                "timed out",
+                std::future::pending::<Result<()>>(),
+            );
+            tokio::pin!(run);
+            tokio::select! {
+                biased;
+                _ = &mut run => panic!("request should remain pending"),
+                _ = std::future::ready(()) => {},
+            }
+            service.set_enabled(&store, false, || {}).unwrap();
+            service.set_enabled(&store, true, || {}).unwrap();
+            assert_eq!(run.await.unwrap_err(), "cancelled");
+            let next_id = uuid::Uuid::new_v4().to_string();
+            assert!(service.start(&store, &next_id, "cancelled").is_ok());
+        });
     }
     fn server(
         status: &str,

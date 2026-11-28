@@ -1,0 +1,7 @@
+# Windows NSIS template
+
+`installer.nsi` is based on `tauri-bundler` 2.10.0 from Tauri CLI 2.12.0. See [the upstream template](https://github.com/tauri-apps/tauri/blob/tauri-cli-v2.12.0/crates/tauri-bundler/src/bundle/windows/nsis/installer.nsi) and the accompanying `LICENSE-tauri-bundler-MIT.md`.
+
+A manual run of the setup EXE skips the maintenance and destination pages for a recognized current-user installation when the installed version is the same or older. It uses the registered installation directory. When an older NSIS installation still reaches the maintenance page, it defaults to installing over the existing version. WiX migrations, downgrades and the updater flags continue through the upstream logic. Tauri still renders the template and supplies its includes, language strings, WebView2 handling and installer hooks.
+
+When changing the pinned Tauri CLI version, find its `tauri-bundler` version in the upstream CLI tag’s `Cargo.lock`. Compare the currently vendored template with its upstream source using `git diff --no-index /path/to/upstream/installer.nsi src-tauri/nsis/installer.nsi`. Reapply the Anser changes to the new upstream template and update the source and license references. Run the Windows validation build and check interactive clean install, forward upgrade and same-version reinstall from a current-user installation, plus the downgrade and uninstall paths. Use an isolated Windows profile with WebView2 already installed for the offline upgrade check.

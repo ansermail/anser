@@ -105,3 +105,37 @@ it("server budget inspection cannot access real servers or disk from fictional p
   ).rejects.toThrow("不连接真实服务器或读取磁盘");
   expect((await api.snapshot(query)).messages).toEqual(before.messages);
 });
+
+it("adds existing tags once, preserves other tags and skips missing tags", async () => {
+  const data = makeDemo();
+  data.tags = [...(data.tags ?? []), "FollowUp"];
+  const api = await setup(data);
+  const tagRule = {
+    ...rule,
+    action: "tag",
+    destination: "followup",
+    actions: [
+      { action: "tag", destination: "followup", sourceFolder: "" },
+      { action: "tag", destination: "已删除的标签", sourceFolder: "" },
+      { action: "star", destination: "", sourceFolder: "" },
+    ],
+  };
+  await api.call("save_rules", { rules: [tagRule] });
+  const before = await api.snapshot(query);
+  expect(
+    await api.call<string[]>("preview_rule", { rule: tagRule }),
+  ).not.toHaveLength(0);
+  expect((await api.snapshot(query)).messages).toEqual(before.messages);
+  for (let attempt = 0; attempt < 2; attempt++) {
+    expect(await api.call<number>("run_rules")).toBe(
+      before.messages.length * 2,
+    );
+  }
+  const after = await api.snapshot(query);
+  expect(after.tags).toEqual(before.tags);
+  for (const mail of after.messages) {
+    const original = before.messages.find((item) => item.id === mail.id)!;
+    expect(mail.tags).toEqual([...(original.tags ?? []), "FollowUp"]);
+    expect(mail.starred).toBe(true);
+  }
+});

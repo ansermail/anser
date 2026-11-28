@@ -1,5 +1,7 @@
 # 发布与应用内更新
 
+未发布改动见 [待发布更新说明](releases/UNRELEASED.md)。
+
 ## 当前版本：0.1.49（2026-11-28）
 
 0.1.49 Alpha 于 2026-11-28 13:25:41（Asia/Shanghai）公开为 [latest](https://github.com/ansermail/anser/releases/tag/v0.1.49)，固定源码 `3e38f848c4642c2c092d8ff63d95dd4aad9fd0c2`、注释标签 `v0.1.49`、Release ID `461322908`。本版加入 OpenPGP 签名和端到端加密，修复发送撤销倒计时、收取中暂停账号、译文排版及 Windows 抽屉关闭按钮。详细改动见 [0.1.49 发布说明](releases/v0.1.49.md)。

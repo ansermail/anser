@@ -1421,7 +1421,6 @@
   "No previous default application is recorded. Change it with Open With in Finder.": "没有记录此前的默认应用，请在访达的“打开方式”中更改。",
   "Saved on this device": "保存在这台设备",
   "Saved on this device, available for address autocomplete.": "保存在这台设备，可用于地址自动补全。",
-  "No need to keep webmail open. Anser processes new mail automatically while running on this computer.": "无需一直打开网页版邮箱。雁信在这台电脑运行时会自动处理新邮件。",
   "Browser preview · Use the desktop app for real mail": "浏览器预览 · 真实邮件请使用桌面客户端",
   "Use this feature in the desktop app.": "请在桌面客户端中使用此功能。",
   "Passwords and tokens are encrypted locally; the key is protected by the system credential store.": "密码和令牌在本机加密保存，密钥由系统凭据存储保护。",
@@ -2096,5 +2095,13 @@
   "Paste an ASCII-armored OpenPGP public key block.": "粘贴对方的 ASCII-armored OpenPGP 公钥文本。",
   "OpenPGP public key": "OpenPGP 公钥",
   "Remove key": "移除公钥",
-  "Encrypted messages are not sent to AI services": "加密邮件不会发送给 AI 服务"
+  "Encrypted messages are not sent to AI services": "加密邮件不会发送给 AI 服务",
+  "Add tag": "添加标签",
+  "Tag": "标签",
+  "Choose a tag": "选择标签",
+  "Create a tag first": "请先创建标签",
+  "AI features": "AI 功能",
+  "Use AI for translation, summaries, writing assistance and work reports.": "允许使用 AI 翻译、摘要、写信助手与工作报告。",
+  "Could not save the AI preference.": "无法保存 AI 偏好。",
+  "AI features are turned off.": "AI 功能已关闭。"
 }

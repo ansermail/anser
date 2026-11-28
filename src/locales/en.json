@@ -1421,7 +1421,6 @@
   "No previous default application is recorded. Change it with Open With in Finder.": "No previous default application is recorded. Change it with Open With in Finder.",
   "Saved on this device": "Saved on this device",
   "Saved on this device, available for address autocomplete.": "Saved on this device, available for address autocomplete.",
-  "No need to keep webmail open. Anser processes new mail automatically while running on this computer.": "No need to keep webmail open. Anser processes new mail automatically while running on this computer.",
   "Browser preview · Use the desktop app for real mail": "Browser preview · Use the desktop app for real mail",
   "Use this feature in the desktop app.": "Use this feature in the desktop app.",
   "Passwords and tokens are encrypted locally; the key is protected by the system credential store.": "Passwords and tokens are encrypted locally; the key is protected by the system credential store.",
@@ -2096,5 +2095,13 @@
   "Paste an ASCII-armored OpenPGP public key block.": "Paste an ASCII-armored OpenPGP public key block.",
   "OpenPGP public key": "OpenPGP public key",
   "Remove key": "Remove key",
-  "Encrypted messages are not sent to AI services": "Encrypted messages are not sent to AI services"
+  "Encrypted messages are not sent to AI services": "Encrypted messages are not sent to AI services",
+  "Add tag": "Add tag",
+  "Tag": "Tag",
+  "Choose a tag": "Choose a tag",
+  "Create a tag first": "Create a tag first",
+  "AI features": "AI features",
+  "Use AI for translation, summaries, writing assistance and work reports.": "Use AI for translation, summaries, writing assistance and work reports.",
+  "Could not save the AI preference.": "Could not save the AI preference.",
+  "AI features are turned off.": "AI features are turned off."
 }

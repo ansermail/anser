@@ -511,13 +511,16 @@ impl Store {
             .map_err(err)?;
         serde_json::from_str(&raw).map_err(err)
     }
+    #[cfg(test)]
     pub fn update_mail(&self, m: &Mail) -> Result<()> {
-        self.db()?
-            .execute(
-                "UPDATE messages SET data=?2 WHERE id=?1",
-                params![m.id, serde_json::to_string(m).map_err(err)?],
-            )
-            .map_err(err)?;
+        Self::update_mail_in(&self.db()?, m)
+    }
+    pub(crate) fn update_mail_in(db: &Connection, m: &Mail) -> Result<()> {
+        db.execute(
+            "UPDATE messages SET data=?2 WHERE id=?1",
+            params![m.id, serde_json::to_string(m).map_err(err)?],
+        )
+        .map_err(err)?;
         Ok(())
     }
     #[cfg(test)]
@@ -788,28 +791,45 @@ impl Store {
                     }
                     continue;
                 }
+                let mut db = self.db()?;
+                let tx = db
+                    .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
+                    .map_err(err)?;
+                // Merge each local action into the current row. The match still uses
+                // the original observed flags, but writes preserve concurrent edits.
+                let mut current = Self::mail_in(&tx, &m.id)?;
+                let mut applied = true;
                 match r.action.as_str() {
-                    "folder" => m.local_folder = r.destination.clone(),
-                    "saveFolder" => m.local_folder = r.destination.clone(),
+                    "folder" | "saveFolder" => current.local_folder = r.destination.clone(),
+                    "tag" => {
+                        applied =
+                            crate::mail_tags::apply_rule_tag(&tx, &mut current, &r.destination)?;
+                    }
                     "save" => {}
                     "read" => {
-                        m.is_read = true;
-                        m.local_read_override = Some(true);
+                        current.is_read = true;
+                        current.local_read_override = Some(true);
                     }
                     "unread" => {
-                        m.is_read = false;
-                        m.local_read_override = Some(false);
+                        current.is_read = false;
+                        current.local_read_override = Some(false);
                     }
                     "star" => {
-                        m.starred = true;
-                        m.local_star_override = Some(true);
+                        current.starred = true;
+                        current.local_star_override = Some(true);
                     }
-                    "trash" => m.trashed = true,
+                    "trash" => current.trashed = true,
                     _ => return Err("未知动作".into()),
                 };
-                self.update_mail(&m)?;
-                self.log(&format!("规则「{}」已执行 · {}", r.name, m.subject))?;
-                count += 1;
+                if applied {
+                    Self::update_mail_in(&tx, &current)?;
+                }
+                tx.commit().map_err(err)?;
+                m = current;
+                if applied {
+                    self.log(&format!("规则「{}」已执行 · {}", r.name, m.subject))?;
+                    count += 1;
+                }
                 if r.stop {
                     break;
                 }

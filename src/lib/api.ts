@@ -9,6 +9,7 @@ import {
   conversationSummaries,
 } from "./conversations";
 import { ruleMatchState } from "./rule-match";
+import { findMailTag } from "./mail-tags";
 import { invoke, isTauri } from "@tauri-apps/api/core";
 import type {
   Account,
@@ -20,6 +21,7 @@ import type {
   Compose,
   MailPage,
   MailNeighbor,
+  Preferences,
 } from "./types";
 import { makeDemo } from "./demo";
 import { parseAddresses } from "./addresses";
@@ -30,6 +32,12 @@ const demoStorage = publicPreview ? memoryStorage() : localStorage;
 const key = "mail-desktop-demo-v1";
 let demo: Snapshot | null = null;
 const demoPager = new DemoPager();
+function readDemoPreferences(): Preferences {
+  return JSON.parse(
+    demoStorage.getItem(key + "-preferences") ||
+      '{"syncIntervalMinutes":5,"showWorkbench":true,"newMailNotifications":true,"sendResultNotifications":true,"readingCacheDays":30,"readingCacheLimitMb":1024,"englishQuoteHeader":false}',
+  );
+}
 function workItemForStorage(item: WorkItem) {
   const stored = { ...item };
   delete stored.mailSubject;
@@ -43,6 +51,13 @@ function withWorkMailSubjects(items: WorkItem[]) {
       : "",
   }));
 }
+const modelCommands = new Set([
+  "get_translation_models",
+  "run_mail_ai",
+  "save_translation_settings",
+  "test_translation_settings",
+  "translate_mail_parts",
+]);
 const translationActivityCommands = new Set([
   "translate_mail_parts",
   "test_translation_settings",
@@ -257,6 +272,8 @@ export async function call<T = void>(
       ),
     );
   if (demo) {
+    if (modelCommands.has(command) && readDemoPreferences().aiEnabled === false)
+      throw new Error(t("AI features are turned off."));
     let result: unknown;
     switch (command) {
       case "get_file_associations":
@@ -699,6 +716,7 @@ export async function call<T = void>(
           );
         let count = 0;
         const planned = demo.messages.map((mail) => ({ ...mail }));
+        const tags = demo.tags ?? [];
         for (const mail of planned) {
           for (const rule of demo.rules) {
             const state = ruleMatchState(rule, mail);
@@ -727,6 +745,14 @@ export async function call<T = void>(
                 case "saveFolder":
                   mail.localFolder = step.destination;
                   break;
+                case "tag": {
+                  const tag = findMailTag(tags, step.destination);
+                  if (!tag) continue;
+                  if (!findMailTag(mail.tags ?? [], tag)) {
+                    mail.tags = [...(mail.tags ?? []), tag];
+                  }
+                  break;
+                }
                 case "read":
                   mail.isRead = true;
                   break;
@@ -1439,9 +1465,15 @@ export async function call<T = void>(
         demoStorage.setItem(key + "-interface-language", String(args.language));
         break;
       case "get_preferences":
-        result = JSON.parse(
-          demoStorage.getItem(key + "-preferences") ||
-            '{"syncIntervalMinutes":5,"showWorkbench":true,"newMailNotifications":true,"sendResultNotifications":true,"readingCacheDays":30,"readingCacheLimitMb":1024,"englishQuoteHeader":false}',
+        result = readDemoPreferences();
+        break;
+      case "set_ai_enabled":
+        demoStorage.setItem(
+          key + "-preferences",
+          JSON.stringify({
+            ...readDemoPreferences(),
+            aiEnabled: args.enabled === true,
+          }),
         );
         break;
       case "reading_cache_status":
@@ -1467,6 +1499,7 @@ export async function call<T = void>(
           key + "-preferences",
           JSON.stringify({
             ...(args.preferences as Record<string, unknown>),
+            aiEnabled: previous.aiEnabled,
             ...(Object.hasOwn(previous, "proxy")
               ? { proxy: previous.proxy }
               : {}),

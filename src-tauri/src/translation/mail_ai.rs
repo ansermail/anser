@@ -411,11 +411,12 @@ pub async fn run_mail_ai(
     revision: String,
     input: Input,
 ) -> Result<Output> {
+    let request = service.start(&state.store, &request_id, "AI 请求已取消")?;
     let prompt = input.prompt()?;
-    let mut cancelled = service.start(&request_id)?;
     let work = async {
         let (config, key) = {
             let _guard = service.config_gate.lock().map_err(err)?;
+            request.check_active()?;
             let config = state
                 .store
                 .translation_config()?
@@ -435,8 +436,10 @@ pub async fn run_mail_ai(
             &prompt,
             &serde_json::to_string(&input).map_err(err)?,
         );
+        request.check_active()?;
         let result = read_completion(post_completion(&endpoint, &key, &body).await?).await?;
         let _guard = service.config_gate.lock().map_err(err)?;
+        request.check_active()?;
         if state
             .store
             .translation_config()?
@@ -448,18 +451,7 @@ pub async fn run_mail_ai(
         }
         input.parse(&result)
     };
-    let result = tokio::select! {
-        biased;
-        _ = &mut cancelled => Err("AI 请求已取消".into()),
-        result = tokio::time::timeout(TASK_TIMEOUT, work) => result.unwrap_or_else(|_| Err("AI 请求超时，请重试".into()))
-    };
-    service
-        .tasks
-        .lock()
-        .map_err(err)?
-        .active
-        .remove(&request_id);
-    result
+    request.run(TASK_TIMEOUT, "AI 请求超时，请重试", work).await
 }
 
 #[cfg(test)]

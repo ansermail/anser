@@ -777,6 +777,7 @@ async fn save_preferences(
             let mut preferences = preferences;
             preferences.proxy = current.proxy.clone();
             preferences.do_not_disturb = current.do_not_disturb;
+            preferences.ai_enabled = current.ai_enabled;
             *current = preferences;
         })
     })
@@ -2777,6 +2778,7 @@ pub fn run() {
             sent_upload_action,
             retry_outbox,
             archive_outbox,
+            translation::set_ai_enabled,
             translation::get_translation_models,
             translation::get_translation_settings,
             translation::save_translation_settings,

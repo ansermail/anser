@@ -9,6 +9,7 @@ import {
   EmptyContent,
 } from "./ui/empty";
 import { SelectField, SelectOption } from "@/components/ui/select-field";
+import { findMailTag } from "@/lib/mail-tags";
 import { useEffect, useState } from "react";
 import { format } from "date-fns";
 import {
@@ -22,11 +23,13 @@ import {
   Trash2,
   Play,
   Folder,
+  Tag,
   Star,
   MailCheck,
-  MoreHorizontal,
+  Pencil,
 } from "lucide-react";
 import { SidebarTrigger } from "./ui/sidebar";
+import { Badge } from "./ui/badge";
 import { Button, ButtonLabel } from "./ui/button";
 import { Checkbox } from "./ui/checkbox";
 import { Input } from "./ui/input";
@@ -52,7 +55,14 @@ import type {
 } from "@/lib/types";
 import { call } from "@/lib/api";
 import { toast } from "sonner";
-import { SelectGroup } from "./ui/select";
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "./ui/select";
 import { RuleServerFolders } from "./rule-server-folders";
 import { RuleExecutions } from "./rule-executions";
 import { RuleRunsPanel } from "./rule-runs";
@@ -164,6 +174,9 @@ const actions: { [key: string]: string } = {
   get folder() {
     return t("Move to local folder");
   },
+  get tag() {
+    return t("Add tag");
+  },
   get save() {
     return t("Save complete message locally");
   },
@@ -202,14 +215,25 @@ const ruleActions = (rule: Rule): RuleAction[] =>
 const remoteAction = (step: RuleAction) =>
   step.action === "serverCopy" || step.action === "serverMove";
 
-function canSaveRule(rule: Rule, accounts: Snapshot["accounts"]) {
+function canSaveRule(
+  rule: Rule,
+  accounts: Snapshot["accounts"],
+  tags: string[],
+) {
   if (
     rule.conditions.some(
       ({ field, value }) => field === "date" && !value.trim(),
     )
   )
     return false;
-  const steps = ruleActions(rule).filter(remoteAction);
+  const allSteps = ruleActions(rule);
+  if (
+    allSteps.some(
+      (step) => step.action === "tag" && !findMailTag(tags, step.destination),
+    )
+  )
+    return false;
+  const steps = allSteps.filter(remoteAction);
   return (
     !steps.length ||
     (steps.every(
@@ -309,7 +333,8 @@ export function RulesPanel({
   const { askConfirmation, confirmationDialog } = useConfirmation();
   const hasEnabledRule = data.rules.some((rule) => rule.enabled);
   const remote = (r: Rule) => ruleActions(r).some(remoteAction);
-  const valid = editing !== null && canSaveRule(editing, data.accounts);
+  const tags = data.tags ?? [];
+  const valid = editing !== null && canSaveRule(editing, data.accounts, tags);
   const [folderNames, setFolderNames] = useState<
     Record<string, Record<string, string>>
   >({});
@@ -407,19 +432,12 @@ export function RulesPanel({
         )}
       </div>
       <div className="info-strip">
-        <SlidersHorizontal size={17} />
-        <div className="flex min-w-0 flex-1 flex-col gap-1">
-          <p>
-            {t(
-              "Rules run in order. Local filing keeps originals; existing server actions continue under their configured rules.",
-            )}
-          </p>
-          <p>
-            {t(
-              "No need to keep webmail open. Anser processes new mail automatically while running on this computer.",
-            )}
-          </p>
-        </div>
+        <SlidersHorizontal size={16} />
+        <p className="min-w-0 flex-1">
+          {t(
+            "Rules run in order. Local filing keeps originals; existing server actions continue under their configured rules.",
+          )}
+        </p>
         <TooltipProvider>
           <Tooltip>
             <TooltipTrigger asChild>
@@ -451,94 +469,148 @@ export function RulesPanel({
           </Tooltip>
         </TooltipProvider>
       </div>
-      <div className="rule-list">
-        {data.rules.map((r, i) => (
-          <article
-            className={`rule-card ${r.enabled ? "" : "disabled-rule"}`}
-            key={r.id}
-          >
-            <div className="rule-number">{String(i + 1).padStart(2, "0")}</div>
-            <div className="rule-body">
-              <div className="rule-title">
-                <h3>{r.name}</h3>
-                {r.stop && <span>{t("Stop after match")}</span>}
+      <div
+        className={`rule-list ${data.rules.length ? "" : "rule-list-empty"}`}
+      >
+        {data.rules.map((r, i) => {
+          const accountLabel = r.accountId
+            ? data.accounts.find((account) => account.id === r.accountId)?.name
+            : "";
+          const steps = ruleActions(r);
+          return (
+            <article
+              className={`rule-card ${r.enabled ? "" : "disabled-rule"}`}
+              key={r.id}
+            >
+              <div className="rule-number">
+                {String(i + 1).padStart(2, "0")}
               </div>
-              <p>
-                {r.conditions
-                  .map((c) =>
-                    t("{value0} {value1} {value2}", {
-                      value0: fields[c.field],
-                      value1: conditionOperators[c.operator] || c.operator,
-                      value2: conditionValueLabel(c),
-                    }),
-                  )
-                  .join(r.mode === "all" ? t(" AND ") : t(" OR "))}
-              </p>
-              <div className="rule-action">
-                <ArrowRight size={13} />
-                {r.action === "folder" ? (
-                  <Folder size={14} />
-                ) : r.action === "star" ? (
-                  <Star size={14} />
-                ) : (
-                  <MailCheck size={14} />
-                )}{" "}
-                {ruleActions(r)
-                  .map((step) =>
-                    step.destination
-                      ? t("{value0} “{value1}”", {
-                          value0: actions[step.action],
-                          value1: step.destination,
-                        })
-                      : actions[step.action],
-                  )
-                  .join(" → ")}
+              <div className="rule-body">
+                <div className="rule-title">
+                  <h3 title={r.name}>{r.name}</h3>
+                  {accountLabel && (
+                    <Badge variant="outline" className="rule-badge">
+                      {accountLabel}
+                    </Badge>
+                  )}
+                  {r.stop && (
+                    <Badge variant="secondary" className="rule-badge">
+                      {t("Stop after match")}
+                    </Badge>
+                  )}
+                </div>
+                <div className="rule-flow">
+                  <div className="rule-clauses">
+                    {r.conditions.map((c, index) => (
+                      <span className="rule-clause-group" key={index}>
+                        {index > 0 && (
+                          <span className="rule-connector">
+                            {(r.mode === "all" ? t(" AND ") : t(" OR ")).trim()}
+                          </span>
+                        )}
+                        <span className="rule-clause">
+                          {t("{value0} {value1} {value2}", {
+                            value0: fields[c.field],
+                            value1:
+                              conditionOperators[c.operator] || c.operator,
+                            value2: conditionValueLabel(c),
+                          })}
+                        </span>
+                      </span>
+                    ))}
+                  </div>
+                  <ArrowRight
+                    size={13}
+                    className="rule-flow-arrow"
+                    aria-hidden="true"
+                  />
+                  <div className="rule-action">
+                    {steps.map((step, index) => (
+                      <span className="rule-outcome-group" key={index}>
+                        {index > 0 && (
+                          <ArrowRight
+                            size={12}
+                            className="rule-flow-arrow"
+                            aria-hidden="true"
+                          />
+                        )}
+                        <span className="rule-outcome">
+                          {step.action === "folder" ||
+                          step.action === "saveFolder" ||
+                          step.action === "serverCopy" ||
+                          step.action === "serverMove" ? (
+                            <Folder size={13} aria-hidden="true" />
+                          ) : step.action === "tag" ? (
+                            <Tag size={13} aria-hidden="true" />
+                          ) : step.action === "star" ? (
+                            <Star size={13} aria-hidden="true" />
+                          ) : (
+                            <MailCheck size={13} aria-hidden="true" />
+                          )}
+                          <span>
+                            {step.destination
+                              ? t("{value0} “{value1}”", {
+                                  value0: actions[step.action],
+                                  value1: step.destination,
+                                })
+                              : actions[step.action]}
+                          </span>
+                        </span>
+                      </span>
+                    ))}
+                  </div>
+                </div>
               </div>
-            </div>
-            <div className="rule-controls">
-              <Switch
-                checked={r.enabled}
-                aria-label={t("Enable {value0}", { value0: r.name })}
-                onCheckedChange={(v) =>
-                  void save(
-                    data.rules.map((x) =>
-                      x.id === r.id ? { ...x, enabled: v } : x,
-                    ),
-                  )
-                }
-              />
-              <Button
-                variant="ghost"
-                size="icon-sm"
-                title={t("Move up")}
-                disabled={i === 0}
-                onClick={() => move(i, -1)}
-              >
-                <ArrowUp size={15} />
-              </Button>
-              <Button
-                variant="ghost"
-                size="icon-sm"
-                title={t("Move down")}
-                disabled={i === data.rules.length - 1}
-                onClick={() => move(i, 1)}
-              >
-                <ArrowDown size={15} />
-              </Button>
-              <Button
-                variant="ghost"
-                size="icon-sm"
-                title={t("Edit rule")}
-                onClick={() => {
-                  setPreview(null);
-                  setEditing(withActions(structuredClone(r), ruleActions(r)));
-                }}
-              >
-                <MoreHorizontal size={18} />
-              </Button>
-            </div>
-          </article>
-        ))}
+              <div className="rule-controls">
+                <Switch
+                  checked={r.enabled}
+                  aria-label={t("Enable {value0}", { value0: r.name })}
+                  onCheckedChange={(v) =>
+                    void save(
+                      data.rules.map((x) =>
+                        x.id === r.id ? { ...x, enabled: v } : x,
+                      ),
+                    )
+                  }
+                />
+                <span className="rule-controls-divider" aria-hidden="true" />
+                <div className="rule-control-buttons">
+                  <Button
+                    variant="ghost"
+                    size="icon-sm"
+                    title={t("Move up")}
+                    disabled={i === 0}
+                    onClick={() => move(i, -1)}
+                  >
+                    <ArrowUp size={15} />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="icon-sm"
+                    title={t("Move down")}
+                    disabled={i === data.rules.length - 1}
+                    onClick={() => move(i, 1)}
+                  >
+                    <ArrowDown size={15} />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="icon-sm"
+                    title={t("Edit rule")}
+                    onClick={() => {
+                      setPreview(null);
+                      setEditing(
+                        withActions(structuredClone(r), ruleActions(r)),
+                      );
+                    }}
+                  >
+                    <Pencil size={14} />
+                  </Button>
+                </div>
+              </div>
+            </article>
+          );
+        })}
         {!data.rules.length && (
           <Empty>
             <EmptyHeader>
@@ -973,6 +1045,60 @@ export function RulesPanel({
                                   )
                                 }
                               />
+                            </div>
+                          )}
+                          {step.action === "tag" && (
+                            <div className="flex min-w-0 flex-1 items-center gap-2">
+                              <Label
+                                className="shrink-0"
+                                htmlFor={`rule-tag-${index}`}
+                              >
+                                {t("Tag")}
+                              </Label>
+                              <Select
+                                value={
+                                  findMailTag(tags, step.destination) ?? ""
+                                }
+                                disabled={!tags.length}
+                                onValueChange={(destination) =>
+                                  setEditing(
+                                    withActions(
+                                      editing,
+                                      ruleActions(editing).map(
+                                        (item, position) =>
+                                          position === index
+                                            ? { ...item, destination }
+                                            : item,
+                                      ),
+                                    ),
+                                  )
+                                }
+                              >
+                                <SelectTrigger
+                                  id={`rule-tag-${index}`}
+                                  aria-label={t("Tag")}
+                                  className="select-field min-w-0 flex-1"
+                                >
+                                  <SelectValue
+                                    placeholder={
+                                      step.destination
+                                        ? t("Tag not found")
+                                        : tags.length
+                                          ? t("Choose a tag")
+                                          : t("Create a tag first")
+                                    }
+                                  />
+                                </SelectTrigger>
+                                <SelectContent position="popper" align="start">
+                                  <SelectGroup>
+                                    {tags.map((tag) => (
+                                      <SelectItem key={tag} value={tag}>
+                                        {tag}
+                                      </SelectItem>
+                                    ))}
+                                  </SelectGroup>
+                                </SelectContent>
+                              </Select>
                             </div>
                           )}
                           <div className="ml-auto flex shrink-0 items-center gap-1">

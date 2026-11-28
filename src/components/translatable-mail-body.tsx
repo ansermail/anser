@@ -1,3 +1,4 @@
+import { useAiEnabled } from "@/hooks/use-ai-preference";
 import { t } from "@/lib/i18n";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
@@ -57,6 +58,7 @@ export function TranslatableMailBody({
   onOpenLink: (href: string) => void;
   encrypted?: boolean;
 }) {
+  const aiEnabled = useAiEnabled();
   const overlayHost = useMailOverlayHost();
   const summary = useMailSummary(
     mailId ?? title,
@@ -99,6 +101,9 @@ export function TranslatableMailBody({
     setError("");
     setProgress({ done: 0, total: 0 });
   }, [cancel]);
+  useEffect(() => {
+    if (!aiEnabled) reset();
+  }, [aiEnabled, reset]);
   const documentReady = useCallback(
     (next: Document | null) => {
       reset();
@@ -121,6 +126,7 @@ export function TranslatableMailBody({
     return () => documentReady(null);
   }, [html, body, documentReady]);
   async function translate() {
+    if (!aiEnabled) return;
     reset();
     const current = generation.current;
     const active = () => generation.current === current;
@@ -248,7 +254,8 @@ export function TranslatableMailBody({
       <span className="mail-status-action">{t("Retry translation")}</span>
     </Button>
   ) : null;
-  const subjectTranslation = translatedSubject &&
+  const subjectTranslation = aiEnabled &&
+    translatedSubject &&
     translatedSubject !== subject.trim() && (
       <p
         className="mail-subject-translation"
@@ -295,76 +302,86 @@ export function TranslatableMailBody({
                   </TooltipContent>
                 </Tooltip>
               )}
-              {shown && error && !busy && (
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button
-                      variant="ghost"
-                      size="icon-sm"
-                      aria-label={t("Hide translation")}
-                      onClick={reset}
-                    >
-                      <EyeOff aria-hidden="true" />
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent>{t("Hide translation")}</TooltipContent>
-                </Tooltip>
+              {aiEnabled && (
+                <>
+                  {shown && error && !busy && (
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button
+                          variant="ghost"
+                          size="icon-sm"
+                          aria-label={t("Hide translation")}
+                          onClick={reset}
+                        >
+                          <EyeOff aria-hidden="true" />
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent>{t("Hide translation")}</TooltipContent>
+                    </Tooltip>
+                  )}
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <span>
+                        <Button
+                          variant={
+                            shown && !busy && !error ? "secondary" : "ghost"
+                          }
+                          size="icon-sm"
+                          aria-label={
+                            encrypted
+                              ? t(
+                                  "Encrypted messages are not sent to AI services",
+                                )
+                              : actionLabel
+                          }
+                          aria-pressed={shown}
+                          disabled={!ready || encrypted}
+                          onClick={() => {
+                            if (encrypted) return;
+                            if (busy) {
+                              cancel();
+                              setBusy(false);
+                              setError(
+                                t(
+                                  "Translation canceled. Completed paragraphs remain; retry or hide them.",
+                                ),
+                              );
+                            } else if (shown && !error) reset();
+                            else void translate();
+                          }}
+                        >
+                          {busy ? (
+                            <LoaderCircle
+                              aria-hidden="true"
+                              className="animate-spin"
+                            />
+                          ) : error ? (
+                            <RotateCcw aria-hidden="true" />
+                          ) : (
+                            <Languages aria-hidden="true" />
+                          )}
+                        </Button>
+                      </span>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      {encrypted
+                        ? t("Encrypted messages are not sent to AI services")
+                        : status
+                          ? `${status} · ${actionLabel}`
+                          : actionLabel}
+                    </TooltipContent>
+                  </Tooltip>
+                  {!encrypted &&
+                    summary.trigger(ready && !!(body.trim() || html))}
+                </>
               )}
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <span>
-                    <Button
-                      variant={shown && !busy && !error ? "secondary" : "ghost"}
-                      size="icon-sm"
-                      aria-label={
-                        encrypted
-                          ? t("Encrypted messages are not sent to AI services")
-                          : actionLabel
-                      }
-                      aria-pressed={shown}
-                      disabled={!ready || encrypted}
-                      onClick={() => {
-                        if (encrypted) return;
-                        if (busy) {
-                          cancel();
-                          setBusy(false);
-                          setError(
-                            t(
-                              "Translation canceled. Completed paragraphs remain; retry or hide them.",
-                            ),
-                          );
-                        } else if (shown && !error) reset();
-                        else void translate();
-                      }}
-                    >
-                      {busy ? (
-                        <LoaderCircle
-                          aria-hidden="true"
-                          className="animate-spin"
-                        />
-                      ) : error ? (
-                        <RotateCcw aria-hidden="true" />
-                      ) : (
-                        <Languages aria-hidden="true" />
-                      )}
-                    </Button>
-                  </span>
-                </TooltipTrigger>
-                <TooltipContent>
-                  {encrypted
-                    ? t("Encrypted messages are not sent to AI services")
-                    : status
-                      ? `${status} · ${actionLabel}`
-                      : actionLabel}
-                </TooltipContent>
-              </Tooltip>
-              {!encrypted && summary.trigger(ready && !!(body.trim() || html))}
             </div>
           </TooltipProvider>,
           actionsContainer,
         )}
-      {summary.overlay}
-      {overlayHost &&
+      {aiEnabled && summary.overlay}
+      {aiEnabled &&
+        overlayHost &&
         translationOverlay &&
         createPortal(translationOverlay, overlayHost)}
       <span
@@ -391,13 +408,7 @@ export function TranslatableMailBody({
           )}
           <div className="message-body" data-mail-debug-region="" ref={plain}>
             {paragraphs.map((text, index) =>
-              index % 2 ? (
-                text
-              ) : (
-                <p className="m-0" key={index}>
-                  {text}
-                </p>
-              ),
+              index % 2 ? text : <p key={index}>{text}</p>,
             )}
           </div>
         </div>

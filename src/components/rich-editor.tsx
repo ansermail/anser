@@ -1,3 +1,4 @@
+import { useAiEnabled } from "@/hooks/use-ai-preference";
 import { createPortal } from "react-dom";
 import { t } from "@/lib/i18n";
 import { composeCanvasCss, composeEditorCss } from "@/lib/compose-presentation";
@@ -92,7 +93,11 @@ export function RichEditor({
   ref?: Ref<RichEditorHandle>;
   dark?: boolean;
 }) {
+  const aiEnabled = useAiEnabled();
   const [repairOpen, setRepairOpen] = useState(false);
+  useEffect(() => {
+    if (!aiEnabled) setRepairOpen(false);
+  }, [aiEnabled]);
   const repairToggle = useRef<HTMLButtonElement>(null);
   const [imageBusy, setImageBusy] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
@@ -327,6 +332,7 @@ export function RichEditor({
             />
           }
           assistantAction={
+            aiEnabled &&
             assistantHost && (
               <Tooltip>
                 <TooltipTrigger asChild>
@@ -404,7 +410,8 @@ export function RichEditor({
             }}
           />
         )}
-        {repairOpen &&
+        {aiEnabled &&
+          repairOpen &&
           assistantHost &&
           createPortal(
             <Suspense

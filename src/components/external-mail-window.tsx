@@ -1,3 +1,4 @@
+import { AiEnabledContext, useAiPreference } from "@/hooks/use-ai-preference";
 import { DesktopTitlebar } from "./desktop-titlebar";
 import { formatMailTime, t, useLanguage } from "@/lib/i18n";
 import { invoke } from "@tauri-apps/api/core";
@@ -59,6 +60,7 @@ interface EmlDocument {
 }
 
 export function ExternalMailWindow() {
+  const { enabled: aiEnabled } = useAiPreference(false);
   useLanguage();
   const [document, setDocument] = useState<EmlDocument | null>(null);
   const [error, setError] = useState("");
@@ -237,7 +239,7 @@ export function ExternalMailWindow() {
     });
   }
   if (!native) return null;
-  return (
+  const content = (
     <TooltipProvider>
       <div className="external-mail">
         <DesktopTitlebar />
@@ -491,5 +493,10 @@ export function ExternalMailWindow() {
         />
       </div>
     </TooltipProvider>
+  );
+  return (
+    <AiEnabledContext.Provider value={aiEnabled}>
+      {content}
+    </AiEnabledContext.Provider>
   );
 }

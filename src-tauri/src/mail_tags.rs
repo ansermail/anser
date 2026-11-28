@@ -23,7 +23,7 @@ pub(crate) fn names(db: &Connection) -> Result<Vec<String>> {
     Ok(names)
 }
 
-fn validated_name(value: &str) -> Result<String> {
+pub(crate) fn validated_name(value: &str) -> Result<String> {
     let name = value.trim();
     if name.is_empty() || name.chars().count() > 48 || name.contains(['\r', '\n', '\0']) {
         return Err("标签名称需为 1–48 个字符，且不能包含换行".into());
@@ -31,15 +31,28 @@ fn validated_name(value: &str) -> Result<String> {
     Ok(name.into())
 }
 
-fn canonical_tag(db: &Connection, name: &str) -> Result<String> {
+fn find_tag(db: &Connection, name: &str) -> Result<Option<String>> {
     db.query_row(
         "SELECT name FROM mail_tags WHERE name=?1 COLLATE NOCASE",
         [name],
         |row| row.get(0),
     )
     .optional()
-    .map_err(err)?
-    .ok_or_else(|| "标签不存在".into())
+    .map_err(err)
+}
+
+fn canonical_tag(db: &Connection, name: &str) -> Result<String> {
+    find_tag(db, name)?.ok_or_else(|| "标签不存在".into())
+}
+
+pub(crate) fn apply_rule_tag(db: &Connection, mail: &mut Mail, name: &str) -> Result<bool> {
+    let Some(name) = find_tag(db, name.trim())? else {
+        return Ok(false);
+    };
+    if !mail.tags.iter().any(|tag| tag.eq_ignore_ascii_case(&name)) {
+        mail.tags.push(name);
+    }
+    Ok(true)
 }
 
 fn replace_tag(tags: &mut Vec<String>, current: &str, replacement: &str) {

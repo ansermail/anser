@@ -1,6 +1,8 @@
 import { CalendarDays } from "lucide-react";
 import { Workbench } from "@/components/workbench";
 import type { WorkItem } from "@/lib/workbench";
+import { AiEnabledContext, useAiPreference } from "@/hooks/use-ai-preference";
+import { AiPreference } from "./components/ai-preference";
 import { mailAiSettingsEvent } from "@/lib/mail-ai";
 import { DesktopTitlebar } from "./components/desktop-titlebar";
 import {
@@ -411,6 +413,7 @@ export default function App({
     [savingWorkbenchPreference, setSavingWorkbenchPreference] = useState(false),
     [englishQuoteHeader, setEnglishQuoteHeader] = useState(false),
     [savingQuotePreference, setSavingQuotePreference] = useState(false);
+  const aiPreference = useAiPreference(demo);
   const showWorkbenchRef = useRef(showWorkbench);
   const taskPanelExpansion = useRef(new Map<string, boolean>());
   showWorkbenchRef.current = showWorkbench;
@@ -2618,7 +2621,7 @@ export default function App({
     );
   const bodyReady = detail?.mail.id === selected;
   const formatListTime = createMailListTimeFormatter();
-  return (
+  const shell = (
     <SidebarProvider
       className={`app-shell ${readerExpanded ? "reader-expanded" : ""}`}
       open={sidebarOpen}
@@ -3667,6 +3670,7 @@ export default function App({
                           void changeWorkbenchVisibility(visible)
                         }
                       />
+                      <AiPreference preference={aiPreference} />
                       <StorageTools testMailId={selected} />
                       <ReadingCacheSettings />
                       <NetworkProxySettings />
@@ -3689,7 +3693,7 @@ export default function App({
                     />
                     <OpenPgpSettings accounts={data.accounts} />
                     <MailSignatures accounts={data.accounts} />
-                    <MailTranslationSettings />
+                    {aiPreference.enabled && <MailTranslationSettings />}
                   </>
                 }
                 tasks={
@@ -5630,6 +5634,11 @@ export default function App({
           );
         })()}
     </SidebarProvider>
+  );
+  return (
+    <AiEnabledContext.Provider value={aiPreference.enabled}>
+      {shell}
+    </AiEnabledContext.Provider>
   );
 }
 import { shortcut } from "./lib/platform";

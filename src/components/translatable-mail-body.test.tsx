@@ -290,6 +290,12 @@ it("translates plain-text paragraphs without including surrounding application t
   expect(host.querySelector(".message-body")?.textContent).toBe(
     "Hello world\n\nSecond paragraph",
   );
+  expect(
+    [...host.querySelectorAll(".message-body > p")].map((p) => p.textContent),
+  ).toEqual(["Hello world", "Second paragraph"]);
+  expect(
+    host.querySelector(".message-body > p")?.classList.contains("m-0"),
+  ).toBe(false);
   await click("翻译");
   const args = mock.call.mock.calls.find(
     (c) => c[0] === "translate_mail_parts",

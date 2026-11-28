@@ -521,6 +521,7 @@ impl Store {
                     }
                     return Err(error);
                 }
+                let mut applied = true;
                 if rules::remote(&r) {
                     let mut remote_mail = m.clone();
                     remote_mail.body = evaluation.body.clone();
@@ -555,6 +556,10 @@ impl Store {
                     match r.action.as_str() {
                         "folder" => m.local_folder = r.destination.clone(),
                         "saveFolder" if !job.remote_only => m.local_folder = r.destination.clone(),
+                        "tag" => {
+                            applied =
+                                crate::mail_tags::apply_rule_tag(&tx, &mut m, &r.destination)?;
+                        }
                         "save" | "saveFolder" => {}
                         "read" => {
                             m.is_read = true;
@@ -571,14 +576,14 @@ impl Store {
                         "trash" => m.trashed = true,
                         _ => return Err("未知规则动作".into()),
                     }
-                    tx.execute(
-                        "UPDATE messages SET data=?2 WHERE id=?1",
-                        params![m.id, serde_json::to_string(&m).map_err(err)?],
-                    )
-                    .map_err(err)?;
+                    if applied {
+                        Self::update_mail_in(&tx, &m)?;
+                    }
                 }
-                job.applied += 1;
-                advance_local_intent(&mut job, &m, &r)?;
+                if applied {
+                    job.applied += 1;
+                    advance_local_intent(&mut job, &m, &r)?;
+                }
             }
             job.cursor += 1;
             if (matched && r.stop) || job.cursor == job.rules.len() {
@@ -1304,5 +1309,62 @@ mod tests {
         store.claim_rule_run(&next).unwrap();
         store.process_rule_run(&next, &crate::tests::raw()).unwrap();
         store.submit_copy(&op, "hash").unwrap();
+    }
+    #[test]
+    fn tag_action_applies_synchronously_and_in_deferred_rule_runs_idempotently() {
+        let (_root, store, account, id, raw) = fixture();
+        store.create_mail_tag("FollowUp").unwrap();
+        store.create_mail_tag("已有标签").unwrap();
+        store.create_mail_tag("异步标签").unwrap();
+        store.set_mail_tag(&id, "已有标签", true).unwrap();
+
+        let mut combined = rule(&account, "folder");
+        combined.actions = vec![
+            RuleAction {
+                action: "folder".into(),
+                destination: "项目协作".into(),
+                source_folder: String::new(),
+            },
+            RuleAction {
+                action: "tag".into(),
+                destination: "followup".into(),
+                source_folder: String::new(),
+            },
+            RuleAction {
+                action: "tag".into(),
+                destination: "已删除的标签".into(),
+                source_folder: String::new(),
+            },
+        ];
+        store.save_rules(&[combined]).unwrap();
+        assert_eq!(store.run_rules().unwrap(), 2);
+        assert_eq!(store.run_rules().unwrap(), 2);
+
+        let mail = store.mail(&id).unwrap();
+        assert_eq!(mail.local_folder, "项目协作");
+        assert_eq!(mail.tags, vec!["已有标签", "FollowUp"]);
+        let tags = store.snapshot(&crate::tests::query()).unwrap().tags;
+        assert!(!tags.contains(&"已删除的标签".to_string()));
+
+        let mut deferred = rule(&account, "tag");
+        deferred.id = "deferred-tag".into();
+        deferred.destination = "异步标签".into();
+        deferred.conditions = vec![Condition {
+            field: "body".into(),
+            operator: "contains".into(),
+            value: "Please keep this invoice".into(),
+        }];
+        let mut online = store.mail(&id).unwrap();
+        online.saved_locally = false;
+        online.body.clear();
+        store.update_mail(&online).unwrap();
+        store.save_rules(&[deferred]).unwrap();
+        store.run_rules().unwrap();
+        let job = pending(&store);
+        store.claim_rule_run(&job).unwrap();
+        store.process_rule_run(&job, &raw).unwrap();
+        let after = store.mail(&id).unwrap();
+        assert!(after.tags.contains(&"异步标签".to_string()));
+        assert!(after.tags.contains(&"已有标签".to_string()));
     }
 }

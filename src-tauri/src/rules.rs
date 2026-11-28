@@ -27,6 +27,7 @@ fn validate_action(rule: &Rule) -> Result<()> {
     if !["all", "any"].contains(&rule.mode.as_str())
         || ![
             "folder",
+            "tag",
             "read",
             "unread",
             "star",
@@ -43,6 +44,9 @@ fn validate_action(rule: &Rule) -> Result<()> {
     if matches!(rule.action.as_str(), "folder" | "saveFolder") && rule.destination.trim().is_empty()
     {
         return Err("请输入本地目标文件夹".into());
+    }
+    if rule.action == "tag" {
+        crate::mail_tags::validated_name(&rule.destination)?;
     }
     if remote(rule)
         && (rule.account_id.is_empty()
@@ -686,5 +690,21 @@ mod metadata_tests {
         assert!(!matches(&rule("ageDays", "greaterThan", "1"), &undated));
         assert!(validate(&rule("ageDays", "greaterThan", "-1")).is_err());
         assert!(validate(&rule("ageDays", "contains", "3")).is_err());
+    }
+    #[test]
+    fn tag_action_validates_tag_name_boundaries() {
+        let mut r = rule("subject", "contains", "invoice");
+        r.action = "tag".into();
+        r.destination = "跟进".into();
+        assert!(validate(&r).is_ok());
+
+        r.destination = "   ".into();
+        assert!(validate(&r).is_err());
+
+        r.destination = "a".repeat(49);
+        assert!(validate(&r).is_err());
+
+        r.destination = "bad\ntag".into();
+        assert!(validate(&r).is_err());
     }
 }

@@ -330,6 +330,7 @@ export interface OutboxRecord {
 export interface Preferences {
   syncIntervalMinutes: number;
   showWorkbench?: boolean;
+  aiEnabled?: boolean;
   newMailNotifications?: boolean;
   sendResultNotifications?: boolean;
   doNotDisturb?: boolean;

@@ -22,13 +22,18 @@
     "targets": ["nsis"],
     "fileAssociations": [],
     "icon": ["icons/32x32.png", "icons/128x128.png", "icons/icon.ico"],
+    "resources": {
+      "nsis/LICENSE-tauri-bundler-MIT.md": "licenses/tauri-bundler-MIT.md"
+    },
     "windows": {
       "webviewInstallMode": {
         "type": "embedBootstrapper",
         "silent": true
       },
       "nsis": {
+        "template": "nsis/installer.nsi",
         "installMode": "currentUser",
+        "installerIcon": "icons/icon.ico",
         "installerHooks": "nsis/hooks.nsh",
         "languages": ["SimpChinese", "English"],
         "displayLanguageSelector": true

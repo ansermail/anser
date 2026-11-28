@@ -1,3 +1,4 @@
+import { useAiEnabled } from "@/hooks/use-ai-preference";
 import { TimeSpinbox } from "./time-spinbox";
 import {
   createContext,
@@ -989,6 +990,7 @@ function WorkReport({
   projectSelection: ReactNode;
   writeMail: (subject: string, body: string) => void;
 }) {
+  const aiEnabled = useAiEnabled();
   const today = new Date();
   const [report, setReport] = useState("");
   const [processing, setProcessing] = useState(false);
@@ -1015,11 +1017,12 @@ function WorkReport({
   useEffect(() => {
     setReport("");
     setProcessing(false);
+    if (!aiEnabled) setPromptOpen(false);
     return () => {
       cancelMailAi(request.current);
       request.current = "";
     };
-  }, [filtered]);
+  }, [filtered, aiEnabled]);
   useEffect(() => {
     const reset = () => {
       cancelMailAi(request.current);
@@ -1078,7 +1081,7 @@ function WorkReport({
     "",
     ...overview.slice(1),
     "",
-    report,
+    aiEnabled ? report : "",
     "",
     ...workLines("## "),
   ].join("\n");
@@ -1112,7 +1115,7 @@ function WorkReport({
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
   async function generate() {
-    if (request.current) return;
+    if (!aiEnabled || request.current) return;
     const id = crypto.randomUUID();
     request.current = id;
     setProcessing(true);
@@ -1290,24 +1293,26 @@ function WorkReport({
                 <FieldLabel>{t("Work project")}</FieldLabel>
                 {projectSelection}
               </Field>
-              <Field>
-                <FieldLabel>{t("AI report prompt")}</FieldLabel>
-                <Button
-                  type="button"
-                  variant="outline"
-                  className="wb-report-prompt-trigger"
-                  onClick={() => {
-                    setPromptDraft(reportPrompt);
-                    setPromptOpen(true);
-                  }}
-                >
-                  <Settings2 />
-                  <span>{t("Custom prompt")}</span>
-                  {reportPrompt && (
-                    <Badge variant="secondary">{t("Customized")}</Badge>
-                  )}
-                </Button>
-              </Field>
+              {aiEnabled && (
+                <Field>
+                  <FieldLabel>{t("AI report prompt")}</FieldLabel>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="wb-report-prompt-trigger"
+                    onClick={() => {
+                      setPromptDraft(reportPrompt);
+                      setPromptOpen(true);
+                    }}
+                  >
+                    <Settings2 />
+                    <span>{t("Custom prompt")}</span>
+                    {reportPrompt && (
+                      <Badge variant="secondary">{t("Customized")}</Badge>
+                    )}
+                  </Button>
+                </Field>
+              )}
             </FieldGroup>
             <div className="wb-report-numbers tabular-nums">
               <span>
@@ -1319,38 +1324,44 @@ function WorkReport({
                 <strong>{total.done}</strong>
               </span>
             </div>
-            <Button
-              variant="outline"
-              aria-busy={processing || undefined}
-              disabled={processing || !filtered.length || from > to}
-              onClick={() => void generate()}
-            >
-              <ButtonLabel
-                reserve={[t("Generating report…"), t("Generate AI report")]}
-                reserveIcon
-                icon={
-                  processing ? (
-                    <LoaderCircle className="animate-spin" />
-                  ) : (
-                    <Sparkles />
-                  )
-                }
-              >
-                {processing ? t("Generating report…") : t("Generate AI report")}
-              </ButtonLabel>
-            </Button>
-            {processing && (
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => {
-                  cancelMailAi(request.current);
-                  request.current = "";
-                  setProcessing(false);
-                }}
-              >
-                {t("Cancel")}
-              </Button>
+            {aiEnabled && (
+              <>
+                <Button
+                  variant="outline"
+                  aria-busy={processing || undefined}
+                  disabled={processing || !filtered.length || from > to}
+                  onClick={() => void generate()}
+                >
+                  <ButtonLabel
+                    reserve={[t("Generating report…"), t("Generate AI report")]}
+                    reserveIcon
+                    icon={
+                      processing ? (
+                        <LoaderCircle className="animate-spin" />
+                      ) : (
+                        <Sparkles />
+                      )
+                    }
+                  >
+                    {processing
+                      ? t("Generating report…")
+                      : t("Generate AI report")}
+                  </ButtonLabel>
+                </Button>
+                {processing && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => {
+                      cancelMailAi(request.current);
+                      request.current = "";
+                      setProcessing(false);
+                    }}
+                  >
+                    {t("Cancel")}
+                  </Button>
+                )}
+              </>
             )}
           </CardContent>
         </Card>
@@ -1453,7 +1464,7 @@ function WorkReport({
             data-empty={!filtered.length || undefined}
           >
             <CardContent>
-              {report && (
+              {aiEnabled && report && (
                 <section className="wb-report-summary">
                   <h3>
                     <Sparkles />
@@ -1534,7 +1545,7 @@ function WorkReport({
           </ScrollArea>
         </Card>
       </div>
-      <Dialog open={promptOpen} onOpenChange={setPromptOpen}>
+      <Dialog open={aiEnabled && promptOpen} onOpenChange={setPromptOpen}>
         <DialogContent className="wb-report-prompt-dialog">
           <DialogHeader>
             <DialogTitle>{t("Customize AI report prompt")}</DialogTitle>

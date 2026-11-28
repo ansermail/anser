@@ -401,6 +401,58 @@ it("hides the optional workbench and restores it from persisted preferences", as
     true,
   );
 });
+it("persists the AI switch, blocks model actions and restores their settings when enabled", async () => {
+  const preferences = await api.call<Preferences>("get_preferences");
+  const config = await api.call("save_translation_settings", {
+    config: { model: "test-model", baseUrl: "https://example.com/v1" },
+  });
+  const tab = (name: string) =>
+    [...host.querySelectorAll('[role="tab"]')].find((element) =>
+      element.textContent?.includes(name),
+    ) ?? null;
+  await click(nav("设置与账号"));
+  await click(tab("应用偏好"));
+  const toggle = () => host.querySelector<HTMLButtonElement>("#ai-enabled")!;
+  expect(toggle().getAttribute("aria-checked")).toBe("true");
+  await click(toggle());
+  expect(toggle().getAttribute("aria-checked")).toBe("false");
+  await api.call("save_preferences", { preferences });
+  expect(await api.call<Preferences>("get_preferences")).toMatchObject({
+    aiEnabled: false,
+  });
+  for (const command of [
+    "run_mail_ai",
+    "get_translation_models",
+    "translate_mail_parts",
+    "test_translation_settings",
+    "save_translation_settings",
+  ]) {
+    await expect(api.call(command)).rejects.toThrow("AI 功能已关闭");
+  }
+  expect(await api.call("get_translation_settings")).toEqual(config);
+
+  await act(async () => root.unmount());
+  root = createRoot(host);
+  await act(async () => root.render(<App />));
+  await click(host.querySelector("button.mail-row-main"));
+  await vi.waitFor(() =>
+    expect(host.querySelector(".translatable-mail-body")).not.toBeNull(),
+  );
+  expect(host.querySelector('button[aria-label="翻译"]')).toBeNull();
+  expect(host.querySelector('button[aria-label="生成邮件摘要"]')).toBeNull();
+  await click(nav("设置与账号"));
+  await click(tab("阅读与写信"));
+  expect(host.querySelector("#translation-model")).toBeNull();
+  await click(tab("应用偏好"));
+  expect(toggle().getAttribute("aria-checked")).toBe("false");
+  await click(toggle());
+  await click(tab("阅读与写信"));
+  await vi.waitFor(() =>
+    expect(
+      host.querySelector<HTMLInputElement>("#translation-model")?.value,
+    ).toBe("test-model"),
+  );
+});
 it("keeps unsaved translation input when switching settings categories", async () => {
   await click(nav("设置与账号"));
   const tab = (name: string) =>

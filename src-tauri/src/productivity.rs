@@ -103,6 +103,18 @@ impl Store {
         &self,
         update: impl FnOnce(&mut Preferences) -> T,
     ) -> Result<T> {
+        let result = self.write_preferences(update)?;
+        if let Err(error) = crate::read_cache::prune(self) {
+            let _ = self.log(&format!("阅读缓存设置已保存，但清理未完成：{error}"));
+        }
+        Ok(result)
+    }
+    pub(crate) fn set_ai_enabled(&self, enabled: bool) -> Result<bool> {
+        self.write_preferences(|preferences| {
+            std::mem::replace(&mut preferences.ai_enabled, enabled) != enabled
+        })
+    }
+    fn write_preferences<T>(&self, update: impl FnOnce(&mut Preferences) -> T) -> Result<T> {
         let mut db = self.db()?;
         let tx = db
             .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
@@ -118,9 +130,6 @@ impl Store {
         crate::read_cache::validate_preferences(&p)?;
         tx.execute("INSERT INTO preferences(key,data) VALUES('sync',?1) ON CONFLICT(key) DO UPDATE SET data=excluded.data",[serde_json::to_string(&p).map_err(err)?]).map_err(err)?;
         tx.commit().map_err(err)?;
-        if let Err(error) = crate::read_cache::prune(self) {
-            let _ = self.log(&format!("阅读缓存设置已保存，但清理未完成：{error}"));
-        }
         Ok(result)
     }
     pub fn archive_health(&self) -> Result<ArchiveHealth> {

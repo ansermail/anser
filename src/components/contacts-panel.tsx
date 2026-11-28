@@ -124,21 +124,21 @@ export function ContactsPanel({
   return (
     <section className="workspace-panel">
       <div className="panel-heading">
-        <div>
-          <div className="page-title-row">
-            <SidebarTrigger
-              title={t("Toggle sidebar")}
-              aria-label={t("Toggle sidebar")}
-            />
+        <div className="page-title-row">
+          <SidebarTrigger
+            title={t("Toggle sidebar")}
+            aria-label={t("Toggle sidebar")}
+          />
+          <span className="page-title-text">
             <h1>{t("Contacts")}</h1>
-          </div>
-          {contacts.length > 0 && (
-            <p className="tabular-nums">
-              {contacts.length === 1
-                ? t("1 local contact")
-                : t("{value0} local contacts", { value0: contacts.length })}
-            </p>
-          )}
+            {contacts.length > 0 && (
+              <span className="page-title-count tabular-nums">
+                {contacts.length === 1
+                  ? t("1 local contact")
+                  : t("{value0} local contacts", { value0: contacts.length })}
+              </span>
+            )}
+          </span>
         </div>
         {(loading || contacts.length > 0) && (
           <Button onClick={addContact}>

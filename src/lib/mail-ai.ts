@@ -59,6 +59,7 @@ export function mailAiError(error: unknown) {
     return t(hint);
   }
   const known: [RegExp, string][] = [
+    [/^AI 功能已关闭/, "AI features are turned off."],
     [
       /^模型配置已变化/,
       "The model configuration changed. Submit this change again.",

@@ -1,3 +1,4 @@
+import { useAiEnabled } from "@/hooks/use-ai-preference";
 import { copyText } from "@/lib/clipboard";
 import {
   createContext,
@@ -135,6 +136,7 @@ export function useMailSummary(
   );
   const [moreContent, setMoreContent] = useState(false);
   const restoreFocus = useRef(false);
+  const aiEnabled = useAiEnabled();
   const cancel = useCallback(() => {
     cancelMailAi(request.current);
     request.current = "";
@@ -155,6 +157,9 @@ export function useMailSummary(
       cancel();
     };
   }, [id, body, html, reference, reset, cancel]);
+  useEffect(() => {
+    if (!aiEnabled) reset();
+  }, [aiEnabled, reset]);
 
   useEffect(() => {
     if (!restoreFocus.current) return;
@@ -190,7 +195,7 @@ export function useMailSummary(
   }
 
   async function start() {
-    if (request.current) return;
+    if (!aiEnabled || request.current) return;
     layer?.claim(reset);
     if (state.kind === "collapsed") {
       setState({ ...state, kind: "open" });
