@@ -4921,6 +4921,20 @@ fn header_attachments(response: &[u8], uid: u32) -> Result<Option<bool>> {
             | BodyStructure::Message { common, .. }
             | BodyStructure::Multipart { common, .. } => common,
         };
+        if matches!(body, BodyStructure::Multipart { .. })
+            && common.ty.ty.eq_ignore_ascii_case("multipart")
+            && common.ty.subtype.eq_ignore_ascii_case("encrypted")
+        {
+            // RFC 3156 PGP/MIME wraps ciphertext in encrypted.asc; do not report
+            // the cryptographic wrapper itself as a user attachment.
+            return false;
+        }
+        if common.ty.ty.eq_ignore_ascii_case("application")
+            && (common.ty.subtype.eq_ignore_ascii_case("pgp-signature")
+                || common.ty.subtype.eq_ignore_ascii_case("pgp-encrypted"))
+        {
+            return false;
+        }
         if common
             .disposition
             .as_ref()

@@ -7,14 +7,16 @@
 - **代码完成**。
   - 修复 `account_action` 暂停/启用与移除共用全局同步锁、INBOX 目录锁与发信锁导致收取期间点击暂停报错的问题：新增 `Store::toggle_account_enabled` 以 `Immediate` 事务原子翻转 `enabled`，避免与并发 `save_sync_status` / `edit_account_preferences` 互相覆盖；暂停时通过 `sync_control::interrupt_account` 精准中断该账号下所有活跃只读下载（覆盖 INBOX 与非 INBOX 目录），并通过 `RealtimeControl::restart_account` 立即断开该账号实时监听而不影响其他账号的 IDLE 会话；移除账号继续保留完整互斥锁。
   - 修正中断判定与收尾：`sync_imap_scope_controlled`（含 `sync_inbox_session` 实时监听收取）在 `should_yield` / `interrupted` / 目录循环 / 空目录核对前优先检查账号暂停或配置变更并返回 `SYNC_STOPPED_BY_ACCOUNT_CHANGE`，避免误记「新实时通知已到达」、误打 `last_sync` 或误写 `sync_failures`；同步补齐 POP3 暂停检查点及 `sync_scope` / `sync_folder` 在快速「暂停 → 恢复」竞态下不写错误、不覆写新轮状态的静默收尾；补充 [docs/WINDOWS.md](WINDOWS.md) 抽屉避让说明。
-  - **实机点验发现并顺手修正两处 UI 细节**：
+  - **实机点验发现并顺手修正三处细节**：
     1. [src/lib/mail-translation.ts](../src/lib/mail-translation.ts)：移除译文块负横向外边距 `margin-inline: -0.55em` 并补齐 `box-sizing: border-box` 与统一内边距（`0.3em 0.65em` / 紧凑单元格 `0.25em 0.55em`），修复贴近 `iframe` 边缘的标题（`Summary`/`Tests` 等）译文左侧无间距及四角圆角被裁平的问题。
     2. [src/components/openpgp-settings.tsx](../src/components/openpgp-settings.tsx)：为「生成 OpenPGP 密钥对」弹窗内的邮箱账号、算法、有效期下拉框补齐 `w-full`，与输入框宽度严格齐平。
-- **自动测试通过**。发布前全量自动化检查均已通过：前端 84 文件 / **656 项**（`pnpm test:ci`：83 文件 556 项 + `src/App.test.tsx` 100 项）、Rust 后端 **501 项**（5 项手工用例跳过，零警告）、vendored `imap-proto` **39 项**、`pnpm test:desktop`、`pnpm release:check`、`pnpm check:ui`、`pnpm check:i18n`（2,100 条双语键）、`pnpm format:check`、`pnpm build`、`pnpm build:preview`、`cargo fmt --check`、`git diff --check`；本次 UI 修正后复验 `openpgp.test.tsx` + `mail-translation.test.ts` + `translatable-mail-body.test.tsx`（35/35）、`pnpm format:check`、`pnpm build`、`pnpm build:preview` 通过。
+    3. [src/App.tsx](../src/App.tsx)、[src-tauri/src/network.rs](../src-tauri/src/network.rs)、[src-tauri/src/archive.rs](../src-tauri/src/archive.rs)：修复 `multipart/encrypted` 外层 `encrypted.asc` 及 `application/pgp-signature` / `application/pgp-encrypted` 协议壳被 `BODYSTRUCTURE` 和 `archive::parse` 记为附件，以及 `App.tsx` 合并列表元数据时覆盖 `detail.mail.hasAttachments` 导致加密无附件邮件误显「邮件标记了附件，目前没有可单独打开的文件」的问题。
+- **自动测试通过**。发布前全量自动化检查均已通过：前端 84 文件 / **656 项**（`pnpm test:ci`：83 文件 556 项 + `src/App.test.tsx` 100 项）、Rust 后端 **501 项**（5 项手工用例跳过，零警告）、vendored `imap-proto` **39 项**、`pnpm test:desktop`、`pnpm release:check`、`pnpm check:ui`、`pnpm check:i18n`（2,100 条双语键）、`pnpm format:check`、`pnpm build`、`pnpm build:preview`、`cargo fmt --check`、`git diff --check`；本次附件壳修复后复验 `openpgp::tests`（2/2，新增 `archive::parse` 不把签名/加密壳计为附件断言）、`mail-attachments.test.tsx` + `conversation-reader.test.tsx`（8/8）、`cargo fmt --check`、`pnpm format:check`、`pnpm build`、`pnpm build:preview` 通过。
 - **真实场景验收**：Apple Silicon 本地 `pnpm desktop`（固定自签 `Authority=Anser Project Code Signing`，`Identifier=dev.maildesk.desktop`）通过 Orca Computer Use 已实机核对：
-  - PR #4 邮件真实双语翻译：`Tests → 测试`、`Patch Links → 补丁链接：` 标题块及列表项现具备一致左侧间距与完整 `6px` 四角圆角，行内代码自然内嵌。
-  - 「设置与账号 → 阅读与写信」：英文 RFC 引用头卡片、OpenPGP 加密与密钥卡片与相邻卡片标题字号及间距统一；「生成 OpenPGP 密钥对」弹窗下拉框热更新后确认齐平。
-  - **仍未实机验证**：腾讯企业邮箱 ↔ QQ 邮箱 OpenPGP 签名/加密真实互发、英文 RFC 引用头实际回复发信、收取中点击暂停账号的真实点击、Windows 端抽屉避让与设置卡片实机渲染、正式版原位升级与 Intel Mac 实机。
+  - **OpenPGP 端到端真实收发闭环（已实机通过）**：为 QQ 邮箱与腾讯企业邮箱生成并绑定 Ed25519 / Curve25519 密钥 → 腾讯企业邮箱向 QQ 邮箱发送「雁信联调：OpenPGP 签名并加密实测」（开启数字签名 + 端到端加密，验证收件人公钥显示「就绪」且写信「AI 助手」自动隐藏）→ SMTP 接受并保存本地已发送副本 → QQ 邮箱通过 IMAP IDLE 实时送达 → 实机打开收件与「已发送」副本均自动内存解密出完整正文、状态栏显示「OpenPGP 已加密（已解密）· 数字签名有效」与「加密邮件已禁用 AI」、翻译按钮禁用、误报附件提示消除。
+  - **邮件双语翻译排版（已实机通过）**：PR #4 邮件真实双语翻译中 `Tests → 测试`、`Patch Links → 补丁链接：` 标题块及列表项现具备一致左侧间距与完整 `6px` 四角圆角，行内代码自然内嵌。
+  - **设置页与弹窗排版（已实机通过）**：「设置与账号 → 阅读与写信」中英文 RFC 引用头卡片、OpenPGP 加密与密钥卡片与相邻卡片标题字号及间距统一；「生成 OpenPGP 密钥对」弹窗下拉框热更新后确认齐平。
+  - **仍未实机验证**：英文 RFC 引用头实际回复发信、收取中点击暂停账号的真实点击、与其他客户端（如 Thunderbird / GnuPG）互测 OpenPGP、Windows 端抽屉避让与设置卡片实机渲染、正式版原位升级与 Intel Mac 实机。
 - **云端构建 / 正式发布**：**未验证**。
 
 ## 已提交本地主分支 · OpenPGP 端到端加密与数字签名及 Windows UI 修正（2026-11-28，提交 `1fdfa89`，未发布）

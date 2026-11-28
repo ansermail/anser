@@ -2163,6 +2163,10 @@ Hello Bob, top secret line!\r\n";
         assert_eq!(pgp.signer_fingerprint, alice_key.fingerprint);
         assert!(mail.body.contains("Hello Bob, top secret line!"));
         assert!(attachments.is_empty());
+        let (raw_signed_mail, _, raw_signed_atts) =
+            crate::archive::parse(&signed_raw, &bob, "INBOX").unwrap();
+        assert!(!raw_signed_mail.has_attachments);
+        assert!(raw_signed_atts.is_empty());
 
         // Tampering invalidates the detached signature.
         let tampered = String::from_utf8_lossy(&signed_raw)
@@ -2182,6 +2186,10 @@ Hello Bob, top secret line!\r\n";
         )
         .unwrap();
         assert!(!String::from_utf8_lossy(&enc_raw).contains("top secret line"));
+        let (raw_enc_mail, _, raw_enc_atts) =
+            crate::archive::parse(&enc_raw, &bob, "INBOX").unwrap();
+        assert!(!raw_enc_mail.has_attachments);
+        assert!(raw_enc_atts.is_empty());
         let (dec_mail, _, _, dec_pgp) = parse_for_reading(&store, &enc_raw, &bob, "INBOX").unwrap();
         let dec_pgp = dec_pgp.expect("encrypted pgp info");
         assert!(dec_pgp.encrypted);

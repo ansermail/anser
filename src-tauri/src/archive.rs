@@ -238,7 +238,29 @@ fn filename(p: &ParsedMail) -> Option<String> {
         .cloned()
         .or_else(|| p.ctype.params.get("name").cloned())
 }
+fn is_pgp_wrapper_part(p: &ParsedMail) -> bool {
+    p.ctype
+        .mimetype
+        .eq_ignore_ascii_case("application/pgp-signature")
+        || p.ctype
+            .mimetype
+            .eq_ignore_ascii_case("application/pgp-encrypted")
+}
+fn is_pgp_encrypted_envelope(parsed: &ParsedMail) -> bool {
+    parsed
+        .ctype
+        .mimetype
+        .eq_ignore_ascii_case("multipart/encrypted")
+        && parsed
+            .ctype
+            .params
+            .get("protocol")
+            .is_some_and(|p| p.eq_ignore_ascii_case("application/pgp-encrypted"))
+}
 fn is_attachment(p: &ParsedMail) -> bool {
+    if is_pgp_wrapper_part(p) {
+        return false;
+    }
     filename(p).is_some()
         || p.get_content_disposition().disposition == mailparse::DispositionType::Attachment
 }
@@ -429,8 +451,9 @@ pub fn parse(
     let mut html = String::new();
     let mut attachments = Vec::new();
     let mut warnings = Vec::new();
+    let pgp_encrypted_outer = is_pgp_encrypted_envelope(&parsed);
     for (i, p) in parts.iter().enumerate() {
-        if is_attachment(p) {
+        if !pgp_encrypted_outer && is_attachment(p) {
             let name = filename(p).unwrap_or_else(|| format!("附件-{}", i + 1));
             let (size, error) = match decoded_bytes(p) {
                 Ok(bytes) => (bytes.len(), String::new()),

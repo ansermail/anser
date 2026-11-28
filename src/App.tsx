@@ -718,6 +718,7 @@ export default function App({
                     mail: {
                       ...metadata,
                       body: current.mail.body,
+                      hasAttachments: current.mail.hasAttachments,
                     },
                   }
                 : current,
@@ -779,7 +780,14 @@ export default function App({
               setDetailRetry((n) => n + 1);
               return;
             }
-            setDetail({ ...d, mail: { ...metadata, body: d.mail.body } });
+            setDetail({
+              ...d,
+              mail: {
+                ...metadata,
+                body: d.mail.body,
+                hasAttachments: d.mail.hasAttachments,
+              },
+            });
             if (notificationReading.current === d.mail.id) {
               notificationReading.current = "";
               if (!d.mail.isRead)
