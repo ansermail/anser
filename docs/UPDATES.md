@@ -2,13 +2,19 @@
 
 未发布改动见 [待发布更新说明](releases/UNRELEASED.md)。定稿时将相关条目连同末尾的反馈者 `@用户名` 带入版本说明，供应用内更新弹窗与 GitHub Release 展示。 [按更新条目署名](guidelines/testing-and-release.md#5-版本核对与正式发布流水线)
 
-## 当前版本：0.1.49（2026-11-28）
+## 当前版本：0.1.50（2026-11-28）
+
+0.1.50 Alpha 于 2026-11-28 19:53:52（Asia/Shanghai）公开为 [latest](https://github.com/ansermail/anser/releases/tag/v0.1.50)，固定源码 `c7b96df1e2159a1acc1bc88b6592b2041b0df1d8`、注释标签 `v0.1.50`、Release ID `461519524`。本版完善 Windows 安装器图标与覆盖升级、增加 AI 总开关与过滤规则「添加标签」动作，并修正阅读与界面排版；用户反馈条目末尾保留 `@xbcmzaa`。详细改动见 [0.1.50 发布说明](releases/v0.1.50.md)。
+
+[Release desktop](https://github.com/ansermail/anser/actions/runs/46138791359) 五项任务全通过，九资源草稿审计、三份更新签名及双架构固定签名通过。标准更新端点返回 `0.1.50`，三份安装器可匿名访问。[Homebrew](https://github.com/ansermail/anser/actions/runs/46142023879) 已同步配方。发布与验收边界见 [0.1.50 发布工作点](working/releases/RELEASE_0_1_50_WORKING.md)。
+
+## 前一正式版本：0.1.49（2026-11-28）
 
 0.1.49 Alpha 于 2026-11-28 13:25:41（Asia/Shanghai）公开为 [latest](https://github.com/ansermail/anser/releases/tag/v0.1.49)，固定源码 `3e38f848c4642c2c092d8ff63d95dd4aad9fd0c2`、注释标签 `v0.1.49`、Release ID `461322908`。本版加入 OpenPGP 签名和端到端加密，修复发送撤销倒计时、收取中暂停账号、译文排版及 Windows 抽屉关闭按钮。详细改动见 [0.1.49 发布说明](releases/v0.1.49.md)。
 
 [Release desktop](https://github.com/ansermail/anser/actions/runs/46109067806) 的五项任务均通过，包括三平台签名构建和 Windows x64 WebView2 冒烟。三份更新签名、双架构 macOS 签名及同平台镜像/归档内容一致性通过独立审计。发布与分发记录见 [0.1.49 发布工作点](working/releases/RELEASE_0_1_49_WORKING.md)。
 
-## 前一正式版本：0.1.48（2026-11-27）
+## 更早正式版本：0.1.48（2026-11-27）
 
 0.1.48 Alpha 于 2026-11-27 14:20:43（Asia/Shanghai）公开为 [latest](https://github.com/ansermail/anser/releases/tag/v0.1.48)，固定源码 `986f7839827f5b082a093bc4e9fa5e010383a4d9`、注释标签 `v0.1.48`、Release ID `460232665`。本版统一正文深色亮度反演、原地配色过渡、高分辨率黑白字标适配与失效图片占位，并加入并排双圆圈主题色样、欢迎页交互动效、账号拖拽排序、目录会话缓存、单封收取异常治理及本地脱敏诊断日志，完整改动见 [0.1.48 发布说明](releases/v0.1.48.md)。
 

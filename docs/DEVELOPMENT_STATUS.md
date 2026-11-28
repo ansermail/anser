@@ -2,18 +2,20 @@
 
 依据 PRD 第 5、8、9 节、实施记录和当前代码核查。当前仍为 Alpha；功能代码已存在与真实场景验收通过分别记录。早期回归使用临时存储/演示数据；2026-10-05 用户授权后增加当前腾讯企业邮箱与 QQ 邮箱互发测试，未向其他地址发送，未删除真实邮件。
 
-## 发布准备 · 0.1.50（2026-11-28）
+## 已发布 · 0.1.50（2026-11-28，源码 `c7b96df`）
 
-- **代码完成**。四处版本号同步至 `0.1.50`，已准备 [正式版本说明](releases/v0.1.50.md)，保留 `@xbcmzaa` 的逐条署名。
-- **自动测试、真实场景验收、云端构建及正式发布**进度见 [0.1.50 发布工作点](working/releases/RELEASE_0_1_50_WORKING.md)。本版正式包更新弹窗、云端构建及正式发布未验证。
+- **代码完成**。四处版本号同步至 `0.1.50`，正式版本说明保留 `@xbcmzaa` 的逐条署名。详见 [0.1.50 发布说明](releases/v0.1.50.md) 与 [发布工作点](working/releases/RELEASE_0_1_50_WORKING.md)。
+- **自动测试通过**。前端 663 项、Rust 505 项通过和 5 项忽略、桌面脚本 42 项、vendored `imap-proto` 39 项；生产与 Pages 预览构建、发布预检和逐条署名渲染通过。
+- **云端构建通过**。[Release desktop](https://github.com/ansermail/anser/actions/runs/46138791359) 的 check、双架构 macOS 构建、Windows 原生回归与草稿五项任务全部成功；三份 Minisign 签名、八份产物与 Actions 原件逐字节、双架构签名与 DMG/归档一致性及九份资源通过独立审计。
+- **正式发布通过**。2026-11-28 19:53:52（Asia/Shanghai）公开 [v0.1.50 Alpha](https://github.com/ansermail/anser/releases/tag/v0.1.50) 为 latest。三份安装器 HTTP 200，标准更新端点返回 `0.1.50` 且 `latest.json` 的两条 `@xbcmzaa` 署名与正式说明一致。[Homebrew 流水线](https://github.com/ansermail/anser/actions/runs/46142023879) 成功并更新配方；官网、Homebrew 分发及正式包更新弹窗的部署后验证仍单独记录。Windows 内网离线覆盖升级、升级后凭据与存档读取未验证。
 
-## 进行中 · Issue #5 Windows 安装器与 AI 开关（2026-11-28，待发布）
+## 已发布 · Issue #5 Windows 安装器与 AI 开关（2026-11-28）
 
 - **代码完成**。[Issue #5](https://github.com/ansermail/anser/issues/5) 的 Windows NSIS 安装包显式使用雁信图标。同一用户、同一已登记目录、同版或向前升级，手动运行 EXE 时直接覆盖安装。旧 NSIS 安装记录若进入维护页，向前升级默认选择「直接覆盖安装」。AI 开关位于「设置与账号 → 应用偏好」，现有用户默认开启。关闭隐藏模型功能，取消在途模型请求并保留配置、凭据和缓存。详见 [Windows 工作点](working/features/WINDOWS_SUPPORT_WORKING.md) 与 [AI 工作点](working/features/AI_FEATURES_WORKING.md)。
 - **自动测试通过**。前端 85 文件、663 项，Rust 505 项通过、5 项忽略，桌面脚本 42 项（含覆盖安装默认项复验）。生产、Pages 演示、UI、2,105 条双语、Prettier、Rust 格式与差异检查通过。macOS 通过官方 Tauri CLI 编译带合成 x64 PE 的 NSIS 测试安装器，验证资源含雁信 ICO 六个原始尺寸和 WebView2 引导程序。
-- **场景验收**。macOS 固定签名桌面开发版已通过 Orca 重拍三张浅色 README 截图，均为 3840 × 2100。已核对收件箱、回复草稿和过滤规则的可见内容，全部使用虚构数据。Windows 内网覆盖升级、升级后凭据与存档读取和 AI 开关原生使用场景未验证。**云端构建**未验证。**正式发布**未验证。
+- **场景验收**。macOS 固定签名桌面开发版已通过 Orca 重拍三张浅色 README 截图，均为 3840 × 2100。已核对收件箱、回复草稿和过滤规则的可见内容，全部使用虚构数据。Windows 内网覆盖升级、升级后凭据与存档读取和 AI 开关原生使用场景未验证。云端构建与正式发布已于 0.1.50 完成，见上方发布记录。
 
-- **下一版更新说明**。Windows 安装包和 AI 开关条目末尾均标注 `@xbcmzaa`，发布时按[发版规范](guidelines/testing-and-release.md#5-版本核对与正式发布流水线)带入版本说明。[Issue #5](https://github.com/ansermail/anser/issues/5) 已按「已完成」关闭，[原回复](https://github.com/ansermail/anser/issues/5#issuecomment-7237914651)已简化为处理结果与下版提供。此次修正仅涉及文档和回复，应用更新说明渲染、格式与发布预检通过。正式包内弹窗、云端发布构建与正式发布未验证。
+- **下一版更新说明**。Windows 安装包和 AI 开关条目末尾均标注 `@xbcmzaa`，发布时按[发版规范](guidelines/testing-and-release.md#5-版本核对与正式发布流水线)带入版本说明。[Issue #5](https://github.com/ansermail/anser/issues/5) 已按「已完成」关闭，[原回复](https://github.com/ansermail/anser/issues/5#issuecomment-7237914651)已简化为处理结果与下版提供。此次修正仅涉及文档和回复，应用更新说明渲染、格式与发布预检通过。正式包内弹窗待安装版点验；云端发布构建与正式发布已于 0.1.50 完成。
 
 ## 进行中 · 过滤规则添加标签（2026-11-28，待发布）
 
