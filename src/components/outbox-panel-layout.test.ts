@@ -12,7 +12,7 @@ it("reveals the sidebar scrollbar only on hover or keyboard focus", () => {
     /\.sidebar:hover,\s*\.sidebar:focus-within \{[^}]*scrollbar-width: thin;/s,
   );
   expect(css).toMatch(
-    /\.sidebar:hover::-webkit-scrollbar-thumb,\s*\.sidebar:focus-within::-webkit-scrollbar-thumb \{[^}]*color-mix\(/s,
+    /\.sidebar:hover::-webkit-scrollbar-thumb,\s*\.sidebar:focus-within::-webkit-scrollbar-thumb \{[^}]*background: var\(--secondary\)/s,
   );
 });
 
@@ -38,6 +38,15 @@ it("hides global native scrollbars until hover or focus and keeps them narrow", 
   expect(css).toMatch(
     /\*:hover::-webkit-scrollbar-thumb,\s*\*:focus-within::-webkit-scrollbar-thumb/s,
   );
+  expect(css).toMatch(
+    /\*:hover,\s*\*:focus-within \{[^}]*scrollbar-color: var\(--secondary\)/s,
+  );
+  expect(css).toMatch(
+    /\*:hover::-webkit-scrollbar-thumb,\s*\*:focus-within::-webkit-scrollbar-thumb \{[^}]*background: var\(--secondary\)/s,
+  );
+  expect(css).not.toMatch(
+    /\*:hover::-webkit-scrollbar-thumb[^}]*var\(--muted-foreground\)/s,
+  );
 });
 
 it("hides shadcn scroll-area bars until hover or focus", () => {
@@ -53,4 +62,6 @@ it("hides shadcn scroll-area bars until hover or focus", () => {
   );
   expect(component).toContain("h-full w-1.5");
   expect(component).toContain('"h-1 flex-col border-t-0 p-0"');
+  expect(component).toContain("bg-secondary");
+  expect(component).not.toContain("bg-muted-foreground/45");
 });

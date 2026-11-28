@@ -225,8 +225,7 @@ kbd {
 *:hover,
 *:focus-within {
   scrollbar-width: thin;
-  scrollbar-color: color-mix(in srgb, var(--muted-foreground) 55%, transparent)
-    transparent;
+  scrollbar-color: var(--secondary) transparent;
 }
 ::-webkit-scrollbar {
   width: 4px;
@@ -241,7 +240,7 @@ kbd {
 }
 *:hover::-webkit-scrollbar-thumb,
 *:focus-within::-webkit-scrollbar-thumb {
-  background: color-mix(in srgb, var(--muted-foreground) 55%, transparent);
+  background: var(--secondary);
 }
 [data-slot="scroll-area"]:not(:hover):not(:focus-within)
   [data-slot="scroll-area-scrollbar"] {
@@ -1157,7 +1156,7 @@ kbd {
   overflow-anchor: none;
 }
 .reader-scroll [data-slot="scroll-area-thumb"] {
-  background: color-mix(in srgb, var(--muted) 55%, transparent);
+  background: var(--secondary);
 }
 /* Radix applies display: table inline; keep this list bound to its scroll viewport. */
 .import-results-scroll [data-slot="scroll-area-viewport"] > div {
@@ -4337,7 +4336,7 @@ kbd {
 }
 .sidebar:hover::-webkit-scrollbar-thumb,
 .sidebar:focus-within::-webkit-scrollbar-thumb {
-  background: color-mix(in srgb, var(--muted-foreground) 55%, transparent);
+  background: var(--secondary);
 }
 .mail-sidebar [data-slot="sidebar-content"] {
   padding-bottom: 20px;
