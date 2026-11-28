@@ -216,13 +216,51 @@ kbd {
   background: var(--primary);
   color: var(--primary-foreground);
 }
+*,
+*::before,
+*::after {
+  scrollbar-width: none;
+  scrollbar-color: transparent transparent;
+}
+*:hover,
+*:focus-within {
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--muted-foreground) 55%, transparent)
+    transparent;
+}
 ::-webkit-scrollbar {
-  width: 5px;
-  height: 5px;
+  width: 4px;
+  height: 4px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: var(--secondary);
-  border-radius: 6px;
+  background: transparent;
+  border-radius: 999px;
+}
+*:hover::-webkit-scrollbar-thumb,
+*:focus-within::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--muted-foreground) 55%, transparent);
+}
+[data-slot="scroll-area"]:not(:hover):not(:focus-within)
+  [data-slot="scroll-area-scrollbar"] {
+  opacity: 0;
+  pointer-events: none;
+}
+[data-slot="scroll-area"]:is(:hover, :focus-within)
+  [data-slot="scroll-area-scrollbar"] {
+  opacity: 1;
+  pointer-events: auto;
+}
+[data-slot="scroll-area-scrollbar"] {
+  transition: opacity var(--duration-fast, 120ms) ease;
+}
+@media (hover: none) {
+  [data-slot="scroll-area"] [data-slot="scroll-area-scrollbar"] {
+    opacity: 1;
+    pointer-events: auto;
+  }
 }
 .dark {
   --background: #121714;
@@ -4291,15 +4329,15 @@ kbd {
   scrollbar-color: var(--secondary) transparent;
 }
 .sidebar::-webkit-scrollbar {
-  width: 5px;
+  width: 4px;
 }
 .sidebar::-webkit-scrollbar-thumb {
   background: transparent;
-  border-radius: 6px;
+  border-radius: 999px;
 }
 .sidebar:hover::-webkit-scrollbar-thumb,
 .sidebar:focus-within::-webkit-scrollbar-thumb {
-  background: var(--secondary);
+  background: color-mix(in srgb, var(--muted-foreground) 55%, transparent);
 }
 .mail-sidebar [data-slot="sidebar-content"] {
   padding-bottom: 20px;
