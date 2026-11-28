@@ -183,28 +183,29 @@ export function OpenPgpIndicator({
           <Icon className="size-3.5" aria-hidden="true" />
         </Button>
       </PopoverTrigger>
-      <PopoverContent align="end" className="w-[340px] space-y-3 p-3.5">
+      <PopoverContent
+        align="end"
+        className="w-[476px] max-w-[calc(100vw-2rem)] space-y-3 p-4"
+      >
         <div className="flex items-start gap-2">
           <Icon
             className={`mt-0.5 size-4 shrink-0 ${isWarning ? "text-destructive" : isGood ? "text-primary" : "text-muted-foreground"}`}
             aria-hidden="true"
           />
-          <div className="min-w-0 space-y-1.5">
+          <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
             <p className="text-sm font-medium leading-snug text-foreground">
               {title}
             </p>
-            <div className="flex flex-wrap items-center gap-1.5">
-              {pgp.format === "inlinePgp" && (
-                <Badge variant="outline" className="text-[11px] font-normal">
-                  Inline PGP
-                </Badge>
-              )}
-              {pgp.encrypted && (
-                <Badge variant="secondary" className="text-[11px] font-normal">
-                  {t("AI disabled for encrypted mail")}
-                </Badge>
-              )}
-            </div>
+            {pgp.format === "inlinePgp" && (
+              <Badge variant="outline" className="text-[11px] font-normal">
+                Inline PGP
+              </Badge>
+            )}
+            {pgp.encrypted && (
+              <Badge variant="secondary" className="text-[11px] font-normal">
+                {t("AI disabled for encrypted mail")}
+              </Badge>
+            )}
           </div>
         </div>
 
