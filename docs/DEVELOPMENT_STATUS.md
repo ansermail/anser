@@ -4,7 +4,7 @@
 
 ## 进行中 · 侧栏滚动条与发送记录表格高度（2026-11-28，待发布）
 
-- **代码完成**。左侧 `.sidebar` 改为默认隐藏滚动条，仅在鼠标悬停或键盘聚焦容器时显示；保留滚动能力与稳定滚动边界。发送记录的 `.workspace-panel > .task-data-table` 改为占满工作区剩余高度，取消表格视口原先 `clamp(232px, 43vh, 400px)` 的上限；每页行数按窗口可用高度动态增加且至少保留 15 条，分页仍用于超出可显示数量的记录。详见 [UI 设计规范](UI_DESIGN_GUIDELINES.md) 与组件/页面专项约定。
+- **代码完成**。左侧 `.sidebar` 改为默认隐藏滚动条，仅在鼠标悬停或键盘聚焦容器时显示；保留稳定滚动槽、滚动能力与滚动边界。发送记录的 `.workspace-panel > .task-data-table` 改为占满工作区剩余高度，取消表格视口原先 `clamp(232px, 43vh, 400px)` 的上限；每页行数按窗口可用高度动态增加且至少保留 15 条，分页仍用于超出可显示数量的记录。详见 [UI 设计规范](UI_DESIGN_GUIDELINES.md) 与已经同步的[组件/页面专项约定](guidelines/ui-design.md#53-tanstack-table-表格与折叠卡片)。
 - **自动测试通过**。新增 CSS 布局与响应式分页 Hook 回归；`outbox-panel`、`task-data-table` 相关 Vitest 12 项通过，`pnpm check:ui`、`pnpm check:i18n`、`pnpm format:check`、`git diff --check` 与 `pnpm build` 通过。`pnpm test:ci`、Rust、桌面脚本及 `pnpm build:preview` 未在本轮单独重复。
 - **场景验收**。隔离浏览器预览未完成交互确认，开发预览的深色模式、侧栏滚动条悬停/聚焦显隐、发送记录表格占满高度及窄窗口分页仍标注未验证；浅色和 macOS/Windows 原生实机未验证。**云端构建**未验证。**正式发布**未验证，也不改动已发布的 `v0.1.50` 产物。
 

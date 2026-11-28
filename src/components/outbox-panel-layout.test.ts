@@ -6,6 +6,7 @@ import { expect, it } from "vitest";
 const css = readFileSync(resolve(process.cwd(), "src/index.css"), "utf8");
 
 it("reveals the sidebar scrollbar only on hover or keyboard focus", () => {
+  expect(css).toMatch(/[^.]*\.sidebar \{[^}]*scrollbar-gutter: stable;/s);
   expect(css).toMatch(/[^.]*\.sidebar \{[^}]*scrollbar-width: none;/s);
   expect(css).toMatch(
     /\.sidebar:hover,\s*\.sidebar:focus-within \{[^}]*scrollbar-width: thin;/s,

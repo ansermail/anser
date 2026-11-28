@@ -4282,6 +4282,7 @@ kbd {
   min-height: 0;
   overflow-y: auto;
   overscroll-behavior: contain;
+  scrollbar-gutter: stable;
   scrollbar-width: none;
 }
 .sidebar:hover,
