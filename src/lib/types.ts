@@ -145,6 +145,69 @@ export interface Snapshot {
   }[];
   accountStarredUnread?: { accountId: string; unread: number }[];
 }
+export interface PgpKeyInfo {
+  fingerprint: string;
+  keyId: string;
+  email: string;
+  emails: string[];
+  userIds: string[];
+  accountId: string;
+  isSecret: boolean;
+  hasSavedPassphrase: boolean;
+  isPassphraseProtected: boolean;
+  algorithm: string;
+  createdAt: string;
+  expiresAt: string;
+  expired: boolean;
+  revoked: boolean;
+  source: string;
+  updatedAt: string;
+}
+export interface PgpImportResult {
+  imported: PgpKeyInfo[];
+  passphraseRequiredFingerprints: string[];
+}
+export interface PgpRecipientStatus {
+  email: string;
+  hasKey: boolean;
+  fingerprint: string;
+  userId: string;
+  expired: boolean;
+  revoked: boolean;
+  algorithm: string;
+}
+export interface PgpComposeCheck {
+  senderHasSecretKey: boolean;
+  senderFingerprint: string;
+  senderPassphraseNeeded: boolean;
+  recipients: PgpRecipientStatus[];
+  allRecipientsReady: boolean;
+  missingEmails: string[];
+}
+export interface PgpMessageInfo {
+  encrypted: boolean;
+  encryptionState:
+    "none" | "decrypted" | "missingKey" | "passphraseRequired" | "failed";
+  format: "none" | "pgpMime" | "inlinePgp";
+  decryptionKeyFingerprint?: string;
+  recipientKeyIds?: string[];
+  encryptionError?: string;
+  signed: boolean;
+  signatureState:
+    | "none"
+    | "valid"
+    | "invalid"
+    | "missingKey"
+    | "expiredKey"
+    | "revokedKey"
+    | "error";
+  signerFingerprint?: string;
+  signerKeyId?: string;
+  signerUserId?: string;
+  senderMatchesSigner: boolean;
+  signatureError?: string;
+  hasAttachedPublicKey: boolean;
+}
 export interface Detail {
   originalHash?: string;
   mail: Mail;
@@ -160,6 +223,7 @@ export interface Detail {
   to?: Address[];
   cc?: Address[];
   bcc?: Address[];
+  pgp?: PgpMessageInfo | null;
 }
 export interface MailPage extends Snapshot {
   nextCursor: string | null;
@@ -217,6 +281,9 @@ export interface Compose {
   references?: string[];
   deliveryBody?: string;
   deliveryHtml?: string;
+  pgpSign?: boolean;
+  pgpEncrypt?: boolean;
+  pgpAttachPublicKey?: boolean;
 }
 export interface ForwardFile {
   id: string;

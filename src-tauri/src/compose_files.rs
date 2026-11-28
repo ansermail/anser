@@ -393,7 +393,12 @@ impl Store {
         if !live {
             return Err("写信窗口已关闭或切换，附件准备已取消".into());
         }
-        let files = prepare(&self.root, &raw, &self.account_for_mail(&initial))?;
+        let effective_raw = crate::openpgp::decrypted_mime_for_attachments(self, &raw)?;
+        let files = prepare(
+            &self.root,
+            effective_raw.as_deref().unwrap_or(&raw),
+            &self.account_for_mail(&initial),
+        )?;
         before_publish();
         let publish = (|| -> Result<()> {
             let mut db = self.db()?;

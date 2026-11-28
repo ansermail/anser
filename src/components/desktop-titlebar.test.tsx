@@ -2,8 +2,11 @@
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { DesktopTitlebar } from "./desktop-titlebar";
 import { Dialog, DialogContent, DialogTitle } from "./ui/dialog";
+import { Sheet, SheetContent, SheetTitle } from "./ui/sheet";
 
 const state = vi.hoisted(() => ({
   native: true,
@@ -154,4 +157,34 @@ it("keeps an open draft dialog intact when a caption action is clicked", async (
   });
   expect(changed).not.toHaveBeenCalled();
   expect(state.minimize).toHaveBeenCalledOnce();
+});
+
+it("marks right-side sheets with data-side and offsets them below the Windows titlebar", async () => {
+  await act(async () =>
+    root.render(
+      <>
+        <DesktopTitlebar />
+        <Sheet open>
+          <SheetContent
+            side="right"
+            className="wb-editor"
+            aria-describedby={undefined}
+          >
+            <SheetTitle>Add work record</SheetTitle>
+          </SheetContent>
+        </Sheet>
+      </>,
+    ),
+  );
+  const sheet = document.body.querySelector<HTMLElement>(
+    '[data-slot="sheet-content"]',
+  );
+  expect(sheet?.getAttribute("data-side")).toBe("right");
+  const css = readFileSync(resolve(process.cwd(), "src/index.css"), "utf8");
+  expect(css).toMatch(
+    /:root\[data-platform="windows"\]\[data-desktop="true"\][\s\S]*?\[data-slot="sheet-overlay"\][\s\S]*?top:\s*var\(--window-titlebar-height\)/,
+  );
+  expect(css).toMatch(
+    /:root\[data-platform="windows"\]\[data-desktop="true"\][\s\S]*?\[data-slot="sheet-content"\]\[data-side="right"\][\s\S]*?top:\s*var\(--window-titlebar-height\)[\s\S]*?height:\s*calc\(100dvh\s*-\s*var\(--window-titlebar-height\)\)/,
+  );
 });

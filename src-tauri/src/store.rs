@@ -81,6 +81,7 @@ impl Store {
             .map_err(err)?;
         db.execute_batch("CREATE TABLE IF NOT EXISTS work_items(id TEXT PRIMARY KEY, revision INTEGER NOT NULL, work_date TEXT NOT NULL, data TEXT NOT NULL); CREATE INDEX IF NOT EXISTS work_items_date ON work_items(work_date,id);").map_err(err)?;
         crate::work_items::initialize(&db)?;
+        crate::openpgp::init_schema(&db)?;
         db.execute_batch("CREATE TABLE IF NOT EXISTS translation_cache(key TEXT PRIMARY KEY,data TEXT NOT NULL,updated_at INTEGER NOT NULL)").map_err(err)?;
         for (column, definition) in [
             ("error", "TEXT NOT NULL DEFAULT ''"),
@@ -1150,8 +1151,12 @@ impl Store {
             }
         }
         let raw = self.message_raw(&mail)?;
-        let (parsed, html, attachments) =
-            archive::parse(&raw, &self.account_for_mail(&mail), &mail.source_folder)?;
+        let (parsed, html, attachments, pgp) = crate::openpgp::parse_for_reading(
+            self,
+            &raw,
+            &self.account_for_mail(&mail),
+            &mail.source_folder,
+        )?;
         mail.body = parsed.body;
         mail.has_attachments = parsed.has_attachments;
         mail.sender_on_behalf_of = parsed.sender_on_behalf_of;
@@ -1165,6 +1170,7 @@ impl Store {
             to,
             cc,
             bcc,
+            pgp,
         })
     }
     fn reparse(&self, mail: &Mail) -> Result<(Mail, String, Vec<AttachmentInfo>)> {

@@ -1500,16 +1500,51 @@ pub(crate) fn build_message(a: &Account, c: &Compose) -> Result<Message> {
     if c.forward_source.is_some() || c.forward_files.iter().any(|f| f.included) {
         return Err("原附件需要经草稿归属核对后准备".into());
     }
-    build_message_parts(a, c, &[])
+    build_message_parts(a, c, &[], None)
 }
 pub(crate) fn build_prepared_message(store: &Store, a: &Account, c: &Compose) -> Result<Message> {
     let files = store.forward_payloads(c)?;
-    build_message_parts(a, c, &files)
+    let extra_key = if c.pgp_attach_public_key {
+        crate::openpgp::sender_public_key_attachment(store, a)?
+    } else {
+        None
+    };
+    build_message_parts(a, c, &files, extra_key)
+}
+fn build_prepared_raw(
+    store: &Store,
+    a: &Account,
+    c: &Compose,
+) -> Result<(lettre::address::Envelope, Vec<u8>)> {
+    let message = build_prepared_message(store, a, c)?;
+    let envelope = message.envelope().clone();
+    let formatted = message.formatted();
+    if !c.pgp_sign && !c.pgp_encrypt {
+        return Ok((envelope, formatted));
+    }
+    let recipients: Vec<String> = [&c.to, &c.cc, &c.bcc]
+        .into_iter()
+        .map(|v| archive::addresses(&v.replace(['，', '；'], ",")))
+        .collect::<Result<Vec<_>>>()?
+        .into_iter()
+        .flatten()
+        .map(|addr| addr.email)
+        .collect();
+    let protected = crate::openpgp::protect_outgoing_mime(
+        store,
+        a,
+        &formatted,
+        &recipients,
+        c.pgp_sign,
+        c.pgp_encrypt,
+    )?;
+    Ok((envelope, protected))
 }
 fn build_message_parts(
     a: &Account,
     c: &Compose,
     files: &[crate::compose_files::AttachmentBytes],
+    extra_pgp_key: Option<(String, Vec<u8>)>,
 ) -> Result<Message> {
     let mut builder = Message::builder()
         .from(a.email.parse().map_err(err)?)
@@ -1629,9 +1664,81 @@ fn build_message_parts(
             ),
         );
     }
+    if let Some((key_name, key_bytes)) = extra_pgp_key {
+        parts = parts.singlepart(
+            Attachment::new(key_name).body(
+                Body::new_with_encoding(key_bytes, ContentTransferEncoding::SevenBit)
+                    .map_err(|_| "公钥附件编码失败")?,
+                ContentType::parse("application/pgp-keys").map_err(err)?,
+            ),
+        );
+    }
     builder.multipart(parts).map_err(err)
 }
 pub fn send(store: &Store, c: &Compose) -> Result<String> {
+    if c.pgp_sign || c.pgp_encrypt {
+        let db = store.db()?;
+        let exists: bool = db
+            .query_row(
+                "SELECT EXISTS(SELECT 1 FROM outbox WHERE id=?1)",
+                [&c.id],
+                |r| r.get(0),
+            )
+            .map_err(err)?;
+        if exists {
+            return Err("这封邮件已有发送记录，请在发送记录中检查状态或准备重发".into());
+        }
+        let a = store.account(&c.account_id)?;
+        if !a.enabled {
+            return Err("此账号已暂停，请先启用".into());
+        }
+        let (envelope, raw) = build_prepared_raw(store, &a, c)?;
+        let transport = smtp(&a, &auth::credentials(&a)?)?;
+        store.save_draft(c)?;
+        db.execute(
+            "INSERT INTO outbox(id,status,data,raw,updated_at,raw_hash) VALUES(?1,'sending',?2,?3,?4,?5)",
+            rusqlite::params![
+                c.id,
+                serde_json::to_string(c).map_err(err)?,
+                raw,
+                chrono::Utc::now().to_rfc3339(),
+                archive::digest(&raw)
+            ],
+        )
+        .map_err(err)?;
+        if let Err(error) = transport.send_raw(&envelope, &raw) {
+            let status = if error.is_permanent() || error.is_transient() {
+                "failed"
+            } else {
+                "uncertain"
+            };
+            db.execute(
+                "UPDATE outbox SET status=?2,error=?3,updated_at=?4 WHERE id=?1",
+                rusqlite::params![
+                    c.id,
+                    status,
+                    error.to_string(),
+                    chrono::Utc::now().to_rfc3339()
+                ],
+            )
+            .map_err(err)?;
+            return Err(format!(
+                "发送未完成：{error}。草稿和发送记录已保留，请检查发送记录。"
+            ));
+        }
+        store.confirm_smtp(&a, &c.id)?;
+        let mut sent_account = a.clone();
+        sent_account.save_locally = true;
+        let saved = store.ingest(&sent_account, "Sent", &c.id, &raw, true);
+        db.execute("DELETE FROM drafts WHERE id=?1", [&c.id])
+            .map_err(err)?;
+        return match saved {
+            Ok(_) => Ok("邮件已提交 SMTP，本地已发送副本已保存".into()),
+            Err(e) => Ok(format!(
+                "邮件已提交 SMTP，但本地归档失败：{e}。原始邮件仍保存在发件记录中，请勿重复发送。"
+            )),
+        };
+    }
     send_with(
         store,
         c,
@@ -1712,13 +1819,13 @@ pub(crate) fn send_with<T>(
 
 pub fn schedule(store: &Store, c: &Compose, at: &str) -> Result<()> {
     let a = store.account(&c.account_id)?;
-    let message = build_prepared_message(store, &a, c)?;
-    store.schedule_mail(c, &message.formatted(), at, chrono::Utc::now())
+    let (_, raw) = build_prepared_raw(store, &a, c)?;
+    store.schedule_mail(c, &raw, at, chrono::Utc::now())
 }
 pub fn queue_send(store: &Store, c: &Compose) -> Result<()> {
     let a = store.account(&c.account_id)?;
-    let message = build_prepared_message(store, &a, c)?;
-    store.queue_send(c, &message.formatted(), chrono::Utc::now())
+    let (_, raw) = build_prepared_raw(store, &a, c)?;
+    store.queue_send(c, &raw, chrono::Utc::now())
 }
 
 // MIME and attachments are frozen at scheduling time, independent of source files.

@@ -77,6 +77,7 @@ import {
 } from "@/lib/compose-format";
 import { localDateTime, scheduledIso } from "@/lib/schedule-time";
 import { SchedulePicker } from "./schedule-picker";
+import { ComposePgpControl } from "./compose-pgp-control";
 import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
 const RichEditor = lazy(() =>
   import("./rich-editor").then((m) => ({ default: m.RichEditor })),
@@ -1105,9 +1106,12 @@ export function ComposeDialog({
                                   imageLoading ||
                                   forwardLoading ||
                                   !!value.forwardSource ||
-                                  !!value.externalForwardToken
+                                  !!value.externalForwardToken ||
+                                  !!value.pgpEncrypt
                                 }
-                                assistantHost={assistantHost}
+                                assistantHost={
+                                  value.pgpEncrypt ? null : assistantHost
+                                }
                                 onOpenAssistant={() =>
                                   setDeliveryPreview(false)
                                 }
@@ -1491,6 +1495,19 @@ export function ComposeDialog({
                   <Paperclip data-icon="inline-start" />
                   {t("Add attachment")}
                 </Button>
+                <ComposePgpControl
+                  accountId={value.accountId}
+                  recipients={[
+                    ...parseAddresses(value.to),
+                    ...parseAddresses(value.cc),
+                    ...parseAddresses(value.bcc),
+                  ].map((a) => a.email)}
+                  sign={!!value.pgpSign}
+                  encrypt={!!value.pgpEncrypt}
+                  attachPublicKey={!!value.pgpAttachPublicKey}
+                  disabled={sending || closing}
+                  onChange={(next) => update(next)}
+                />
                 {attachmentReminderVisible && attachmentReminder && (
                   <Alert role="status" className="compose-attachment-reminder">
                     <AlertDescription className="compose-attachment-reminder-content">

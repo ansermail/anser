@@ -43,6 +43,7 @@ export function TranslatableMailBody({
   mailId,
   mailDate,
   onAddWorkItem,
+  encrypted = false,
 }: {
   mailId?: string;
   mailDate?: string;
@@ -54,6 +55,7 @@ export function TranslatableMailBody({
   subject?: string;
   subjectContainer?: HTMLElement | null;
   onOpenLink: (href: string) => void;
+  encrypted?: boolean;
 }) {
   const overlayHost = useMailOverlayHost();
   const summary = useMailSummary(
@@ -310,42 +312,53 @@ export function TranslatableMailBody({
               )}
               <Tooltip>
                 <TooltipTrigger asChild>
-                  <Button
-                    variant={shown && !busy && !error ? "secondary" : "ghost"}
-                    size="icon-sm"
-                    aria-label={actionLabel}
-                    aria-pressed={shown}
-                    disabled={!ready}
-                    onClick={() => {
-                      if (busy) {
-                        cancel();
-                        setBusy(false);
-                        setError(
-                          t(
-                            "Translation canceled. Completed paragraphs remain; retry or hide them.",
-                          ),
-                        );
-                      } else if (shown && !error) reset();
-                      else void translate();
-                    }}
-                  >
-                    {busy ? (
-                      <LoaderCircle
-                        aria-hidden="true"
-                        className="animate-spin"
-                      />
-                    ) : error ? (
-                      <RotateCcw aria-hidden="true" />
-                    ) : (
-                      <Languages aria-hidden="true" />
-                    )}
-                  </Button>
+                  <span>
+                    <Button
+                      variant={shown && !busy && !error ? "secondary" : "ghost"}
+                      size="icon-sm"
+                      aria-label={
+                        encrypted
+                          ? t("Encrypted messages are not sent to AI services")
+                          : actionLabel
+                      }
+                      aria-pressed={shown}
+                      disabled={!ready || encrypted}
+                      onClick={() => {
+                        if (encrypted) return;
+                        if (busy) {
+                          cancel();
+                          setBusy(false);
+                          setError(
+                            t(
+                              "Translation canceled. Completed paragraphs remain; retry or hide them.",
+                            ),
+                          );
+                        } else if (shown && !error) reset();
+                        else void translate();
+                      }}
+                    >
+                      {busy ? (
+                        <LoaderCircle
+                          aria-hidden="true"
+                          className="animate-spin"
+                        />
+                      ) : error ? (
+                        <RotateCcw aria-hidden="true" />
+                      ) : (
+                        <Languages aria-hidden="true" />
+                      )}
+                    </Button>
+                  </span>
                 </TooltipTrigger>
                 <TooltipContent>
-                  {status ? `${status} · ${actionLabel}` : actionLabel}
+                  {encrypted
+                    ? t("Encrypted messages are not sent to AI services")
+                    : status
+                      ? `${status} · ${actionLabel}`
+                      : actionLabel}
                 </TooltipContent>
               </Tooltip>
-              {summary.trigger(ready && !!(body.trim() || html))}
+              {!encrypted && summary.trigger(ready && !!(body.trim() || html))}
             </div>
           </TooltipProvider>,
           actionsContainer,

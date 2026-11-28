@@ -1271,6 +1271,164 @@ export async function call<T = void>(
         );
         demo.logs = demo.logs.slice(0, 30);
         break;
+      case "list_pgp_keys": {
+        const stored = JSON.parse(
+          demoStorage.getItem(key + "-pgp-keys") || "[]",
+        );
+        result = stored;
+        break;
+      }
+      case "generate_pgp_key": {
+        const stored = JSON.parse(
+          demoStorage.getItem(key + "-pgp-keys") || "[]",
+        ) as Record<string, unknown>[];
+        const fp = Array.from({ length: 40 }, () =>
+          Math.floor(Math.random() * 16)
+            .toString(16)
+            .toUpperCase(),
+        ).join("");
+        const email = String(args.email || "").toLowerCase();
+        const name = String(args.name || "");
+        const item = {
+          fingerprint: fp,
+          keyId: fp.slice(-16),
+          email,
+          emails: email ? [email] : [],
+          userIds: [name ? `${name} <${email}>` : `<${email}>`],
+          accountId: String(args.accountId || ""),
+          isSecret: true,
+          hasSavedPassphrase: Boolean(args.passphrase),
+          isPassphraseProtected: Boolean(args.passphrase),
+          algorithm:
+            args.algorithm === "rsa4096" ? "RSA" : "Ed25519 / Curve25519",
+          createdAt: new Date().toISOString(),
+          expiresAt: "",
+          expired: false,
+          revoked: false,
+          source: "generated",
+          updatedAt: new Date().toISOString(),
+        };
+        stored.unshift(item);
+        demoStorage.setItem(key + "-pgp-keys", JSON.stringify(stored));
+        result = item;
+        break;
+      }
+      case "import_pgp_keys":
+      case "import_pgp_key_from_file":
+      case "import_pgp_key_from_attachment": {
+        const stored = JSON.parse(
+          demoStorage.getItem(key + "-pgp-keys") || "[]",
+        ) as Record<string, unknown>[];
+        const fp = Array.from({ length: 40 }, () =>
+          Math.floor(Math.random() * 16)
+            .toString(16)
+            .toUpperCase(),
+        ).join("");
+        const item = {
+          fingerprint: fp,
+          keyId: fp.slice(-16),
+          email: "demo-contact@example.com",
+          emails: ["demo-contact@example.com"],
+          userIds: ["Demo Contact <demo-contact@example.com>"],
+          accountId: String(args.accountId || ""),
+          isSecret: false,
+          hasSavedPassphrase: false,
+          isPassphraseProtected: false,
+          algorithm: "Ed25519 / Curve25519",
+          createdAt: new Date().toISOString(),
+          expiresAt: "",
+          expired: false,
+          revoked: false,
+          source: "imported",
+          updatedAt: new Date().toISOString(),
+        };
+        stored.push(item);
+        demoStorage.setItem(key + "-pgp-keys", JSON.stringify(stored));
+        result = { imported: [item], passphraseRequiredFingerprints: [] };
+        break;
+      }
+      case "bind_pgp_account_key": {
+        const stored = JSON.parse(
+          demoStorage.getItem(key + "-pgp-keys") || "[]",
+        ) as Record<string, unknown>[];
+        for (const item of stored) {
+          if (item.accountId === args.accountId) item.accountId = "";
+          if (item.fingerprint === args.fingerprint)
+            item.accountId = String(args.accountId || "");
+        }
+        demoStorage.setItem(key + "-pgp-keys", JSON.stringify(stored));
+        break;
+      }
+      case "export_pgp_public_key":
+        result =
+          "-----BEGIN PGP PUBLIC KEY BLOCK-----\n\nDemoPublicKeyPreviewOnly\n-----END PGP PUBLIC KEY BLOCK-----\n";
+        break;
+      case "export_pgp_secret_key":
+      case "save_pgp_key_file":
+        throw new Error(
+          t(
+            "Desktop features are unavailable in the web preview. Download Anser.",
+          ),
+        );
+      case "delete_pgp_key": {
+        const stored = (
+          JSON.parse(demoStorage.getItem(key + "-pgp-keys") || "[]") as Record<
+            string,
+            unknown
+          >[]
+        ).filter((item) => item.fingerprint !== args.fingerprint);
+        demoStorage.setItem(key + "-pgp-keys", JSON.stringify(stored));
+        break;
+      }
+      case "unlock_pgp_key":
+      case "lock_pgp_session":
+        break;
+      case "check_pgp_compose": {
+        const stored = JSON.parse(
+          demoStorage.getItem(key + "-pgp-keys") || "[]",
+        ) as {
+          fingerprint: string;
+          email: string;
+          emails: string[];
+          userIds: string[];
+          accountId: string;
+          isSecret: boolean;
+          expired: boolean;
+          revoked: boolean;
+          algorithm: string;
+        }[];
+        const sender = stored.find(
+          (k) =>
+            k.isSecret && (!args.accountId || k.accountId === args.accountId),
+        );
+        const recips = ((args.recipients as string[]) || []).map((raw) => {
+          const email = raw.trim().toLowerCase();
+          const match = stored.find((k) =>
+            k.emails.some((e) => e.toLowerCase() === email),
+          );
+          return {
+            email,
+            hasKey: !!match && !match.expired && !match.revoked,
+            fingerprint: match?.fingerprint ?? "",
+            userId: match?.userIds[0] ?? "",
+            expired: match?.expired ?? false,
+            revoked: match?.revoked ?? false,
+            algorithm: match?.algorithm ?? "",
+          };
+        });
+        const missingEmails = recips
+          .filter((r) => !r.hasKey)
+          .map((r) => r.email);
+        result = {
+          senderHasSecretKey: !!sender,
+          senderFingerprint: sender?.fingerprint ?? "",
+          senderPassphraseNeeded: false,
+          recipients: recips,
+          allRecipientsReady: recips.length > 0 && missingEmails.length === 0,
+          missingEmails,
+        };
+        break;
+      }
       case "get_interface_language":
         result = demoStorage.getItem(key + "-interface-language") || "zh-CN";
         break;

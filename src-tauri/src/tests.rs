@@ -1028,6 +1028,9 @@ pub(super) fn draft() -> Compose {
         references: vec![],
         delivery_body: None,
         delivery_html: None,
+        pgp_sign: false,
+        pgp_encrypt: false,
+        pgp_attach_public_key: false,
     }
 }
 #[test]

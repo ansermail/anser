@@ -314,6 +314,8 @@ pub struct Detail {
     /// Only what the original headers contain. Never inferred from To/Cc.
     #[serde(default)]
     pub bcc: Vec<Address>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pgp: Option<crate::openpgp::PgpMessageInfo>,
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -364,6 +366,12 @@ pub struct Compose {
     pub delivery_body: Option<String>,
     #[serde(default)]
     pub delivery_html: Option<String>,
+    #[serde(default)]
+    pub pgp_sign: bool,
+    #[serde(default)]
+    pub pgp_encrypt: bool,
+    #[serde(default)]
+    pub pgp_attach_public_key: bool,
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]

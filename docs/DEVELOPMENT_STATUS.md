@@ -2,7 +2,19 @@
 
 依据 PRD 第 5、8、9 节、实施记录和当前代码核查。当前仍为 Alpha；功能代码已存在与真实场景验收通过分别记录。早期回归使用临时存储/演示数据；2026-10-05 用户授权后增加当前腾讯企业邮箱与 QQ 邮箱互发测试，未向其他地址发送，未删除真实邮件。
 
-## 进行中 · 邮件翻译行内代码占位、测连分阶段报错与英文 RFC 引用头（2026-11-28，0.1.48 之后未发布）
+## 进行中 · OpenPGP 端到端加密与数字签名（2026-11-28，基于 `ab617d8` 未发布）
+
+- **代码完成**。设计方案见 [docs/plans/OPENPGP_PLAN.md](plans/OPENPGP_PLAN.md)。
+  1. **纯 Rust 加密内核与密钥托管（`src-tauri/src/openpgp.rs`、`Cargo.toml`）**：接入 `pgp = "0.21"`（`default-features = false`，纯 Rust 零 C 依赖，MIT / Apache-2.0），新增 SQLite `pgp_keys` 公钥元数据表，私钥与可选密码短语仅存入 AES-256-GCM 加密的 `credentials.vault`（`pgp-secret-<FINGERPRINT>`），并支持单会话内存密码短语缓存与手动锁定。支持生成 `Ed25519 / Curve25519` 或 `RSA 4096` 密钥对、导入导出 `.asc`/`.gpg` 与粘贴文本、一键从 `.asc` / `application/pgp-keys` 附件导入公钥、按账号绑定密钥。
+  2. **标准 PGP/MIME（RFC 3156）收发与 Inline PGP 兼容（`network.rs`、`store.rs`、`eml_files.rs`、`compose_files.rs`、`lib.rs`）**：发信支持数字签名（`multipart/signed`）、端到端加密（`multipart/encrypted`，自动同时加密给发件人自身公钥以保证已发送副本可读）、签名并加密及附带本人公钥，使用 `send_raw` 逐字节投递防止边界重编码破坏签名；阅读与外部 EML 窗口支持 PGP/MIME 与 Inline PGP 内存按需解密与验签（含 `senderMatchesSigner` 发件人匹配核对），解密后的正文与附件不落盘 SQLite/搜索索引且原始 MIME 密文不可变；附件保存、预览、缩略图与转发附件准备复用内存解密通道。
+  3. **界面与 AI 隐私隔离（`openpgp-settings.tsx`、`openpgp-banner.tsx`、`compose-pgp-control.tsx`、`contacts-panel.tsx`、`translatable-mail-body.tsx`、`compose-dialog.tsx`、`api.ts`）**：统一使用 shadcn/ui 在「设置 → 阅读与写信」新增 OpenPGP 密钥管理卡片，在通讯录展示与管理联系人公钥，在阅读页展示验签/解密状态栏与密码短语解锁条，在写信底部新增签名/加密与收件人公钥就绪检查弹层；已加密邮件在阅读页禁用 AI 翻译与 AI 摘要，开启加密写信时禁用写信 AI 助手；演示模式同步补齐桩数据。
+  4. **Windows 桌面端 UI 修正（`src/index.css`、`src/components/ui/sheet.tsx`）**：移除 `.system-defaults-card [data-slot="card-title"]` 的 `16px` 特例覆盖，使「系统默认应用」卡片标题与其他设置卡片统一为 `15px`；为 `SheetContent` 补充 `data-side` 属性，并在 `:root[data-platform="windows"][data-desktop="true"]` 下将抽屉遮罩及左右/顶部抽屉（含工作台右侧抽屉 `.wb-editor`）统一下移至 `var(--window-titlebar-height)`（`32px`）以下并设置剩余视口高度，避免抽屉关闭按钮被窗口控制按钮遮挡。
+- **自动测试通过**。
+  - 前端：`openpgp.test.tsx`（3 项）、`compose-dialog.test.tsx` / `conversation-reader.test.tsx` / `translatable-mail-body.test.tsx`（28 项）、`file-associations.test.tsx`、`desktop-titlebar.test.tsx`（7 项，含 Windows 抽屉避让回归）及 `workbench.test.tsx`（26 项）全部通过；`pnpm check:ui`、`pnpm check:i18n`（2,100 条双语键）、`pnpm format:check`、`pnpm build`、`pnpm build:preview` 全部通过。
+  - Rust：`cargo fmt --check` 通过；全量 `pnpm test:rust` **498 项通过**（5 项手工用例跳过，零编译警告），含新增 `openpgp::tests` 2 项（覆盖密钥生成、PGP/MIME 签名/验签/篡改检测、签名并加密、Inline PGP 验签、密码短语内存解锁/重锁、缺失收件人公钥拦截及加密附件内存提取）；`git diff --check` 通过。
+- **真实场景验收 / 云端构建 / 正式发布**：**未验证**（尚未在桌面实机与其他客户端如 Thunderbird / GnuPG 互测，也未验证 Windows MSVC 云端编译）。
+
+## 已提交本地主分支 · 翻译行内代码占位、测连分阶段报错与英文 RFC 引用头（2026-11-28，提交 `ab617d8`，未发布）
 
 - **代码完成**。
   1. **回复与转发英文 RFC 引用头开关**：`Preferences` 新增 `englishQuoteHeader`（Rust `english_quote_header`，`#[serde(default)]` 默认关闭，兼容旧配置）。在「设置 → 阅读与写信」新增 `ComposeQuoteSettings` 开关卡片；关闭时沿用当前界面语言，开启后回复/转发在发送预览、立即发送、定时发送及外部 EML 窗口中统一生成英文 RFC 引用头（`Original Message` / `Forwarded Message`、`From`、`To`、`Date` 含时区偏移、`Subject`），避免中文界面下在发出邮件中混入中文发件信息。

@@ -118,7 +118,11 @@ impl EmlFiles {
         crate::eml_input::metadata(path)?;
         Ok(docs.current.as_ref().map(|(token, _)| window_label(token)))
     }
-    pub fn document_for_label(&self, label: &str) -> Result<EmlDocument> {
+    pub fn document_for_label_with_store(
+        &self,
+        label: &str,
+        store: Option<&crate::store::Store>,
+    ) -> Result<EmlDocument> {
         let (token, raw, source) = {
             let docs = self.documents.lock().map_err(err)?;
             let (token, raw) = docs.current.clone().ok_or("邮件文件已关闭，请重新打开")?;
@@ -127,7 +131,12 @@ impl EmlFiles {
             }
             (token, raw, docs.source.clone().ok_or("邮件文件来源已关闭")?)
         };
-        let (mut mail, html, attachments) = archive::parse(&raw, &account(), "")?;
+        let (mut mail, html, attachments, pgp) = if let Some(store) = store {
+            crate::openpgp::parse_for_reading(store, &raw, &account(), "")?
+        } else {
+            let (m, h, a) = archive::parse(&raw, &account(), "")?;
+            (m, h, a, None)
+        };
         mail.saved_locally = false;
         let (reply_to, to, cc, bcc) = archive::reply_addresses(&raw)?;
         Ok(EmlDocument {
@@ -146,6 +155,7 @@ impl EmlFiles {
                 to,
                 cc,
                 bcc,
+                pgp,
             },
         })
     }
@@ -161,12 +171,25 @@ impl EmlFiles {
         }
         Ok(())
     }
+    #[cfg(test)]
     pub fn open(&self, path: &Path) -> Result<EmlDocument> {
+        self.open_with_store(path, None)
+    }
+    pub fn open_with_store(
+        &self,
+        path: &Path,
+        store: Option<&crate::store::Store>,
+    ) -> Result<EmlDocument> {
         if !is_eml(path) {
             return Err("invalidFile".into());
         }
         let raw = crate::eml_input::read(path, None)?;
-        let (mut mail, html, attachments) = archive::parse(&raw, &account(), "")?;
+        let (mut mail, html, attachments, pgp) = if let Some(store) = store {
+            crate::openpgp::parse_for_reading(store, &raw, &account(), "")?
+        } else {
+            let (m, h, a) = archive::parse(&raw, &account(), "")?;
+            (m, h, a, None)
+        };
         mail.saved_locally = false;
         let (reply_to, to, cc, bcc) = archive::reply_addresses(&raw)?;
         let token = uuid::Uuid::new_v4().to_string();
@@ -192,6 +215,7 @@ impl EmlFiles {
                 to,
                 cc,
                 bcc,
+                pgp,
             },
         })
     }
@@ -202,7 +226,17 @@ impl EmlFiles {
             _ => Err("邮件文件已关闭或切换，请重新打开后操作附件".into()),
         }
     }
+    #[cfg(test)]
     pub fn save_attachment(&self, token: &str, index: usize, path: &Path) -> Result<()> {
+        self.save_attachment_with_store(token, index, path, None)
+    }
+    pub fn save_attachment_with_store(
+        &self,
+        token: &str,
+        index: usize,
+        path: &Path,
+        store: Option<&crate::store::Store>,
+    ) -> Result<()> {
         let docs = self.documents.lock().map_err(err)?;
         let raw = match &docs.current {
             Some((current, raw)) if current == token => raw.clone(),
@@ -218,7 +252,13 @@ impl EmlFiles {
         if source.is_some() && (path.canonicalize().ok() == source || normalized == source) {
             return Err("附件不能覆盖正在查看的原始邮件文件，请选择其他位置".into());
         }
-        archive::atomic_write(path, &archive::attachment(&raw, index)?)
+        let decrypted = if let Some(store) = store {
+            crate::openpgp::decrypted_mime_for_attachments(store, &raw)?
+        } else {
+            None
+        };
+        let effective = decrypted.as_deref().unwrap_or(&raw);
+        archive::atomic_write(path, &archive::attachment(effective, index)?)
     }
     pub fn close(&self, token: &str) -> Result<()> {
         let mut docs = self.documents.lock().map_err(err)?;

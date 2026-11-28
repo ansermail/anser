@@ -1,12 +1,31 @@
 import { t } from "@/lib/i18n";
 import { useConfirmation } from "@/hooks/use-confirmation";
 import { useEffect, useRef, useState } from "react";
-import { Plus, Search, UserRound, Pencil, Trash2, Mail, X } from "lucide-react";
+import {
+  Plus,
+  Search,
+  UserRound,
+  Pencil,
+  Trash2,
+  Mail,
+  X,
+  ShieldCheck,
+  Upload,
+} from "lucide-react";
 import { call } from "@/lib/api";
 import { hasAddressName } from "@/lib/addresses";
-import type { Address, Contact } from "@/lib/types";
+import type {
+  Address,
+  Contact,
+  PgpImportResult,
+  PgpKeyInfo,
+} from "@/lib/types";
+import { formatFingerprint } from "./openpgp-banner";
 import { Button } from "./ui/button";
+import { Badge } from "./ui/badge";
 import { Input } from "./ui/input";
+import { Textarea } from "./ui/textarea";
+import { Separator } from "./ui/separator";
 import {
   InputGroup,
   InputGroupAddon,
@@ -42,6 +61,9 @@ export function ContactsPanel({
 }) {
   const { askConfirmation, confirmationDialog } = useConfirmation();
   const [contacts, setContacts] = useState<Contact[]>([]),
+    [pgpKeys, setPgpKeys] = useState<PgpKeyInfo[]>([]),
+    [keyPaste, setKeyPaste] = useState(""),
+    [importingKey, setImportingKey] = useState(false),
     [search, setSearch] = useState("");
   const [editing, setEditing] = useState<Contact | null>(
     initial ? { ...initial, id: crypto.randomUUID() } : null,
@@ -52,7 +74,12 @@ export function ContactsPanel({
   const searchInput = useRef<HTMLInputElement>(null);
   async function refresh() {
     try {
-      setContacts(await call<Contact[]>("list_contacts"));
+      const [list, keys] = await Promise.all([
+        call<Contact[]>("list_contacts"),
+        call<PgpKeyInfo[]>("list_pgp_keys").catch(() => [] as PgpKeyInfo[]),
+      ]);
+      setContacts(list);
+      setPgpKeys(keys);
       setLoadFailed(false);
     } catch (e) {
       setLoadFailed(true);
@@ -61,6 +88,13 @@ export function ContactsPanel({
       setLoading(false);
     }
   }
+  const pgpKeyFor = (email: string) => {
+    const normalized = email.trim().toLowerCase();
+    if (!normalized) return undefined;
+    return pgpKeys.find(
+      (k) => !k.revoked && k.emails.some((e) => e.toLowerCase() === normalized),
+    );
+  };
   useEffect(() => {
     void refresh();
   }, []);
@@ -139,60 +173,75 @@ export function ContactsPanel({
         </InputGroup>
       )}
       <div className="contact-list">
-        {visible.map((c) => (
-          <article className="contact-card" key={c.id}>
-            <span className="contact-avatar">
-              <UserRound size={19} />
-            </span>
-            <div className="contact-identity">
-              <strong title={hasAddressName(c) ? c.name : c.email}>
-                {hasAddressName(c) ? c.name : c.email}
-              </strong>
-              {hasAddressName(c) && <p title={c.email}>{c.email}</p>}
-            </div>
-            <Button
-              variant="ghost"
-              size="icon-sm"
-              title={t("Compose")}
-              onClick={() => onCompose(c)}
-            >
-              <Mail size={16} />
-            </Button>
-            <Button
-              variant="ghost"
-              size="icon-sm"
-              title={t("Edit contact")}
-              onClick={() => setEditing(c)}
-            >
-              <Pencil size={15} />
-            </Button>
-            <Button
-              variant="ghost"
-              size="icon-sm"
-              title={t("Delete contact")}
-              data-reveal-row-action=""
-              className="contact-delete"
-              onClick={async () => {
-                if (
-                  await askConfirmation({
-                    title: t("Delete contact?"),
-                    description: t(
-                      "Delete the local contact record for {value0}. Messages and conversation history are unaffected.",
-                      { value0: c.name || c.email },
-                    ),
-                    action: t("Delete contact"),
-                    destructive: true,
-                  })
-                )
-                  void call("delete_contact", { id: c.id })
-                    .then(refresh)
-                    .catch((e) => toast.error(String(e)));
-              }}
-            >
-              <Trash2 size={15} />
-            </Button>
-          </article>
-        ))}
+        {visible.map((c) => {
+          const contactKey = pgpKeyFor(c.email);
+          return (
+            <article className="contact-card" key={c.id}>
+              <span className="contact-avatar">
+                <UserRound size={19} />
+              </span>
+              <div className="contact-identity">
+                <div className="flex items-center gap-1.5">
+                  <strong title={hasAddressName(c) ? c.name : c.email}>
+                    {hasAddressName(c) ? c.name : c.email}
+                  </strong>
+                  {contactKey && (
+                    <Badge
+                      variant="secondary"
+                      className="h-4 shrink-0 gap-0.5 px-1 text-[10px]"
+                      title={formatFingerprint(contactKey.fingerprint)}
+                    >
+                      <ShieldCheck size={10} aria-hidden="true" />
+                      PGP
+                    </Badge>
+                  )}
+                </div>
+                {hasAddressName(c) && <p title={c.email}>{c.email}</p>}
+              </div>
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                title={t("Compose")}
+                onClick={() => onCompose(c)}
+              >
+                <Mail size={16} />
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                title={t("Edit contact")}
+                onClick={() => setEditing(c)}
+              >
+                <Pencil size={15} />
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                title={t("Delete contact")}
+                data-reveal-row-action=""
+                className="contact-delete"
+                onClick={async () => {
+                  if (
+                    await askConfirmation({
+                      title: t("Delete contact?"),
+                      description: t(
+                        "Delete the local contact record for {value0}. Messages and conversation history are unaffected.",
+                        { value0: c.name || c.email },
+                      ),
+                      action: t("Delete contact"),
+                      destructive: true,
+                    })
+                  )
+                    void call("delete_contact", { id: c.id })
+                      .then(refresh)
+                      .catch((e) => toast.error(String(e)));
+                }}
+              >
+                <Trash2 size={15} />
+              </Button>
+            </article>
+          );
+        })}
         {loading && (
           <>
             <span role="status" className="sr-only">
@@ -309,6 +358,109 @@ export function ContactsPanel({
               <Button type="submit" disabled={busy}>
                 {busy ? t("Saving…") : t("Save contact")}
               </Button>
+              {editing.email.trim() && (
+                <>
+                  <Separator className="my-1" />
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="flex items-center gap-1.5 text-xs font-medium">
+                        <ShieldCheck
+                          className="h-3.5 w-3.5"
+                          aria-hidden="true"
+                        />
+                        {t("OpenPGP public key")}
+                      </span>
+                      {pgpKeyFor(editing.email) && (
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          className="h-6 px-2 text-xs text-destructive"
+                          onClick={async () => {
+                            const k = pgpKeyFor(editing.email);
+                            if (!k) return;
+                            try {
+                              await call("delete_pgp_key", {
+                                fingerprint: k.fingerprint,
+                              });
+                              await refresh();
+                              toast.success(t("OpenPGP key removed"));
+                            } catch (err) {
+                              toast.error(String(err));
+                            }
+                          }}
+                        >
+                          {t("Remove key")}
+                        </Button>
+                      )}
+                    </div>
+                    {pgpKeyFor(editing.email) ? (
+                      <div className="rounded-md border p-2 text-xs">
+                        <div className="flex items-center gap-1.5">
+                          <Badge variant="secondary" className="text-[10px]">
+                            {pgpKeyFor(editing.email)!.algorithm}
+                          </Badge>
+                          <span className="truncate text-muted-foreground">
+                            {pgpKeyFor(editing.email)!.userIds[0] ||
+                              pgpKeyFor(editing.email)!.email}
+                          </span>
+                        </div>
+                        <p className="mt-1 font-mono text-[11px] text-muted-foreground break-all">
+                          {formatFingerprint(
+                            pgpKeyFor(editing.email)!.fingerprint,
+                          )}
+                        </p>
+                      </div>
+                    ) : (
+                      <div className="space-y-2">
+                        <Textarea
+                          rows={4}
+                          className="font-mono text-xs"
+                          placeholder="-----BEGIN PGP PUBLIC KEY BLOCK-----"
+                          value={keyPaste}
+                          onChange={(e) => setKeyPaste(e.target.value)}
+                        />
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          disabled={importingKey || !keyPaste.trim()}
+                          onClick={async () => {
+                            setImportingKey(true);
+                            try {
+                              const res = await call<PgpImportResult>(
+                                "import_pgp_keys",
+                                {
+                                  armored: keyPaste,
+                                  accountId: null,
+                                  passphrase: null,
+                                  rememberPassphrase: false,
+                                },
+                              );
+                              setKeyPaste("");
+                              await refresh();
+                              toast.success(
+                                t("Imported {value0} OpenPGP key(s)", {
+                                  value0: res.imported.length,
+                                }),
+                              );
+                            } catch (err) {
+                              toast.error(String(err));
+                            } finally {
+                              setImportingKey(false);
+                            }
+                          }}
+                        >
+                          <Upload className="h-3.5 w-3.5" aria-hidden="true" />
+                          {importingKey
+                            ? t("Importing…")
+                            : t("Import public key")}
+                        </Button>
+                      </div>
+                    )}
+                  </div>
+                </>
+              )}
             </form>
           )}
         </DialogContent>

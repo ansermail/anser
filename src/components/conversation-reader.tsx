@@ -38,6 +38,7 @@ import { Alert, AlertTitle, AlertDescription } from "./ui/alert";
 import { TranslatableMailBody } from "./translatable-mail-body";
 import { MailSummaryLayer } from "./mail-summary";
 import { MailAttachmentNotice, MailAttachments } from "./mail-attachments";
+import { OpenPgpBanner } from "./openpgp-banner";
 import { MailStorageStatus } from "./mail-storage-status";
 import { SenderIdentity } from "./contact-address";
 import { RecipientAddressSummary } from "./mail-recipients";
@@ -337,19 +338,28 @@ function Turn({
             <MailBodySkeleton />
           )
         ) : (
-          <TranslatableMailBody
-            key={`${mail.id}:${mail.hash}`}
-            mailId={mail.id}
-            mailDate={mail.date}
-            subject={detail.mail.subject}
-            subjectContainer={selected ? subjectContainer : null}
-            onAddWorkItem={onAddWorkItem}
-            html={detail.html}
-            body={detail.mail.body}
-            title={t("Message body: {value0}", { value0: mail.id })}
-            actionsContainer={selected ? translationActions : localActions}
-            onOpenLink={onLink}
-          />
+          <>
+            <OpenPgpBanner
+              mailId={mail.id}
+              pgp={detail.pgp}
+              attachments={detail.attachments}
+              onReload={() => setRetry((n) => n + 1)}
+            />
+            <TranslatableMailBody
+              key={`${mail.id}:${mail.hash}:${detail.pgp?.encryptionState ?? ""}`}
+              mailId={mail.id}
+              mailDate={mail.date}
+              subject={detail.mail.subject}
+              subjectContainer={selected ? subjectContainer : null}
+              onAddWorkItem={onAddWorkItem}
+              html={detail.html}
+              body={detail.mail.body}
+              encrypted={!!detail.pgp?.encrypted}
+              title={t("Message body: {value0}", { value0: mail.id })}
+              actionsContainer={selected ? translationActions : localActions}
+              onOpenLink={onLink}
+            />
+          </>
         )}
         <MailAttachments
           mailId={mail.id}
@@ -681,6 +691,7 @@ export function ConversationReader({
   onLink,
   onComposeAddress,
   onAddContact,
+  onReloadDetail,
 }: {
   selected: Detail;
   singleMessage?: boolean;
@@ -707,6 +718,7 @@ export function ConversationReader({
   onLink: (href: string) => void;
   onComposeAddress?: (address: Address) => void;
   onAddContact?: (address: Address) => void;
+  onReloadDetail?: () => void;
 }) {
   const [messages, setMessages] = useState<Mail[]>([selected.mail]);
   const [details, setDetails] = useState<Record<string, Detail>>({
@@ -867,13 +879,19 @@ export function ConversationReader({
           >
             <div className="reader-scroll-content">
               <ParseWarnings mail={selected.mail} />
+              <OpenPgpBanner
+                mailId={selected.mail.id}
+                pgp={selected.pgp}
+                attachments={selected.attachments}
+                onReload={onReloadDetail}
+              />
               <MailAttachmentNotice
                 reported={
                   !!selected.mail.hasAttachments && !selected.attachments.length
                 }
               />
               <TranslatableMailBody
-                key={`${selected.mail.id}:${selected.mail.hash}`}
+                key={`${selected.mail.id}:${selected.mail.hash}:${selected.pgp?.encryptionState ?? ""}`}
                 mailId={selected.mail.id}
                 mailDate={selected.mail.date}
                 subject={selected.mail.subject}
@@ -881,6 +899,7 @@ export function ConversationReader({
                 onAddWorkItem={onAddWorkItem}
                 html={selected.html}
                 body={selected.mail.body}
+                encrypted={!!selected.pgp?.encrypted}
                 actionsContainer={translationActions}
                 onOpenLink={onLink}
               />

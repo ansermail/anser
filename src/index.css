@@ -3776,6 +3776,26 @@ kbd {
   right: 150px;
 }
 
+:root[data-platform="windows"][data-desktop="true"]
+  [data-slot="sheet-overlay"] {
+  top: var(--window-titlebar-height);
+}
+
+:root[data-platform="windows"][data-desktop="true"]
+  :is(
+    [data-slot="sheet-content"][data-side="right"],
+    [data-slot="sheet-content"][data-side="left"]
+  ) {
+  top: var(--window-titlebar-height);
+  height: calc(100dvh - var(--window-titlebar-height));
+  border-top: 1px solid var(--border);
+}
+
+:root[data-platform="windows"][data-desktop="true"]
+  [data-slot="sheet-content"][data-side="top"] {
+  top: var(--window-titlebar-height);
+}
+
 .desktop-titlebar {
   position: fixed;
   inset: 0 0 auto;
@@ -5836,10 +5856,6 @@ body.account-dragging * {
   .settings-proxy-fields {
     grid-template-columns: minmax(0, 1fr);
   }
-}
-.system-defaults-card [data-slot="card-title"] {
-  font-size: 16px;
-  line-height: 1.25;
 }
 .system-default-mail {
   display: flex;

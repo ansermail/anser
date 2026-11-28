@@ -16,6 +16,7 @@ import {
 import { LanguageSettings } from "./components/language-settings";
 import { WorkspaceSettings } from "./components/workspace-settings";
 import { ComposeQuoteSettings } from "./components/compose-quote-settings";
+import { OpenPgpSettings } from "./components/openpgp-settings";
 import { TaskCellText, TaskDataTable } from "./components/task-data-table";
 import {
   TaskPanelHeader,
@@ -3677,6 +3678,7 @@ export default function App({
                         void changeEnglishQuoteHeader(enabled)
                       }
                     />
+                    <OpenPgpSettings accounts={data.accounts} />
                     <MailSignatures accounts={data.accounts} />
                     <MailTranslationSettings />
                   </>
@@ -5029,6 +5031,7 @@ export default function App({
                       <ConversationReader
                         key={`${selected}:${query.listMode}:${notificationSelected?.click ?? "list"}`}
                         selected={detail}
+                        onReloadDetail={() => setDetailRetry((n) => n + 1)}
                         singleMessage={
                           !grouped || notificationSelected?.id === selected
                         }

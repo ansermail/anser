@@ -30,6 +30,7 @@ mod msg_format;
 mod network;
 mod notification_open;
 mod notifications;
+mod openpgp;
 mod operations;
 mod paging;
 mod productivity;
@@ -1619,10 +1620,10 @@ async fn save_attachment(
     let store = state.store.clone();
     tauri::async_runtime::spawn_blocking(move || {
         let result = (|| -> Result<()> {
-            archive::atomic_write(
-                Path::new(&path),
-                &archive::attachment(&store.message_raw(&store.mail(&id)?)?, index)?,
-            )
+            let raw = store.message_raw(&store.mail(&id)?)?;
+            let decrypted = openpgp::decrypted_mime_for_attachments(&store, &raw)?;
+            let effective = decrypted.as_deref().unwrap_or(&raw);
+            archive::atomic_write(Path::new(&path), &archive::attachment(effective, index)?)
         })();
         if let Err(error) = &result {
             store.log_diagnostic(
@@ -1653,7 +1654,9 @@ async fn preview_attachment(
         let result = (|| -> Result<()> {
             let mail = store.mail(&id)?;
             let raw = store.message_raw(&mail)?;
-            let path = attachment_preview::prepare(&cache, &raw, index)?;
+            let decrypted = openpgp::decrypted_mime_for_attachments(&store, &raw)?;
+            let effective = decrypted.as_deref().unwrap_or(&raw);
+            let path = attachment_preview::prepare(&cache, effective, index)?;
             open::that(path).map_err(|e| format!("无法打开附件，请确认已安装对应应用：{e}"))
         })();
         if let Err(error) = &result {
@@ -1678,7 +1681,9 @@ async fn attachment_thumbnail(
     tauri::async_runtime::spawn_blocking(move || {
         let mail = store.mail(&id)?;
         let raw = store.message_raw(&mail)?;
-        attachment_preview::thumbnail(&raw, index)
+        let decrypted = openpgp::decrypted_mime_for_attachments(&store, &raw)?;
+        let effective = decrypted.as_deref().unwrap_or(&raw);
+        attachment_preview::thumbnail(effective, index)
     })
     .await
     .map_err(err)?
@@ -1920,13 +1925,17 @@ async fn eml_import_action(
 }
 #[tauri::command]
 async fn open_eml_file(
+    app_state: tauri::State<'_, AppState>,
     state: tauri::State<'_, eml_files::EmlFiles>,
     path: String,
 ) -> Result<eml_files::EmlDocument> {
     let docs = state.inner().clone();
-    tauri::async_runtime::spawn_blocking(move || docs.open(Path::new(&path)))
-        .await
-        .map_err(err)?
+    let store = app_state.store.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        docs.open_with_store(Path::new(&path), Some(&store))
+    })
+    .await
+    .map_err(err)?
 }
 #[tauri::command]
 fn close_eml_file(state: tauri::State<eml_files::EmlFiles>, token: String) -> Result<()> {
@@ -1934,19 +1943,23 @@ fn close_eml_file(state: tauri::State<eml_files::EmlFiles>, token: String) -> Re
 }
 #[tauri::command]
 async fn preview_eml_attachment(
+    app_state: tauri::State<'_, AppState>,
     state: tauri::State<'_, eml_files::EmlFiles>,
     app: tauri::AppHandle,
     token: String,
     index: usize,
 ) -> Result<()> {
     let raw = state.raw(&token)?;
+    let store = app_state.store.clone();
     let cache = app
         .path()
         .app_cache_dir()
         .map_err(err)?
         .join("attachment-previews");
     tauri::async_runtime::spawn_blocking(move || {
-        let path = attachment_preview::prepare(&cache, &raw, index)?;
+        let decrypted = openpgp::decrypted_mime_for_attachments(&store, &raw)?;
+        let effective = decrypted.as_deref().unwrap_or(&raw);
+        let path = attachment_preview::prepare(&cache, effective, index)?;
         open::that(path).map_err(|e| format!("无法打开附件，请确认已安装对应应用：{e}"))
     })
     .await
@@ -1954,14 +1967,16 @@ async fn preview_eml_attachment(
 }
 #[tauri::command]
 async fn save_eml_attachment(
+    app_state: tauri::State<'_, AppState>,
     state: tauri::State<'_, eml_files::EmlFiles>,
     token: String,
     index: usize,
     path: String,
 ) -> Result<()> {
     let docs = state.inner().clone();
+    let store = app_state.store.clone();
     tauri::async_runtime::spawn_blocking(move || {
-        docs.save_attachment(&token, index, Path::new(&path))
+        docs.save_attachment_with_store(&token, index, Path::new(&path), Some(&store))
     })
     .await
     .map_err(err)?
@@ -1978,7 +1993,9 @@ async fn prepare_external_forward_files(
     let documents = documents.inner().clone();
     tauri::async_runtime::spawn_blocking(move || {
         let raw = documents.raw(&document_token)?;
-        store.prepare_external_forward_files(&id, &token, &raw)
+        let decrypted = openpgp::decrypted_mime_for_attachments(&store, &raw)?;
+        let effective = decrypted.as_deref().unwrap_or(&raw);
+        store.prepare_external_forward_files(&id, &token, effective)
     })
     .await
     .map_err(err)?
@@ -1986,11 +2003,13 @@ async fn prepare_external_forward_files(
 #[tauri::command]
 async fn open_external_mail_window(
     app: tauri::AppHandle,
+    app_state: tauri::State<'_, AppState>,
     state: tauri::State<'_, eml_files::EmlFiles>,
     path: String,
 ) -> Result<()> {
     {
         let docs = state.inner().clone();
+        let store = app_state.store.clone();
         let _window_open = docs.window_open.lock().await;
         let opened_docs = docs.clone();
         let lookup_path = path.clone();
@@ -2006,10 +2025,11 @@ async fn open_external_mail_window(
             return Ok(());
         }
         let opened_docs = docs.clone();
-        let document =
-            tauri::async_runtime::spawn_blocking(move || opened_docs.open(Path::new(&path)))
-                .await
-                .map_err(err)??;
+        let document = tauri::async_runtime::spawn_blocking(move || {
+            opened_docs.open_with_store(Path::new(&path), Some(&store))
+        })
+        .await
+        .map_err(err)??;
         let label = eml_files::window_label(&document.token);
         if let Some(previous) = app
             .webview_windows()
@@ -2045,13 +2065,204 @@ async fn open_external_mail_window(
 #[tauri::command]
 async fn current_external_mail(
     window: tauri::WebviewWindow,
+    app_state: tauri::State<'_, AppState>,
     state: tauri::State<'_, eml_files::EmlFiles>,
 ) -> Result<eml_files::EmlDocument> {
     let docs = state.inner().clone();
+    let store = app_state.store.clone();
     let label = window.label().to_owned();
-    tauri::async_runtime::spawn_blocking(move || docs.document_for_label(&label))
+    tauri::async_runtime::spawn_blocking(move || {
+        docs.document_for_label_with_store(&label, Some(&store))
+    })
+    .await
+    .map_err(err)?
+}
+
+#[tauri::command]
+async fn list_pgp_keys(state: tauri::State<'_, AppState>) -> Result<Vec<openpgp::PgpKeyInfo>> {
+    let store = state.store.clone();
+    tauri::async_runtime::spawn_blocking(move || openpgp::list_keys(&store))
         .await
         .map_err(err)?
+}
+#[tauri::command]
+async fn generate_pgp_key(
+    state: tauri::State<'_, AppState>,
+    account_id: String,
+    name: String,
+    email: String,
+    algorithm: String,
+    passphrase: Option<String>,
+    expires_days: Option<u32>,
+) -> Result<openpgp::PgpKeyInfo> {
+    let store = state.store.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        openpgp::generate_key(
+            &store,
+            &account_id,
+            &name,
+            &email,
+            &algorithm,
+            passphrase.as_deref(),
+            expires_days,
+        )
+    })
+    .await
+    .map_err(err)?
+}
+#[tauri::command]
+async fn import_pgp_keys(
+    state: tauri::State<'_, AppState>,
+    armored: String,
+    account_id: Option<String>,
+    passphrase: Option<String>,
+    remember_passphrase: bool,
+) -> Result<openpgp::PgpImportResult> {
+    let store = state.store.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        openpgp::import_keys(
+            &store,
+            armored.as_bytes(),
+            account_id.as_deref(),
+            passphrase.as_deref(),
+            remember_passphrase,
+            "imported",
+        )
+    })
+    .await
+    .map_err(err)?
+}
+#[tauri::command]
+async fn import_pgp_key_from_file(
+    state: tauri::State<'_, AppState>,
+    path: String,
+    account_id: Option<String>,
+    passphrase: Option<String>,
+    remember_passphrase: bool,
+) -> Result<openpgp::PgpImportResult> {
+    let store = state.store.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let bytes =
+            std::fs::read(Path::new(&path)).map_err(|e| format!("无法读取密钥文件：{e}"))?;
+        openpgp::import_keys(
+            &store,
+            &bytes,
+            account_id.as_deref(),
+            passphrase.as_deref(),
+            remember_passphrase,
+            "imported",
+        )
+    })
+    .await
+    .map_err(err)?
+}
+#[tauri::command]
+async fn import_pgp_key_from_attachment(
+    state: tauri::State<'_, AppState>,
+    mail_id: String,
+    index: usize,
+) -> Result<openpgp::PgpImportResult> {
+    let store = state.store.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let raw = store.message_raw(&store.mail(&mail_id)?)?;
+        let decrypted = openpgp::decrypted_mime_for_attachments(&store, &raw)?;
+        let effective = decrypted.as_deref().unwrap_or(&raw);
+        let bytes = archive::attachment(effective, index)?;
+        openpgp::import_keys(&store, &bytes, None, None, false, "attachment")
+    })
+    .await
+    .map_err(err)?
+}
+#[tauri::command]
+async fn bind_pgp_account_key(
+    state: tauri::State<'_, AppState>,
+    account_id: String,
+    fingerprint: String,
+) -> Result<()> {
+    let store = state.store.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        openpgp::bind_account_key(&store, &account_id, &fingerprint)
+    })
+    .await
+    .map_err(err)?
+}
+#[tauri::command]
+async fn export_pgp_public_key(
+    state: tauri::State<'_, AppState>,
+    fingerprint: String,
+) -> Result<String> {
+    let store = state.store.clone();
+    tauri::async_runtime::spawn_blocking(move || openpgp::export_public_key(&store, &fingerprint))
+        .await
+        .map_err(err)?
+}
+#[tauri::command]
+async fn export_pgp_secret_key(
+    state: tauri::State<'_, AppState>,
+    fingerprint: String,
+) -> Result<String> {
+    let store = state.store.clone();
+    tauri::async_runtime::spawn_blocking(move || openpgp::export_secret_key(&store, &fingerprint))
+        .await
+        .map_err(err)?
+}
+#[tauri::command]
+async fn save_pgp_key_file(
+    state: tauri::State<'_, AppState>,
+    fingerprint: String,
+    secret: bool,
+    path: String,
+) -> Result<()> {
+    let store = state.store.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let content = if secret {
+            openpgp::export_secret_key(&store, &fingerprint)?
+        } else {
+            openpgp::export_public_key(&store, &fingerprint)?
+        };
+        archive::atomic_write(Path::new(&path), content.as_bytes())
+    })
+    .await
+    .map_err(err)?
+}
+#[tauri::command]
+async fn delete_pgp_key(state: tauri::State<'_, AppState>, fingerprint: String) -> Result<()> {
+    let store = state.store.clone();
+    tauri::async_runtime::spawn_blocking(move || openpgp::delete_key(&store, &fingerprint))
+        .await
+        .map_err(err)?
+}
+#[tauri::command]
+async fn unlock_pgp_key(
+    state: tauri::State<'_, AppState>,
+    fingerprint: String,
+    passphrase: String,
+    remember: bool,
+) -> Result<()> {
+    let store = state.store.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        openpgp::unlock_key(&store, &fingerprint, &passphrase, remember)
+    })
+    .await
+    .map_err(err)?
+}
+#[tauri::command]
+fn lock_pgp_session() -> Result<()> {
+    openpgp::lock_session();
+    Ok(())
+}
+#[tauri::command]
+async fn check_pgp_compose(
+    state: tauri::State<'_, AppState>,
+    account_id: String,
+    recipients: Vec<String>,
+) -> Result<openpgp::PgpComposeCheck> {
+    let store = state.store.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        openpgp::check_compose_readiness(&store, &account_id, &recipients)
+    })
+    .await
+    .map_err(err)?
 }
 
 fn queue_eml_arguments(app: &tauri::AppHandle, args: Vec<String>, cwd: &Path) -> bool {
@@ -2595,7 +2806,20 @@ pub fn run() {
             archive_location,
             move_archive_location,
             cleanup_archive_migration,
-            open_mail_link
+            open_mail_link,
+            list_pgp_keys,
+            generate_pgp_key,
+            import_pgp_keys,
+            import_pgp_key_from_file,
+            import_pgp_key_from_attachment,
+            bind_pgp_account_key,
+            export_pgp_public_key,
+            export_pgp_secret_key,
+            save_pgp_key_file,
+            delete_pgp_key,
+            unlock_pgp_key,
+            lock_pgp_session,
+            check_pgp_compose
         ])
         .build(tauri::generate_context!())
         .expect("failed to build Anser")
