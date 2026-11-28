@@ -535,6 +535,7 @@ export function OpenPgpSettings({ accounts }: { accounts: Account[] }) {
                   value={genAccountId}
                   onValueChange={selectGenAccount}
                   aria-label={t("Email account")}
+                  className="w-full"
                 >
                   {accounts.map((acc) => (
                     <SelectOption key={acc.id} value={acc.id}>
@@ -570,6 +571,7 @@ export function OpenPgpSettings({ accounts }: { accounts: Account[] }) {
                   value={genAlgorithm}
                   onValueChange={setGenAlgorithm}
                   aria-label={t("Algorithm")}
+                  className="w-full"
                 >
                   <SelectOption value="ed25519">
                     Ed25519 / Curve25519
@@ -583,6 +585,7 @@ export function OpenPgpSettings({ accounts }: { accounts: Account[] }) {
                   value={genExpires}
                   onValueChange={setGenExpires}
                   aria-label={t("Validity")}
+                  className="w-full"
                 >
                   <SelectOption value="365">{t("1 year")}</SelectOption>
                   <SelectOption value="730">{t("2 years")}</SelectOption>

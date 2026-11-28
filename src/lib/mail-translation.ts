@@ -967,12 +967,14 @@ export function planMailTranslation(
             "color-mix(in srgb, currentColor 5.5%, transparent)",
           );
           view.style.setProperty("border-radius", "6px");
-          if (tightCell) {
-            view.style.setProperty("padding", "0.25em 0");
-          } else {
-            view.style.setProperty("padding", "0.3em 0.55em");
-            view.style.setProperty("margin-inline", "-0.55em");
-          }
+          view.style.setProperty("box-sizing", "border-box");
+          // Keep the tinted block inside its host box without negative inline
+          // margins so flush headings/paragraphs never get clipped at the
+          // iframe edge (which stripped left padding and rounded corners).
+          view.style.setProperty(
+            "padding",
+            tightCell ? "0.25em 0.55em" : "0.3em 0.65em",
+          );
         }
         if (action && actionLink(action)) {
           view.style.setProperty("white-space", "normal");

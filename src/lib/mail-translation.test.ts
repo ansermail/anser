@@ -239,6 +239,9 @@ describe("bilingual mail display", () => {
     expect(bodyView.style.whiteSpace).toBe("normal");
     expect(bodyView.style.borderInlineStart).toBe("");
     expect(bodyView.style.borderRadius).toBe("6px");
+    expect(bodyView.style.boxSizing).toBe("border-box");
+    expect(bodyView.style.marginInline).toBe("");
+    expect(bodyView.style.padding).toBe("0.3em 0.65em");
     expect(view.style.whiteSpace).toBe("normal");
     expect(view.style.lineHeight).toBe("1.35");
     expect(view.style.textIndent).toBe("0px");
