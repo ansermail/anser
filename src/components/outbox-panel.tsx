@@ -1,3 +1,4 @@
+import { dismissSendUndoToast } from "@/lib/send-undo-toast";
 import { dateLocale, t } from "@/lib/i18n";
 import { useConfirmation } from "@/hooks/use-confirmation";
 import { useEffect, useRef, useState } from "react";
@@ -249,6 +250,7 @@ export function OutboxPanel({
     setBusy(record.id);
     try {
       await call("send_queued_now", { id: record.id });
+      dismissSendUndoToast(record.id);
       await refresh();
       toast.success(
         t("Handed to the send queue. Check Send history for the SMTP result."),
@@ -265,6 +267,7 @@ export function OutboxPanel({
     setBusy(record.id);
     try {
       const draft = await call<Compose>("cancel_schedule", { id: record.id });
+      dismissSendUndoToast(record.id);
       await refresh();
       toast.success(
         t("Schedule canceled. Body and attachments restored as a draft."),

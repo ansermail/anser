@@ -2,6 +2,14 @@
 
 依据 PRD 第 5、8、9 节、实施记录和当前代码核查。当前仍为 Alpha；功能代码已存在与真实场景验收通过分别记录。早期回归使用临时存储/演示数据；2026-10-05 用户授权后增加当前腾讯企业邮箱与 QQ 邮箱互发测试，未向其他地址发送，未删除真实邮件。
 
+## 进行中 · 发送撤销提示倒计时与 0.1.49 补验（2026-11-28，基于 `8037be7`，未发布）
+
+- **代码完成**。完整写信和对话简短回复使用 `queue_send` 返回的持久化发送时间显示撤销剩余秒数。到期时先隐藏撤销提示，再交给 Sonner 清理，避免悬停、失焦或 WebView 停止绘制时留下撤销入口。发送记录中的提前发送和取消也关闭对应提示。详见 [Issue #1 工作点](working/features/ISSUE_1_WORKING.md)。
+- **自动测试通过**。`pnpm test:ci` 共 85 文件、660 项（第一组 560 项，App 100 项）。Rust 501 项通过、5 项忽略，vendored `imap-proto` 39 项、桌面脚本 38 项均通过。最终生产和 Pages 预览构建、发布预检、UI、双语文案 2,098 项、格式与差异检查通过。
+- **场景补验**。Apple Silicon 固定签名开发版仍能解密此前联调邮件，历史列表仍保有旧纸夹。独立 WKWebView 用合成数据验证撤销剩余秒数、悬停到期隐藏、限时撤销恢复草稿，以及 OpenPGP 状态和 AI 提示在 1100 px 同排、360 px 换行，附件提示图标居中。原生外部 EML 窗口显示合成密信缺钥提示。GnuPG 2.5.21 与雁信双向签名加密互通通过，使用合成密钥、OpenPGP v4 和 RFC 4880 配置。
+- **真实场景待验**。修复后的真实 SMTP 倒计时、QQ → 腾讯企业邮箱反向发送及新邮件列表纸夹、外部 EML 密码短语解锁、真实收取中暂停恢复、英文引用头回复和转发投递、Windows x64/WebView2、Intel Mac 与正式安装包原位升级。此前单向收发记录未单独确认 IMAP IDLE 触发来源。
+- **云端构建 / 正式发布**。未验证，等待审阅。
+
 ## 进行中 · 暂停账号中断进行中的收取与实机细节打磨（2026-11-28，基于 `1fdfa89` 未发布）
 
 - **代码完成**。
@@ -14,7 +22,7 @@
     4. [src/components/mail-attachments.tsx](../src/components/mail-attachments.tsx) 与 [src/components/openpgp-banner.tsx](../src/components/openpgp-banner.tsx)：修复 `MailAttachmentNotice` 图标尺寸与垂直居中对齐；将已解密/已验签的 OpenPGP 状态从正文顶部大横幅收敛为邮件信息栏内的锁形图标按钮（`OpenPgpIndicator`）+ 点击 shadcn `Popover` 展示详情与指纹（主阅读区、多封对话消息头及外部 EML 窗口三处统一），仅在密文未解锁/缺私钥/解密失败阻塞正文阅读时内联展示解锁条。
 - **自动测试通过**。发布前全量自动化检查均已通过：前端 84 文件 / **656 项**（`pnpm test:ci`：83 文件 556 项 + `src/App.test.tsx` 100 项）、Rust 后端 **501 项**（5 项手工用例跳过，零警告）、vendored `imap-proto` **39 项**、`pnpm test:desktop`、`pnpm release:check`、`pnpm check:ui`、`pnpm check:i18n`（2,100 条双语键）、`pnpm format:check`、`pnpm build`、`pnpm build:preview`、`cargo fmt --check`、`git diff --check`；本次附件壳修复后复验 `openpgp::tests`（2/2，新增 `archive::parse` 不把签名/加密壳计为附件断言）、`mail-attachments.test.tsx` + `conversation-reader.test.tsx`（8/8）、`cargo fmt --check`、`pnpm format:check`、`pnpm build`、`pnpm build:preview` 通过。
 - **真实场景验收**：Apple Silicon 本地 `pnpm desktop`（固定自签 `Authority=Anser Project Code Signing`，`Identifier=dev.maildesk.desktop`）通过 Orca Computer Use 已实机核对：
-  - **OpenPGP 端到端真实收发闭环（已实机通过）**：为 QQ 邮箱与腾讯企业邮箱生成并绑定 Ed25519 / Curve25519 密钥 → 腾讯企业邮箱向 QQ 邮箱发送「雁信联调：OpenPGP 签名并加密实测」（开启数字签名 + 端到端加密，验证收件人公钥显示「就绪」且写信「AI 助手」自动隐藏）→ SMTP 接受并保存本地已发送副本 → QQ 邮箱通过 IMAP IDLE 实时送达 → 实机打开收件与「已发送」副本均自动内存解密出完整正文、状态栏显示「OpenPGP 已加密（已解密）· 数字签名有效」与「加密邮件已禁用 AI」、翻译按钮禁用、误报附件提示消除。
+  - **OpenPGP 端到端真实收发闭环（已实机通过）**：为 QQ 邮箱与腾讯企业邮箱生成并绑定 Ed25519 / Curve25519 密钥 → 腾讯企业邮箱向 QQ 邮箱发送「雁信联调：OpenPGP 签名并加密实测」（开启数字签名 + 端到端加密，验证收件人公钥显示「就绪」且写信「AI 助手」自动隐藏）→ SMTP 接受并保存本地已发送副本 → QQ 收件箱在手动检查前出现该邮件（未单独捕获 IMAP IDLE 触发诊断） → 实机打开收件与「已发送」副本均自动内存解密出完整正文、状态栏显示「OpenPGP 已加密（已解密）· 数字签名有效」与「加密邮件已禁用 AI」、翻译按钮禁用、误报附件提示消除。
   - **邮件双语翻译排版（已实机通过）**：PR #4 邮件真实双语翻译中 `Tests → 测试`、`Patch Links → 补丁链接：` 标题块及列表项现具备一致左侧间距与完整 `6px` 四角圆角，行内代码自然内嵌。
   - **设置页与弹窗排版（已实机通过）**：「设置与账号 → 阅读与写信」中英文 RFC 引用头卡片、OpenPGP 加密与密钥卡片与相邻卡片标题字号及间距统一；「生成 OpenPGP 密钥对」弹窗下拉框热更新后确认齐平。
   - **仍未实机验证**：英文 RFC 引用头实际回复发信、收取中点击暂停账号的真实点击、与其他客户端（如 Thunderbird / GnuPG）互测 OpenPGP、Windows 端抽屉避让与设置卡片实机渲染、正式版原位升级与 Intel Mac 实机。

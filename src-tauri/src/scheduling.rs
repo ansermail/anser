@@ -50,12 +50,17 @@ mod tests {
             .unwrap()
             .formatted();
         store.save_draft(&draft).unwrap();
-        store.queue_send(&draft, &raw, now).unwrap();
+        let deadline = store.queue_send(&draft, &raw, now).unwrap();
         assert!(store.drafts().unwrap().is_empty());
         let restarted = Store::new(dir.path().into()).unwrap();
         let queued = &restarted.outbox().unwrap()[0];
         assert_eq!(queued.status, "scheduled");
         assert_eq!(queued.send_kind, "undo");
+        assert_eq!(queued.scheduled_at, deadline);
+        assert_eq!(
+            deadline,
+            (now + chrono::Duration::seconds(8)).to_rfc3339_opts(SecondsFormat::Secs, true)
+        );
         assert!(restarted.claim_scheduled(now).unwrap().is_none());
         assert!(restarted
             .reschedule_mail(
@@ -333,8 +338,9 @@ impl Store {
         now: DateTime<Utc>,
     ) -> Result<()> {
         self.schedule_mail_kind(draft, raw, at, now, "scheduled")
+            .map(|_| ())
     }
-    pub fn queue_send(&self, draft: &Compose, raw: &[u8], now: DateTime<Utc>) -> Result<()> {
+    pub fn queue_send(&self, draft: &Compose, raw: &[u8], now: DateTime<Utc>) -> Result<String> {
         let at = (now + chrono::Duration::seconds(8)).to_rfc3339();
         self.schedule_mail_kind(draft, raw, &at, now, "undo")
     }
@@ -345,7 +351,7 @@ impl Store {
         at: &str,
         now: DateTime<Utc>,
         kind: &str,
-    ) -> Result<()> {
+    ) -> Result<String> {
         let at = timestamp(at, now)?;
         let account = self.account(&draft.account_id)?;
         if !account.enabled {
@@ -369,7 +375,8 @@ impl Store {
         tx.execute("INSERT INTO outbox(id,status,data,raw,error,updated_at,scheduled_at,raw_hash,send_kind) VALUES(?1,'scheduled',?2,?3,'',?4,?5,?6,?7)", params![draft.id,serde_json::to_string(draft).map_err(err)?,raw,now.to_rfc3339(),at,archive::digest(raw),kind]).map_err(err)?;
         tx.execute("DELETE FROM drafts WHERE id=?1", [&draft.id])
             .map_err(err)?;
-        tx.commit().map_err(err)
+        tx.commit().map_err(err)?;
+        Ok(at)
     }
     // Claim before any network call. A restart cannot silently repeat this send.
     pub fn claim_scheduled(&self, now: DateTime<Utc>) -> Result<Option<ScheduledMail>> {

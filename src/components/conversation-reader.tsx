@@ -1,3 +1,4 @@
+import { queueSendWithUndo } from "@/lib/send-undo-toast";
 import type { WorkItem } from "@/lib/workbench";
 import { t } from "@/lib/i18n";
 import {
@@ -510,7 +511,7 @@ function QuickReply({
     try {
       await savingDraft.current;
       await call("save_draft", { draft });
-      await call("queue_send", { draft });
+      await queueSendWithUndo(draft, onSent);
       // A new draft ID prevents a subsequent reply reusing a completed send.
       latest.current = null;
       persisted.current = false;
@@ -523,48 +524,6 @@ function QuickReply({
         cc: draft.cc,
         subject: draft.subject,
       });
-      toast.success(
-        t("Queued to send. Cancel within 8 seconds in Send history."),
-        {
-          duration: 8000,
-          action: {
-            label: t("Undo"),
-            onClick: () => {
-              void call<
-                {
-                  id: string;
-                  status: string;
-                  sendKind?: string;
-                  draft: Compose;
-                }[]
-              >("outbox")
-                .then((records) => {
-                  const match = records.find(
-                    (r) =>
-                      r.status === "scheduled" &&
-                      r.sendKind === "undo" &&
-                      r.draft.id === draft.id,
-                  );
-                  if (!match) {
-                    toast.info(
-                      t("This message has already left the delay window."),
-                    );
-                    return;
-                  }
-                  return call("cancel_schedule", { id: match.id }).then(() => {
-                    toast.success(
-                      t(
-                        "Schedule canceled. Body and attachments restored as a draft.",
-                      ),
-                    );
-                    onSent();
-                  });
-                })
-                .catch((err) => toast.error(String(err)));
-            },
-          },
-        },
-      );
       onSent();
     } catch (e) {
       toast.error(String(e), { duration: 10000 });

@@ -1864,7 +1864,7 @@ pub fn schedule(store: &Store, c: &Compose, at: &str) -> Result<()> {
     let (_, raw) = build_prepared_raw(store, &a, c)?;
     store.schedule_mail(c, &raw, at, chrono::Utc::now())
 }
-pub fn queue_send(store: &Store, c: &Compose) -> Result<()> {
+pub fn queue_send(store: &Store, c: &Compose) -> Result<String> {
     let a = store.account(&c.account_id)?;
     let (_, raw) = build_prepared_raw(store, &a, c)?;
     store.queue_send(c, &raw, chrono::Utc::now())

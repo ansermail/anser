@@ -1424,7 +1424,7 @@ async fn schedule_mail(
         .map_err(err)?
 }
 #[tauri::command]
-async fn queue_send(state: tauri::State<'_, AppState>, draft: Compose) -> Result<()> {
+async fn queue_send(state: tauri::State<'_, AppState>, draft: Compose) -> Result<String> {
     let store = state.store.clone();
     tauri::async_runtime::spawn_blocking(move || network::queue_send(&store, &draft))
         .await

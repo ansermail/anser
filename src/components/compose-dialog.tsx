@@ -1,3 +1,4 @@
+import { queueSendWithUndo } from "@/lib/send-undo-toast";
 import { formatSize } from "@/lib/providers";
 import { Card } from "./ui/card";
 import { Select, SelectContent, SelectGroup, SelectTrigger } from "./ui/select";
@@ -561,49 +562,7 @@ export function ComposeDialog({
       const queuedDraft = prepareCompose(latest.current, dark, {
         englishQuoteHeader,
       });
-      await call("queue_send", { draft: queuedDraft });
-      toast.success(
-        t("Added to send history. Cancel or send now within 8 seconds."),
-        {
-          duration: 8000,
-          action: {
-            label: t("Undo"),
-            onClick: () => {
-              void call<
-                {
-                  id: string;
-                  status: string;
-                  sendKind?: string;
-                  draft: Compose;
-                }[]
-              >("outbox")
-                .then((records) => {
-                  const match = records.find(
-                    (r) =>
-                      r.status === "scheduled" &&
-                      r.sendKind === "undo" &&
-                      r.draft.id === queuedDraft.id,
-                  );
-                  if (!match) {
-                    toast.info(
-                      t("This message has already left the delay window."),
-                    );
-                    return;
-                  }
-                  return call("cancel_schedule", { id: match.id }).then(() => {
-                    toast.success(
-                      t(
-                        "Schedule canceled. Body and attachments restored as a draft.",
-                      ),
-                    );
-                    onSent();
-                  });
-                })
-                .catch((err) => toast.error(String(err)));
-            },
-          },
-        },
-      );
+      await queueSendWithUndo(queuedDraft, onSent);
       onSent();
       onQueued?.();
       onClose();

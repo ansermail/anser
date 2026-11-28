@@ -982,6 +982,7 @@ export async function call<T = void>(
           key + "-drafts",
           JSON.stringify(drafts.filter((d) => d.id !== draft.id)),
         );
+        if (command === "queue_send") result = scheduledAt;
         break;
       }
       case "send_queued_now": {
