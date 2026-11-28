@@ -1,7 +1,7 @@
 {
   "name": "anser",
   "private": true,
-  "version": "0.1.48",
+  "version": "0.1.49",
   "type": "module",
   "packageManager": "pnpm@10.28.0",
   "scripts": {
