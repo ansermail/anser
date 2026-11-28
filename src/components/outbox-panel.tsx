@@ -1,6 +1,7 @@
 import { dismissSendUndoToast } from "@/lib/send-undo-toast";
 import { dateLocale, t } from "@/lib/i18n";
 import { useConfirmation } from "@/hooks/use-confirmation";
+import { useResponsivePageSize } from "@/hooks/use-responsive-page-size";
 import { useEffect, useRef, useState } from "react";
 import {
   Eye,
@@ -169,6 +170,7 @@ export function OutboxPanel({
     [time, setTime] = useState(localDateTime);
   const [now, setNow] = useState(Date.now);
   const latestRefresh = useRef(0);
+  const pageSize = useResponsivePageSize(15);
   const selected = records.find((record) => record.id === detailsId);
 
   async function refresh() {
@@ -476,7 +478,7 @@ export function OutboxPanel({
           columnWidths={{ status: 12 }}
           empty={empty}
           loadingLabel={loading ? t("Loading send history…") : undefined}
-          pageSize={15}
+          pageSize={pageSize}
           fields={[
             "status",
             "task",

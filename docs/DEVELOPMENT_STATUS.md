@@ -2,6 +2,12 @@
 
 依据 PRD 第 5、8、9 节、实施记录和当前代码核查。当前仍为 Alpha；功能代码已存在与真实场景验收通过分别记录。早期回归使用临时存储/演示数据；2026-10-05 用户授权后增加当前腾讯企业邮箱与 QQ 邮箱互发测试，未向其他地址发送，未删除真实邮件。
 
+## 进行中 · 侧栏滚动条与发送记录表格高度（2026-11-28，待发布）
+
+- **代码完成**。左侧 `.sidebar` 改为默认隐藏滚动条，仅在鼠标悬停或键盘聚焦容器时显示；保留滚动能力与稳定滚动边界。发送记录的 `.workspace-panel > .task-data-table` 改为占满工作区剩余高度，取消表格视口原先 `clamp(232px, 43vh, 400px)` 的上限；每页行数按窗口可用高度动态增加且至少保留 15 条，分页仍用于超出可显示数量的记录。详见 [UI 设计规范](UI_DESIGN_GUIDELINES.md) 与组件/页面专项约定。
+- **自动测试通过**。新增 CSS 布局与响应式分页 Hook 回归；`outbox-panel`、`task-data-table` 相关 Vitest 12 项通过，`pnpm check:ui`、`pnpm check:i18n`、`pnpm format:check`、`git diff --check` 与 `pnpm build` 通过。`pnpm test:ci`、Rust、桌面脚本及 `pnpm build:preview` 未在本轮单独重复。
+- **场景验收**。隔离浏览器预览未完成交互确认，开发预览的深色模式、侧栏滚动条悬停/聚焦显隐、发送记录表格占满高度及窄窗口分页仍标注未验证；浅色和 macOS/Windows 原生实机未验证。**云端构建**未验证。**正式发布**未验证，也不改动已发布的 `v0.1.50` 产物。
+
 ## 文档补充 · macOS 首次打开命令（2026-11-28）
 
 - **代码完成**。`README.md` 的 macOS 手动安装说明增加针对已确认来源应用的 `xattr -d -r com.apple.quarantine "/Applications/雁信.app"`，明确仅移除下载隔离属性，不替代 Apple Developer ID 签名或 Apple 公证。未改动应用代码、发布资源及已发布的 `v0.1.50`。
