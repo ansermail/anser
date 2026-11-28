@@ -17,6 +17,7 @@ import { LanguageSettings } from "./components/language-settings";
 import { WorkspaceSettings } from "./components/workspace-settings";
 import { ComposeQuoteSettings } from "./components/compose-quote-settings";
 import { OpenPgpSettings } from "./components/openpgp-settings";
+import { OpenPgpIndicator } from "./components/openpgp-banner";
 import { TaskCellText, TaskDataTable } from "./components/task-data-table";
 import {
   TaskPanelHeader,
@@ -5010,6 +5011,14 @@ export default function App({
                           <time dateTime={activeMail.date}>
                             {formatMailTime(activeMail.date)}
                           </time>
+                          {detail?.mail.id === activeMail.id && (
+                            <OpenPgpIndicator
+                              mailId={detail.mail.id}
+                              pgp={detail.pgp}
+                              attachments={detail.attachments}
+                              onReload={() => setDetailRetry((n) => n + 1)}
+                            />
+                          )}
                           <MailStorageStatus
                             savedLocally={activeMail.savedLocally}
                             demo={demo}

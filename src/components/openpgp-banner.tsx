@@ -3,11 +3,8 @@ import { t } from "@/lib/i18n";
 import { call } from "@/lib/api";
 import type { Detail, PgpMessageInfo } from "@/lib/types";
 import {
-  ChevronDown,
-  ChevronUp,
   KeyRound,
   Lock,
-  LockOpen,
   ShieldAlert,
   ShieldCheck,
   ShieldQuestion,
@@ -17,6 +14,8 @@ import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
 import { Checkbox } from "./ui/checkbox";
 import { Label } from "./ui/label";
+import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
+import { Separator } from "./ui/separator";
 import { PasswordInput } from "./password-input";
 import { toast } from "sonner";
 
@@ -26,33 +25,7 @@ export function formatFingerprint(fp: string): string {
   return clean.match(/.{1,4}/g)?.join(" ") ?? clean;
 }
 
-export function OpenPgpBanner({
-  mailId,
-  pgp,
-  attachments,
-  onReload,
-}: {
-  mailId: string;
-  pgp?: PgpMessageInfo | null;
-  attachments: Detail["attachments"];
-  onReload?: () => void;
-}) {
-  const [expanded, setExpanded] = useState(false);
-  const [passphrase, setPassphrase] = useState("");
-  const [remember, setRemember] = useState(false);
-  const [unlocking, setUnlocking] = useState(false);
-  const [importingKey, setImportingKey] = useState(false);
-
-  if (!pgp || (!pgp.encrypted && !pgp.signed && !pgp.hasAttachedPublicKey)) {
-    return null;
-  }
-
-  const keyAttachment = attachments.find(
-    (a) =>
-      a.mime.toLowerCase() === "application/pgp-keys" ||
-      a.name.toLowerCase().endsWith(".asc"),
-  );
-
+function pgpStatusMeta(pgp: PgpMessageInfo) {
   const isWarning =
     pgp.encryptionState === "failed" ||
     pgp.encryptionState === "missingKey" ||
@@ -102,6 +75,52 @@ export function OpenPgpBanner({
     titleParts.push(t("Contains an OpenPGP public key attachment"));
   }
 
+  const Icon = isWarning
+    ? ShieldAlert
+    : pgp.encrypted
+      ? Lock
+      : isGood && pgp.signed
+        ? ShieldCheck
+        : pgp.signed
+          ? ShieldQuestion
+          : KeyRound;
+
+  return { isWarning, isGood, title: titleParts.join(" · "), Icon };
+}
+
+/**
+ * Compact lock/shield icon button for the message metadata bar.
+ * Clicking opens a popover with full OpenPGP encryption/signature details,
+ * attached public key import, and passphrase unlock controls.
+ */
+export function OpenPgpIndicator({
+  mailId,
+  pgp,
+  attachments,
+  onReload,
+}: {
+  mailId: string;
+  pgp?: PgpMessageInfo | null;
+  attachments: Detail["attachments"];
+  onReload?: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [passphrase, setPassphrase] = useState("");
+  const [remember, setRemember] = useState(false);
+  const [unlocking, setUnlocking] = useState(false);
+  const [importingKey, setImportingKey] = useState(false);
+
+  if (!pgp || (!pgp.encrypted && !pgp.signed && !pgp.hasAttachedPublicKey)) {
+    return null;
+  }
+
+  const keyAttachment = attachments.find(
+    (a) =>
+      a.mime.toLowerCase() === "application/pgp-keys" ||
+      a.name.toLowerCase().endsWith(".asc"),
+  );
+  const { isWarning, isGood, title, Icon } = pgpStatusMeta(pgp);
+
   async function handleUnlock() {
     if (!pgp?.decryptionKeyFingerprint || !passphrase) return;
     setUnlocking(true);
@@ -112,6 +131,7 @@ export function OpenPgpBanner({
         remember,
       });
       setPassphrase("");
+      setOpen(false);
       toast.success(t("OpenPGP key unlocked"));
       onReload?.();
     } catch (error) {
@@ -142,72 +162,225 @@ export function OpenPgpBanner({
     }
   }
 
-  const Icon = isWarning
-    ? ShieldAlert
-    : pgp.encrypted && pgp.encryptionState !== "decrypted"
-      ? Lock
-      : isGood && pgp.signed
-        ? ShieldCheck
-        : pgp.encrypted
-          ? LockOpen
-          : pgp.signed
-            ? ShieldQuestion
-            : KeyRound;
+  const iconTone = isWarning
+    ? "text-destructive hover:text-destructive"
+    : isGood
+      ? "text-primary hover:text-primary"
+      : "text-muted-foreground hover:text-foreground";
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon-xs"
+          className={iconTone}
+          aria-label={title}
+          title={title}
+          data-openpgp-indicator=""
+        >
+          <Icon className="size-3.5" aria-hidden="true" />
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent align="end" className="w-[340px] space-y-3 p-3.5">
+        <div className="flex items-start gap-2">
+          <Icon
+            className={`mt-0.5 size-4 shrink-0 ${isWarning ? "text-destructive" : isGood ? "text-primary" : "text-muted-foreground"}`}
+            aria-hidden="true"
+          />
+          <div className="min-w-0 space-y-1.5">
+            <p className="text-sm font-medium leading-snug text-foreground">
+              {title}
+            </p>
+            <div className="flex flex-wrap items-center gap-1.5">
+              {pgp.format === "inlinePgp" && (
+                <Badge variant="outline" className="text-[11px] font-normal">
+                  Inline PGP
+                </Badge>
+              )}
+              {pgp.encrypted && (
+                <Badge variant="secondary" className="text-[11px] font-normal">
+                  {t("AI disabled for encrypted mail")}
+                </Badge>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {(pgp.encryptionError || pgp.signatureError) && (
+          <p className="text-xs text-destructive">
+            {[pgp.encryptionError, pgp.signatureError]
+              .filter(Boolean)
+              .join(" · ")}
+          </p>
+        )}
+
+        {(pgp.signed ||
+          pgp.signerFingerprint ||
+          pgp.decryptionKeyFingerprint ||
+          (pgp.encryptionState === "missingKey" &&
+            pgp.recipientKeyIds &&
+            pgp.recipientKeyIds.length > 0)) && (
+          <>
+            <Separator />
+            <div className="space-y-1.5 text-xs">
+              {pgp.signed && (
+                <div>
+                  <span className="text-muted-foreground">{t("Signer")}: </span>
+                  <span className="break-all">
+                    {pgp.signerUserId || pgp.signerKeyId || t("Unknown signer")}
+                  </span>
+                </div>
+              )}
+              {pgp.signerFingerprint && (
+                <div className="font-mono text-[11px] break-words">
+                  <span className="font-sans text-muted-foreground">
+                    {t("Signer fingerprint")}:{" "}
+                  </span>
+                  {formatFingerprint(pgp.signerFingerprint)}
+                </div>
+              )}
+              {pgp.decryptionKeyFingerprint && (
+                <div className="font-mono text-[11px] break-words">
+                  <span className="font-sans text-muted-foreground">
+                    {t("Decryption key")}:{" "}
+                  </span>
+                  {formatFingerprint(pgp.decryptionKeyFingerprint)}
+                </div>
+              )}
+              {pgp.encryptionState === "missingKey" &&
+                pgp.recipientKeyIds &&
+                pgp.recipientKeyIds.length > 0 && (
+                  <div className="font-mono text-[11px] break-all">
+                    <span className="font-sans text-muted-foreground">
+                      {t("Encrypted for key IDs")}:{" "}
+                    </span>
+                    {pgp.recipientKeyIds.join(", ")}
+                  </div>
+                )}
+            </div>
+          </>
+        )}
+
+        {pgp.encryptionState === "passphraseRequired" && (
+          <>
+            <Separator />
+            <form
+              className="space-y-2"
+              onSubmit={(e) => {
+                e.preventDefault();
+                void handleUnlock();
+              }}
+            >
+              <PasswordInput
+                value={passphrase}
+                onChange={(e) => setPassphrase(e.target.value)}
+                placeholder={t("Enter OpenPGP key passphrase")}
+                aria-label={t("Enter OpenPGP key passphrase")}
+              />
+              <Label className="flex items-center gap-1.5 text-xs font-normal">
+                <Checkbox
+                  checked={remember}
+                  onCheckedChange={(v) => setRemember(v === true)}
+                />
+                {t("Remember passphrase in encrypted vault")}
+              </Label>
+              <Button
+                type="submit"
+                size="sm"
+                className="w-full"
+                disabled={unlocking || !passphrase}
+              >
+                {unlocking ? t("Unlocking…") : t("Unlock & decrypt")}
+              </Button>
+            </form>
+          </>
+        )}
+
+        {keyAttachment && (
+          <>
+            <Separator />
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="w-full"
+              disabled={importingKey}
+              onClick={() => void handleImportAttachedKey()}
+            >
+              <KeyRound className="size-3.5" aria-hidden="true" />
+              {t("Import public key")}
+            </Button>
+          </>
+        )}
+      </PopoverContent>
+    </Popover>
+  );
+}
+
+/**
+ * Inline OpenPGP alert shown only when an encrypted message cannot be read
+ * until unlocked or fixed (passphraseRequired / missingKey / failed).
+ * Normal decrypted/signed messages use the compact lock icon in the header.
+ */
+export function OpenPgpBanner({
+  pgp,
+  onReload,
+}: {
+  mailId: string;
+  pgp?: PgpMessageInfo | null;
+  attachments: Detail["attachments"];
+  onReload?: () => void;
+}) {
+  const [passphrase, setPassphrase] = useState("");
+  const [remember, setRemember] = useState(false);
+  const [unlocking, setUnlocking] = useState(false);
+
+  const needsInlineAction =
+    !!pgp?.encrypted &&
+    (pgp.encryptionState === "passphraseRequired" ||
+      pgp.encryptionState === "missingKey" ||
+      pgp.encryptionState === "failed");
+
+  if (!pgp || !needsInlineAction) {
+    return null;
+  }
+
+  const { isWarning, title, Icon } = pgpStatusMeta(pgp);
+
+  async function handleUnlock() {
+    if (!pgp?.decryptionKeyFingerprint || !passphrase) return;
+    setUnlocking(true);
+    try {
+      await call("unlock_pgp_key", {
+        fingerprint: pgp.decryptionKeyFingerprint,
+        passphrase,
+        remember,
+      });
+      setPassphrase("");
+      toast.success(t("OpenPGP key unlocked"));
+      onReload?.();
+    } catch (error) {
+      toast.error(String(error));
+    } finally {
+      setUnlocking(false);
+    }
+  }
 
   return (
     <Alert
       variant={isWarning ? "destructive" : "default"}
-      className="mb-3 py-2.5"
+      className="mb-3 flex items-start gap-2.5 py-3 [&>svg]:static [&>svg]:mt-0.5 [&>svg]:shrink-0 [&>svg+div]:translate-y-0 [&>svg~*]:pl-0"
       data-openpgp-banner=""
     >
-      <Icon className="h-4 w-4" aria-hidden="true" />
+      <Icon className="size-4" aria-hidden="true" />
       <div className="flex flex-1 flex-col gap-2">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <div className="flex flex-wrap items-center gap-2">
-            <AlertTitle className="m-0 text-sm font-medium">
-              {titleParts.join(" · ")}
-            </AlertTitle>
-            {pgp.format === "inlinePgp" && (
-              <Badge variant="outline" className="text-[11px] font-normal">
-                Inline PGP
-              </Badge>
-            )}
-            {pgp.encrypted && (
-              <Badge variant="secondary" className="text-[11px] font-normal">
-                {t("AI disabled for encrypted mail")}
-              </Badge>
-            )}
-          </div>
-          <div className="flex items-center gap-1.5">
-            {keyAttachment && (
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                disabled={importingKey}
-                onClick={() => void handleImportAttachedKey()}
-              >
-                <KeyRound className="h-3.5 w-3.5" aria-hidden="true" />
-                {t("Import public key")}
-              </Button>
-            )}
-            {(pgp.encrypted || pgp.signed) && (
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                aria-expanded={expanded}
-                onClick={() => setExpanded((v) => !v)}
-              >
-                {t("Details")}
-                {expanded ? (
-                  <ChevronUp className="h-3.5 w-3.5" aria-hidden="true" />
-                ) : (
-                  <ChevronDown className="h-3.5 w-3.5" aria-hidden="true" />
-                )}
-              </Button>
-            )}
-          </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <AlertTitle className="m-0 text-sm font-medium">{title}</AlertTitle>
+          <Badge variant="secondary" className="text-[11px] font-normal">
+            {t("AI disabled for encrypted mail")}
+          </Badge>
         </div>
 
         {pgp.encryptionState === "passphraseRequired" && (
@@ -239,52 +412,22 @@ export function OpenPgpBanner({
           </form>
         )}
 
-        {(pgp.encryptionError || pgp.signatureError) && (
+        {pgp.encryptionError && (
           <AlertDescription className="text-xs">
-            {[pgp.encryptionError, pgp.signatureError]
-              .filter(Boolean)
-              .join(" · ")}
+            {pgp.encryptionError}
           </AlertDescription>
         )}
 
-        {expanded && (
-          <AlertDescription className="mt-1 space-y-1 border-t pt-2 text-xs">
-            {pgp.signed && (
-              <div>
-                <span className="text-muted-foreground">{t("Signer")}: </span>
-                <span>
-                  {pgp.signerUserId || pgp.signerKeyId || t("Unknown signer")}
-                </span>
-              </div>
-            )}
-            {pgp.signerFingerprint && (
-              <div className="font-mono text-[11px] break-all">
-                <span className="font-sans text-muted-foreground">
-                  {t("Signer fingerprint")}:{" "}
-                </span>
-                {formatFingerprint(pgp.signerFingerprint)}
-              </div>
-            )}
-            {pgp.decryptionKeyFingerprint && (
-              <div className="font-mono text-[11px] break-all">
-                <span className="font-sans text-muted-foreground">
-                  {t("Decryption key")}:{" "}
-                </span>
-                {formatFingerprint(pgp.decryptionKeyFingerprint)}
-              </div>
-            )}
-            {pgp.encryptionState === "missingKey" &&
-              pgp.recipientKeyIds &&
-              pgp.recipientKeyIds.length > 0 && (
-                <div className="font-mono text-[11px] break-all">
-                  <span className="font-sans text-muted-foreground">
-                    {t("Encrypted for key IDs")}:{" "}
-                  </span>
-                  {pgp.recipientKeyIds.join(", ")}
-                </div>
-              )}
-          </AlertDescription>
-        )}
+        {pgp.encryptionState === "missingKey" &&
+          pgp.recipientKeyIds &&
+          pgp.recipientKeyIds.length > 0 && (
+            <AlertDescription className="font-mono text-[11px] break-all">
+              <span className="font-sans text-muted-foreground">
+                {t("Encrypted for key IDs")}:{" "}
+              </span>
+              {pgp.recipientKeyIds.join(", ")}
+            </AlertDescription>
+          )}
       </div>
     </Alert>
   );

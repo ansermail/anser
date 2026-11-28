@@ -2,7 +2,7 @@
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { OpenPgpBanner } from "./openpgp-banner";
+import { OpenPgpBanner, OpenPgpIndicator } from "./openpgp-banner";
 import { ComposePgpControl } from "./compose-pgp-control";
 import { TranslatableMailBody } from "./translatable-mail-body";
 import * as api from "@/lib/api";
@@ -81,6 +81,41 @@ describe("OpenPGP UI components", () => {
       remember: false,
     });
     expect(onReload).toHaveBeenCalledTimes(1);
+  });
+
+  it("hides inline banner for decrypted verified mail and shows lock popover in header indicator", async () => {
+    const pgp = {
+      encrypted: true,
+      encryptionState: "decrypted" as const,
+      format: "pgpMime" as const,
+      decryptionKeyFingerprint: "AABBCCDDEEFF00112233445566778899AABBCCDD",
+      signed: true,
+      signatureState: "valid" as const,
+      signerUserId: "Alice <alice@example.com>",
+      signerFingerprint: "1111222233334444555566667777888899990000",
+      senderMatchesSigner: true,
+      hasAttachedPublicKey: false,
+    };
+    const container = mount(
+      <>
+        <OpenPgpBanner mailId="mail-ok" attachments={[]} pgp={pgp} />
+        <OpenPgpIndicator mailId="mail-ok" attachments={[]} pgp={pgp} />
+      </>,
+    );
+    expect(container.querySelector("[data-openpgp-banner]")).toBeNull();
+    const trigger = container.querySelector<HTMLButtonElement>(
+      "[data-openpgp-indicator]",
+    )!;
+    expect(trigger).not.toBeNull();
+    await act(async () => {
+      trigger.click();
+      await Promise.resolve();
+    });
+    const text = document.body.textContent || "";
+    expect(text).toContain("OpenPGP 已加密（已解密）");
+    expect(text).toContain("数字签名有效");
+    expect(text).toContain("Alice <alice@example.com>");
+    expect(text).toContain("加密邮件已禁用 AI");
   });
 
   it("disables AI translation and hides AI summary for encrypted mail", () => {

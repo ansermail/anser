@@ -38,7 +38,7 @@ import { Alert, AlertTitle, AlertDescription } from "./ui/alert";
 import { TranslatableMailBody } from "./translatable-mail-body";
 import { MailSummaryLayer } from "./mail-summary";
 import { MailAttachmentNotice, MailAttachments } from "./mail-attachments";
-import { OpenPgpBanner } from "./openpgp-banner";
+import { OpenPgpBanner, OpenPgpIndicator } from "./openpgp-banner";
 import { MailStorageStatus } from "./mail-storage-status";
 import { SenderIdentity } from "./contact-address";
 import { RecipientAddressSummary } from "./mail-recipients";
@@ -235,6 +235,14 @@ function Turn({
           )}
         </div>
         <time dateTime={mail.date}>{mailTime(mail.date)}</time>
+        {detail && (
+          <OpenPgpIndicator
+            mailId={mail.id}
+            pgp={detail.pgp}
+            attachments={detail.attachments}
+            onReload={() => setRetry((n) => n + 1)}
+          />
+        )}
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button

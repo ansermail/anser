@@ -26,8 +26,8 @@ const MAX_THUMBNAIL_SOURCE_BYTES = 20 * 1024 * 1024;
 export function MailAttachmentNotice({ reported }: { reported: boolean }) {
   if (!reported) return null;
   return (
-    <Alert className="mail-attachment-notice">
-      <FileText />
+    <Alert className="mail-attachment-notice flex items-center gap-2.5 py-2.5 [&>svg]:static [&>svg]:shrink-0 [&>svg+div]:translate-y-0 [&>svg~*]:pl-0">
+      <FileText className="size-4 text-muted-foreground" aria-hidden="true" />
       <AlertDescription>
         {t(
           "This message reports attachments, but no separate files are available. Inline images appear in the message body.",

@@ -29,6 +29,7 @@ import { useTheme } from "../lib/theme";
 import type { Account, Compose, Detail, Preferences } from "../lib/types";
 import { Alert, AlertDescription } from "./ui/alert";
 import { MailRecipients } from "./mail-recipients";
+import { OpenPgpIndicator } from "./openpgp-banner";
 import { SenderIdentity } from "./contact-address";
 import { Button } from "./ui/button";
 import { Separator } from "./ui/separator";
@@ -426,6 +427,11 @@ export function ExternalMailWindow() {
                   <time dateTime={document.detail.mail.date}>
                     {formatMailTime(document.detail.mail.date)}
                   </time>
+                  <OpenPgpIndicator
+                    mailId={document.detail.mail.id}
+                    pgp={document.detail.pgp}
+                    attachments={document.detail.attachments}
+                  />
                   <span className="saved-chip max-w-[200px]">
                     <MiddleTruncateFilename name={document.filename} />
                   </span>
