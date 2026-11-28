@@ -53,6 +53,86 @@ fn activity_displays_decoded_folders_in_existing_and_new_logs_without_changing_w
 }
 
 #[test]
+fn pausing_and_resuming_account_interrupts_only_that_account_without_waiting_or_clobbering_fields()
+{
+    let temp = tempfile::tempdir().unwrap();
+    let store = Store::new(temp.path().to_path_buf()).unwrap();
+    let mut a = account();
+    a.last_sync = Some("2026-11-28T01:00:00+08:00".into());
+    store.save_account(&a).unwrap();
+    let mut b = account();
+    b.id = "acc-b".into();
+    b.email = "other@example.com".into();
+    b.username = "other@example.com".into();
+    store.save_account(&b).unwrap();
+
+    // Hold both INBOX and historical folder locks for account A, plus INBOX for B.
+    let a_inbox = crate::sync_control::folder_gate(&store.root, &a.id, "INBOX").unwrap();
+    let a_archive = crate::sync_control::folder_gate(&store.root, &a.id, "Archive").unwrap();
+    let b_inbox = crate::sync_control::folder_gate(&store.root, &b.id, "INBOX").unwrap();
+    let _a_inbox_guard = a_inbox.lock().unwrap();
+    let _a_archive_guard = a_archive.lock().unwrap();
+    let _b_inbox_guard = b_inbox.lock().unwrap();
+
+    let a_inbox_ctl = std::sync::Arc::new(crate::idle::ConnectionControl::default());
+    let a_archive_ctl = std::sync::Arc::new(crate::idle::ConnectionControl::default());
+    let b_inbox_ctl = std::sync::Arc::new(crate::idle::ConnectionControl::default());
+    let _reg1 = a_inbox
+        .interruptible_download(a_inbox.activity(), &a_inbox_ctl)
+        .unwrap();
+    let _reg2 = a_archive
+        .interruptible_download(a_archive.activity(), &a_archive_ctl)
+        .unwrap();
+    let _reg3 = b_inbox
+        .interruptible_download(b_inbox.activity(), &b_inbox_ctl)
+        .unwrap();
+
+    let control = crate::realtime::RealtimeControl::default();
+    let enabled = crate::set_account_enabled(&store, &control, &a.id).unwrap();
+    assert!(!enabled);
+    assert!(!store.account(&a.id).unwrap().enabled);
+    assert!(a_inbox_ctl.stopped());
+    assert!(a_archive_ctl.stopped());
+    assert!(!b_inbox_ctl.stopped());
+    assert_eq!(a_inbox.activity(), 1);
+    assert_eq!(a_archive.activity(), 1);
+    assert_eq!(b_inbox.activity(), 0);
+
+    // Concurrent sync status & preference writes must survive toggling enabled.
+    let mut updated = store.account(&a.id).unwrap();
+    updated.name = "外贸主箱".into();
+    updated.save_locally = false;
+    store.edit_account_preferences(&updated).unwrap();
+    let mut synced = updated.clone();
+    synced.last_sync = Some("2026-11-28T02:00:00+08:00".into());
+    store.save_sync_status(&synced).unwrap();
+
+    // Resuming while locks are still held succeeds without bumping folder activity.
+    let resumed = crate::set_account_enabled(&store, &control, &a.id).unwrap();
+    assert!(resumed);
+    let after = store.account(&a.id).unwrap();
+    assert!(after.enabled);
+    assert_eq!(after.name, "外贸主箱");
+    assert!(!after.save_locally);
+    assert_eq!(after.last_sync, synced.last_sync);
+    assert_eq!(a_inbox.activity(), 1);
+    assert_eq!(a_archive.activity(), 1);
+
+    // Explicit pause cancellation sentinel is still recognized even after rapid pause -> resume.
+    assert!(crate::is_sync_stopped(
+        &store,
+        &a,
+        &Err(crate::network::SYNC_STOPPED_BY_ACCOUNT_CHANGE.into())
+    ));
+    // Real errors on an enabled, unchanged account are NOT swallowed.
+    assert!(!crate::is_sync_stopped(
+        &store,
+        &a,
+        &Err("连接 IMAP 服务器超时".into())
+    ));
+}
+
+#[test]
 fn local_account_preferences_save_during_sync_and_are_not_overwritten_by_sync_status() {
     let temp = tempfile::tempdir().unwrap();
     let store = Store::new(temp.path().to_path_buf()).unwrap();

@@ -950,6 +950,31 @@ async fn archive_tier_normalize(
 fn open_archive_tier(state: tauri::State<AppState>) -> Result<()> {
     archive_tier::open_index(&state.store)
 }
+/// Toggle mail checks without waiting on sync/folder/send gates.
+/// Persists only `enabled` inside an immediate SQLite transaction so concurrent
+/// sync status or preference writes are never clobbered, interrupts any active
+/// read-only downloads for this account when pausing, and updates only this
+/// account's IDLE listener.
+pub(crate) fn set_account_enabled(
+    store: &Store,
+    realtime: &realtime::RealtimeControl,
+    id: &str,
+) -> Result<bool> {
+    let enabled = store.toggle_account_enabled(id)?;
+    if !enabled {
+        sync_control::interrupt_account(&store.root, id);
+    }
+    realtime.restart_account(id);
+    Ok(enabled)
+}
+pub(crate) fn is_sync_stopped(store: &Store, account: &Account, result: &Result<u32>) -> bool {
+    result.as_ref().is_err_and(|error| {
+        error == network::SYNC_STOPPED_BY_ACCOUNT_CHANGE
+            || store
+                .account(&account.id)
+                .is_ok_and(|current| !current.enabled || !current.same_connection(account))
+    })
+}
 #[tauri::command]
 async fn account_action(state: tauri::State<'_, AppState>, id: String, remove: bool) -> Result<()> {
     let store = state.store.clone();
@@ -957,6 +982,9 @@ async fn account_action(state: tauri::State<'_, AppState>, id: String, remove: b
     let send_gate = state.send_gate.clone();
     let realtime = state.realtime.clone();
     tauri::async_runtime::spawn_blocking(move || {
+        if !remove {
+            return set_account_enabled(&store, &realtime, &id).map(|_| ());
+        }
         let _guard = gate.try_lock().map_err(|_| "正在处理邮件，请稍后重试")?;
         let inbox_gate = sync_control::folder_gate(&store.root, &id, "INBOX")?;
         let _inbox = inbox_gate
@@ -965,19 +993,13 @@ async fn account_action(state: tauri::State<'_, AppState>, id: String, remove: b
         let _sending = send_gate
             .try_lock()
             .map_err(|_| "正在发送邮件，请稍后修改账号")?;
-        if remove {
-            let previous = auth::remove(&id)?;
-            if let Err(error) = store.remove_account(&id) {
-                auth::restore(&id, previous)
-                    .map_err(|_| "移除账号失败，凭据恢复也失败；原账号保留，请重新连接")?;
-                return Err(error);
-            }
-        } else {
-            let mut a = store.account(&id)?;
-            a.enabled = !a.enabled;
-            store.save_account(&a)?;
+        let previous = auth::remove(&id)?;
+        if let Err(error) = store.remove_account(&id) {
+            auth::restore(&id, previous)
+                .map_err(|_| "移除账号失败，凭据恢复也失败；原账号保留，请重新连接")?;
+            return Err(error);
         }
-        realtime.restart();
+        realtime.restart_account(&id);
         Ok(())
     })
     .await
@@ -1099,10 +1121,12 @@ fn sync_watch_inbox(
     account: &Account,
     signal: network::WatchSignal,
     session: &mut network::WatchSession,
+    control: &Arc<idle::ConnectionControl>,
 ) -> Result<u32> {
     let current = store.account(&account.id)?;
     if !current.enabled || current.protocol != "imap" || !current.same_connection(account) {
-        return Err("账号已暂停或连接配置已修改，停止旧收取任务".into());
+        control.stop();
+        return Err(network::SYNC_STOPPED_BY_ACCOUNT_CHANGE.into());
     }
     let source = match signal {
         network::WatchSignal::CatchUp => "监听连接后补查",
@@ -1121,13 +1145,19 @@ fn sync_watch_inbox(
     ));
     let started = std::time::Instant::now();
     let result = sync_scope(store, app, current, "收件箱收取", |updated| {
-        network::sync_inbox_session(store, account, session, updated)
+        network::sync_inbox_session(store, account, session, control, updated)
     });
     let _ = store.log(&format!(
         "{} 收件诊断：{source} {at}；本轮 {} 毫秒；{}",
         account.email,
         started.elapsed().as_millis(),
-        if result.is_ok() { "成功" } else { "失败" }
+        if control.stopped() {
+            "已停止"
+        } else if result.is_ok() {
+            "成功"
+        } else {
+            "失败"
+        }
     ));
     result
 }
@@ -1158,6 +1188,15 @@ fn sync_scope(
         }
     };
     let result = run(&updated);
+    if is_sync_stopped(store, &account, &result) {
+        let _ = store.log(&format!(
+            "{} {}已按账号暂停或配置变更要求停止",
+            account.email, scope
+        ));
+        notifications::received(store, app, &prior, checkpoint.get());
+        let _ = app.emit("mail-updated", ());
+        return Ok(0);
+    }
     match &result {
         Ok(count) => {
             account.last_sync = Some(chrono::Utc::now().to_rfc3339());
@@ -1556,6 +1595,13 @@ async fn sync_remote_folder(
         let result = network::sync_folder(&store, &a, &folder);
         notifications::received(&store, &app, &a, checkpoint);
         let _ = app.emit("mail-updated", ());
+        if is_sync_stopped(&store, &a, &result) {
+            let _ = store.log(&format!(
+                "{} 文件夹「{}」收取已按账号暂停或配置变更要求停止",
+                a.email, folder
+            ));
+            return Ok(0);
+        }
         result
     })
     .await

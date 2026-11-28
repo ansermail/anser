@@ -309,6 +309,28 @@ impl Store {
         .map_err(err)?;
         tx.commit().map_err(err)
     }
+    /// Atomically flip `enabled` inside an immediate transaction so toggling
+    /// during an active sync never overwrites concurrent `last_sync`, `error`,
+    /// preferences, or retention updates.
+    pub fn toggle_account_enabled(&self, id: &str) -> Result<bool> {
+        let mut db = self.db()?;
+        let tx = db
+            .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
+            .map_err(err)?;
+        let data: String = tx
+            .query_row("SELECT data FROM accounts WHERE id=?1", [id], |r| r.get(0))
+            .map_err(err)?;
+        let mut current: Account = serde_json::from_str(&data).map_err(err)?;
+        current.enabled = !current.enabled;
+        let enabled = current.enabled;
+        tx.execute(
+            "UPDATE accounts SET data=?2 WHERE id=?1",
+            params![current.id, serde_json::to_string(&current).map_err(err)?],
+        )
+        .map_err(err)?;
+        tx.commit().map_err(err)?;
+        Ok(enabled)
+    }
     // A completed sync may have begun before local preferences were edited.
     pub fn save_sync_status(&self, account: &Account) -> Result<()> {
         let mut db = self.db()?;

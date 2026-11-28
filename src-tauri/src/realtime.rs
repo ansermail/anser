@@ -60,16 +60,52 @@ pub fn inbox_watched(id: &str) -> bool {
 pub struct RealtimeControl {
     revision: AtomicU64,
     accounts: Mutex<HashMap<String, u64>>,
+    active: Mutex<HashMap<String, Vec<Arc<ConnectionControl>>>>,
 }
 impl RealtimeControl {
     pub fn restart(&self) {
         self.revision.fetch_add(1, Ordering::AcqRel);
+        let controls = self
+            .active
+            .lock()
+            .map(|active| {
+                active
+                    .values()
+                    .flat_map(|list| list.iter().cloned())
+                    .collect::<Vec<_>>()
+            })
+            .unwrap_or_default();
+        for control in controls {
+            control.stop();
+        }
     }
-    /// Reconnect one account after a manual check used its own short-lived
-    /// INBOX session, so notifications route back to the listener.
+    /// Reconnect or stop one account immediately without disturbing other
+    /// accounts' IDLE sessions.
     pub fn restart_account(&self, id: &str) {
         if let Ok(mut accounts) = self.accounts.lock() {
             *accounts.entry(id.into()).or_insert(0) += 1;
+        }
+        let controls = self
+            .active
+            .lock()
+            .map(|active| active.get(id).cloned().unwrap_or_default())
+            .unwrap_or_default();
+        for control in controls {
+            control.stop();
+        }
+    }
+    fn register_active(
+        self: &Arc<Self>,
+        id: &str,
+        control: &Arc<ConnectionControl>,
+    ) -> ActiveWorkerRegistration {
+        if let Ok(mut active) = self.active.lock() {
+            active.entry(id.into()).or_default().push(control.clone());
+        }
+        ActiveWorkerRegistration {
+            realtime: self.clone(),
+            id: id.into(),
+            control: control.clone(),
         }
     }
     fn account_revision(&self, id: &str) -> u64 {
@@ -77,6 +113,27 @@ impl RealtimeControl {
             .lock()
             .map(|accounts| accounts.get(id).copied().unwrap_or(0))
             .unwrap_or(0)
+    }
+}
+struct ActiveWorkerRegistration {
+    realtime: Arc<RealtimeControl>,
+    id: String,
+    control: Arc<ConnectionControl>,
+}
+impl Drop for ActiveWorkerRegistration {
+    fn drop(&mut self) {
+        if let Ok(mut active) = self.realtime.active.lock() {
+            if let std::collections::hash_map::Entry::Occupied(mut entry) =
+                active.entry(self.id.clone())
+            {
+                entry
+                    .get_mut()
+                    .retain(|existing| !Arc::ptr_eq(existing, &self.control));
+                if entry.get().is_empty() {
+                    entry.remove();
+                }
+            }
+        }
     }
 }
 fn config(account: &Account) -> String {
@@ -122,14 +179,22 @@ struct Worker {
     control: Arc<ConnectionControl>,
     thread: JoinHandle<()>,
 }
-fn spawn_worker(store: Store, app: tauri::AppHandle, account: Account, revision: u64) -> Worker {
+fn spawn_worker(
+    store: Store,
+    app: tauri::AppHandle,
+    realtime: Arc<RealtimeControl>,
+    account: Account,
+    revision: u64,
+) -> Worker {
     let key = config(&account);
     let worker_config = key.clone();
     let control = Arc::new(ConnectionControl::default());
     let stopped = control.clone();
     let id = account.id.clone();
     let email = account.email.clone();
+    let active_registration = realtime.register_active(&id, &control);
     let handle = thread::spawn(move || {
+        let _active_registration = active_registration;
         let mut failures = 0;
         while !stopped.stopped() {
             // auth::credentials serializes refreshes per account. A full sync
@@ -155,7 +220,8 @@ fn spawn_worker(store: Store, app: tauri::AppHandle, account: Account, revision:
                     &stopped,
                     ready,
                     |signal, session| {
-                        crate::sync_watch_inbox(&store, &app, &current, signal, session).map(|_| ())
+                        crate::sync_watch_inbox(&store, &app, &current, signal, session, &stopped)
+                            .map(|_| ())
                     },
                     || poll_interval(&store),
                 )
@@ -224,7 +290,13 @@ pub fn start(store: Store, app: tauri::AppHandle, control: Arc<RealtimeControl>)
                 for (id, account) in accounts {
                     workers.entry(id.clone()).or_insert_with(|| {
                         let revision = control.account_revision(&id);
-                        spawn_worker(store.clone(), app.clone(), account, revision)
+                        spawn_worker(
+                            store.clone(),
+                            app.clone(),
+                            control.clone(),
+                            account,
+                            revision,
+                        )
                     });
                 }
             }
@@ -272,5 +344,22 @@ mod tests {
         assert!(inbox_watched("watched-account"));
         drop(replacement);
         assert!(!inbox_watched("watched-account"));
+    }
+    #[test]
+    fn restarting_one_account_stops_only_that_accounts_active_connection() {
+        let realtime = Arc::new(RealtimeControl::default());
+        let a_control = Arc::new(ConnectionControl::default());
+        let b_control = Arc::new(ConnectionControl::default());
+        let reg_a = realtime.register_active("a", &a_control);
+        let _reg_b = realtime.register_active("b", &b_control);
+        realtime.restart_account("a");
+        assert!(a_control.stopped());
+        assert!(!b_control.stopped());
+        drop(reg_a);
+        let a_next = Arc::new(ConnectionControl::default());
+        let _reg_a_next = realtime.register_active("a", &a_next);
+        realtime.restart();
+        assert!(a_next.stopped());
+        assert!(b_control.stopped());
     }
 }

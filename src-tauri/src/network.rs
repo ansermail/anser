@@ -412,16 +412,26 @@ pub fn watch_imap(
     control.clear();
     result
 }
+pub(crate) const SYNC_STOPPED_BY_ACCOUNT_CHANGE: &str =
+    "账号已暂停或连接配置已修改，停止旧收取任务";
+
+fn account_stopped(store: &Store, a: &Account) -> bool {
+    store
+        .account(&a.id)
+        .is_ok_and(|current| !current.enabled || !current.same_connection(a))
+}
+
 /// Download the inbox on the connection that owns it. The caller keeps the
 /// session listening afterwards, so this never opens a second INBOX session.
 pub fn sync_inbox_session<T: std::io::Read + Write>(
     store: &Store,
     a: &Account,
     session: &mut imap::Session<T>,
+    control: &Arc<ConnectionControl>,
     updated: impl Fn(),
 ) -> Result<u32> {
     catch_unwind(AssertUnwindSafe(|| {
-        sync_imap_scope_controlled(store, a, session, &updated, Some("INBOX"), None)
+        sync_imap_scope_controlled(store, a, session, &updated, Some("INBOX"), Some(control))
     }))
     .unwrap_or_else(|_| Err("邮件协议库处理响应异常；已下载的本地存档已保留".into()))
 }
@@ -1029,6 +1039,10 @@ fn sync_imap_scope_controlled<T: std::io::Read + Write>(
         if only.is_some_and(|name| name != folder) {
             continue;
         }
+        let current = store.account(&a.id)?;
+        if !current.enabled || !current.same_connection(a) {
+            return Err(SYNC_STOPPED_BY_ACCOUNT_CHANGE.into());
+        }
         // A listener that claimed INBOX after the folder list was built owns
         // the folder; selecting it here would make this sweep the newest
         // INBOX session and divert the provider's push notifications.
@@ -1081,6 +1095,9 @@ fn sync_imap_scope_controlled<T: std::io::Read + Write>(
             // Empty mailboxes need no UID namespace. Tencent returns STATUS
             // () here, which older IMAP parsers cannot consume safely.
             if ids.is_empty() {
+                if account_stopped(store, a) {
+                    return Err(SYNC_STOPPED_BY_ACCOUNT_CHANGE.into());
+                }
                 if mailbox.uid_validity.filter(|v| *v > 0).is_none()
                     && store.folder_isolated_reason(&a.id, &folder)?.is_some()
                 {
@@ -1110,6 +1127,10 @@ fn sync_imap_scope_controlled<T: std::io::Read + Write>(
             let lookup = crate::remote::ReceiveLookup::new(store)?;
             let bypassed = store.bypassed_sync_failures(&a.id, &folder)?;
             for &uid in &ids {
+                let current = lookup.account(&a.id)?;
+                if !current.enabled || !current.same_connection(a) {
+                    return Err(SYNC_STOPPED_BY_ACCOUNT_CHANGE.into());
+                }
                 if should_yield() {
                     // This checkpoint follows a fully consumed FETCH and its
                     // safe publication. A partial UID walk is not a complete
@@ -1120,10 +1141,6 @@ fn sync_imap_scope_controlled<T: std::io::Read + Write>(
                         a.email
                     ))?;
                     return Ok(());
-                }
-                let current = lookup.account(&a.id)?;
-                if !current.enabled || !current.same_connection(a) {
-                    return Err("账号已暂停或连接配置已修改，停止旧收取任务".into());
                 }
                 let stable_remote = validity.map(|v| format!("{v}:{uid}"));
                 let failure_key = stable_remote
@@ -1155,15 +1172,11 @@ fn sync_imap_scope_controlled<T: std::io::Read + Write>(
                             "邮件头与结构"
                         }
                     );
-                    let registration = if folder.eq_ignore_ascii_case("INBOX") {
-                        control
-                            .map(|control| {
-                                folder_gate.interruptible_download(observed_activity, control)
-                            })
-                            .transpose()?
-                    } else {
-                        None
-                    };
+                    let registration = control
+                        .map(|control| {
+                            folder_gate.interruptible_download(observed_activity, control)
+                        })
+                        .transpose()?;
                     let interrupted = || control.is_some_and(|control| control.stopped());
                     let fetched = if interrupted() {
                         None
@@ -1175,6 +1188,9 @@ fn sync_imap_scope_controlled<T: std::io::Read + Write>(
                     };
                     drop(registration);
                     if interrupted() {
+                        if account_stopped(store, a) {
+                            return Err(SYNC_STOPPED_BY_ACCOUNT_CHANGE.into());
+                        }
                         store.log(&format!("{} 新实时通知已到达，中断当前只读下载并关闭连接；未完整原件不保存，旧来源与存档保留，剩余邮件下轮继续",a.email))?;
                         return Ok(());
                     }
@@ -1189,7 +1205,7 @@ fn sync_imap_scope_controlled<T: std::io::Read + Write>(
                     })?;
                     let mut latest = store.account(&a.id)?;
                     if !latest.enabled || !latest.same_connection(a) {
-                        return Err("账号已暂停或连接配置已修改，停止旧收取任务".into());
+                        return Err(SYNC_STOPPED_BY_ACCOUNT_CHANGE.into());
                     }
                     // Never archive headers as a complete message if retention was
                     // enabled while this request was in flight; fetch the body first.
@@ -1271,13 +1287,13 @@ fn sync_imap_scope_controlled<T: std::io::Read + Write>(
                     .filter(|uid| prior_cached.contains(uid))
                     .collect::<Vec<_>>();
                 for chunk in cached.chunks(100) {
-                    if should_yield() {
-                        break;
-                    }
                     stage = "回读已读与星标状态".into();
                     let current = store.account(&a.id)?;
                     if !current.enabled || !current.same_connection(a) {
-                        return Err("账号已暂停或连接配置已修改，停止旧收取任务".into());
+                        return Err(SYNC_STOPPED_BY_ACCOUNT_CHANGE.into());
+                    }
+                    if should_yield() {
+                        break;
                     }
                     let set = chunk
                         .iter()
@@ -1308,6 +1324,10 @@ fn sync_imap_scope_controlled<T: std::io::Read + Write>(
                     })
                     .collect::<Vec<_>>();
                 for chunk in missing.chunks(100) {
+                    let current = store.account(&a.id)?;
+                    if !current.enabled || !current.same_connection(a) {
+                        return Err(SYNC_STOPPED_BY_ACCOUNT_CHANGE.into());
+                    }
                     if should_yield() {
                         break;
                     }
@@ -1335,12 +1355,15 @@ fn sync_imap_scope_controlled<T: std::io::Read + Write>(
             // archive write succeeds. Prior local MIME files always remain.
             let current = store.account(&a.id)?;
             if !current.enabled || !current.same_connection(a) {
-                return Err("账号已暂停或连接配置已修改，停止旧收取任务".into());
+                return Err(SYNC_STOPPED_BY_ACCOUNT_CHANGE.into());
             }
             store.reconcile_folder(&a.id, &folder, &remote_ids)?;
             let _ = store.prune_sync_failures(&a.id, &folder, &ids);
             store.restore_folder_trust(a, &folder)?;
             for chunk in cached_flags.chunks(100) {
+                if account_stopped(store, a) {
+                    return Err(SYNC_STOPPED_BY_ACCOUNT_CHANGE.into());
+                }
                 if should_yield() {
                     break;
                 }
@@ -1364,6 +1387,9 @@ fn sync_imap_scope_controlled<T: std::io::Read + Write>(
         if control.is_some_and(|control| control.stopped()) {
             // Interrupted literal/tagged response: discard the entire session,
             // skip reconciliation and never select another folder on it.
+            if result.is_err() && account_stopped(store, a) {
+                return Err(SYNC_STOPPED_BY_ACCOUNT_CHANGE.into());
+            }
             result?;
             break;
         }
@@ -1372,8 +1398,9 @@ fn sync_imap_scope_controlled<T: std::io::Read + Write>(
                 store.isolate_folder(a, &folder, reason, &evidence)?;
                 updated();
             } else if let Some((uid, failure_key)) = active_uid.take() {
-                if reason != "账号已暂停或连接配置已修改，停止旧收取任务"
+                if reason != SYNC_STOPPED_BY_ACCOUNT_CHANGE
                     && reason != "只读下载已取消"
+                    && !account_stopped(store, a)
                 {
                     let envelope = fetch_uid_envelope(a, &folder, uid);
                     let _ = store.record_sync_failure(
@@ -1404,7 +1431,12 @@ fn sync_imap_scope_controlled<T: std::io::Read + Write>(
             selection_errors.push(message);
             continue;
         }
-        result.map_err(|e| format!("文件夹「{folder}」{stage}失败：{e}"))?;
+        if let Err(reason) = result {
+            if reason == SYNC_STOPPED_BY_ACCOUNT_CHANGE {
+                return Err(reason);
+            }
+            return Err(format!("文件夹「{folder}」{stage}失败：{reason}"));
+        }
     }
     if !selection_errors.is_empty() {
         return Err(format!(
@@ -1442,18 +1474,28 @@ fn sync_inner(store: &Store, a: &Account, updated: &impl Fn()) -> Result<u32> {
             if columns.len() != 2 || columns[0].parse::<u32>().is_err() {
                 return Err("POP3 UIDL 响应无效".into());
             }
-            remote_ids.push(columns[1].to_string());
             let current = store.account(&a.id)?;
+            if !current.enabled || !current.same_connection(a) {
+                return Err(SYNC_STOPPED_BY_ACCOUNT_CHANGE.into());
+            }
+            remote_ids.push(columns[1].to_string());
             if store.source_available(&current, "INBOX", columns[1])? {
                 continue;
             }
             pop_command(&mut pop, &format!("RETR {}", columns[0]))?;
             let raw = pop_multiline(&mut pop)?;
             let latest = store.account(&a.id)?;
+            if !latest.enabled || !latest.same_connection(a) {
+                return Err(SYNC_STOPPED_BY_ACCOUNT_CHANGE.into());
+            }
             if store.ingest(&latest, "INBOX", columns[1], &raw, false)? {
                 count += 1;
                 updated();
             }
+        }
+        let current = store.account(&a.id)?;
+        if !current.enabled || !current.same_connection(a) {
+            return Err(SYNC_STOPPED_BY_ACCOUNT_CHANGE.into());
         }
         store.reconcile_folder(&a.id, "INBOX", &remote_ids)?;
         pop_command(&mut pop, "QUIT")?;
@@ -3216,6 +3258,136 @@ mod tests {
                 crate::tests::raw()
             );
         }
+    }
+
+    #[test]
+    fn pausing_account_during_inflight_fetch_stops_without_false_realtime_log_or_sync_failure() {
+        use std::{
+            io::{BufRead, BufReader},
+            net::TcpListener,
+        };
+        struct PauseStream {
+            socket: TcpStream,
+            bytes: usize,
+            started: Option<std::sync::mpsc::Sender<()>>,
+        }
+        impl std::io::Read for PauseStream {
+            fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+                let n = self.socket.read(buf)?;
+                self.bytes += n;
+                if self.bytes >= 4096 {
+                    if let Some(tx) = self.started.take() {
+                        let _ = tx.send(());
+                    }
+                }
+                Ok(n)
+            }
+        }
+        impl std::io::Write for PauseStream {
+            fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+                self.socket.write(buf)
+            }
+            fn flush(&mut self) -> std::io::Result<()> {
+                self.socket.flush()
+            }
+        }
+
+        let temp = tempfile::tempdir().unwrap();
+        let store = Store::new(temp.path().to_path_buf()).unwrap();
+        let account = crate::tests::account();
+        store.save_account(&account).unwrap();
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = listener.local_addr().unwrap();
+        let commands = Arc::new(Mutex::new(Vec::<String>::new()));
+        let seen = commands.clone();
+        let server = std::thread::spawn(move || {
+            let (socket, _) = listener.accept().unwrap();
+            let _ = socket.set_read_timeout(Some(Duration::from_secs(5)));
+            let mut peer = BufReader::new(socket);
+            peer.get_mut()
+                .write_all(b"* OK [CAPABILITY IMAP4rev1] Fixture\r\n")
+                .unwrap();
+            let mut line = String::new();
+            while peer.read_line(&mut line).unwrap_or(0) > 0 {
+                let trimmed = line.trim().to_string();
+                seen.lock().unwrap().push(trimmed.clone());
+                let tag = trimmed.split_whitespace().next().unwrap_or("a1");
+                line.clear();
+                let response = if trimmed.contains("LOGIN ") {
+                    format!("{tag} OK Logged in\r\n")
+                } else if trimmed.ends_with("CAPABILITY") {
+                    format!("* CAPABILITY IMAP4rev1\r\n{tag} OK Caps\r\n")
+                } else if trimmed.contains("LIST ") {
+                    format!(
+                        "* LIST () \"/\" \"INBOX\"\r\n* LIST () \"/\" \"Archive\"\r\n{tag} OK Listed\r\n"
+                    )
+                } else if trimmed.contains("EXAMINE \"INBOX\"") {
+                    format!("* 1 EXISTS\r\n* OK [UIDVALIDITY 7] Valid\r\n{tag} OK Opened\r\n")
+                } else if trimmed.contains("UID SEARCH ALL") {
+                    format!("* SEARCH 13\r\n{tag} OK Searched\r\n")
+                } else if trimmed.contains("UID FETCH 13") {
+                    let partial = format!(
+                        "* 1 FETCH (UID 13 FLAGS () RFC822.SIZE 65536 BODY[] {{65536}}\r\nFrom: fixture@example.com\r\nSubject: Slow\r\n\r\n{}",
+                        "x".repeat(8192)
+                    );
+                    let _ = peer.get_mut().write_all(partial.as_bytes());
+                    let _ = peer.get_mut().flush();
+                    continue;
+                } else {
+                    panic!("unexpected command after pause interrupt: {trimmed}");
+                };
+                peer.get_mut().write_all(response.as_bytes()).unwrap();
+            }
+        });
+
+        let control = Arc::new(ConnectionControl::default());
+        let (started_tx, started_rx) = std::sync::mpsc::channel();
+        let (done_tx, done_rx) = std::sync::mpsc::channel();
+        let job_store = store.clone();
+        let job_account = account.clone();
+        let job_control = control.clone();
+        let worker = std::thread::spawn(move || {
+            let socket = TcpStream::connect(address).unwrap();
+            socket
+                .set_read_timeout(Some(Duration::from_secs(10)))
+                .unwrap();
+            job_control.attach(&socket).unwrap();
+            let mut session = imap::Client::new(PauseStream {
+                socket,
+                bytes: 0,
+                started: Some(started_tx),
+            })
+            .login("fixture", "fixture-only")
+            .map_err(|(e, _)| e)
+            .unwrap();
+            let result = sync_imap_scope_controlled(
+                &job_store,
+                &job_account,
+                &mut session,
+                &|| {},
+                None,
+                Some(&job_control),
+            );
+            let result = finish_readonly_sync(&mut session, &job_control, result);
+            drop(session);
+            done_tx.send(result).unwrap();
+        });
+
+        started_rx.recv_timeout(Duration::from_secs(3)).unwrap();
+        let realtime = crate::realtime::RealtimeControl::default();
+        let enabled = crate::set_account_enabled(&store, &realtime, &account.id).unwrap();
+        assert!(!enabled);
+        let result = done_rx.recv_timeout(Duration::from_secs(2)).unwrap();
+        assert_eq!(result.unwrap_err(), SYNC_STOPPED_BY_ACCOUNT_CHANGE);
+        assert!(control.stopped());
+        worker.join().unwrap();
+        server.join().unwrap();
+        // Pausing must never record a persistent sync failure or log a fake realtime arrival.
+        assert!(store.sync_failures().unwrap().is_empty());
+        let logs = store.snapshot(&crate::tests::query()).unwrap().logs;
+        assert!(logs.iter().all(|entry| !entry.contains("新实时通知已到达")));
+        let written = commands.lock().unwrap().join("\n");
+        assert!(!written.contains("LOGOUT") && !written.contains("EXAMINE \"Archive\""));
     }
 
     #[test]

@@ -2,7 +2,15 @@
 
 依据 PRD 第 5、8、9 节、实施记录和当前代码核查。当前仍为 Alpha；功能代码已存在与真实场景验收通过分别记录。早期回归使用临时存储/演示数据；2026-10-05 用户授权后增加当前腾讯企业邮箱与 QQ 邮箱互发测试，未向其他地址发送，未删除真实邮件。
 
-## 进行中 · OpenPGP 端到端加密与数字签名（2026-11-28，基于 `ab617d8` 未发布）
+## 进行中 · 暂停账号中断进行中的收取（2026-11-28，基于 `1fdfa89` 未发布）
+
+- **代码完成**。
+  - 修复 `account_action` 暂停/启用与移除共用全局同步锁、INBOX 目录锁与发信锁导致收取期间点击暂停报错的问题：新增 `Store::toggle_account_enabled` 以 `Immediate` 事务原子翻转 `enabled`，避免与并发 `save_sync_status` / `edit_account_preferences` 互相覆盖；暂停时通过 `sync_control::interrupt_account` 精准中断该账号下所有活跃只读下载（覆盖 INBOX 与非 INBOX 目录），并通过 `RealtimeControl::restart_account` 立即断开该账号实时监听而不影响其他账号的 IDLE 会话；移除账号继续保留完整互斥锁。
+  - 修正中断判定与收尾：`sync_imap_scope_controlled`（含 `sync_inbox_session` 实时监听收取）在 `should_yield` / `interrupted` / 目录循环 / 空目录核对前优先检查账号暂停或配置变更并返回 `SYNC_STOPPED_BY_ACCOUNT_CHANGE`，避免误记「新实时通知已到达」、误打 `last_sync` 或误写 `sync_failures`；同步补齐 POP3 暂停检查点及 `sync_scope` / `sync_folder` 在快速「暂停 → 恢复」竞态下不写错误、不覆写新轮状态的静默收尾；补充 [docs/WINDOWS.md](WINDOWS.md) 抽屉避让说明。
+- **自动测试通过**。`cargo fmt --check` 与 `git diff --check` 通过；全量 `pnpm test:rust` **501 项通过**（5 项手工用例跳过，零编译警告），含新增 3 项回归测试：`pausing_and_resuming_account_interrupts_only_that_account_without_waiting_or_clobbering_fields`、`restarting_one_account_stops_only_that_accounts_active_connection` 与 `pausing_account_during_inflight_fetch_stops_without_false_realtime_log_or_sync_failure`。
+- **真实场景验收 / 云端构建 / 正式发布**：**未验证**。
+
+## 已提交本地主分支 · OpenPGP 端到端加密与数字签名及 Windows UI 修正（2026-11-28，提交 `1fdfa89`，未发布）
 
 - **代码完成**。设计方案见 [docs/plans/OPENPGP_PLAN.md](plans/OPENPGP_PLAN.md)。
   1. **纯 Rust 加密内核与密钥托管（`src-tauri/src/openpgp.rs`、`Cargo.toml`）**：接入 `pgp = "0.21"`（`default-features = false`，纯 Rust 零 C 依赖，MIT / Apache-2.0），新增 SQLite `pgp_keys` 公钥元数据表，私钥与可选密码短语仅存入 AES-256-GCM 加密的 `credentials.vault`（`pgp-secret-<FINGERPRINT>`），并支持单会话内存密码短语缓存与手动锁定。支持生成 `Ed25519 / Curve25519` 或 `RSA 4096` 密钥对、导入导出 `.asc`/`.gpg` 与粘贴文本、一键从 `.asc` / `application/pgp-keys` 附件导入公钥、按账号绑定密钥。

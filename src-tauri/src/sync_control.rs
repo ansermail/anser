@@ -77,10 +77,15 @@ impl Drop for DownloadRegistration {
         }
     }
 }
+type GateKey = (std::path::PathBuf, String, String);
+
+fn gates() -> &'static Mutex<HashMap<GateKey, Weak<FolderGate>>> {
+    static GATES: OnceLock<Mutex<HashMap<GateKey, Weak<FolderGate>>>> = OnceLock::new();
+    GATES.get_or_init(Default::default)
+}
+
 pub fn folder_gate(root: &Path, account: &str, folder: &str) -> Result<Arc<FolderGate>> {
-    type Key = (std::path::PathBuf, String, String);
-    static GATES: OnceLock<Mutex<HashMap<Key, Weak<FolderGate>>>> = OnceLock::new();
-    let mut gates = GATES.get_or_init(Default::default).lock().map_err(err)?;
+    let mut gates = gates().lock().map_err(err)?;
     gates.retain(|_, gate| gate.strong_count() > 0);
     let folder = if folder.eq_ignore_ascii_case("INBOX") {
         "INBOX"
@@ -94,6 +99,27 @@ pub fn folder_gate(root: &Path, account: &str, folder: &str) -> Result<Arc<Folde
     let gate = Arc::new(FolderGate::default());
     gates.insert(key, Arc::downgrade(&gate));
     Ok(gate)
+}
+
+/// Signal every live folder gate for `(root, account)` so pausing an account
+/// stops any in-flight read-only download (INBOX or historical folders)
+/// without waiting on folder locks or touching other accounts.
+pub fn interrupt_account(root: &Path, account: &str) {
+    let targets = match gates().lock() {
+        Ok(mut map) => {
+            map.retain(|_, gate| gate.strong_count() > 0);
+            map.iter()
+                .filter(|((gate_root, gate_account, _), _)| {
+                    gate_root == root && gate_account == account
+                })
+                .filter_map(|(_, gate)| gate.upgrade())
+                .collect::<Vec<_>>()
+        }
+        Err(_) => Vec::new(),
+    };
+    for gate in targets {
+        gate.notify();
+    }
 }
 
 #[cfg(test)]
