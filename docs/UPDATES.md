@@ -1,6 +1,6 @@
 # 发布与应用内更新
 
-未发布改动见 [待发布更新说明](releases/UNRELEASED.md)。
+未发布改动见 [待发布更新说明](releases/UNRELEASED.md)。定稿时将相关条目连同末尾的反馈者 `@用户名` 带入版本说明，供应用内更新弹窗与 GitHub Release 展示。 [按更新条目署名](guidelines/testing-and-release.md#5-版本核对与正式发布流水线)
 
 ## 当前版本：0.1.49（2026-11-28）
 
