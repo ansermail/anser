@@ -9,6 +9,7 @@ import { useConfirmation } from "@/hooks/use-confirmation";
 import { Button, ButtonLabel } from "./ui/button";
 import {
   Card,
+  CardAction,
   CardContent,
   CardDescription,
   CardHeader,
@@ -128,10 +129,39 @@ export function ReadingCacheSettings() {
             "Temporary local copies of online mail are separate from full archives and are excluded from backup and integrity checks.",
           )}
         </CardDescription>
+        <CardAction className="self-center">
+          <div className="settings-form-actions">
+            <span className="text-xs text-muted-foreground" aria-live="polite">
+              {changed ? t("Unsaved") : ""}
+            </span>
+            <Button
+              size="sm"
+              variant={changed ? "default" : "outline"}
+              aria-busy={saving}
+              disabled={loading || saving || !changed}
+              onClick={() => void save()}
+            >
+              <ButtonLabel
+                reserve={[t("Save"), t("Saving…")]}
+                reserveIcon
+                icon={
+                  saving && (
+                    <LoaderCircle
+                      data-icon="inline-start"
+                      className="animate-spin"
+                    />
+                  )
+                }
+              >
+                {saving ? t("Saving…") : t("Save")}
+              </ButtonLabel>
+            </Button>
+          </div>
+        </CardAction>
       </CardHeader>
       <CardContent className="flex flex-col gap-4">
-        <div className="settings-cache-fields">
-          <div className="settings-cache-field">
+        <div className="settings-cache-rows">
+          <div className="settings-tool-row">
             <Label htmlFor="reading-cache-days">{t("Keep for")}</Label>
             <SelectField
               id="reading-cache-days"
@@ -150,7 +180,7 @@ export function ReadingCacheSettings() {
               ))}
             </SelectField>
           </div>
-          <div className="settings-cache-field">
+          <div className="settings-tool-row">
             <Label htmlFor="reading-cache-limit">{t("Size limit")}</Label>
             <SelectField
               id="reading-cache-limit"
@@ -167,33 +197,6 @@ export function ReadingCacheSettings() {
               ))}
             </SelectField>
           </div>
-        </div>
-        <div className="settings-form-actions">
-          <span className="text-xs text-muted-foreground" aria-live="polite">
-            {changed ? t("Unsaved") : ""}
-          </span>
-          <Button
-            size="sm"
-            variant={changed ? "default" : "outline"}
-            aria-busy={saving}
-            disabled={loading || saving || !changed}
-            onClick={() => void save()}
-          >
-            <ButtonLabel
-              reserve={[t("Save"), t("Saving…")]}
-              reserveIcon
-              icon={
-                saving && (
-                  <LoaderCircle
-                    data-icon="inline-start"
-                    className="animate-spin"
-                  />
-                )
-              }
-            >
-              {saving ? t("Saving…") : t("Save")}
-            </ButtonLabel>
-          </Button>
         </div>
         <Separator />
         <div className="settings-tool-row flex-wrap items-center justify-between gap-4">

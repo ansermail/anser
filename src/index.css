@@ -5993,39 +5993,19 @@ body.account-dragging * {
 .workspace-settings-card [data-slot="card-title"] label {
   font: inherit;
 }
-.settings-cache-fields {
+.settings-cache-rows {
   display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 12px 0;
+  flex-direction: column;
 }
-.settings-cache-field {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding-inline: 20px;
+.settings-cache-rows .settings-tool-row {
+  min-height: 44px;
 }
-.settings-cache-field:first-child {
-  padding-inline-start: 0;
+.settings-cache-rows .settings-tool-row + .settings-tool-row {
+  border-block-start: 1px solid var(--border);
 }
-.settings-cache-field + .settings-cache-field {
-  border-inline-start: 1px solid var(--border);
-}
-@container settings (max-width: 720px) {
-  .settings-cache-fields {
-    flex-direction: column;
-    align-items: stretch;
-    gap: 14px;
-  }
-  .settings-cache-field {
-    justify-content: space-between;
-    padding-inline: 0;
-  }
-  .settings-cache-field + .settings-cache-field {
-    padding-block-start: 14px;
-    border-inline-start: 0;
-    border-block-start: 1px solid var(--border);
-  }
+.settings-cache-rows .settings-choice {
+  flex: 0 0 10rem;
+  margin-inline-start: auto;
 }
 .settings-form-actions {
   display: flex;
