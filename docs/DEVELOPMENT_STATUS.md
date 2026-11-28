@@ -1,6 +1,18 @@
-# 开发计划与继续检查点（更新：2026-11-27）
+# 开发计划与继续检查点（更新：2026-11-28）
 
 依据 PRD 第 5、8、9 节、实施记录和当前代码核查。当前仍为 Alpha；功能代码已存在与真实场景验收通过分别记录。早期回归使用临时存储/演示数据；2026-10-05 用户授权后增加当前腾讯企业邮箱与 QQ 邮箱互发测试，未向其他地址发送，未删除真实邮件。
+
+## 进行中 · 邮件翻译行内代码占位、测连分阶段报错与英文 RFC 引用头（2026-11-28，0.1.48 之后未发布）
+
+- **代码完成**。
+  1. **回复与转发英文 RFC 引用头开关**：`Preferences` 新增 `englishQuoteHeader`（Rust `english_quote_header`，`#[serde(default)]` 默认关闭，兼容旧配置）。在「设置 → 阅读与写信」新增 `ComposeQuoteSettings` 开关卡片；关闭时沿用当前界面语言，开启后回复/转发在发送预览、立即发送、定时发送及外部 EML 窗口中统一生成英文 RFC 引用头（`Original Message` / `Forwarded Message`、`From`、`To`、`Date` 含时区偏移、`Subject`），避免中文界面下在发出邮件中混入中文发件信息。
+  2. **账号连接与代理分阶段报错及统一诊断日志**：为 `src-tauri/src/proxy.rs`（SOCKS5/HTTP 握手与本地转发隧道）、`src-tauri/src/network.rs`（代理路由、DNS 解析、TCP 建连/超时、STARTTLS、TLS 握手、IMAP 问候与登出、POP3 收发与退出、SMTP 建连与测试，携带 `host:port` 且不泄露密码或代理凭据）及 `src-tauri/src/lib.rs` 补齐中文阶段前缀，消除裸系统错误（如 `Bad file descriptor (os error 9)`）难以定位的问题；统一 `connect_account` 与 `edit_account` 的脱敏诊断日志记录（覆盖 `test` / `save_secret` / `save_account` 阶段）。
+  3. **邮件双语翻译重构（借鉴 FluentRead 行内占位思路）**：将行内 `<code>`/`<kbd>`/`<samp>`/`<var>`（含仅包裹代码的 `<a>`/`<strong>` 等内联标签）、纯 URL/邮箱链接及 `translate="no"` 内联元素从 `ignored` 拆出，保留整块代码（`<pre><code>`、块级代码、纯代码段）跳过不译，而在正文段内以无碰撞不透明占位符（`[[CODE_N]]`/`[[LINK_N]]`/`[[KEEP_N]]`）合并进相邻正文片段；代码与链接原文不发送给模型，译文按段落级占位映射克隆原元素还原（支持语序重排、防嵌套 `<a>`、段落以代码结尾正确锚定、隐藏精确恢复）；同步补齐 `chunks()` 不截断占位、目标语为主混合段落与纯技术标识符过滤、演示模式占位回显、后端 `anser-translation-v5` 缓存版本升级、`<think>...</think>` 剥离与前后端一致的占位完整性校验。
+- **自动测试通过**。
+  - 前端专项通过：引用头 4 文件 / 42 项（`compose-format`、`compose-quote-settings`、`compose-dialog`、`storage-tools`）、翻译 4 文件 / 41 项（`mail-translation` 21 项、`translatable-mail-body` 11 项、`mail-translation-settings` 7 项、`translation-activity` 2 项）。
+  - 门禁与构建通过：`pnpm check:ui`、`pnpm check:i18n`（1,997 条双语键）、`pnpm format:check`、`pnpm build`、`pnpm build:preview`、`cargo fmt --check`、`git diff --check`。
+  - Rust 测试通过：测连与代理改动后全量 `pnpm test:rust` 495 项通过（5 项手工用例跳过）；本次翻译改动后 `cargo test --manifest-path src-tauri/Cargo.toml translation::tests` **20 项通过**（含新增 `<think>` 剥离与行内占位校验回归）。
+- **真实场景验收 / 云端构建 / 正式发布**：**未验证**。
 
 ## 最近正式发布：0.1.48（2026-11-27）
 

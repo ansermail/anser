@@ -269,6 +269,7 @@ export interface Preferences {
   proxy?: NetworkProxy | null;
   readingCacheDays?: number;
   readingCacheLimitMb?: number;
+  englishQuoteHeader?: boolean;
 }
 export interface NetworkProxy {
   name: string;

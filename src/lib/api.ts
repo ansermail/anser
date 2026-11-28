@@ -1256,10 +1256,16 @@ export async function call<T = void>(
         break;
       }
       case "translate_mail_parts":
-        result = (args.parts as { id: string; text: string }[]).map((part) => ({
-          id: part.id,
-          text: "【演示译文】这是用于预览的虚构翻译，不连接真实模型。",
-        }));
+        result = (args.parts as { id: string; text: string }[]).map((part) => {
+          const tokens =
+            part.text.match(/\[\[(?:CODE|LINK|KEEP)\d*_\d+\]\]/g) || [];
+          return {
+            id: part.id,
+            text: tokens.length
+              ? `【演示译文】这是用于预览的虚构翻译（${tokens.join(" ")}），不连接真实模型。`
+              : "【演示译文】这是用于预览的虚构翻译，不连接真实模型。",
+          };
+        });
         demo.logs.unshift(
           "大模型正文翻译批次完成：【演示记录】仅使用虚构译文，未连接真实模型。",
         );
@@ -1276,7 +1282,7 @@ export async function call<T = void>(
       case "get_preferences":
         result = JSON.parse(
           demoStorage.getItem(key + "-preferences") ||
-            '{"syncIntervalMinutes":5,"showWorkbench":true,"newMailNotifications":true,"sendResultNotifications":true,"readingCacheDays":30,"readingCacheLimitMb":1024}',
+            '{"syncIntervalMinutes":5,"showWorkbench":true,"newMailNotifications":true,"sendResultNotifications":true,"readingCacheDays":30,"readingCacheLimitMb":1024,"englishQuoteHeader":false}',
         );
         break;
       case "reading_cache_status":

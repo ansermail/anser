@@ -180,8 +180,44 @@ export function hexColorStyles(html: string) {
   return doc.body.innerHTML;
 }
 
-function quoteHeader(draft: Compose) {
+const englishDays = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+const englishMonths = [
+  "Jan",
+  "Feb",
+  "Mar",
+  "Apr",
+  "May",
+  "Jun",
+  "Jul",
+  "Aug",
+  "Sep",
+  "Oct",
+  "Nov",
+  "Dec",
+];
+
+function formatRfcQuoteDate(value: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  const pad = (number: number) => String(number).padStart(2, "0");
+  const offsetMinutes = -date.getTimezoneOffset();
+  const sign = offsetMinutes >= 0 ? "+" : "-";
+  const absOffset = Math.abs(offsetMinutes);
+  const offset = `${sign}${pad(Math.floor(absOffset / 60))}${pad(absOffset % 60)}`;
+  return `${englishDays[date.getDay()]}, ${pad(date.getDate())} ${englishMonths[date.getMonth()]} ${date.getFullYear()} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())} ${offset}`;
+}
+
+function quoteHeader(draft: Compose, englishQuoteHeader = false) {
   const quote = draft.quote!;
+  if (englishQuoteHeader) {
+    return [
+      `--------- ${quote.kind === "forward" ? "Forwarded Message" : "Original Message"} ---------`,
+      `From: ${quote.sender}`,
+      ...(quote.recipients ? [`To: ${quote.recipients}`] : []),
+      `Date: ${formatRfcQuoteDate(quote.date)}`,
+      `Subject: ${quote.subject}`,
+    ].join("\n");
+  }
   return [
     `--------- ${quote.kind === "forward" ? t("Forward message") : t("Original message")} ---------`,
     t("From: {value0}", { value0: quote.sender }),
@@ -351,8 +387,16 @@ function authoredContent(
   return content;
 }
 
+export interface PrepareComposeOptions {
+  englishQuoteHeader?: boolean;
+}
+
 // Preserve the editable text separately; scheduling/cancellation must not quote twice.
-export function prepareCompose(draft: Compose, dark = false): Compose {
+export function prepareCompose(
+  draft: Compose,
+  dark = false,
+  options: PrepareComposeOptions = {},
+): Compose {
   const editor = prepareEditorCompose(draft);
   const format = composeFormat(editor);
   const visual = format === "rich" || format === "markdown";
@@ -379,7 +423,7 @@ export function prepareCompose(draft: Compose, dark = false): Compose {
     return { ...editor, deliveryBody: signed.body, deliveryHtml };
   }
   const quote = draft.quote;
-  const header = quoteHeader(draft);
+  const header = quoteHeader(draft, !!options.englishQuoteHeader);
   const deliveryBody = [
     signed.body,
     header,

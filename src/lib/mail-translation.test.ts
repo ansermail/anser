@@ -284,7 +284,166 @@ describe("bilingual mail display", () => {
       '<div style="display:none">Hidden secret</div><div aria-hidden="true">Hidden preview</div><div style="opacity:0"><p>Hidden tracking</p></div><p>这里已经是中文。</p><pre><code>private code</code></pre><p><code>API_KEY=secret</code>Visible message</p><img src="https://example.invalid/pixel?private=1"><p>https://example.invalid/secret</p><p>user@example.invalid</p>',
     );
     const plan = planMailTranslation(doc, "zh-CN");
-    expect(plan.parts.map((p) => p.text)).toEqual(["Visible message"]);
+    expect(plan.parts.map((p) => p.text)).toEqual([
+      "[[CODE_0]]Visible message",
+    ]);
+    expect(plan.parts.map((p) => p.text).join("\n")).not.toContain(
+      "API_KEY=secret",
+    );
+    plan.apply(new Map([[plan.parts[0].id, "[[CODE_0]]可见消息"]]));
+    const view = doc.querySelector<HTMLElement>("[data-anser-translation]")!;
+    expect(view.querySelector("code")?.textContent).toBe("API_KEY=secret");
+    expect(view.textContent).toBe("API_KEY=secret可见消息");
+  });
+  it("preserves inline code, kbd, samp, var, wrapped links, URL links and translate=no without sending raw code or URLs", () => {
+    const doc = mail(
+      `<ul>
+        <li id="pr-drawer"><strong>Windows workbench drawer close button.</strong> The drawer is at <code>z-index: 50</code> and starts below <code>--window-titlebar-height</code>.</li>
+        <li id="pr-checks"><code>pnpm check:ui</code>, <code>pnpm check:i18n</code> (1,993 bilingual messages), <code>tsc -b</code> and <code>pnpm build</code> passed.</li>
+        <li id="end-code">Press <kbd>Cmd+K</kbd> and run <code>pnpm test</code></li>
+        <li id="reorder">Use <a href="https://example.com/fn"><code>account_action</code></a> with <var>limit</var> at <a href="https://example.com/docs">https://example.com/docs</a> for <span translate="no">Anser</span>.</li>
+      </ul>
+      <pre><code>fenced_secret()</code></pre>
+      <code style="display:block">block_secret()</code>
+      <p><code>only_code_a</code>, <code>only_code_b</code></p>`,
+    );
+    const original = doc.body.innerHTML;
+    const plan = planMailTranslation(doc, "zh-CN");
+    const sent = plan.parts.map((p) => p.text).join("\n");
+    for (const secret of [
+      "z-index: 50",
+      "--window-titlebar-height",
+      "pnpm check:ui",
+      "pnpm check:i18n",
+      "tsc -b",
+      "pnpm build",
+      "Cmd+K",
+      "pnpm test",
+      "account_action",
+      "limit",
+      "https://example.com/docs",
+      "Anser",
+      "fenced_secret",
+      "block_secret",
+      "only_code_a",
+    ]) {
+      expect(sent).not.toContain(secret);
+    }
+    expect(plan.parts.map((p) => p.text)).toEqual([
+      "Windows workbench drawer close button.",
+      " The drawer is at [[CODE_0]] and starts below [[CODE_1]].",
+      "[[CODE_0]], [[CODE_1]] (1,993 bilingual messages), [[CODE_2]] and [[CODE_3]] passed.",
+      "Press [[CODE_0]] and run [[CODE_1]]",
+      "Use [[CODE_0]] with [[CODE_1]] at [[LINK_2]] for [[KEEP_3]].",
+    ]);
+    const translated: Record<string, string> = {
+      "Windows workbench drawer close button.": "Windows 工作台抽屉关闭按钮。",
+      " The drawer is at [[CODE_0]] and starts below [[CODE_1]].":
+        " 抽屉位于 [[CODE_0]]，并从 【【CODE_1】】 下方开始。",
+      "[[CODE_0]], [[CODE_1]] (1,993 bilingual messages), [[CODE_2]] and [[CODE_3]] passed.":
+        "[[CODE_0]]、[[CODE_1]]（1,993 条双语消息）、[[CODE_2]] 和 [[CODE_3]] 均已通过。",
+      "Press [[CODE_0]] and run [[CODE_1]]":
+        "按下 [[CODE_0]] 并运行 [[CODE_1]]",
+      "Use [[CODE_0]] with [[CODE_1]] at [[LINK_2]] for [[KEEP_3]].":
+        "在 [[LINK_2]] 中为 [[KEEP_3]] 搭配 [[CODE_1]] 使用 [[CODE_0]]。",
+    };
+    const reply = plan.parts.map((p) => ({
+      id: p.id,
+      text: translated[p.text],
+    }));
+    expect(() => validateTranslationReply(plan.parts, reply)).not.toThrow();
+    plan.apply(new Map(reply.map((p) => [p.id, p.text])));
+    expect(
+      doc.querySelector("#pr-drawer [data-anser-translation]")?.textContent,
+    ).toBe(
+      "Windows 工作台抽屉关闭按钮。 抽屉位于 z-index: 50，并从 --window-titlebar-height 下方开始。",
+    );
+    expect(
+      doc.querySelector("#pr-checks [data-anser-translation]")?.textContent,
+    ).toBe(
+      "pnpm check:ui、pnpm check:i18n（1,993 条双语消息）、tsc -b 和 pnpm build 均已通过。",
+    );
+    const endCodeLi = doc.getElementById("end-code")!;
+    expect(
+      endCodeLi.lastElementChild?.hasAttribute("data-anser-translation"),
+    ).toBe(true);
+    expect(endCodeLi.lastElementChild?.textContent).toBe(
+      "按下 Cmd+K 并运行 pnpm test",
+    );
+    const reorderView = doc.querySelector<HTMLElement>(
+      "#reorder [data-anser-translation]",
+    )!;
+    expect(reorderView.textContent).toBe(
+      "在 https://example.com/docs 中为 Anser 搭配 limit 使用 account_action。",
+    );
+    expect(
+      [...reorderView.querySelectorAll("a")].map((a) =>
+        a.getAttribute("data-mail-href"),
+      ),
+    ).toEqual(["https://example.com/docs", "https://example.com/fn"]);
+    expect(doc.querySelectorAll("[data-anser-translation]")).toHaveLength(4);
+    plan.dispose();
+    expect(doc.body.innerHTML).toBe(original);
+  });
+  it("avoids placeholder collisions, never splits placeholders across chunks, and validates placeholder integrity", () => {
+    const filler = "Long sentence with details. ".repeat(44);
+    const doc = mail(
+      `<p>Literal [[CODE_0]] before <code>real_token</code>.</p><p>${filler}use <code>split_safe_token</code> afterwards.</p>`,
+    );
+    const plan = planMailTranslation(doc, "zh-CN");
+    expect(plan.parts[0].text).toBe("Literal [[CODE_0]] before [[CODE2_0]].");
+    const longParts = plan.parts.slice(1);
+    expect(longParts.length).toBeGreaterThan(1);
+    expect(longParts.some((p) => p.text.includes("[[CODE_0]]"))).toBe(true);
+    expect(
+      longParts.every(
+        (p) => !/\[\[CODE(?:_)?$/.test(p.text) && !/^CODE_0\]\]/.test(p.text),
+      ),
+    ).toBe(true);
+    const requested = [
+      { id: "p0_t0", text: "Run [[CODE_0]] " },
+      { id: "p0_t1", text: "with [[CODE_1]]." },
+    ];
+    // Moving a placeholder across pieces inside the same paragraph is valid.
+    expect(() =>
+      validateTranslationReply(requested, [
+        { id: "p0_t0", text: "使用 [[CODE_1]] 运行 [[CODE_0]]。" },
+        { id: "p0_t1", text: "" },
+      ]),
+    ).not.toThrow();
+    // Missing or duplicated placeholder is rejected.
+    expect(() =>
+      validateTranslationReply(requested, [
+        { id: "p0_t0", text: "运行" },
+        { id: "p0_t1", text: "搭配 [[CODE_1]]。" },
+      ]),
+    ).toThrow();
+    expect(() =>
+      validateTranslationReply(requested, [
+        { id: "p0_t0", text: "运行 [[CODE_0]] [[CODE_0]]" },
+        { id: "p0_t1", text: "搭配 [[CODE_1]]。" },
+      ]),
+    ).toThrow();
+  });
+  it("skips already-target-language mixed paragraphs and bare technical identifiers while keeping English prose with Chinese quotes", () => {
+    const doc = mail(
+      `<p>请先在 macOS 上运行 <code>pnpm build</code> 验证 PR 与 API。</p>
+       <p>Anser 0.1.48 已发布</p>
+       <p>v0.1.48</p>
+       <p>src/lib/mail-translation.ts</p>
+       <p>pausing_an_account_does_not_wait</p>
+       <p>Pausing during a background sweep failed with "正在收取该账号邮件，请稍后修改账号".</p>`,
+    );
+    const plan = planMailTranslation(doc, "zh-CN");
+    expect(plan.parts.map((p) => p.text)).toEqual([
+      'Pausing during a background sweep failed with "正在收取该账号邮件，请稍后修改账号".',
+    ]);
+    const jaDoc = mail(
+      `<p>設定で API キーを確認してください。</p><p>Please check your API key in settings.</p>`,
+    );
+    expect(planMailTranslation(jaDoc, "ja").parts.map((p) => p.text)).toEqual([
+      "Please check your API key in settings.",
+    ]);
   });
   it("排除零高度、零宽度、裁剪隐藏和折叠内容，翻译不解除原隐藏约束", () => {
     const doc =

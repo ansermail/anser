@@ -1260,6 +1260,7 @@
   "The model returned duplicate segments. Retry.": "The model returned duplicate segments. Retry.",
   "The translation is too long or contains invalid characters. Retry.": "The translation is too long or contains invalid characters. Retry.",
   "The model returned an empty paragraph. Retry.": "The model returned an empty paragraph. Retry.",
+  "The model did not preserve inline code or link placeholders. Retry.": "The model did not preserve inline code or link placeholders. Retry.",
   "Message structure is too complex. No body text was sent.": "Message structure is too complex. No body text was sent.",
   "Message nesting is too deep. No body text was sent.": "Message nesting is too deep. No body text was sent.",
   "Message text is too long. No body text was sent.": "Message text is too long. No body text was sent.",
@@ -1991,5 +1992,8 @@
   "All caught up — make room for what matters.\nClick the emblem anytime to check for new mail.": "All caught up — make room for what matters.\nClick the emblem anytime to check for new mail.",
   "Light: {value0}": "Light: {value0}",
   "Dark: {value0}": "Dark: {value0}",
-  "Apply {value0} to both light and dark": "Apply {value0} to both light and dark"
+  "Apply {value0} to both light and dark": "Apply {value0} to both light and dark",
+  "English reply & forward headers": "English reply & forward headers",
+  "Use standard English RFC headers (Original Message / Forwarded Message, From, To, Date, Subject) in quoted messages instead of following the interface language.": "Use standard English RFC headers (Original Message / Forwarded Message, From, To, Date, Subject) in quoted messages instead of following the interface language.",
+  "Use English headers for replies and forwards": "Use English headers for replies and forwards"
 }

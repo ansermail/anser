@@ -1392,20 +1392,22 @@ fn configurable_sync_interval_and_wakeup_are_persistent_and_keep_busy_catchup_pe
     let s = Store::new(dir.path().into()).unwrap();
     assert_eq!(s.preferences().unwrap().sync_interval_minutes, 5);
     assert!(s.preferences().unwrap().show_workbench);
+    assert!(!s.preferences().unwrap().english_quote_header);
+    let legacy: Preferences = serde_json::from_str(r#"{"syncIntervalMinutes":10}"#).unwrap();
+    assert!(!legacy.english_quote_header);
     s.save_preferences(&Preferences {
         sync_interval_minutes: 15,
         do_not_disturb: true,
+        english_quote_header: true,
         ..Default::default()
     })
     .unwrap();
-    assert_eq!(
-        Store::new(dir.path().into())
-            .unwrap()
-            .preferences()
-            .unwrap()
-            .sync_interval_minutes,
-        15
-    );
+    let reopened_preferences = Store::new(dir.path().into())
+        .unwrap()
+        .preferences()
+        .unwrap();
+    assert_eq!(reopened_preferences.sync_interval_minutes, 15);
+    assert!(reopened_preferences.english_quote_header);
     assert!(
         Store::new(dir.path().into())
             .unwrap()

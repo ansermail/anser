@@ -25,23 +25,34 @@ use std::{
     time::Duration,
 };
 fn socket(host: &str, port: u16) -> Result<TcpStream> {
-    let route = crate::proxy::route(host, port)?;
+    let route = crate::proxy::route(host, port)
+        .map_err(|e| format!("建立代理路由失败（{host}:{port}）：{e}"))?;
     let addresses = if let Some(local_port) = route {
-        ("127.0.0.1", local_port).to_socket_addrs().map_err(err)?
+        ("127.0.0.1", local_port)
+            .to_socket_addrs()
+            .map_err(|e| format!("解析本地代理转发地址失败（{host}:{port}）：{e}"))?
     } else {
-        (host, port).to_socket_addrs().map_err(err)?
+        (host, port)
+            .to_socket_addrs()
+            .map_err(|e| format!("解析服务器地址失败（{host}:{port}）：{e}"))?
     };
-    let mut last = "服务器没有可用地址".into();
+    let mut last = format!("服务器没有可用地址（{host}:{port}）");
     for address in addresses {
         match TcpStream::connect_timeout(&address, Duration::from_secs(12)) {
             Ok(s) => {
                 s.set_read_timeout(Some(Duration::from_secs(45)))
-                    .map_err(err)?;
+                    .map_err(|e| format!("设置连接读取超时失败（{host}:{port}）：{e}"))?;
                 s.set_write_timeout(Some(Duration::from_secs(45)))
-                    .map_err(err)?;
+                    .map_err(|e| format!("设置连接写入超时失败（{host}:{port}）：{e}"))?;
                 return Ok(s);
             }
-            Err(e) => last = err(e),
+            Err(e) => {
+                last = if route.is_some() {
+                    format!("连接本地代理转发失败（{host}:{port}）：{e}")
+                } else {
+                    format!("连接服务器失败（{host}:{port}）：{e}")
+                };
+            }
         }
     }
     Err(last)
@@ -66,11 +77,11 @@ fn prepare_starttls(tcp: TcpStream) -> Result<TcpStream> {
         let mut bytes = Vec::new();
         std::io::Read::take(&mut *reader, 64 * 1024)
             .read_until(b'\n', &mut bytes)
-            .map_err(err)?;
+            .map_err(|e| format!("读取 IMAP STARTTLS 响应失败：{e}"))?;
         if bytes.is_empty() || !bytes.ends_with(b"\n") {
             return Err("IMAP STARTTLS 响应中断或超出大小限制".into());
         }
-        String::from_utf8(bytes).map_err(err)
+        String::from_utf8(bytes).map_err(|e| format!("解析 IMAP STARTTLS 响应失败：{e}"))
     }
     let greeting = line(&mut reader)?;
     let greeting_fields = greeting.split_whitespace().collect::<Vec<_>>();
@@ -84,8 +95,11 @@ fn prepare_starttls(tcp: TcpStream) -> Result<TcpStream> {
     reader
         .get_mut()
         .write_all(b"yxTLS STARTTLS\r\n")
-        .map_err(err)?;
-    reader.get_mut().flush().map_err(err)?;
+        .map_err(|e| format!("发送 IMAP STARTTLS 命令失败：{e}"))?;
+    reader
+        .get_mut()
+        .flush()
+        .map_err(|e| format!("刷新 IMAP STARTTLS 命令失败：{e}"))?;
     let mut rejected = String::new();
     for _ in 0..100 {
         let line = line(&mut reader)?;
@@ -130,17 +144,27 @@ fn imap_session_using<T: std::io::Read + Write>(
     if let Some(control) = control {
         control.attach(&tcp)?;
     }
-    let tls = TlsConnector::new().map_err(err)?;
+    let tls = TlsConnector::new().map_err(|e| format!("初始化收件 TLS 失败：{e}"))?;
     let starttls = a.incoming_tls == "starttls";
     let tcp = if starttls {
         prepare_starttls(tcp)?
     } else {
         tcp
     };
-    let stream = tls.connect(&a.incoming_host, tcp).map_err(err)?;
+    let stream = tls.connect(&a.incoming_host, tcp).map_err(|e| {
+        format!(
+            "收件 TLS 握手失败（{}:{}）：{e}",
+            a.incoming_host, a.incoming_port
+        )
+    })?;
     let mut client = imap::Client::new(wrap(stream));
     if !starttls {
-        client.read_greeting().map_err(err)?;
+        client.read_greeting().map_err(|e| {
+            format!(
+                "读取 IMAP 欢迎响应失败（{}:{}）：{e}",
+                a.incoming_host, a.incoming_port
+            )
+        })?;
     }
     let mut session = if a.auth == "oauth" {
         client
@@ -406,9 +430,19 @@ fn smtp_hello_name() -> lettre::transport::smtp::extension::ClientId {
     ClientId::Domain("localhost".into())
 }
 fn smtp(a: &Account, s: &Secret) -> Result<SmtpTransport> {
-    let route = crate::proxy::route(&a.smtp_host, a.smtp_port)?;
+    let route = crate::proxy::route(&a.smtp_host, a.smtp_port).map_err(|e| {
+        format!(
+            "建立 SMTP 代理路由失败（{}:{}）：{e}",
+            a.smtp_host, a.smtp_port
+        )
+    })?;
     let builder = if let Some(local_port) = route {
-        let parameters = TlsParameters::new(a.smtp_host.clone()).map_err(err)?;
+        let parameters = TlsParameters::new(a.smtp_host.clone()).map_err(|e| {
+            format!(
+                "初始化 SMTP TLS 参数失败（{}:{}）：{e}",
+                a.smtp_host, a.smtp_port
+            )
+        })?;
         let tls = if a.smtp_tls == "starttls" {
             Tls::Required(parameters)
         } else {
@@ -418,9 +452,19 @@ fn smtp(a: &Account, s: &Secret) -> Result<SmtpTransport> {
             .port(local_port)
             .tls(tls)
     } else if a.smtp_tls == "starttls" {
-        SmtpTransport::starttls_relay(&a.smtp_host).map_err(err)?
+        SmtpTransport::starttls_relay(&a.smtp_host).map_err(|e| {
+            format!(
+                "初始化 SMTP STARTTLS 连接失败（{}:{}）：{e}",
+                a.smtp_host, a.smtp_port
+            )
+        })?
     } else {
-        SmtpTransport::relay(&a.smtp_host).map_err(err)?
+        SmtpTransport::relay(&a.smtp_host).map_err(|e| {
+            format!(
+                "初始化 SMTP TLS 连接失败（{}:{}）：{e}",
+                a.smtp_host, a.smtp_port
+            )
+        })?
     };
     let user = if a.smtp_username.is_empty() {
         a.username.clone()
@@ -448,7 +492,7 @@ fn pop_line<T: BufRead>(r: &mut T) -> Result<Vec<u8>> {
     let mut bytes = Vec::new();
     std::io::Read::take(&mut *r, 100 * 1024 * 1024)
         .read_until(b'\n', &mut bytes)
-        .map_err(err)?;
+        .map_err(|e| format!("读取 POP3 响应失败：{e}"))?;
     if bytes.is_empty() || !bytes.ends_with(b"\n") {
         return Err("POP3 响应中断或超过大小限制".into());
     }
@@ -460,8 +504,10 @@ fn pop_command<T: std::io::Read + Write>(r: &mut BufReader<T>, command: &str) ->
     }
     r.get_mut()
         .write_all(format!("{command}\r\n").as_bytes())
-        .map_err(err)?;
-    r.get_mut().flush().map_err(err)?;
+        .map_err(|e| format!("发送 POP3 命令失败：{e}"))?;
+    r.get_mut()
+        .flush()
+        .map_err(|e| format!("刷新 POP3 命令失败：{e}"))?;
     let response = pop_line(r)?;
     if !response.starts_with(b"+OK") {
         let detail: String =
@@ -506,16 +552,26 @@ fn pop_session_using(
     if let Some(control) = control {
         control.attach(&tcp)?;
     }
-    let tls = TlsConnector::new().map_err(err)?;
+    let tls = TlsConnector::new().map_err(|e| format!("初始化收件 TLS 失败：{e}"))?;
     let mut r = if a.incoming_tls == "starttls" {
         let mut p = BufReader::new(tcp);
         if !pop_line(&mut p)?.starts_with(b"+OK") {
             return Err("POP3 欢迎响应无效".into());
         }
         pop_command(&mut p, "STLS")?;
-        BufReader::new(tls.connect(&a.incoming_host, p.into_inner()).map_err(err)?)
+        BufReader::new(tls.connect(&a.incoming_host, p.into_inner()).map_err(|e| {
+            format!(
+                "收件 TLS 握手失败（{}:{}）：{e}",
+                a.incoming_host, a.incoming_port
+            )
+        })?)
     } else {
-        let mut p = BufReader::new(tls.connect(&a.incoming_host, tcp).map_err(err)?);
+        let mut p = BufReader::new(tls.connect(&a.incoming_host, tcp).map_err(|e| {
+            format!(
+                "收件 TLS 握手失败（{}:{}）：{e}",
+                a.incoming_host, a.incoming_port
+            )
+        })?);
         if !pop_line(&mut p)?.starts_with(b"+OK") {
             return Err("POP3 欢迎响应无效".into());
         }
@@ -538,15 +594,31 @@ pub fn test_with_progress(a: &Account, s: &Secret, progress: &impl Fn(&str)) -> 
     a.validate()?;
     progress("incoming");
     if a.protocol == "imap" {
-        imap_session(a, s)?.logout().map_err(err)?;
+        imap_session(a, s)?.logout().map_err(|e| {
+            format!(
+                "IMAP 登录成功，但退出测试连接失败（{}:{}）：{e}",
+                a.incoming_host, a.incoming_port
+            )
+        })?;
     } else {
         let mut pop = pop_session(a, s)?;
-        pop_command(&mut pop, "QUIT")?;
+        pop_command(&mut pop, "QUIT").map_err(|e| {
+            format!(
+                "POP3 登录成功，但退出测试连接失败（{}:{}）：{e}",
+                a.incoming_host, a.incoming_port
+            )
+        })?;
     }
     progress("smtp");
-    if !smtp(a, s)?
+    if !smtp(a, s)
+        .map_err(|e| format!("收件成功，但{e}"))?
         .test_connection()
-        .map_err(|e| format!("收件成功，但 SMTP 连接失败：{e}"))?
+        .map_err(|e| {
+            format!(
+                "收件成功，但 SMTP 连接失败（{}:{}）：{e}",
+                a.smtp_host, a.smtp_port
+            )
+        })?
     {
         return Err("SMTP 未通过连接测试".into());
     }
@@ -7234,5 +7306,81 @@ mod saving_inventory_tests {
             &before
         )
         .is_err());
+    }
+    #[test]
+    fn connection_errors_report_explicit_stage_and_endpoint() {
+        let closed_listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let closed_port = closed_listener.local_addr().unwrap().port();
+        drop(closed_listener);
+
+        let tcp_err = socket("127.0.0.1", closed_port).unwrap_err();
+        assert!(
+            tcp_err.contains(&format!("连接服务器失败（127.0.0.1:{closed_port}）：")),
+            "unexpected tcp error: {tcp_err}"
+        );
+
+        let mut account = Account {
+            id: "acc-stage-test".into(),
+            name: "测试邮箱".into(),
+            email: "tester@example.com".into(),
+            provider: "custom".into(),
+            protocol: "imap".into(),
+            incoming_host: "127.0.0.1".into(),
+            incoming_port: closed_port,
+            incoming_tls: "tls".into(),
+            smtp_host: "127.0.0.1".into(),
+            smtp_port: closed_port,
+            smtp_tls: "tls".into(),
+            username: "tester@example.com".into(),
+            smtp_username: String::new(),
+            auth: "password".into(),
+            oauth_client_id: String::new(),
+            enabled: true,
+            save_locally: true,
+            server_retention_days: None,
+            last_sync: None,
+            error: None,
+        };
+        let secret = Secret {
+            password: "test-password".into(),
+            ..Default::default()
+        };
+        let stages = std::cell::RefCell::new(Vec::<String>::new());
+        let closed_err = test_with_progress(&account, &secret, &|stage| {
+            stages.borrow_mut().push(stage.to_string());
+        })
+        .unwrap_err();
+        assert_eq!(*stages.borrow(), vec!["incoming".to_string()]);
+        assert!(
+            closed_err.contains(&format!("连接服务器失败（127.0.0.1:{closed_port}）：")),
+            "unexpected closed port error: {closed_err}"
+        );
+
+        let tls_listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let tls_port = tls_listener.local_addr().unwrap().port();
+        let tls_server = std::thread::spawn(move || {
+            let _ = tls_listener.accept();
+        });
+        account.incoming_port = tls_port;
+        let tls_err = test_with_progress(&account, &secret, &|_| {}).unwrap_err();
+        tls_server.join().unwrap();
+        assert!(
+            tls_err.contains(&format!("收件 TLS 握手失败（127.0.0.1:{tls_port}）：")),
+            "unexpected tls error: {tls_err}"
+        );
+
+        let starttls_listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let starttls_port = starttls_listener.local_addr().unwrap().port();
+        let starttls_server = std::thread::spawn(move || {
+            let _ = starttls_listener.accept();
+        });
+        account.incoming_port = starttls_port;
+        account.incoming_tls = "starttls".into();
+        let starttls_err = test_with_progress(&account, &secret, &|_| {}).unwrap_err();
+        starttls_server.join().unwrap();
+        assert!(
+            starttls_err.contains("IMAP STARTTLS"),
+            "unexpected starttls error: {starttls_err}"
+        );
     }
 }

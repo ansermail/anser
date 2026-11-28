@@ -419,6 +419,37 @@ async fn run_rules(state: tauri::State<'_, AppState>) -> Result<u32> {
 fn cancel_authorization(id: String) -> Result<()> {
     auth::cancel_authorization(&id)
 }
+fn log_account_connection_failure(
+    store: &Store,
+    action: &str,
+    stage: &str,
+    account: &Account,
+    error: &str,
+) {
+    let proxy_note = match proxy::current() {
+        Ok((Some(p), _)) => format!("proxy={}:{}", p.kind, p.port),
+        Ok((None, _)) => "proxy=direct".into(),
+        Err(_) => "proxy=error".into(),
+    };
+    store.log_diagnostic(
+        "ERROR",
+        "account",
+        &format!(
+            "{action} failed: stage={stage} provider={} protocol={} incoming={}:{}/{} smtp={}:{}/{} auth={} {} error={}",
+            account.provider,
+            account.protocol,
+            account.incoming_host,
+            account.incoming_port,
+            account.incoming_tls,
+            account.smtp_host,
+            account.smtp_port,
+            account.smtp_tls,
+            account.auth,
+            proxy_note,
+            error
+        ),
+    );
+}
 #[tauri::command]
 async fn connect_account(
     state: tauri::State<'_, AppState>,
@@ -465,29 +496,7 @@ async fn connect_account(
         // Test the new mailbox before acquiring sync/send gates so an active
         // background check on another account never blocks adding a new mailbox.
         if let Err(error) = network::test_with_progress(&account, &secret, &progress) {
-            let proxy_note = match proxy::current() {
-                Ok((Some(p), _)) => format!("proxy={}:{}", p.kind, p.port),
-                Ok((None, _)) => "proxy=direct".into(),
-                Err(_) => "proxy=error".into(),
-            };
-            store.log_diagnostic(
-                "ERROR",
-                "account",
-                &format!(
-                    "connect_account failed: provider={} protocol={} incoming={}:{}/{} smtp={}:{}/{} auth={} {} error={}",
-                    account.provider,
-                    account.protocol,
-                    account.incoming_host,
-                    account.incoming_port,
-                    account.incoming_tls,
-                    account.smtp_host,
-                    account.smtp_port,
-                    account.smtp_tls,
-                    account.auth,
-                    proxy_note,
-                    error
-                ),
-            );
+            log_account_connection_failure(&store, "connect_account", "test", &account, &error);
             let _ = store.log(&format!("账号 {} 连接测试失败：{error}", account.email));
             return Err(error);
         }
@@ -497,14 +506,33 @@ async fn connect_account(
             .try_lock()
             .map_err(|_| "正在发送邮件，请稍后修改账号")?;
         // Explicit account setup may ask the Keychain once.
-        auth::save_interactive(&account.id, &secret)?;
+        if let Err(error) = auth::save_interactive(&account.id, &secret) {
+            log_account_connection_failure(
+                &store,
+                "connect_account",
+                "save_secret",
+                &account,
+                &error,
+            );
+            return Err(error);
+        }
         account.error = None;
-        store.save_account(&account)?;
+        if let Err(error) = store.save_account(&account) {
+            let formatted = format!("保存账号配置失败：{error}");
+            log_account_connection_failure(
+                &store,
+                "connect_account",
+                "save_account",
+                &account,
+                &formatted,
+            );
+            return Err(formatted);
+        }
         realtime.restart();
         store.log(&format!("账号 {} 已通过收发连接测试", account.email))
     })
     .await
-    .map_err(err)?
+    .map_err(|e| format!("账号连接后台任务异常：{e}"))?
 }
 #[tauri::command]
 async fn edit_account(
@@ -596,35 +624,32 @@ async fn edit_account(
             return Err("等待授权期间账号连接配置已变化，请重新打开设置".into());
         }
         if let Err(error) = network::test_with_progress(&account, &secret, &progress) {
-            store.log_diagnostic(
-                "ERROR",
-                "account",
-                &format!(
-                    "edit_account failed: provider={} protocol={} incoming={}:{}/{} smtp={}:{}/{} auth={} error={}",
-                    account.provider,
-                    account.protocol,
-                    account.incoming_host,
-                    account.incoming_port,
-                    account.incoming_tls,
-                    account.smtp_host,
-                    account.smtp_port,
-                    account.smtp_tls,
-                    account.auth,
-                    error
-                ),
-            );
+            log_account_connection_failure(&store, "edit_account", "test", &account, &error);
             let _ = store.log(&format!("账号 {} 配置验证失败：{error}", account.email));
             return Err(error);
         }
         progress("saving");
-        auth::save_interactive(&account.id, &secret)?;
-        store.edit_account(&account)?;
+        if let Err(error) = auth::save_interactive(&account.id, &secret) {
+            log_account_connection_failure(&store, "edit_account", "save_secret", &account, &error);
+            return Err(error);
+        }
+        if let Err(error) = store.edit_account(&account) {
+            let formatted = format!("保存账号配置失败：{error}");
+            log_account_connection_failure(
+                &store,
+                "edit_account",
+                "save_account",
+                &account,
+                &formatted,
+            );
+            return Err(formatted);
+        }
         realtime.restart();
         store.log(&format!("账号 {} 配置已更新，收发验证通过", account.email))?;
         Ok("账号配置已更新，收发服务器验证通过".into())
     })
     .await
-    .map_err(err)?
+    .map_err(|e| format!("账号配置更新后台任务异常：{e}"))?
 }
 #[tauri::command]
 async fn list_contacts(state: tauri::State<'_, AppState>) -> Result<Vec<Contact>> {

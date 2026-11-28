@@ -29,15 +29,104 @@ const typography = [
   "direction",
 ] as const;
 const ignored =
-  "script,style,link,meta,img,picture,svg,math,video,audio,iframe,object,code,kbd,samp,noscript,textarea,input,button,select";
+  "script,style,link,meta,img,picture,svg,math,video,audio,iframe,object,noscript,textarea,input,button,select,option,template";
+const protectedCodeTags = /^(CODE|KBD|SAMP|VAR)$/;
+const inlineWrapperTags =
+  /^(A|SPAN|STRONG|B|EM|I|MARK|DEL|S|U|SMALL|SUB|SUP|FONT|ABBR|CITE|Q|TIME)$/;
 const blockTags =
   /^(P|PRE|DIV|H[1-6]|LI|TD|TH|TABLE|TR|TBODY|THEAD|TFOOT|UL|OL|DL|DT|DD|BLOCKQUOTE|SECTION|ARTICLE|HEADER|FOOTER|MAIN|ADDRESS|FIGURE|FIGCAPTION)$/;
-function translatable(text: string, target: string) {
-  if (!text.trim() || /^\s*(?:https?:\/\/\S+|[^\s@]+@[^\s@]+)\s*$/i.test(text))
-    return false;
-  return /\p{L}/u.test(
-    target.startsWith("zh") ? text.replace(/\p{Script=Han}/gu, "") : text,
+const placeholderTokenPattern = /\[\[((?:CODE|LINK|KEEP)\d*_\d+)\]\]/g;
+function escapeRegExp(value: string) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+function extractPlaceholders(text: string): string[] {
+  return [...text.matchAll(placeholderTokenPattern)].map((match) => match[0]);
+}
+function normalizePlaceholderVariants(
+  text: string,
+  expectedTokens: Iterable<string>,
+) {
+  let result = text;
+  for (const token of expectedTokens) {
+    const inner = token.slice(2, -2);
+    const pattern = new RegExp(
+      `(?:[\\[［【]\\s*[\\[［【])\\s*${escapeRegExp(inner)}\\s*(?:[\\]］】]\\s*[\\]］】])`,
+      "gu",
+    );
+    result = result.replace(pattern, token);
+  }
+  return result;
+}
+function isUrlOrEmail(text: string) {
+  const trimmed = text.trim();
+  return (
+    !!trimmed &&
+    /^(?:(?:https?:\/\/|mailto:)\S+|www\.[^\s/]+\.\S+|[^\s@]+@[^\s@]+\.[^\s@]+)$/i.test(
+      trimmed,
+    )
   );
+}
+function isIdentifierLike(text: string) {
+  const trimmed = text.trim();
+  if (!trimmed) return true;
+  if (isUrlOrEmail(trimmed)) return true;
+  if (/\s/.test(trimmed)) return false;
+  if (
+    /^(?:v?\d+(?:\.\d+)+(?:[-+._a-z0-9]*)?|0x[0-9a-f]+|[0-9a-f]{7,})$/i.test(
+      trimmed,
+    )
+  )
+    return true;
+  if (
+    /[/_=\\@]/.test(trimmed) ||
+    trimmed.startsWith("--") ||
+    trimmed.includes("::") ||
+    (trimmed.match(/\./g)?.length ?? 0) >= 2
+  )
+    return true;
+  return false;
+}
+function stripNonProseTokens(text: string) {
+  return text
+    .replace(placeholderTokenPattern, " ")
+    .replace(/\b(?:https?:\/\/|mailto:|www\.)\S+/gi, " ")
+    .replace(/\b[^\s@]+@[^\s@]+\.[^\s@]+\b/g, " ");
+}
+function hasForeignPhraseRun(text: string) {
+  return /\p{L}{2,}(?:[\s,/-]+\p{L}{2,}){2,}/u.test(text);
+}
+function translatable(text: string, target: string) {
+  const withoutPlaceholders = text.replace(placeholderTokenPattern, " ");
+  const trimmed = withoutPlaceholders.trim();
+  if (!trimmed || isIdentifierLike(trimmed)) return false;
+  const clean = stripNonProseTokens(text);
+  if (!/\p{L}/u.test(clean)) return false;
+  if (target.startsWith("zh")) {
+    const han = clean.match(/\p{Script=Han}/gu)?.length ?? 0;
+    const withoutHan = clean.replace(/\p{Script=Han}/gu, "|");
+    const otherLetters = withoutHan.match(/\p{L}/gu)?.length ?? 0;
+    if (otherLetters === 0) return false;
+    if (han > 0 && otherLetters < han * 2 && !hasForeignPhraseRun(withoutHan))
+      return false;
+    return true;
+  }
+  if (target === "ja") {
+    const kana =
+      clean.match(/[\p{Script=Hiragana}\p{Script=Katakana}]/gu)?.length ?? 0;
+    if (kana > 0) {
+      const han = clean.match(/\p{Script=Han}/gu)?.length ?? 0;
+      const withoutJa = clean.replace(
+        /[\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Han}]/gu,
+        "|",
+      );
+      const otherLetters = withoutJa.match(/\p{L}/gu)?.length ?? 0;
+      if (otherLetters === 0) return false;
+      if (otherLetters < (kana + han) * 2 && !hasForeignPhraseRun(withoutJa))
+        return false;
+    }
+    return true;
+  }
+  return true;
 }
 function chunks(text: string): string[] {
   const values: string[] = [];
@@ -45,7 +134,15 @@ function chunks(text: string): string[] {
   while (rest.length > 1200) {
     let cut = rest.lastIndexOf(" ", 1200);
     if (cut < 600) cut = 1200;
-    if (/[\uD800-\uDBFF]/.test(rest[cut - 1])) cut--;
+    for (const match of rest.matchAll(placeholderTokenPattern)) {
+      const tokenStart = match.index;
+      const tokenEnd = tokenStart + match[0].length;
+      if (tokenStart < cut && cut < tokenEnd) {
+        cut = tokenStart > 0 ? tokenStart : tokenEnd;
+        break;
+      }
+    }
+    if (cut > 0 && /[\uD800-\uDBFF]/.test(rest[cut - 1])) cut--;
     values.push(rest.slice(0, cut));
     rest = rest.slice(cut);
   }
@@ -75,6 +172,7 @@ export function validateTranslationReply(
   const ids = new Set(requested.map((p) => p.id));
   const seen = new Set<string>();
   const nonempty = new Set<string>();
+  const translatedById = new Map<string, string>();
   for (const part of translated) {
     if (typeof part?.id !== "string" || !ids.has(part.id))
       throw new Error(t("The model returned an unknown segment ID. Retry."));
@@ -89,10 +187,45 @@ export function validateTranslationReply(
         t("The translation is too long or contains invalid characters. Retry."),
       );
     seen.add(part.id);
+    translatedById.set(part.id, part.text);
     if (part.text.trim()) nonempty.add(paragraphKey(part.id));
   }
   if (requested.some((part) => !nonempty.has(paragraphKey(part.id))))
     throw new Error(t("The model returned an empty paragraph. Retry."));
+  const expectedByParagraph = new Map<string, Map<string, number>>();
+  for (const part of requested) {
+    const tokens = extractPlaceholders(part.text);
+    if (!tokens.length) continue;
+    const key = paragraphKey(part.id);
+    let counts = expectedByParagraph.get(key);
+    if (!counts) {
+      counts = new Map<string, number>();
+      expectedByParagraph.set(key, counts);
+    }
+    for (const token of tokens) counts.set(token, (counts.get(token) ?? 0) + 1);
+  }
+  for (const [key, expected] of expectedByParagraph) {
+    const actual = new Map<string, number>();
+    for (const part of requested) {
+      if (paragraphKey(part.id) !== key) continue;
+      const normalized = normalizePlaceholderVariants(
+        translatedById.get(part.id) ?? "",
+        expected.keys(),
+      );
+      for (const token of extractPlaceholders(normalized)) {
+        if (expected.has(token))
+          actual.set(token, (actual.get(token) ?? 0) + 1);
+      }
+    }
+    for (const [token, count] of expected) {
+      if ((actual.get(token) ?? 0) !== count)
+        throw new Error(
+          t(
+            "The model did not preserve inline code or link placeholders. Retry.",
+          ),
+        );
+    }
+  }
 }
 export function translationBatches(parts: TranslationPart[]) {
   const groups: TranslationPart[][] = [];
@@ -145,12 +278,17 @@ export function planMailTranslation(
     throw new Error(
       t("Message structure is too complex. No body text was sent."),
     );
+  type Anchor =
+    | { kind: "text"; node: Text; offset: number }
+    | { kind: "element"; node: Element };
+  type TokenKind = "CODE" | "LINK" | "KEEP";
   const parts: TranslationPart[] = [];
   const groups: {
     parent: HTMLElement;
-    end: { node: Text; offset: number };
+    end: Anchor;
     fragment: DocumentFragment;
     bindings: { part: TranslationPart; node: Text }[];
+    placeholders: Map<string, HTMLElement>;
     view?: HTMLElement;
   }[] = [];
   const previousStyles = new Map<HTMLElement, string | null>();
@@ -311,27 +449,33 @@ export function planMailTranslation(
   };
   function insertTranslation(
     parent: HTMLElement,
-    end: { node: Text; offset: number },
+    end: Anchor,
     view: HTMLElement,
   ) {
-    const pieces = textPieces.get(end.node) || [end.node];
-    textPieces.set(end.node, pieces);
-    let offset = end.offset;
-    let index = 0;
-    while (index < pieces.length - 1 && offset > pieces[index].length)
-      offset -= pieces[index++].length;
-    const text = pieces[index];
     let before: Node | null;
-    let container = text.parentElement!;
-    if (offset === text.length) before = text.nextSibling;
-    else {
-      const tail = text.splitText(offset);
-      pieces.splice(index + 1, 0, tail);
-      undoSplits.push(() => {
-        text.appendData(tail.data);
-        tail.remove();
-      });
-      before = tail;
+    let container: HTMLElement;
+    if (end.kind === "text") {
+      const pieces = textPieces.get(end.node) || [end.node];
+      textPieces.set(end.node, pieces);
+      let offset = end.offset;
+      let index = 0;
+      while (index < pieces.length - 1 && offset > pieces[index].length)
+        offset -= pieces[index++].length;
+      const text = pieces[index];
+      container = text.parentElement!;
+      if (offset === text.length) before = text.nextSibling;
+      else {
+        const tail = text.splitText(offset);
+        pieces.splice(index + 1, 0, tail);
+        undoSplits.push(() => {
+          text.appendData(tail.data);
+          tail.remove();
+        });
+        before = tail;
+      }
+    } else {
+      container = end.node.parentElement!;
+      before = end.node.nextSibling;
     }
     // 把插入点提升至原段落容器，避免译文链接嵌套在原链接内；隐藏时还原原节点。
     while (container !== parent) {
@@ -383,12 +527,115 @@ export function planMailTranslation(
       for (const key of typography)
         clone.style.setProperty(key, style.getPropertyValue(key));
   };
+  const visibleDescendantText = (element: Element): string => {
+    let text = "";
+    const walk = (node: Node, depth = 0) => {
+      if (depth > 80) return;
+      if (node.nodeType === Node.TEXT_NODE) {
+        if (visibleText(node as Text)) text += node.textContent || "";
+      } else if (
+        node.nodeType === Node.ELEMENT_NODE &&
+        visible(node as Element)
+      ) {
+        for (const child of node.childNodes) walk(child, depth + 1);
+      }
+    };
+    walk(element);
+    return text;
+  };
+  const wrapsOnlyProtectedCode = (element: Element): boolean => {
+    let hasCode = false;
+    let hasProseOutsideCode = false;
+    const walk = (node: Node, insideCode: boolean, depth = 0) => {
+      if (depth > 80 || hasProseOutsideCode) return;
+      if (node.nodeType === Node.TEXT_NODE) {
+        if (!visibleText(node as Text)) return;
+        if ((node.textContent || "").trim()) {
+          if (insideCode) hasCode = true;
+          else hasProseOutsideCode = true;
+        }
+      } else if (
+        node.nodeType === Node.ELEMENT_NODE &&
+        visible(node as Element)
+      ) {
+        const el = node as Element;
+        const nextInside = insideCode || protectedCodeTags.test(el.tagName);
+        for (const child of el.childNodes) walk(child, nextInside, depth + 1);
+      }
+    };
+    walk(element, false);
+    return hasCode && !hasProseOutsideCode;
+  };
+  const protectedInlineKind = (node: Element): TokenKind | null => {
+    if (node === root || block(node) || hasBlock(node)) return null;
+    if (protectedCodeTags.test(node.tagName))
+      return visibleDescendantText(node).trim() ? "CODE" : null;
+    if (
+      inlineWrapperTags.test(node.tagName) &&
+      !actionLink(node) &&
+      !node.querySelector("br")
+    ) {
+      if (wrapsOnlyProtectedCode(node)) return "CODE";
+      if (node.matches("a[data-mail-href],a[href]")) {
+        const text = visibleDescendantText(node);
+        if (isUrlOrEmail(text)) return "LINK";
+      }
+    }
+    if (
+      node.getAttribute("translate")?.toLowerCase() === "no" &&
+      !node.querySelector("br") &&
+      visibleDescendantText(node).trim()
+    )
+      return "KEEP";
+    return null;
+  };
+  const cloneProtected = (
+    source: HTMLElement,
+    stripAnchors: boolean,
+    insideAction: boolean,
+  ): HTMLElement => {
+    const cloneTree = (node: Node, isRoot: boolean): Node | null => {
+      if (node.nodeType === Node.TEXT_NODE) {
+        return visibleText(node as Text)
+          ? doc.createTextNode(node.textContent || "")
+          : null;
+      }
+      if (node.nodeType !== Node.ELEMENT_NODE || !visible(node as Element))
+        return null;
+      const el = node as HTMLElement;
+      const replaceWithSpan =
+        (stripAnchors && el.tagName === "A") ||
+        (insideAction && el.tagName === "A");
+      const cloned = replaceWithSpan
+        ? doc.createElement("span")
+        : (el.cloneNode(false) as HTMLElement);
+      cloned.removeAttribute("id");
+      cloned.removeAttribute("name");
+      if (isRoot || replaceWithSpan) copyTypography(el, cloned);
+      if (insideAction) cloned.style.setProperty("line-height", "inherit");
+      for (const child of el.childNodes) {
+        const copied = cloneTree(child, false);
+        if (copied) cloned.append(copied);
+      }
+      return cloned;
+    };
+    return cloneTree(source, true) as HTMLElement;
+  };
   function collect(parent: HTMLElement, nodes: Node[]) {
     if (!nodes.length) return;
     const link = parent.closest("a[data-mail-href],a[href]");
     const insideAction = !!link && actionLink(link);
-    const leaves: { node: Text | HTMLElement; start: number; end: number }[] =
-      [];
+    type Leaf =
+      | { kind: "text"; node: Text; start: number; end: number }
+      | { kind: "br"; node: HTMLElement; start: number; end: number }
+      | {
+          kind: "protected";
+          node: HTMLElement;
+          tokenKind: TokenKind;
+          start: number;
+          end: number;
+        };
+    const leaves: Leaf[] = [];
     let flat = "";
     function scan(node: Node, depth = 0) {
       if (depth > 120)
@@ -407,19 +654,35 @@ export function planMailTranslation(
         flat += /^(pre|pre-wrap|pre-line|break-spaces)$/.test(whitespace)
           ? text.data
           : text.data.replace(/[\r\n]/g, " ");
-        leaves.push({ node: text, start, end: flat.length });
+        leaves.push({ kind: "text", node: text, start, end: flat.length });
       } else if (
         node.nodeType === Node.ELEMENT_NODE &&
         visible(node as Element)
       ) {
-        if ((node as Element).tagName === "BR") {
+        const element = node as HTMLElement;
+        if (element.tagName === "BR") {
           leaves.push({
-            node: node as HTMLElement,
+            kind: "br",
+            node: element,
             start: flat.length,
             end: flat.length + 1,
           });
           flat += "\n";
-        } else for (const child of [...node.childNodes]) scan(child, depth + 1);
+        } else {
+          const tokenKind = protectedInlineKind(element);
+          if (tokenKind) {
+            leaves.push({
+              kind: "protected",
+              node: element,
+              tokenKind,
+              start: flat.length,
+              end: flat.length + 1,
+            });
+            flat += "\uFFFC";
+          } else {
+            for (const child of [...element.childNodes]) scan(child, depth + 1);
+          }
+        }
       }
     }
     for (const node of nodes) scan(node);
@@ -433,86 +696,154 @@ export function planMailTranslation(
     }
     spans.push([start, flat.length]);
     for (const [start, end] of spans) {
-      const selected = new Map<Node, string>();
+      const selectedText = new Map<Text, string>();
+      const selectedBr = new Set<Node>();
+      const selectedProtected = new Map<HTMLElement, TokenKind>();
       const ancestors = new Set<Node>();
-      let anchor: { node: Text; offset: number } | undefined;
+      let anchor: Anchor | undefined;
+      let spanPlainText = "";
       for (const leaf of leaves) {
         const from = Math.max(start, leaf.start) - leaf.start;
         const to = Math.min(end, leaf.end) - leaf.start;
         if (to <= from) continue;
-        selected.set(
-          leaf.node,
-          leaf.node.nodeType === Node.TEXT_NODE
-            ? leaf.node.textContent!.slice(from, to)
-            : "\n",
-        );
+        if (leaf.kind === "text") {
+          const slice = leaf.node.textContent!.slice(from, to);
+          selectedText.set(leaf.node, slice);
+          spanPlainText += slice;
+          anchor = { kind: "text", node: leaf.node, offset: to };
+        } else if (leaf.kind === "br") {
+          selectedBr.add(leaf.node);
+        } else {
+          selectedProtected.set(leaf.node, leaf.tokenKind);
+          anchor = { kind: "element", node: leaf.node };
+        }
         for (
           let p = leaf.node.parentNode;
           p && p !== parent && !ancestors.has(p);
           p = p.parentNode
         )
           ancestors.add(p);
-        if (leaf.node.nodeType === Node.TEXT_NODE)
-          anchor = { node: leaf.node as Text, offset: to };
       }
       if (!anchor) continue;
+      let tokenSalt = "";
+      if (selectedProtected.size > 0) {
+        let attempt = 1;
+        while (
+          spanPlainText.includes(`[[CODE${tokenSalt}_`) ||
+          spanPlainText.includes(`[[LINK${tokenSalt}_`) ||
+          spanPlainText.includes(`[[KEEP${tokenSalt}_`)
+        ) {
+          attempt += 1;
+          tokenSalt = String(attempt);
+        }
+      }
       const bindings: { part: TranslationPart; node: Text }[] = [];
+      const placeholders = new Map<string, HTMLElement>();
+      let nextPlaceholder = 0;
       const paragraph = groups.length;
-      const clone = (node: Node): Node | null => {
-        if (node.nodeType === Node.TEXT_NODE) {
-          const text = selected.get(node);
-          if (text === undefined) return null;
-          if (!translatable(text, target)) return doc.createTextNode(text);
-          const fragment = doc.createDocumentFragment();
-          for (const textPart of chunks(text)) {
-            if (!textPart.trim()) {
-              fragment.append(doc.createTextNode(textPart));
+      type RunItem =
+        | { kind: "text"; text: string }
+        | { kind: "protected"; element: HTMLElement; tokenKind: TokenKind };
+      const appendRun = (targetFragment: DocumentFragment, run: RunItem[]) => {
+        if (!run.length) return;
+        const runTokens: string[] = [];
+        let combined = "";
+        for (const item of run) {
+          if (item.kind === "text") {
+            combined += item.text;
+          } else {
+            const token = `[[${item.tokenKind}${tokenSalt}_${nextPlaceholder++}]]`;
+            runTokens.push(token);
+            placeholders.set(
+              token,
+              cloneProtected(item.element, false, insideAction),
+            );
+            combined += token;
+          }
+        }
+        if (!translatable(combined, target)) {
+          for (const token of runTokens) placeholders.delete(token);
+          for (const item of run) {
+            if (item.kind === "text")
+              targetFragment.append(doc.createTextNode(item.text));
+            else
+              targetFragment.append(
+                cloneProtected(item.element, false, insideAction),
+              );
+          }
+          return;
+        }
+        for (const textPart of chunks(combined)) {
+          if (!textPart.trim()) {
+            targetFragment.append(doc.createTextNode(textPart));
+            continue;
+          }
+          const part = {
+            id: `p${paragraph}_t${bindings.length}`,
+            text: textPart,
+          };
+          const translated = doc.createTextNode("");
+          bindings.push({ part, node: translated });
+          targetFragment.append(translated);
+        }
+      };
+      const cloneChildren = (children: Node[]): DocumentFragment => {
+        const out = doc.createDocumentFragment();
+        let run: RunItem[] = [];
+        const flushRun = () => {
+          if (run.length) {
+            appendRun(out, run);
+            run = [];
+          }
+        };
+        for (const child of children) {
+          if (child.nodeType === Node.TEXT_NODE) {
+            const text = selectedText.get(child as Text);
+            if (text !== undefined) run.push({ kind: "text", text });
+            continue;
+          }
+          if (child.nodeType === Node.ELEMENT_NODE) {
+            const tokenKind = selectedProtected.get(child as HTMLElement);
+            if (tokenKind) {
+              run.push({
+                kind: "protected",
+                element: child as HTMLElement,
+                tokenKind,
+              });
               continue;
             }
-            const part = {
-              id: `p${paragraph}_t${bindings.length}`,
-              text: textPart,
-            };
-            const translated = doc.createTextNode("");
-            bindings.push({ part, node: translated });
-            fragment.append(translated);
           }
-          return fragment;
+          if (!ancestors.has(child) && !selectedBr.has(child)) continue;
+          flushRun();
+          const source = child as HTMLElement;
+          // 按钮标签仅复制文字排版；底色、边框、内边距继续由原按钮承载。
+          const element =
+            insideAction && source.tagName !== "BR"
+              ? doc.createElement("span")
+              : (source.cloneNode(false) as HTMLElement);
+          element.removeAttribute("id");
+          element.removeAttribute("name");
+          copyTypography(source, element);
+          // A button may use a large line-height to center its original label.
+          // That value must not become the translated label's line spacing.
+          if (insideAction) element.style.setProperty("line-height", "inherit");
+          element.append(cloneChildren([...source.childNodes]));
+          out.append(element);
         }
-        if (!ancestors.has(node) && !selected.has(node)) return null;
-        const source = node as HTMLElement;
-        // 按钮标签仅复制文字排版；底色、边框、内边距继续由原按钮承载。
-        const element =
-          insideAction && source.tagName !== "BR"
-            ? doc.createElement("span")
-            : (source.cloneNode(false) as HTMLElement);
-        element.removeAttribute("id");
-        element.removeAttribute("name");
-        copyTypography(source, element);
-        // A button may use a large line-height to center its original label.
-        // That value must not become the translated label's line spacing.
-        if (insideAction) element.style.setProperty("line-height", "inherit");
-        for (const child of [...source.childNodes]) {
-          const copied = clone(child);
-          if (copied) element.append(copied);
-        }
-        return element;
+        flushRun();
+        return out;
       };
-      const fragment = doc.createDocumentFragment();
-      for (const node of nodes) {
-        const copied = clone(node);
-        if (copied) fragment.append(copied);
-      }
+      const fragment = cloneChildren(nodes);
       if (bindings.length) {
         parts.push(...bindings.map((b) => b.part));
-        groups.push({ parent, end: anchor, fragment, bindings });
+        groups.push({ parent, end: anchor, fragment, bindings, placeholders });
       }
     }
   }
   function visit(parent: HTMLElement, depth = 0) {
     if (depth > 120)
       throw new Error(t("Message nesting is too deep. No body text was sent."));
-    if (!visible(parent)) return;
+    if (!visible(parent) || protectedCodeTags.test(parent.tagName)) return;
     let run: Node[] = [];
     for (const node of [...parent.childNodes]) {
       if (
@@ -536,6 +867,20 @@ export function planMailTranslation(
         "Message text is too long. Try a shorter message. No body text was sent.",
       ),
     );
+  const unwrapNestedAnchors = (rootEl: HTMLElement): HTMLElement => {
+    const walk = (node: Node): Node => {
+      if (node.nodeType !== Node.ELEMENT_NODE) return node.cloneNode(true);
+      const el = node as HTMLElement;
+      const cloned =
+        el.tagName === "A"
+          ? doc.createElement("span")
+          : (el.cloneNode(false) as HTMLElement);
+      if (el.tagName === "A") copyTypography(el, cloned);
+      for (const child of el.childNodes) cloned.append(walk(child));
+      return cloned;
+    };
+    return walk(rootEl) as HTMLElement;
+  };
   return {
     parts,
     apply(values: Map<string, string>) {
@@ -546,8 +891,48 @@ export function planMailTranslation(
           !group.end.node.isConnected
         )
           continue;
-        for (const { part, node } of group.bindings)
-          node.textContent = values.get(part.id)!;
+        if (group.placeholders.size === 0) {
+          for (const { part, node } of group.bindings)
+            node.textContent = values.get(part.id)!;
+        } else {
+          const expectedTokens = [...group.placeholders.keys()];
+          const tokenRegex = new RegExp(
+            expectedTokens.map(escapeRegExp).join("|"),
+            "g",
+          );
+          const placed = new Set<string>();
+          for (const { part, node } of group.bindings) {
+            const raw = normalizePlaceholderVariants(
+              values.get(part.id)!,
+              expectedTokens,
+            );
+            const insideAnchor = !!node.parentElement?.closest(
+              "a[data-mail-href],a[href]",
+            );
+            const out = doc.createDocumentFragment();
+            let lastIndex = 0;
+            for (const match of raw.matchAll(tokenRegex)) {
+              const token = match[0];
+              if (match.index > lastIndex)
+                out.append(
+                  doc.createTextNode(raw.slice(lastIndex, match.index)),
+                );
+              if (!placed.has(token)) {
+                placed.add(token);
+                const template = group.placeholders.get(token)!;
+                out.append(
+                  insideAnchor
+                    ? unwrapNestedAnchors(template)
+                    : (template.cloneNode(true) as HTMLElement),
+                );
+              }
+              lastIndex = match.index + token.length;
+            }
+            if (lastIndex < raw.length)
+              out.append(doc.createTextNode(raw.slice(lastIndex)));
+            node.replaceWith(out);
+          }
+        }
         const view = doc.createElement("span");
         view.dataset.anserTranslation = "";
         view.lang = target;

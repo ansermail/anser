@@ -422,4 +422,63 @@ describe("rich delivery whitespace", () => {
       "  keep pre",
     );
   });
+
+  it("formats reply and forward quote headers in English RFC style when enabled without affecting default locale behavior", () => {
+    const baseQuote = {
+      included: true,
+      sender: "sender@example.com",
+      recipients: "recipient@example.com",
+      date: "2026-11-27T03:32:53+08:00",
+      subject: "Order #42",
+      body: "Original body",
+      html: "<p>Original body</p>",
+    };
+    const defaultReply = prepareCompose({
+      ...newDraft("account"),
+      body: "Noted",
+      quote: { ...baseQuote, kind: "reply" },
+    });
+    expect(defaultReply.deliveryBody).toContain("--------- 原始邮件 ---------");
+    expect(defaultReply.deliveryBody).toContain("发件人：sender@example.com");
+
+    const englishReply = prepareCompose(
+      {
+        ...newDraft("account"),
+        body: "Noted",
+        quote: { ...baseQuote, kind: "reply" },
+      },
+      false,
+      { englishQuoteHeader: true },
+    );
+    expect(englishReply.deliveryBody).toContain(
+      "--------- Original Message ---------",
+    );
+    expect(englishReply.deliveryBody).toContain("From: sender@example.com");
+    expect(englishReply.deliveryBody).toContain("To: recipient@example.com");
+    expect(englishReply.deliveryBody).toMatch(
+      /Date: [A-Z][a-z]{2}, \d{2} [A-Z][a-z]{2} 2026 \d{2}:\d{2}:\d{2} [+-]\d{4}/,
+    );
+    expect(englishReply.deliveryBody).toContain("Subject: Order #42");
+    expect(englishReply.deliveryBody).not.toMatch(/[\u4e00-\u9fff]/);
+    const htmlHeader = new DOMParser()
+      .parseFromString(englishReply.deliveryHtml!, "text/html")
+      .querySelector("[data-anser-quote-header]")?.textContent;
+    expect(htmlHeader).toContain("--------- Original Message ---------");
+    expect(htmlHeader).not.toMatch(/[\u4e00-\u9fff]/);
+
+    const englishForward = prepareCompose(
+      {
+        ...newDraft("account"),
+        body: "FYI",
+        quote: { ...baseQuote, kind: "forward", date: "not-a-date" },
+      },
+      false,
+      { englishQuoteHeader: true },
+    );
+    expect(englishForward.deliveryBody).toContain(
+      "--------- Forwarded Message ---------",
+    );
+    expect(englishForward.deliveryBody).toContain("Date: not-a-date");
+    expect(englishForward.deliveryBody).not.toMatch(/[\u4e00-\u9fff]/);
+  });
 });

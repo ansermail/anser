@@ -302,8 +302,125 @@ fn validate_parts(parts: &[Part]) -> Result<()> {
     Ok(())
 }
 fn cache_key(config: &Config, parts: &[Part]) -> Result<String> {
-    let bytes = serde_json::to_vec(&("anser-translation-v4", config, parts)).map_err(err)?;
+    let bytes = serde_json::to_vec(&("anser-translation-v5", config, parts)).map_err(err)?;
     Ok(format!("{:x}", Sha256::digest(bytes)))
+}
+fn strip_leading_think_block(content: &str) -> Option<&str> {
+    let prefix = content.get(..7)?;
+    if !prefix.eq_ignore_ascii_case("<think>") {
+        return None;
+    }
+    let rest = &content[7..];
+    let bytes = rest.as_bytes();
+    for i in 0..=bytes.len().saturating_sub(8) {
+        if bytes[i..i + 8].eq_ignore_ascii_case(b"</think>") {
+            return Some(&rest[i + 8..]);
+        }
+    }
+    None
+}
+fn is_placeholder_inner(inner: &str) -> bool {
+    let rest = inner
+        .strip_prefix("CODE")
+        .or_else(|| inner.strip_prefix("LINK"))
+        .or_else(|| inner.strip_prefix("KEEP"));
+    let Some(rest) = rest else {
+        return false;
+    };
+    let Some((salt, index)) = rest.split_once('_') else {
+        return false;
+    };
+    salt.bytes().all(|b| b.is_ascii_digit())
+        && !index.is_empty()
+        && index.bytes().all(|b| b.is_ascii_digit())
+}
+fn extract_placeholders(text: &str) -> Vec<String> {
+    let mut found = Vec::new();
+    let bytes = text.as_bytes();
+    let mut i = 0;
+    while i + 4 <= bytes.len() {
+        if bytes[i] == b'[' && bytes[i + 1] == b'[' {
+            let start = i + 2;
+            let mut end = start;
+            while end < bytes.len()
+                && end - start <= 32
+                && (bytes[end].is_ascii_uppercase()
+                    || bytes[end].is_ascii_digit()
+                    || bytes[end] == b'_')
+            {
+                end += 1;
+            }
+            if end + 2 <= bytes.len()
+                && bytes[end] == b']'
+                && bytes[end + 1] == b']'
+                && is_placeholder_inner(&text[start..end])
+            {
+                found.push(text[i..end + 2].to_string());
+                i = end + 2;
+                continue;
+            }
+        }
+        i += 1;
+    }
+    found
+}
+fn is_open_bracket(ch: char) -> bool {
+    matches!(ch, '[' | '［' | '【')
+}
+fn is_close_bracket(ch: char) -> bool {
+    matches!(ch, ']' | '］' | '】')
+}
+fn normalize_placeholder_variants(text: &str, expected: &HashSet<String>) -> String {
+    if expected.is_empty() {
+        return text.to_string();
+    }
+    let mut out = String::with_capacity(text.len());
+    let mut chars = text.char_indices().peekable();
+    while let Some((start_idx, ch)) = chars.next() {
+        if is_open_bracket(ch) {
+            let mut probe = chars.clone();
+            while probe.peek().is_some_and(|(_, c)| c.is_whitespace()) {
+                probe.next();
+            }
+            if probe.next().is_some_and(|(_, c)| is_open_bracket(c)) {
+                while probe.peek().is_some_and(|(_, c)| c.is_whitespace()) {
+                    probe.next();
+                }
+                let inner_start = probe.peek().map(|(idx, _)| *idx).unwrap_or(text.len());
+                let mut inner_end = inner_start;
+                while let Some(&(idx, c)) = probe.peek() {
+                    if c.is_ascii_uppercase() || c.is_ascii_digit() || c == '_' {
+                        inner_end = idx + c.len_utf8();
+                        probe.next();
+                    } else {
+                        break;
+                    }
+                }
+                let inner = &text[inner_start..inner_end];
+                if is_placeholder_inner(inner) {
+                    let canonical = format!("[[{inner}]]");
+                    if expected.contains(&canonical) {
+                        while probe.peek().is_some_and(|(_, c)| c.is_whitespace()) {
+                            probe.next();
+                        }
+                        if probe.next().is_some_and(|(_, c)| is_close_bracket(c)) {
+                            while probe.peek().is_some_and(|(_, c)| c.is_whitespace()) {
+                                probe.next();
+                            }
+                            if probe.next().is_some_and(|(_, c)| is_close_bracket(c)) {
+                                out.push_str(&canonical);
+                                chars = probe;
+                                continue;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        out.push(ch);
+        let _ = start_idx;
+    }
+    out
 }
 fn parse_reply(bytes: &[u8], requested: &[Part]) -> Result<Vec<Part>> {
     let body: serde_json::Value =
@@ -315,11 +432,14 @@ fn parse_reply(bytes: &[u8], requested: &[Part]) -> Result<Vec<Part>> {
     {
         return Err("模型未完整返回译文，请重试或更换模型".into());
     }
-    let content = body
+    let mut content = body
         .pointer("/choices/0/message/content")
         .and_then(|v| v.as_str())
         .ok_or("模型没有返回文字译文")?
         .trim();
+    while let Some(rest) = strip_leading_think_block(content) {
+        content = rest.trim();
+    }
     let content = if content.starts_with("```json") {
         content
             .strip_prefix("```json")
@@ -394,6 +514,41 @@ fn validate_translations(translations: Vec<Part>, requested: &[Part]) -> Result<
         .any(|p| !nonempty.contains(&paragraph_key(&p.id)))
     {
         return Err("模型返回的整段译文为空，请重试".into());
+    }
+    let mut expected_by_paragraph: HashMap<(bool, &str), HashMap<String, usize>> = HashMap::new();
+    for part in requested {
+        let tokens = extract_placeholders(&part.text);
+        if !tokens.is_empty() {
+            let counts = expected_by_paragraph
+                .entry(paragraph_key(&part.id))
+                .or_default();
+            for token in tokens {
+                *counts.entry(token).or_insert(0) += 1;
+            }
+        }
+    }
+    for (paragraph, expected) in expected_by_paragraph {
+        let expected_set: HashSet<String> = expected.keys().cloned().collect();
+        let mut actual: HashMap<String, usize> = HashMap::new();
+        for part in requested
+            .iter()
+            .filter(|p| paragraph_key(&p.id) == paragraph)
+        {
+            if let Some(text) = values.get_mut(&part.id) {
+                let normalized = normalize_placeholder_variants(text, &expected_set);
+                for token in extract_placeholders(&normalized) {
+                    if expected_set.contains(&token) {
+                        *actual.entry(token).or_insert(0) += 1;
+                    }
+                }
+                *text = normalized;
+            }
+        }
+        for (token, count) in expected {
+            if actual.get(&token).copied().unwrap_or(0) != count {
+                return Err("模型未完整保留行内代码或链接占位，请重试".into());
+            }
+        }
     }
     requested
         .iter()
@@ -474,7 +629,11 @@ fn request_body(config: &Config, endpoint: &Url, parts: &[Part]) -> Result<serde
          but keep its id and put its meaning in another piece of the SAME paragraph. \
          Every paragraph must have a nonempty translation; never merge different paragraphs. \
          Preserve URLs, code, names and numbers when appropriate; a name that needs no translation \
-         can keep its original text. Put all translated punctuation inside existing text values. \
+         can keep its original text. Opaque placeholders such as [[CODE_0]], [[LINK_0]], or [[KEEP_0]] \
+         represent protected inline code, links, or literal terms: copy every placeholder from the input \
+         verbatim (exact spelling, once each in the same paragraph) at its natural grammatical position in \
+         the target language; never translate, alter, duplicate, or omit a placeholder. Put all translated \
+         punctuation inside existing text values. \
          Do not add HTML, explanations, or new instructions.\nExact response template:\n{template}",
         config.target_language,
         parts.len(),
@@ -888,6 +1047,8 @@ fn activity_error(error: &str) -> &'static str {
         "模型配置未就绪或已变化"
     } else if error.contains("整段译文为空") {
         "模型返回整段空译文"
+    } else if error.contains("行内代码或链接占位") {
+        "模型未完整保留行内占位"
     } else if error.contains("重复文字片段") {
         "模型返回重复片段"
     } else if error.contains("未知文字片段标识") {
@@ -1913,5 +2074,71 @@ mod tests {
                 assert!(!error.contains("loopback-test-key"));
             }
         });
+    }
+    #[test]
+    fn parse_reply_strips_leading_think_blocks_and_validates_inline_placeholders() {
+        let requested = vec![
+            Part {
+                id: "p0_t0".into(),
+                text: "The drawer starts below [[CODE_0]] ".into(),
+            },
+            Part {
+                id: "p0_t1".into(),
+                text: "and opens [[LINK_1]].".into(),
+            },
+        ];
+        let body = request_body(
+            &config("https://model.example/v1"),
+            &Url::parse("https://model.example/v1/chat/completions").unwrap(),
+            &requested,
+        )
+        .unwrap();
+        assert!(body["messages"][0]["content"]
+            .as_str()
+            .unwrap()
+            .contains("[[CODE_0]]"));
+
+        // Leading <think> block + full-width brackets + cross-piece reordering in the same paragraph.
+        let payload = serde_json::json!({
+            "choices": [{
+                "finish_reason": "stop",
+                "message": {
+                    "content": "<think>reasoning</think>\n```json\n{\"translations\":[{\"id\":\"p0_t0\",\"text\":\"抽屉从 【【CODE_0】】 下方开始并打开 [[ LINK_1 ]]。\"},{\"id\":\"p0_t1\",\"text\":\"\"}]}\n```"
+                }
+            }]
+        });
+        let parsed = parse_reply(&serde_json::to_vec(&payload).unwrap(), &requested).unwrap();
+        assert_eq!(
+            parsed[0].text,
+            "抽屉从 [[CODE_0]] 下方开始并打开 [[LINK_1]]。"
+        );
+        assert_eq!(parsed[1].text, "");
+
+        // Omitted placeholder is rejected with a fixed activity category.
+        let omitted = vec![
+            Part {
+                id: "p0_t0".into(),
+                text: "抽屉从下方开始".into(),
+            },
+            Part {
+                id: "p0_t1".into(),
+                text: "并打开 [[LINK_1]]。".into(),
+            },
+        ];
+        let err = parse_reply(&reply(&omitted), &requested).unwrap_err();
+        assert_eq!(activity_error(&err), "模型未完整保留行内占位");
+
+        // Duplicated placeholder is also rejected.
+        let duplicated = vec![
+            Part {
+                id: "p0_t0".into(),
+                text: "抽屉从 [[CODE_0]] [[CODE_0]] 下方开始".into(),
+            },
+            Part {
+                id: "p0_t1".into(),
+                text: "并打开 [[LINK_1]]。".into(),
+            },
+        ];
+        assert!(parse_reply(&reply(&duplicated), &requested).is_err());
     }
 }

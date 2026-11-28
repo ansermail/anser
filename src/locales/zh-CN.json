@@ -1260,6 +1260,7 @@
   "The model returned duplicate segments. Retry.": "模型返回了重复文字片段，请重试。",
   "The translation is too long or contains invalid characters. Retry.": "模型译文过长或含无效字符，请重试。",
   "The model returned an empty paragraph. Retry.": "模型返回的整段译文为空，请重试。",
+  "The model did not preserve inline code or link placeholders. Retry.": "模型未完整保留行内代码或链接占位，请重试。",
   "Message structure is too complex. No body text was sent.": "邮件结构过于复杂，未发送正文",
   "Message nesting is too deep. No body text was sent.": "邮件嵌套过深，未发送正文",
   "Message text is too long. No body text was sent.": "邮件文字过长，未发送任何正文",
@@ -1991,5 +1992,8 @@
   "All caught up — make room for what matters.\nClick the emblem anytime to check for new mail.": "全部已读，留一点空间给重要的事。\n随时轻点图标即可检查新邮件。",
   "Light: {value0}": "浅色：{value0}",
   "Dark: {value0}": "深色：{value0}",
-  "Apply {value0} to both light and dark": "将「{value0}」同时用于浅色与深色"
+  "Apply {value0} to both light and dark": "将「{value0}」同时用于浅色与深色",
+  "English reply & forward headers": "回复与转发使用英文引用头",
+  "Use standard English RFC headers (Original Message / Forwarded Message, From, To, Date, Subject) in quoted messages instead of following the interface language.": "开启后，回复或转发自动生成的原始邮件发件信息统一使用英文 RFC 格式（Original Message / Forwarded Message、From、To、Date、Subject），不随界面语言出现中文。",
+  "Use English headers for replies and forwards": "回复与转发使用英文引用头"
 }

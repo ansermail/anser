@@ -137,9 +137,12 @@ async fn prepare(
                 &[5, 1, 0]
             })
             .await
-            .map_err(err)?;
+            .map_err(|e| format!("SOCKS5 代理握手发送失败：{e}"))?;
         let mut reply = [0; 2];
-        stream.read_exact(&mut reply).await.map_err(err)?;
+        stream
+            .read_exact(&mut reply)
+            .await
+            .map_err(|e| format!("SOCKS5 代理握手响应读取失败：{e}"))?;
         if reply != [5, if authenticated { 2 } else { 0 }] {
             return Err("SOCKS5 代理不支持所选认证方式".into());
         }
@@ -153,8 +156,14 @@ async fn prepare(
             request.extend_from_slice(username);
             request.push(password.len() as u8);
             request.extend_from_slice(password);
-            stream.write_all(&request).await.map_err(err)?;
-            stream.read_exact(&mut reply).await.map_err(err)?;
+            stream
+                .write_all(&request)
+                .await
+                .map_err(|e| format!("SOCKS5 代理认证发送失败：{e}"))?;
+            stream
+                .read_exact(&mut reply)
+                .await
+                .map_err(|e| format!("SOCKS5 代理认证响应读取失败：{e}"))?;
             if reply != [1, 0] {
                 return Err("SOCKS5 代理认证失败".into());
             }
@@ -166,9 +175,15 @@ async fn prepare(
         let mut request = vec![5, 1, 0, 3, host.len() as u8];
         request.extend_from_slice(host);
         request.extend_from_slice(&target_port.to_be_bytes());
-        stream.write_all(&request).await.map_err(err)?;
+        stream
+            .write_all(&request)
+            .await
+            .map_err(|e| format!("SOCKS5 代理连接请求发送失败：{e}"))?;
         let mut head = [0; 4];
-        stream.read_exact(&mut head).await.map_err(err)?;
+        stream
+            .read_exact(&mut head)
+            .await
+            .map_err(|e| format!("SOCKS5 代理连接响应读取失败：{e}"))?;
         if head[0] != 5 || head[1] != 0 {
             return Err("SOCKS5 代理拒绝连接目标服务器".into());
         }
@@ -177,13 +192,19 @@ async fn prepare(
             4 => 16,
             3 => {
                 let mut n = [0];
-                stream.read_exact(&mut n).await.map_err(err)?;
+                stream
+                    .read_exact(&mut n)
+                    .await
+                    .map_err(|e| format!("SOCKS5 代理地址长度读取失败：{e}"))?;
                 n[0] as usize
             }
             _ => return Err("SOCKS5 代理响应无效".into()),
         };
         let mut rest = vec![0; address_len + 2];
-        stream.read_exact(&mut rest).await.map_err(err)?;
+        stream
+            .read_exact(&mut rest)
+            .await
+            .map_err(|e| format!("SOCKS5 代理地址响应读取失败：{e}"))?;
     } else {
         let target = format!("{target_host}:{target_port}");
         let auth = if config.username.is_empty() {
@@ -196,14 +217,20 @@ async fn prepare(
         let request = format!(
             "CONNECT {target} HTTP/1.1\r\nHost: {target}\r\n{auth}Proxy-Connection: keep-alive\r\n\r\n"
         );
-        stream.write_all(request.as_bytes()).await.map_err(err)?;
+        stream
+            .write_all(request.as_bytes())
+            .await
+            .map_err(|e| format!("HTTP 代理 CONNECT 请求发送失败：{e}"))?;
         let mut header = Vec::new();
         while !header.ends_with(b"\r\n\r\n") {
             if header.len() >= 16 * 1024 {
                 return Err("代理响应头过长".into());
             }
             let mut byte = [0];
-            stream.read_exact(&mut byte).await.map_err(err)?;
+            stream
+                .read_exact(&mut byte)
+                .await
+                .map_err(|e| format!("HTTP 代理 CONNECT 响应读取失败：{e}"))?;
             header.push(byte[0]);
         }
         let first = header
@@ -232,7 +259,7 @@ fn tunnel(config: &ProxyConfig, password: &str, host: &str, port: u16) -> Result
     let runtime = tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()
-        .map_err(err)?;
+        .map_err(|e| format!("代理隧道运行时初始化失败：{e}"))?;
     let remote = runtime.block_on(async {
         tokio::time::timeout(
             Duration::from_secs(15),
@@ -251,9 +278,15 @@ fn tunnel(config: &ProxyConfig, password: &str, host: &str, port: u16) -> Result
         }
         Err(reason) => return Err(reason),
     };
-    let listener = TcpListener::bind("127.0.0.1:0").map_err(err)?;
-    let port = listener.local_addr().map_err(err)?.port();
-    listener.set_nonblocking(true).map_err(err)?;
+    let listener =
+        TcpListener::bind("127.0.0.1:0").map_err(|e| format!("创建本地代理转发监听失败：{e}"))?;
+    let port = listener
+        .local_addr()
+        .map_err(|e| format!("读取本地代理转发端口失败：{e}"))?
+        .port();
+    listener
+        .set_nonblocking(true)
+        .map_err(|e| format!("配置本地代理转发监听失败：{e}"))?;
     std::thread::spawn(move || {
         let accepted = (|| {
             let started = std::time::Instant::now();
@@ -516,5 +549,34 @@ mod tests {
         assert!(tunnel(&proxy, "", "mail.example", 993).is_err());
         proxy.direct_on_failure = true;
         assert_eq!(tunnel(&proxy, "", "mail.example", 993).unwrap(), None);
+    }
+
+    #[test]
+    fn handshake_io_errors_carry_stage_prefixes() {
+        let socks_listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let socks_port = socks_listener.local_addr().unwrap().port();
+        let socks_server = std::thread::spawn(move || {
+            let (stream, _) = socks_listener.accept().unwrap();
+            drop(stream);
+        });
+        let socks_err = tunnel(&config("socks5", socks_port), "", "mail.example", 993).unwrap_err();
+        assert!(
+            socks_err.contains("SOCKS5 代理握手"),
+            "unexpected socks error: {socks_err}"
+        );
+        socks_server.join().unwrap();
+
+        let http_listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let http_port = http_listener.local_addr().unwrap().port();
+        let http_server = std::thread::spawn(move || {
+            let (stream, _) = http_listener.accept().unwrap();
+            drop(stream);
+        });
+        let http_err = tunnel(&config("http", http_port), "", "mail.example", 993).unwrap_err();
+        assert!(
+            http_err.contains("HTTP 代理 CONNECT"),
+            "unexpected http error: {http_err}"
+        );
+        http_server.join().unwrap();
     }
 }

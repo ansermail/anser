@@ -114,6 +114,7 @@ export function ComposeDialog({
   onSent,
   onQueued,
   dark = false,
+  englishQuoteHeader = false,
 }: {
   draft: Compose | null;
   onClose: () => void;
@@ -121,6 +122,7 @@ export function ComposeDialog({
   onSent: () => void;
   onQueued?: () => void;
   dark?: boolean;
+  englishQuoteHeader?: boolean;
 }) {
   const { askConfirmation, cancelConfirmation, confirmationDialog } =
     useConfirmation();
@@ -160,8 +162,11 @@ export function ComposeDialog({
   const [deliveryPreview, setDeliveryPreview] = useState(false);
   const deliveryPreviewTrigger = useRef<HTMLButtonElement>(null);
   const previewContent = useMemo(
-    () => (deliveryPreview && value ? prepareCompose(value, dark) : null),
-    [dark, deliveryPreview, value],
+    () =>
+      deliveryPreview && value
+        ? prepareCompose(value, dark, { englishQuoteHeader })
+        : null,
+    [dark, deliveryPreview, englishQuoteHeader, value],
   );
   const [expanded, setExpanded] = useState(false),
     [planning, setPlanning] = useState(false),
@@ -552,7 +557,9 @@ export function ComposeDialog({
     setSending(true);
     try {
       await persistence.current;
-      const queuedDraft = prepareCompose(latest.current, dark);
+      const queuedDraft = prepareCompose(latest.current, dark, {
+        englishQuoteHeader,
+      });
       await call("queue_send", { draft: queuedDraft });
       toast.success(
         t("Added to send history. Cancel or send now within 8 seconds."),
@@ -619,7 +626,7 @@ export function ComposeDialog({
     try {
       await persistence.current;
       await call("schedule_mail", {
-        draft: prepareCompose(latest.current, dark),
+        draft: prepareCompose(latest.current, dark, { englishQuoteHeader }),
         scheduledAt,
       });
       toast.success(

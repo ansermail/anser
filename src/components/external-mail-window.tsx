@@ -26,7 +26,7 @@ import { mailFileError } from "../lib/mail-file-errors";
 import { printMail } from "../lib/mail-print";
 import { senderName } from "../lib/providers";
 import { useTheme } from "../lib/theme";
-import type { Account, Compose, Detail } from "../lib/types";
+import type { Account, Compose, Detail, Preferences } from "../lib/types";
 import { Alert, AlertDescription } from "./ui/alert";
 import { MailRecipients } from "./mail-recipients";
 import { SenderIdentity } from "./contact-address";
@@ -62,6 +62,7 @@ export function ExternalMailWindow() {
   const [document, setDocument] = useState<EmlDocument | null>(null);
   const [error, setError] = useState("");
   const [accounts, setAccounts] = useState<Account[]>([]);
+  const [englishQuoteHeader, setEnglishQuoteHeader] = useState(false);
   const [draft, setDraft] = useState<Compose | null>(null);
   const { dark, mode } = useTheme();
   const readerRef = useRef<HTMLDivElement>(null);
@@ -110,6 +111,12 @@ export function ExternalMailWindow() {
     })
       .then((snapshot) => {
         if (live) setAccounts(snapshot.accounts);
+      })
+      .catch(() => {});
+    void call<Preferences>("get_preferences")
+      .then((preferences) => {
+        if (live)
+          setEnglishQuoteHeader(preferences.englishQuoteHeader ?? false);
       })
       .catch(() => {});
     void invoke<EmlDocument>("current_external_mail")
@@ -470,6 +477,7 @@ export function ExternalMailWindow() {
         )}
         <ComposeDialog
           dark={dark}
+          englishQuoteHeader={englishQuoteHeader}
           draft={draft}
           onClose={() => setDraft(null)}
           accounts={accounts}

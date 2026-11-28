@@ -425,6 +425,8 @@ pub struct Preferences {
     pub reading_cache_days: u32,
     #[serde(default = "default_reading_cache_limit_mb")]
     pub reading_cache_limit_mb: u64,
+    #[serde(default)]
+    pub english_quote_header: bool,
 }
 impl Default for Preferences {
     fn default() -> Self {
@@ -437,6 +439,7 @@ impl Default for Preferences {
             proxy: None,
             reading_cache_days: default_reading_cache_days(),
             reading_cache_limit_mb: default_reading_cache_limit_mb(),
+            english_quote_header: false,
         }
     }
 }

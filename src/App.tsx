@@ -15,6 +15,7 @@ import {
 } from "@/lib/i18n";
 import { LanguageSettings } from "./components/language-settings";
 import { WorkspaceSettings } from "./components/workspace-settings";
+import { ComposeQuoteSettings } from "./components/compose-quote-settings";
 import { TaskCellText, TaskDataTable } from "./components/task-data-table";
 import {
   TaskPanelHeader,
@@ -405,7 +406,9 @@ export default function App({
     [savingMailTags, setSavingMailTags] = useState(false),
     [showWorkbench, setShowWorkbench] = useState(false),
     [workbenchPreferenceReady, setWorkbenchPreferenceReady] = useState(false),
-    [savingWorkbenchPreference, setSavingWorkbenchPreference] = useState(false);
+    [savingWorkbenchPreference, setSavingWorkbenchPreference] = useState(false),
+    [englishQuoteHeader, setEnglishQuoteHeader] = useState(false),
+    [savingQuotePreference, setSavingQuotePreference] = useState(false);
   const showWorkbenchRef = useRef(showWorkbench);
   const taskPanelExpansion = useRef(new Map<string, boolean>());
   showWorkbenchRef.current = showWorkbench;
@@ -417,6 +420,7 @@ export default function App({
       .then((preferences) => {
         if (!live) return;
         setShowWorkbench(preferences.showWorkbench ?? true);
+        setEnglishQuoteHeader(preferences.englishQuoteHeader ?? false);
         setWorkbenchPreferenceReady(true);
       })
       .catch((error) => {
@@ -958,6 +962,28 @@ export default function App({
       toast.error(String(error));
     } finally {
       setSavingWorkbenchPreference(false);
+    }
+  }
+  async function changeEnglishQuoteHeader(enabled: boolean) {
+    if (
+      savingQuotePreference ||
+      !workbenchPreferenceReady ||
+      enabled === englishQuoteHeader
+    )
+      return;
+    const previous = englishQuoteHeader;
+    setEnglishQuoteHeader(enabled);
+    setSavingQuotePreference(true);
+    try {
+      const preferences = await call<Preferences>("get_preferences");
+      await call("save_preferences", {
+        preferences: { ...preferences, englishQuoteHeader: enabled },
+      });
+    } catch (error) {
+      setEnglishQuoteHeader(previous);
+      toast.error(String(error));
+    } finally {
+      setSavingQuotePreference(false);
     }
   }
   const compose = useCallback(
@@ -3643,6 +3669,14 @@ export default function App({
                     <div className="settings-section-heading">
                       <h2>{t("Reading & composing")}</h2>
                     </div>
+                    <ComposeQuoteSettings
+                      englishQuoteHeader={englishQuoteHeader}
+                      ready={workbenchPreferenceReady}
+                      saving={savingQuotePreference}
+                      onChange={(enabled) =>
+                        void changeEnglishQuoteHeader(enabled)
+                      }
+                    />
                     <MailSignatures accounts={data.accounts} />
                     <MailTranslationSettings />
                   </>
@@ -5282,6 +5316,7 @@ export default function App({
       />
       <ComposeDialog
         dark={dark}
+        englishQuoteHeader={englishQuoteHeader}
         draft={draft}
         onClose={() => {
           setDraft(null);
